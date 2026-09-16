@@ -1,8 +1,9 @@
 "use client"
 
 import { useEffect } from "react"
-import { ArrowLeft, PhoneCall, ShieldAlert } from "lucide-react"
+import { PhoneCall, ShieldAlert } from "lucide-react"
 import { useSpeech } from "@/hooks/use-speech"
+import { ScreenHeader } from "@/components/screen-header"
 
 type AssistanceProps = {
   onBack: () => void
@@ -23,43 +24,34 @@ export function Assistance({ onBack }: AssistanceProps) {
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4" aria-label="Asistencia y emergencias">
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-4 flex items-center gap-2 self-start rounded-xl border-2 border-foreground px-4 py-3 text-base font-bold"
-      >
-        <ArrowLeft className="size-5" aria-hidden="true" />
-        Volver
-      </button>
-
-      <h2 className="mb-4 flex items-center gap-2 text-2xl font-bold">
-        <ShieldAlert className="size-7 text-brand" aria-hidden="true" />
-        Asistencia
-      </h2>
+      <ScreenHeader title="Asistencia" subtitle="Llamadas de emergencia" icon={ShieldAlert} onBack={onBack} />
 
       <a
         href="tel:123"
         onFocus={() => speak("Botón de emergencia. Llama al 123.")}
-        className="flex flex-col items-center gap-2 rounded-2xl border-4 border-brand bg-brand p-6 text-center text-brand-foreground"
+        className="flex flex-col items-center gap-3 rounded-3xl border border-brand bg-brand p-6 text-center text-brand-foreground shadow-lg shadow-brand/30 transition active:scale-[0.99]"
       >
-        <PhoneCall className="size-10" aria-hidden="true" />
+        <span className="flex size-16 items-center justify-center rounded-full bg-brand-foreground/15">
+          <PhoneCall className="size-9" aria-hidden="true" />
+        </span>
         <span className="text-2xl font-bold">Llamar al 123</span>
-        <span className="text-base">Emergencias — SOS</span>
+        <span className="text-base text-brand-foreground/80">Emergencias — SOS</span>
       </a>
 
-      <ul className="mt-4 flex flex-col gap-3">
+      <h3 className="mb-3 mt-6 text-base font-bold text-muted-foreground">Otras líneas</h3>
+      <ul className="flex flex-col gap-3">
         {contacts.slice(1).map((contact) => (
           <li key={contact.number}>
             <a
               href={`tel:${contact.number}`}
               onFocus={() => speak(`${contact.label}. Número ${contact.number}.`)}
-              className="flex items-center justify-between rounded-2xl border-2 border-foreground p-4"
+              className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm transition active:scale-[0.99]"
             >
-              <span className="text-lg font-semibold">{contact.label}</span>
-              <span className="flex items-center gap-2 text-lg font-bold">
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand">
                 <PhoneCall className="size-5" aria-hidden="true" />
-                {contact.number}
               </span>
+              <span className="flex-1 text-lg font-semibold">{contact.label}</span>
+              <span className="text-lg font-bold tabular-nums">{contact.number}</span>
             </a>
           </li>
         ))}

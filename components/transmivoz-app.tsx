@@ -110,7 +110,7 @@ export function TransMiVozApp() {
   return (
     <div
       className={[
-        "mx-auto flex h-dvh w-full max-w-md flex-col overflow-hidden bg-background text-foreground",
+        "mx-auto flex h-dvh w-full max-w-md flex-col overflow-hidden bg-background text-foreground transition-colors duration-300",
         fluor ? "fluor" : "",
       ].join(" ")}
     >

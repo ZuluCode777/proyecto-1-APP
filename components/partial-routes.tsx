@@ -1,7 +1,8 @@
 "use client"
 
 import type { FormEvent } from "react"
-import { ArrowLeft, Search, X, Mic, Heart, Bus } from "lucide-react"
+import { Search, X, Mic, Heart, Bus } from "lucide-react"
+import { ScreenHeader } from "@/components/screen-header"
 
 type PartialRoutesProps = {
   query: string
@@ -27,19 +28,7 @@ export function PartialRoutes({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-4 p-4" aria-label="Rutas">
-      <button
-        type="button"
-        onClick={onBack}
-        className="flex items-center gap-2 self-start rounded-xl border-2 border-foreground px-4 py-3 text-base font-bold"
-      >
-        <ArrowLeft className="size-5" aria-hidden="true" />
-        Volver
-      </button>
-
-      <h2 className="flex items-center gap-2 text-2xl font-bold">
-        <Bus className="size-7 text-brand" aria-hidden="true" />
-        Rutas
-      </h2>
+      <ScreenHeader title="Rutas" subtitle="Busca por estación o ruta" icon={Bus} onBack={onBack} />
 
       <form onSubmit={handleSubmit} className="relative shrink-0" role="search">
         <Search
@@ -52,14 +41,14 @@ export function PartialRoutes({
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder="Buscar estación o ruta"
           aria-label="Buscar estación o ruta"
-          className="w-full rounded-xl border-2 border-foreground bg-card py-4 pl-12 pr-20 text-lg outline-none placeholder:text-muted-foreground"
+          className="w-full rounded-2xl border border-border bg-card py-4 pl-12 pr-24 text-lg shadow-sm outline-none placeholder:text-muted-foreground focus-visible:border-brand"
         />
         {query && (
           <button
             type="button"
             onClick={() => onQueryChange("")}
             aria-label="Borrar búsqueda"
-            className="absolute right-14 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-lg"
+            className="absolute right-14 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground"
           >
             <X className="size-5" aria-hidden="true" />
           </button>
@@ -68,7 +57,7 @@ export function PartialRoutes({
           type="button"
           onClick={onVoice}
           aria-label="Buscar con la voz"
-          className="absolute right-2 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border-2 border-brand bg-brand text-brand-foreground"
+          className="absolute right-2 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-brand text-brand-foreground shadow-sm transition active:scale-95"
         >
           <Mic className="size-5" aria-hidden="true" />
         </button>
@@ -77,7 +66,7 @@ export function PartialRoutes({
       <button
         type="button"
         onClick={onVoice}
-        className="flex shrink-0 items-center justify-center gap-3 rounded-2xl border-2 border-brand bg-brand py-4 text-lg font-bold text-brand-foreground"
+        className="flex shrink-0 items-center justify-center gap-3 rounded-2xl border border-brand bg-brand py-4 text-lg font-bold text-brand-foreground shadow-sm transition active:scale-[0.99]"
       >
         <Mic className="size-6" aria-hidden="true" />
         Buscar hablando
@@ -86,9 +75,11 @@ export function PartialRoutes({
       <button
         type="button"
         onClick={onFrequent}
-        className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-foreground bg-card p-4"
+        className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm transition active:scale-[0.99]"
       >
-        <Heart className="size-9" aria-hidden="true" />
+        <span className="flex size-16 items-center justify-center rounded-2xl bg-brand-soft text-brand">
+          <Heart className="size-8" aria-hidden="true" />
+        </span>
         <span className="text-xl font-bold">Rutas frecuentes</span>
         <span className="text-base text-muted-foreground">Tus rutas guardadas</span>
       </button>

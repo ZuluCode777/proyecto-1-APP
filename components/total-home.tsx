@@ -19,18 +19,21 @@ export function TotalHome({ onVoice, onGps }: TotalHomeProps) {
   }, [speak])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 px-5 pb-5">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 px-4 pb-5 pt-2">
       <button
         type="button"
         onClick={onVoice}
         onFocus={() => speak("Hablar. Toca para buscar rutas con la voz.")}
         aria-label="Hablar para buscar rutas con la voz"
-        className="flex flex-1 flex-col items-center justify-center gap-3 rounded-3xl border-2 border-foreground bg-card"
+        className="flex flex-1 flex-col items-center justify-center gap-4 rounded-3xl border border-border bg-card shadow-sm transition active:scale-[0.99]"
       >
-        <span className="flex size-20 items-center justify-center rounded-full border-4 border-brand bg-brand text-brand-foreground">
-          <Mic className="size-10" aria-hidden="true" />
+        <span className="flex size-24 items-center justify-center rounded-full bg-brand text-brand-foreground shadow-lg shadow-brand/30">
+          <Mic className="size-12" aria-hidden="true" />
         </span>
-        <span className="text-2xl font-bold">Habla</span>
+        <span className="flex flex-col items-center gap-1">
+          <span className="text-3xl font-bold tracking-tight">Habla</span>
+          <span className="text-base text-muted-foreground">Buscar rutas con la voz</span>
+        </span>
       </button>
 
       <button
@@ -38,12 +41,15 @@ export function TotalHome({ onVoice, onGps }: TotalHomeProps) {
         onClick={onGps}
         onFocus={() => speak("GPS auditivo. Toca para caminar a estaciones cercanas.")}
         aria-label="GPS auditivo para caminar a estaciones cercanas"
-        className="flex flex-1 flex-col items-center justify-center gap-3 rounded-3xl border-2 border-foreground bg-card"
+        className="flex flex-1 flex-col items-center justify-center gap-4 rounded-3xl border border-border bg-card shadow-sm transition active:scale-[0.99]"
       >
-        <span className="flex size-20 items-center justify-center rounded-full border-4 border-foreground">
-          <Navigation className="size-10" aria-hidden="true" />
+        <span className="flex size-24 items-center justify-center rounded-full bg-brand-soft text-brand">
+          <Navigation className="size-12" aria-hidden="true" />
         </span>
-        <span className="text-2xl font-bold">GPS</span>
+        <span className="flex flex-col items-center gap-1">
+          <span className="text-3xl font-bold tracking-tight">GPS</span>
+          <span className="text-base text-muted-foreground">Caminar a estaciones cercanas</span>
+        </span>
       </button>
     </div>
   )

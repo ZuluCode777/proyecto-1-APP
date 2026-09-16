@@ -1,6 +1,6 @@
 "use client"
 
-import { Bus, Navigation, PhoneCall, ScanText, Zap } from "lucide-react"
+import { Bus, Navigation, PhoneCall, ScanText, Zap, ChevronRight } from "lucide-react"
 
 type PartialHomeProps = {
   fluor: boolean
@@ -55,8 +55,8 @@ export function PartialHome({
   ]
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-4">
-      <h2 className="shrink-0 pt-1 text-xl font-bold">¿Qué necesitas?</h2>
+    <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-4 pt-2">
+      <h2 className="shrink-0 text-xl font-bold tracking-tight">¿Qué necesitas?</h2>
 
       <button
         type="button"
@@ -64,17 +64,26 @@ export function PartialHome({
         aria-checked={fluor}
         onClick={onToggleFluor}
         className={[
-          "flex shrink-0 items-center justify-between gap-3 rounded-2xl border-2 px-5 py-3.5",
-          fluor ? "border-brand bg-brand text-brand-foreground" : "border-foreground bg-card",
+          "flex shrink-0 items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 shadow-sm transition active:scale-[0.99]",
+          fluor
+            ? "border-brand bg-brand text-brand-foreground"
+            : "border-border bg-card",
         ].join(" ")}
       >
         <span className="flex items-center gap-3 text-left">
-          <Zap className="size-7 shrink-0" aria-hidden="true" />
+          <span
+            className={[
+              "flex size-11 shrink-0 items-center justify-center rounded-xl",
+              fluor ? "bg-brand-foreground/15 text-brand-foreground" : "bg-brand-soft text-brand",
+            ].join(" ")}
+          >
+            <Zap className="size-6" aria-hidden="true" />
+          </span>
           <span className="flex flex-col">
-            <span className="text-xl font-bold">Colores fluorescentes</span>
+            <span className="text-lg font-bold">Colores fluorescentes</span>
             <span
               className={[
-                "text-base",
+                "text-sm",
                 fluor ? "text-brand-foreground/80" : "text-muted-foreground",
               ].join(" ")}
             >
@@ -85,11 +94,16 @@ export function PartialHome({
         <span
           aria-hidden="true"
           className={[
-            "flex h-8 w-14 shrink-0 items-center rounded-full border-2 p-0.5 transition-colors",
-            fluor ? "justify-end border-brand-foreground" : "justify-start border-foreground",
+            "flex h-8 w-14 shrink-0 items-center rounded-full p-0.5 transition-colors",
+            fluor ? "justify-end bg-brand-foreground/25" : "justify-start bg-muted",
           ].join(" ")}
         >
-          <span className={["size-6 rounded-full", fluor ? "bg-brand-foreground" : "bg-foreground"].join(" ")} />
+          <span
+            className={[
+              "size-7 rounded-full shadow transition-colors",
+              fluor ? "bg-brand-foreground" : "bg-foreground/60",
+            ].join(" ")}
+          />
         </span>
       </button>
 
@@ -102,31 +116,38 @@ export function PartialHome({
               type="button"
               onClick={action.onClick}
               className={[
-                "flex flex-1 items-center gap-4 rounded-2xl border-2 px-5 text-left",
+                "flex flex-1 items-center gap-4 rounded-2xl border px-4 text-left shadow-sm transition active:scale-[0.99]",
                 action.brand
                   ? "border-brand bg-brand text-brand-foreground"
-                  : "border-foreground bg-card",
+                  : "border-border bg-card",
               ].join(" ")}
             >
               <span
                 className={[
-                  "flex size-14 shrink-0 items-center justify-center rounded-xl border-2",
-                  action.brand ? "border-brand-foreground" : "border-foreground",
+                  "flex size-14 shrink-0 items-center justify-center rounded-2xl",
+                  action.brand ? "bg-brand-foreground/15 text-brand-foreground" : "bg-brand-soft text-brand",
                 ].join(" ")}
               >
                 <Icon className="size-7" aria-hidden="true" />
               </span>
-              <span className="flex flex-col">
+              <span className="flex flex-1 flex-col">
                 <span className="text-xl font-bold">{action.label}</span>
                 <span
                   className={[
-                    "text-base",
+                    "text-sm",
                     action.brand ? "text-brand-foreground/80" : "text-muted-foreground",
                   ].join(" ")}
                 >
                   {action.hint}
                 </span>
               </span>
+              <ChevronRight
+                className={[
+                  "size-6 shrink-0",
+                  action.brand ? "text-brand-foreground/70" : "text-muted-foreground",
+                ].join(" ")}
+                aria-hidden="true"
+              />
             </button>
           )
         })}

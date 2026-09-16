@@ -48,13 +48,13 @@ export function ModeMenu({ open, mode, onClose, onSelect }: ModeMenuProps) {
       aria-modal="true"
       aria-label="Menú de modo de visualización"
     >
-      <div className="flex items-center justify-between px-4 pt-5 pb-3">
-        <h2 className="text-xl font-bold">Modo de visualización</h2>
+      <div className="flex items-center justify-between border-b border-border px-4 pb-3 pt-5">
+        <h2 className="text-xl font-bold tracking-tight">Modo de visualización</h2>
         <button
           type="button"
           onClick={onClose}
           aria-label="Cerrar menú"
-          className="flex size-12 items-center justify-center rounded-xl border-2 border-foreground"
+          className="flex size-12 items-center justify-center rounded-2xl border border-border bg-card shadow-sm transition active:scale-95"
         >
           <X className="size-6" aria-hidden="true" />
         </button>
@@ -71,11 +71,18 @@ export function ModeMenu({ open, mode, onClose, onSelect }: ModeMenuProps) {
               onClick={() => onSelect(option.value)}
               aria-pressed={active}
               className={[
-                "flex items-start gap-4 rounded-2xl border-2 p-4 text-left",
-                active ? "border-brand bg-card" : "border-foreground",
+                "flex items-start gap-4 rounded-2xl border p-4 text-left shadow-sm transition active:scale-[0.99]",
+                active ? "border-brand bg-brand-soft" : "border-border bg-card",
               ].join(" ")}
             >
-              <Icon className="mt-0.5 size-8 shrink-0" aria-hidden="true" />
+              <span
+                className={[
+                  "flex size-12 shrink-0 items-center justify-center rounded-2xl",
+                  active ? "bg-brand text-brand-foreground" : "bg-brand-soft text-brand",
+                ].join(" ")}
+              >
+                <Icon className="size-6" aria-hidden="true" />
+              </span>
               <span className="flex-1">
                 <span className="flex items-center gap-2 text-lg font-bold">
                   {option.title}
