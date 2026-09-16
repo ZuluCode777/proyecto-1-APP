@@ -16,6 +16,7 @@ export type Mode = "parcial" | "total"
 type Screen = "home" | "buscar" | "frecuentes" | "asistencia" | "escanear"
 
 const STORAGE_KEY = "transmivoz-mode"
+const FLUOR_KEY = "transmivoz-fluor"
 
 export function TransMiVozApp() {
   const { speak } = useSpeech()
@@ -23,13 +24,24 @@ export function TransMiVozApp() {
   const [screen, setScreen] = useState<Screen>("home")
   const [menuOpen, setMenuOpen] = useState(false)
   const [voiceOpen, setVoiceOpen] = useState(false)
+  const [fluor, setFluor] = useState(false)
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<BusRoute[]>([])
 
   useEffect(() => {
     const saved = window.localStorage.getItem(STORAGE_KEY)
     if (saved === "total" || saved === "parcial") setMode(saved)
+    setFluor(window.localStorage.getItem(FLUOR_KEY) === "on")
   }, [])
+
+  const toggleFluor = useCallback(() => {
+    setFluor((prev) => {
+      const next = !prev
+      window.localStorage.setItem(FLUOR_KEY, next ? "on" : "off")
+      speak(next ? "Colores fluorescentes activados." : "Colores fluorescentes desactivados.")
+      return next
+    })
+  }, [speak])
 
   const changeMode = useCallback(
     (next: Mode) => {
@@ -39,8 +51,8 @@ export function TransMiVozApp() {
       window.localStorage.setItem(STORAGE_KEY, next)
       speak(
         next === "total"
-          ? "Modo visión total activado."
-          : "Modo visión parcial activado.",
+          ? "Modo ceguera total activado."
+          : "Modo baja visión activado.",
       )
     },
     [speak],
@@ -83,7 +95,12 @@ export function TransMiVozApp() {
   const openScan = useCallback(() => setScreen("escanear"), [])
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col">
+    <div
+      className={[
+        "mx-auto flex h-dvh w-full max-w-md flex-col overflow-hidden bg-background text-foreground",
+        fluor ? "fluor" : "",
+      ].join(" ")}
+    >
       <AppHeader
         onMenu={() => setMenuOpen(true)}
         onNotifications={() => speak("No tienes notificaciones nuevas.")}
@@ -98,6 +115,8 @@ export function TransMiVozApp() {
           onFrequent={openFrequent}
           onSearch={() => runSearch(query)}
           onAssistance={openAssistance}
+          fluor={fluor}
+          onToggleFluor={toggleFluor}
         />
       )}
 

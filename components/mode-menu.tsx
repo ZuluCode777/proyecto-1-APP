@@ -14,14 +14,14 @@ type ModeMenuProps = {
 const options: { value: Mode; title: string; description: string; icon: typeof Eye }[] = [
   {
     value: "parcial",
-    title: "Visión parcial",
-    description: "Buscar rutas, rutas frecuentes y asistencia con texto e íconos grandes.",
+    title: "Baja visión",
+    description: "Para personas con visión parcial. Texto e íconos grandes: buscar rutas, frecuentes y asistencia.",
     icon: Eye,
   },
   {
     value: "total",
-    title: "Visión total",
-    description: "Solo hablar y escanear, guiado por voz.",
+    title: "Ceguera total",
+    description: "Para personas totalmente ciegas. Sin mirar la pantalla: solo voz y escaneo guiados por audio.",
     icon: EyeOff,
   },
 ]
@@ -60,7 +60,7 @@ export function ModeMenu({ open, mode, onClose, onSelect }: ModeMenuProps) {
         </button>
       </div>
 
-      <div ref={panelRef} tabIndex={-1} className="flex flex-col gap-4 p-4 outline-none">
+      <div ref={panelRef} tabIndex={-1} className="flex flex-col gap-3 p-4 outline-none">
         {options.map((option) => {
           const Icon = option.icon
           const active = option.value === mode
@@ -70,15 +70,18 @@ export function ModeMenu({ open, mode, onClose, onSelect }: ModeMenuProps) {
               type="button"
               onClick={() => onSelect(option.value)}
               aria-pressed={active}
-              className="flex items-start gap-4 rounded-2xl border-2 border-foreground p-5 text-left"
+              className={[
+                "flex items-start gap-4 rounded-2xl border-2 p-4 text-left",
+                active ? "border-brand bg-card" : "border-foreground",
+              ].join(" ")}
             >
-              <Icon className="mt-1 size-8 shrink-0" aria-hidden="true" />
+              <Icon className="mt-0.5 size-8 shrink-0" aria-hidden="true" />
               <span className="flex-1">
                 <span className="flex items-center gap-2 text-lg font-bold">
                   {option.title}
                   {active && <Check className="size-5 text-brand" aria-hidden="true" />}
                 </span>
-                <span className="mt-1 block text-base text-muted-foreground">
+                <span className="mt-1 block text-sm text-muted-foreground">
                   {option.description}
                 </span>
                 {active && <span className="sr-only">Modo activo</span>}

@@ -55,7 +55,7 @@ export function ScanCamera({ onBack }: ScanCameraProps) {
   }, [speak])
 
   return (
-    <section className="flex flex-1 flex-col p-4" aria-label="Escanear con la cámara">
+    <section className="flex min-h-0 flex-1 flex-col p-4" aria-label="Escanear con la cámara">
       <button
         type="button"
         onClick={onBack}

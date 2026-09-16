@@ -15,7 +15,7 @@ export function RouteList({ title, routes, emptyMessage, onBack }: RouteListProp
   const { speak } = useSpeech()
 
   return (
-    <section className="flex flex-1 flex-col p-4" aria-label={title}>
+    <section className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4" aria-label={title}>
       <button
         type="button"
         onClick={onBack}

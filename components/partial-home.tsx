@@ -1,7 +1,7 @@
 "use client"
 
 import type { FormEvent } from "react"
-import { Search, X, Mic, Heart, Bus, PhoneCall } from "lucide-react"
+import { Search, X, Mic, Heart, Bus, PhoneCall, Zap } from "lucide-react"
 
 type PartialHomeProps = {
   query: string
@@ -11,6 +11,8 @@ type PartialHomeProps = {
   onFrequent: () => void
   onSearch: () => void
   onAssistance: () => void
+  fluor: boolean
+  onToggleFluor: () => void
 }
 
 export function PartialHome({
@@ -21,6 +23,8 @@ export function PartialHome({
   onFrequent,
   onSearch,
   onAssistance,
+  fluor,
+  onToggleFluor,
 }: PartialHomeProps) {
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
@@ -34,8 +38,8 @@ export function PartialHome({
   ]
 
   return (
-    <div className="flex flex-1 flex-col gap-5 px-4 pb-6">
-      <form onSubmit={handleSubmit} className="relative" role="search">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-4">
+      <form onSubmit={handleSubmit} className="relative shrink-0" role="search">
         <Search
           className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground"
           aria-hidden="true"
@@ -46,30 +50,51 @@ export function PartialHome({
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder="Buscar estación o ruta"
           aria-label="Buscar estación o ruta"
-          className="w-full rounded-xl border-2 border-foreground bg-background py-4 pl-12 pr-12 text-lg outline-none placeholder:text-muted-foreground"
+          className="w-full rounded-xl border-2 border-foreground bg-card py-3.5 pl-12 pr-20 text-lg outline-none placeholder:text-muted-foreground"
         />
         {query && (
           <button
             type="button"
             onClick={() => onQueryChange("")}
             aria-label="Borrar búsqueda"
-            className="absolute right-3 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-lg"
+            className="absolute right-14 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-lg"
           >
             <X className="size-5" aria-hidden="true" />
           </button>
         )}
+        <button
+          type="button"
+          onClick={onVoice}
+          aria-label="Buscar con la voz"
+          className="absolute right-2 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border-2 border-brand bg-brand text-brand-foreground"
+        >
+          <Mic className="size-5" aria-hidden="true" />
+        </button>
       </form>
 
       <button
         type="button"
-        onClick={onVoice}
-        aria-label="Buscar con la voz"
-        className="mx-auto flex size-20 items-center justify-center rounded-full border-2 border-foreground"
+        role="switch"
+        aria-checked={fluor}
+        onClick={onToggleFluor}
+        className="flex shrink-0 items-center justify-between gap-3 rounded-xl border-2 border-foreground bg-card px-4 py-2.5"
       >
-        <Mic className="size-9" aria-hidden="true" />
+        <span className="flex items-center gap-2 text-base font-bold">
+          <Zap className="size-5 text-brand" aria-hidden="true" />
+          Colores fluorescentes
+        </span>
+        <span
+          aria-hidden="true"
+          className={[
+            "flex h-7 w-12 items-center rounded-full border-2 border-foreground p-0.5 transition-colors",
+            fluor ? "justify-end bg-brand" : "justify-start bg-transparent",
+          ].join(" ")}
+        >
+          <span className="size-5 rounded-full bg-foreground" />
+        </span>
       </button>
 
-      <div className="flex flex-col gap-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
         {actions.map((action) => {
           const Icon = action.icon
           return (
@@ -78,13 +103,13 @@ export function PartialHome({
               type="button"
               onClick={action.onClick}
               className={[
-                "flex flex-col items-center gap-2 rounded-2xl border-2 p-6",
+                "flex flex-1 flex-col items-center justify-center gap-2 rounded-2xl border-2 p-3",
                 action.brand
                   ? "border-brand bg-brand text-brand-foreground"
-                  : "border-foreground",
+                  : "border-foreground bg-card",
               ].join(" ")}
             >
-              <Icon className="size-9" aria-hidden="true" />
+              <Icon className="size-8" aria-hidden="true" />
               <span className="text-xl font-bold">{action.label}</span>
             </button>
           )
