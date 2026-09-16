@@ -23,15 +23,15 @@ export function PartialHome({
     {
       key: "rutas",
       label: "Rutas",
-      hint: "Buscar y ver rutas frecuentes",
+      hint: "Buscar y frecuentes",
       icon: Bus,
       onClick: onRoutes,
       brand: false,
     },
     {
       key: "vision",
-      label: "Asistente de visión",
-      hint: "Leer letreros con la cámara",
+      label: "Asistente visual",
+      hint: "Leer letreros",
       icon: ScanText,
       onClick: onVision,
       brand: false,
@@ -39,7 +39,7 @@ export function PartialHome({
     {
       key: "gps",
       label: "GPS auditivo",
-      hint: "Camina a estaciones cercanas",
+      hint: "Ir a estaciones",
       icon: Navigation,
       onClick: onGps,
       brand: false,
@@ -55,35 +55,36 @@ export function PartialHome({
   ]
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-4 pt-2">
-      <h2 className="shrink-0 text-xl font-bold tracking-tight">¿Qué necesitas?</h2>
+    <div className="flex min-h-0 flex-1 flex-col gap-2.5 px-4 pb-3 pt-2">
+      <h2 className="shrink-0 text-lg font-bold tracking-tight">¿Qué necesitas?</h2>
 
       <button
         type="button"
         role="switch"
         aria-checked={fluor}
+        aria-label="Colores fluorescentes de alto contraste"
         onClick={onToggleFluor}
         className={[
-          "flex shrink-0 items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 shadow-sm transition active:scale-[0.99]",
+          "flex shrink-0 items-center justify-between gap-3 rounded-2xl border px-3.5 py-3 shadow-sm transition active:scale-[0.99]",
           fluor
             ? "border-brand bg-brand text-brand-foreground"
             : "border-border bg-card",
         ].join(" ")}
       >
-        <span className="flex items-center gap-3 text-left">
+        <span className="flex min-w-0 items-center gap-3 text-left">
           <span
             className={[
-              "flex size-11 shrink-0 items-center justify-center rounded-xl",
+              "flex size-10 shrink-0 items-center justify-center rounded-xl",
               fluor ? "bg-brand-foreground/15 text-brand-foreground" : "bg-brand-soft text-brand",
             ].join(" ")}
           >
-            <Zap className="size-6" aria-hidden="true" />
+            <Zap className="size-5" aria-hidden="true" />
           </span>
-          <span className="flex flex-col">
-            <span className="text-lg font-bold">Colores fluorescentes</span>
+          <span className="flex min-w-0 flex-col">
+            <span className="text-base font-bold leading-tight">Fluorescente</span>
             <span
               className={[
-                "text-sm",
+                "text-xs leading-tight",
                 fluor ? "text-brand-foreground/80" : "text-muted-foreground",
               ].join(" ")}
             >
@@ -94,20 +95,20 @@ export function PartialHome({
         <span
           aria-hidden="true"
           className={[
-            "flex h-8 w-14 shrink-0 items-center rounded-full p-0.5 transition-colors",
+            "flex h-7 w-12 shrink-0 items-center rounded-full p-0.5 transition-colors",
             fluor ? "justify-end bg-brand-foreground/25" : "justify-start bg-muted",
           ].join(" ")}
         >
           <span
             className={[
-              "size-7 rounded-full shadow transition-colors",
+              "size-6 rounded-full shadow transition-colors",
               fluor ? "bg-brand-foreground" : "bg-foreground/60",
             ].join(" ")}
           />
         </span>
       </button>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-2.5">
         {actions.map((action) => {
           const Icon = action.icon
           return (
@@ -116,7 +117,7 @@ export function PartialHome({
               type="button"
               onClick={action.onClick}
               className={[
-                "flex flex-1 items-center gap-4 rounded-2xl border px-4 text-left shadow-sm transition active:scale-[0.99]",
+                "flex flex-1 items-center gap-3.5 rounded-2xl border px-3.5 text-left shadow-sm transition active:scale-[0.99]",
                 action.brand
                   ? "border-brand bg-brand text-brand-foreground"
                   : "border-border bg-card",
@@ -124,17 +125,17 @@ export function PartialHome({
             >
               <span
                 className={[
-                  "flex size-14 shrink-0 items-center justify-center rounded-2xl",
+                  "flex size-12 shrink-0 items-center justify-center rounded-2xl",
                   action.brand ? "bg-brand-foreground/15 text-brand-foreground" : "bg-brand-soft text-brand",
                 ].join(" ")}
               >
-                <Icon className="size-7" aria-hidden="true" />
+                <Icon className="size-6" aria-hidden="true" />
               </span>
-              <span className="flex flex-1 flex-col">
-                <span className="text-xl font-bold">{action.label}</span>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-lg font-bold leading-tight">{action.label}</span>
                 <span
                   className={[
-                    "text-sm",
+                    "truncate text-xs leading-tight",
                     action.brand ? "text-brand-foreground/80" : "text-muted-foreground",
                   ].join(" ")}
                 >
@@ -143,7 +144,7 @@ export function PartialHome({
               </span>
               <ChevronRight
                 className={[
-                  "size-6 shrink-0",
+                  "size-5 shrink-0",
                   action.brand ? "text-brand-foreground/70" : "text-muted-foreground",
                 ].join(" ")}
                 aria-hidden="true"
