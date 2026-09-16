@@ -5,7 +5,7 @@ import { AppHeader } from "@/components/app-header"
 import { ModeMenu } from "@/components/mode-menu"
 import { PartialHome } from "@/components/partial-home"
 import { PartialRoutes } from "@/components/partial-routes"
-import { TotalHome } from "@/components/total-home"
+import { TotalAgent, type AgentAction } from "@/components/total-agent"
 import { RouteList } from "@/components/route-list"
 import { Assistance } from "@/components/assistance"
 import { VisionAssist } from "@/components/vision-assist"
@@ -107,6 +107,20 @@ export function TransMiVozApp() {
     speak("GPS auditivo. Activa tu ubicación para conocer las estaciones cercanas.")
   }, [speak])
 
+  // El agente de voz ya narra su respuesta, así que aquí solo navegamos sin volver a hablar.
+  const handleAgentAction = useCallback((action: AgentAction, agentQuery: string) => {
+    if (action === "search") {
+      setQuery(agentQuery)
+      setResults(searchRoutes(agentQuery))
+      setScreen("buscar")
+    } else if (action === "frequent") {
+      setResults(frequentRoutes())
+      setScreen("frecuentes")
+    } else if (action === "gps") {
+      setScreen("gps")
+    }
+  }, [])
+
   return (
     <div
       className={[
@@ -142,7 +156,7 @@ export function TransMiVozApp() {
       )}
 
       {screen === "home" && mode === "total" && (
-        <TotalHome onVoice={() => setVoiceOpen(true)} onGps={openGps} />
+        <TotalAgent onAction={handleAgentAction} />
       )}
 
       {screen === "buscar" && (
