@@ -5,7 +5,6 @@ import { AppHeader } from "@/components/app-header"
 import { ModeMenu } from "@/components/mode-menu"
 import { PartialHome } from "@/components/partial-home"
 import { PartialRoutes } from "@/components/partial-routes"
-import { PartialTools } from "@/components/partial-tools"
 import { TotalHome } from "@/components/total-home"
 import { RouteList } from "@/components/route-list"
 import { Assistance } from "@/components/assistance"
@@ -16,7 +15,7 @@ import { useSpeech } from "@/hooks/use-speech"
 import { searchRoutes, frequentRoutes, type BusRoute } from "@/lib/routes"
 
 export type Mode = "parcial" | "total"
-type Screen = "home" | "rutas" | "ayudas" | "buscar" | "frecuentes" | "asistencia" | "vision" | "gps"
+type Screen = "home" | "rutas" | "buscar" | "frecuentes" | "asistencia" | "vision" | "gps"
 
 const STORAGE_KEY = "transmivoz-mode"
 const FLUOR_KEY = "transmivoz-fluor"
@@ -98,10 +97,6 @@ export function TransMiVozApp() {
     setScreen("rutas")
     speak("Rutas. Busca por estación o toca rutas frecuentes.")
   }, [speak])
-  const openTools = useCallback(() => {
-    setScreen("ayudas")
-    speak("Ayudas visuales. Activa colores fluorescentes o abre el asistente de visión.")
-  }, [speak])
   const openAssistance = useCallback(() => setScreen("asistencia"), [])
   const openVision = useCallback(() => {
     setScreen("vision")
@@ -126,8 +121,10 @@ export function TransMiVozApp() {
 
       {screen === "home" && mode === "parcial" && (
         <PartialHome
+          fluor={fluor}
+          onToggleFluor={toggleFluor}
           onRoutes={openRoutes}
-          onTools={openTools}
+          onVision={openVision}
           onGps={openGps}
           onAssistance={openAssistance}
         />
@@ -140,15 +137,6 @@ export function TransMiVozApp() {
           onSubmitSearch={() => runSearch(query)}
           onVoice={() => setVoiceOpen(true)}
           onFrequent={openFrequent}
-          onBack={goHome}
-        />
-      )}
-
-      {screen === "ayudas" && (
-        <PartialTools
-          fluor={fluor}
-          onToggleFluor={toggleFluor}
-          onVision={openVision}
           onBack={goHome}
         />
       )}
@@ -177,7 +165,7 @@ export function TransMiVozApp() {
 
       {screen === "asistencia" && <Assistance onBack={goHome} />}
 
-      {screen === "vision" && <VisionAssist onBack={() => setScreen("ayudas")} />}
+      {screen === "vision" && <VisionAssist onBack={goHome} />}
 
       {screen === "gps" && <AuditoryGps onBack={goHome} />}
 

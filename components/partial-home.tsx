@@ -1,15 +1,24 @@
 "use client"
 
-import { Bus, Eye, Navigation, PhoneCall } from "lucide-react"
+import { Bus, Navigation, PhoneCall, ScanText, Zap } from "lucide-react"
 
 type PartialHomeProps = {
+  fluor: boolean
+  onToggleFluor: () => void
   onRoutes: () => void
-  onTools: () => void
+  onVision: () => void
   onGps: () => void
   onAssistance: () => void
 }
 
-export function PartialHome({ onRoutes, onTools, onGps, onAssistance }: PartialHomeProps) {
+export function PartialHome({
+  fluor,
+  onToggleFluor,
+  onRoutes,
+  onVision,
+  onGps,
+  onAssistance,
+}: PartialHomeProps) {
   const actions = [
     {
       key: "rutas",
@@ -20,11 +29,11 @@ export function PartialHome({ onRoutes, onTools, onGps, onAssistance }: PartialH
       brand: false,
     },
     {
-      key: "ayudas",
-      label: "Ayudas visuales",
-      hint: "Contraste y lectura con cámara",
-      icon: Eye,
-      onClick: onTools,
+      key: "vision",
+      label: "Asistente de visión",
+      hint: "Leer letreros con la cámara",
+      icon: ScanText,
+      onClick: onVision,
       brand: false,
     },
     {
@@ -48,6 +57,41 @@ export function PartialHome({ onRoutes, onTools, onGps, onAssistance }: PartialH
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-4">
       <h2 className="shrink-0 pt-1 text-xl font-bold">¿Qué necesitas?</h2>
+
+      <button
+        type="button"
+        role="switch"
+        aria-checked={fluor}
+        onClick={onToggleFluor}
+        className={[
+          "flex shrink-0 items-center justify-between gap-3 rounded-2xl border-2 px-5 py-3.5",
+          fluor ? "border-brand bg-brand text-brand-foreground" : "border-foreground bg-card",
+        ].join(" ")}
+      >
+        <span className="flex items-center gap-3 text-left">
+          <Zap className="size-7 shrink-0" aria-hidden="true" />
+          <span className="flex flex-col">
+            <span className="text-xl font-bold">Colores fluorescentes</span>
+            <span
+              className={[
+                "text-base",
+                fluor ? "text-brand-foreground/80" : "text-muted-foreground",
+              ].join(" ")}
+            >
+              {fluor ? "Activados" : "Resalta la pantalla"}
+            </span>
+          </span>
+        </span>
+        <span
+          aria-hidden="true"
+          className={[
+            "flex h-8 w-14 shrink-0 items-center rounded-full border-2 p-0.5 transition-colors",
+            fluor ? "justify-end border-brand-foreground" : "justify-start border-foreground",
+          ].join(" ")}
+        >
+          <span className={["size-6 rounded-full", fluor ? "bg-brand-foreground" : "bg-foreground"].join(" ")} />
+        </span>
+      </button>
 
       <div className="flex min-h-0 flex-1 flex-col gap-3">
         {actions.map((action) => {
