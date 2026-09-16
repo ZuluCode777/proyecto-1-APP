@@ -1,21 +1,20 @@
 "use client"
 
 import { useEffect } from "react"
-import { Mic, Camera, Navigation } from "lucide-react"
+import { Mic, Navigation } from "lucide-react"
 import { useSpeech } from "@/hooks/use-speech"
 
 type TotalHomeProps = {
   onVoice: () => void
-  onScan: () => void
   onGps: () => void
 }
 
-export function TotalHome({ onVoice, onScan, onGps }: TotalHomeProps) {
+export function TotalHome({ onVoice, onGps }: TotalHomeProps) {
   const { speak } = useSpeech()
 
   useEffect(() => {
     speak(
-      "Modo ceguera total. Botón de arriba: hablar para buscar rutas. Botón del medio: escanear con la cámara. Botón de abajo: GPS auditivo para caminar a estaciones cercanas.",
+      "Modo ceguera total. Botón de arriba: hablar para buscar rutas. Botón de abajo: GPS auditivo para caminar a estaciones cercanas.",
     )
   }, [speak])
 
@@ -32,19 +31,6 @@ export function TotalHome({ onVoice, onScan, onGps }: TotalHomeProps) {
           <Mic className="size-10" aria-hidden="true" />
         </span>
         <span className="text-2xl font-bold">Habla</span>
-      </button>
-
-      <button
-        type="button"
-        onClick={onScan}
-        onFocus={() => speak("Escanear. Toca para abrir la cámara.")}
-        aria-label="Escanear un letrero con la cámara"
-        className="flex flex-1 flex-col items-center justify-center gap-3 rounded-3xl border-2 border-foreground bg-card"
-      >
-        <span className="flex size-20 items-center justify-center rounded-full border-4 border-foreground">
-          <Camera className="size-10" aria-hidden="true" />
-        </span>
-        <span className="text-2xl font-bold">Escanea</span>
       </button>
 
       <button

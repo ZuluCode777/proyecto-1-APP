@@ -7,14 +7,14 @@ import { PartialHome } from "@/components/partial-home"
 import { TotalHome } from "@/components/total-home"
 import { RouteList } from "@/components/route-list"
 import { Assistance } from "@/components/assistance"
-import { ScanCamera } from "@/components/scan-camera"
+import { VisionAssist } from "@/components/vision-assist"
 import { AuditoryGps } from "@/components/auditory-gps"
 import { VoiceOverlay } from "@/components/voice-overlay"
 import { useSpeech } from "@/hooks/use-speech"
 import { searchRoutes, frequentRoutes, type BusRoute } from "@/lib/routes"
 
 export type Mode = "parcial" | "total"
-type Screen = "home" | "buscar" | "frecuentes" | "asistencia" | "escanear" | "gps"
+type Screen = "home" | "buscar" | "frecuentes" | "asistencia" | "vision" | "gps"
 
 const STORAGE_KEY = "transmivoz-mode"
 const FLUOR_KEY = "transmivoz-fluor"
@@ -93,7 +93,10 @@ export function TransMiVozApp() {
   }, [speak])
 
   const openAssistance = useCallback(() => setScreen("asistencia"), [])
-  const openScan = useCallback(() => setScreen("escanear"), [])
+  const openVision = useCallback(() => {
+    setScreen("vision")
+    speak("Asistente de visión. Usa la cámara para leer letreros con más contraste.")
+  }, [speak])
   const openGps = useCallback(() => {
     setScreen("gps")
     speak("GPS auditivo. Activa tu ubicación para conocer las estaciones cercanas.")
@@ -120,6 +123,7 @@ export function TransMiVozApp() {
           onFrequent={openFrequent}
           onSearch={() => runSearch(query)}
           onAssistance={openAssistance}
+          onVision={openVision}
           onGps={openGps}
           fluor={fluor}
           onToggleFluor={toggleFluor}
@@ -127,7 +131,7 @@ export function TransMiVozApp() {
       )}
 
       {screen === "home" && mode === "total" && (
-        <TotalHome onVoice={() => setVoiceOpen(true)} onScan={openScan} onGps={openGps} />
+        <TotalHome onVoice={() => setVoiceOpen(true)} onGps={openGps} />
       )}
 
       {screen === "buscar" && (
@@ -150,7 +154,7 @@ export function TransMiVozApp() {
 
       {screen === "asistencia" && <Assistance onBack={goHome} />}
 
-      {screen === "escanear" && <ScanCamera onBack={goHome} />}
+      {screen === "vision" && <VisionAssist onBack={goHome} />}
 
       {screen === "gps" && <AuditoryGps onBack={goHome} />}
 
