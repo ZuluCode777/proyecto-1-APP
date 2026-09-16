@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react"
 import { AppHeader } from "@/components/app-header"
 import { ModeMenu } from "@/components/mode-menu"
 import { PartialHome } from "@/components/partial-home"
+import { PartialRoutes } from "@/components/partial-routes"
+import { PartialTools } from "@/components/partial-tools"
 import { TotalHome } from "@/components/total-home"
 import { RouteList } from "@/components/route-list"
 import { Assistance } from "@/components/assistance"
@@ -14,7 +16,7 @@ import { useSpeech } from "@/hooks/use-speech"
 import { searchRoutes, frequentRoutes, type BusRoute } from "@/lib/routes"
 
 export type Mode = "parcial" | "total"
-type Screen = "home" | "buscar" | "frecuentes" | "asistencia" | "vision" | "gps"
+type Screen = "home" | "rutas" | "ayudas" | "buscar" | "frecuentes" | "asistencia" | "vision" | "gps"
 
 const STORAGE_KEY = "transmivoz-mode"
 const FLUOR_KEY = "transmivoz-fluor"
@@ -92,6 +94,14 @@ export function TransMiVozApp() {
     speak("Rutas frecuentes.")
   }, [speak])
 
+  const openRoutes = useCallback(() => {
+    setScreen("rutas")
+    speak("Rutas. Busca por estación o toca rutas frecuentes.")
+  }, [speak])
+  const openTools = useCallback(() => {
+    setScreen("ayudas")
+    speak("Ayudas visuales. Activa colores fluorescentes o abre el asistente de visión.")
+  }, [speak])
   const openAssistance = useCallback(() => setScreen("asistencia"), [])
   const openVision = useCallback(() => {
     setScreen("vision")
@@ -116,17 +126,30 @@ export function TransMiVozApp() {
 
       {screen === "home" && mode === "parcial" && (
         <PartialHome
+          onRoutes={openRoutes}
+          onTools={openTools}
+          onGps={openGps}
+          onAssistance={openAssistance}
+        />
+      )}
+
+      {screen === "rutas" && (
+        <PartialRoutes
           query={query}
           onQueryChange={setQuery}
           onSubmitSearch={() => runSearch(query)}
           onVoice={() => setVoiceOpen(true)}
           onFrequent={openFrequent}
-          onSearch={() => runSearch(query)}
-          onAssistance={openAssistance}
-          onVision={openVision}
-          onGps={openGps}
+          onBack={goHome}
+        />
+      )}
+
+      {screen === "ayudas" && (
+        <PartialTools
           fluor={fluor}
           onToggleFluor={toggleFluor}
+          onVision={openVision}
+          onBack={goHome}
         />
       )}
 
@@ -139,7 +162,7 @@ export function TransMiVozApp() {
           title="Resultados de búsqueda"
           routes={results}
           emptyMessage="No se encontraron rutas. Intenta con otra estación."
-          onBack={goHome}
+          onBack={() => setScreen(mode === "parcial" ? "rutas" : "home")}
         />
       )}
 
@@ -148,13 +171,13 @@ export function TransMiVozApp() {
           title="Rutas frecuentes"
           routes={results}
           emptyMessage="Aún no tienes rutas frecuentes."
-          onBack={goHome}
+          onBack={() => setScreen(mode === "parcial" ? "rutas" : "home")}
         />
       )}
 
       {screen === "asistencia" && <Assistance onBack={goHome} />}
 
-      {screen === "vision" && <VisionAssist onBack={goHome} />}
+      {screen === "vision" && <VisionAssist onBack={() => setScreen("ayudas")} />}
 
       {screen === "gps" && <AuditoryGps onBack={goHome} />}
 
