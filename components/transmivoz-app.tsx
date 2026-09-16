@@ -8,12 +8,13 @@ import { TotalHome } from "@/components/total-home"
 import { RouteList } from "@/components/route-list"
 import { Assistance } from "@/components/assistance"
 import { ScanCamera } from "@/components/scan-camera"
+import { AuditoryGps } from "@/components/auditory-gps"
 import { VoiceOverlay } from "@/components/voice-overlay"
 import { useSpeech } from "@/hooks/use-speech"
 import { searchRoutes, frequentRoutes, type BusRoute } from "@/lib/routes"
 
 export type Mode = "parcial" | "total"
-type Screen = "home" | "buscar" | "frecuentes" | "asistencia" | "escanear"
+type Screen = "home" | "buscar" | "frecuentes" | "asistencia" | "escanear" | "gps"
 
 const STORAGE_KEY = "transmivoz-mode"
 const FLUOR_KEY = "transmivoz-fluor"
@@ -93,6 +94,10 @@ export function TransMiVozApp() {
 
   const openAssistance = useCallback(() => setScreen("asistencia"), [])
   const openScan = useCallback(() => setScreen("escanear"), [])
+  const openGps = useCallback(() => {
+    setScreen("gps")
+    speak("GPS auditivo. Activa tu ubicación para conocer las estaciones cercanas.")
+  }, [speak])
 
   return (
     <div
@@ -115,13 +120,14 @@ export function TransMiVozApp() {
           onFrequent={openFrequent}
           onSearch={() => runSearch(query)}
           onAssistance={openAssistance}
+          onGps={openGps}
           fluor={fluor}
           onToggleFluor={toggleFluor}
         />
       )}
 
       {screen === "home" && mode === "total" && (
-        <TotalHome onVoice={() => setVoiceOpen(true)} onScan={openScan} />
+        <TotalHome onVoice={() => setVoiceOpen(true)} onScan={openScan} onGps={openGps} />
       )}
 
       {screen === "buscar" && (
@@ -145,6 +151,8 @@ export function TransMiVozApp() {
       {screen === "asistencia" && <Assistance onBack={goHome} />}
 
       {screen === "escanear" && <ScanCamera onBack={goHome} />}
+
+      {screen === "gps" && <AuditoryGps onBack={goHome} />}
 
       <ModeMenu
         open={menuOpen}

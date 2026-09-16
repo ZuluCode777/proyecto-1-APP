@@ -1,7 +1,7 @@
 "use client"
 
 import type { FormEvent } from "react"
-import { Search, X, Mic, Heart, Bus, PhoneCall, Zap } from "lucide-react"
+import { Search, X, Mic, Heart, Bus, PhoneCall, Zap, Navigation } from "lucide-react"
 
 type PartialHomeProps = {
   query: string
@@ -11,6 +11,7 @@ type PartialHomeProps = {
   onFrequent: () => void
   onSearch: () => void
   onAssistance: () => void
+  onGps: () => void
   fluor: boolean
   onToggleFluor: () => void
 }
@@ -23,6 +24,7 @@ export function PartialHome({
   onFrequent,
   onSearch,
   onAssistance,
+  onGps,
   fluor,
   onToggleFluor,
 }: PartialHomeProps) {
@@ -34,6 +36,7 @@ export function PartialHome({
   const actions = [
     { key: "frecuentes", label: "Rutas frecuentes", icon: Heart, onClick: onFrequent, brand: false },
     { key: "buscar", label: "Buscar rutas", icon: Bus, onClick: onSearch, brand: false },
+    { key: "gps", label: "GPS auditivo", icon: Navigation, onClick: onGps, brand: false },
     { key: "asistencia", label: "Asistencia", icon: PhoneCall, onClick: onAssistance, brand: true },
   ]
 
@@ -103,14 +106,14 @@ export function PartialHome({
               type="button"
               onClick={action.onClick}
               className={[
-                "flex flex-1 flex-col items-center justify-center gap-2 rounded-2xl border-2 p-3",
+                "flex flex-1 flex-col items-center justify-center gap-1.5 rounded-2xl border-2 p-2",
                 action.brand
                   ? "border-brand bg-brand text-brand-foreground"
                   : "border-foreground bg-card",
               ].join(" ")}
             >
-              <Icon className="size-8" aria-hidden="true" />
-              <span className="text-xl font-bold">{action.label}</span>
+              <Icon className="size-7" aria-hidden="true" />
+              <span className="text-lg font-bold">{action.label}</span>
             </button>
           )
         })}

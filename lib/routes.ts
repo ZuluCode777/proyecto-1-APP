@@ -1,3 +1,5 @@
+import { distanceMeters, type LatLng } from "@/lib/geo"
+
 export type BusRoute = {
   id: string
   code: string
@@ -6,6 +8,49 @@ export type BusRoute = {
   to: string
   stops: string[]
   frequent: boolean
+}
+
+export type Station = {
+  id: string
+  name: string
+  lat: number
+  lng: number
+}
+
+/** Estaciones y portales de TransMilenio con coordenadas reales aproximadas. */
+export const stations: Station[] = [
+  { id: "portal-norte", name: "Portal Norte", lat: 4.75658, lng: -74.04555 },
+  { id: "calle-100", name: "Calle 100", lat: 4.68624, lng: -74.05093 },
+  { id: "heroes", name: "Héroes", lat: 4.66931, lng: -74.06405 },
+  { id: "calle-72", name: "Calle 72", lat: 4.65803, lng: -74.06203 },
+  { id: "calle-45", name: "Calle 45", lat: 4.63305, lng: -74.06803 },
+  { id: "marly", name: "Marly", lat: 4.63201, lng: -74.06552 },
+  { id: "av-jimenez", name: "Av. Jiménez", lat: 4.60152, lng: -74.07231 },
+  { id: "ricaurte", name: "Ricaurte", lat: 4.61192, lng: -74.09381 },
+  { id: "banderas", name: "Banderas", lat: 4.62801, lng: -74.14403 },
+  { id: "portal-80", name: "Portal 80", lat: 4.71083, lng: -74.11281 },
+  { id: "portal-suba", name: "Portal Suba", lat: 4.74692, lng: -74.09383 },
+  { id: "portal-sur", name: "Portal Sur", lat: 4.59623, lng: -74.14361 },
+  { id: "portal-usme", name: "Portal Usme", lat: 4.49381, lng: -74.12492 },
+  { id: "portal-americas", name: "Portal Américas", lat: 4.62999, lng: -74.17801 },
+  { id: "portal-dorado", name: "Portal El Dorado", lat: 4.67521, lng: -74.11782 },
+  { id: "portal-tunal", name: "Portal Tunal", lat: 4.57201, lng: -74.13102 },
+  { id: "portal-20-julio", name: "Portal 20 de Julio", lat: 4.57172, lng: -74.09683 },
+  { id: "tercer-milenio", name: "Tercer Milenio", lat: 4.59712, lng: -74.08213 },
+  { id: "restrepo", name: "Restrepo", lat: 4.57912, lng: -74.09903 },
+]
+
+export type StationWithDistance = Station & { distance: number }
+
+/** Estaciones ordenadas por cercanía a una coordenada. */
+export function nearestStations(from: LatLng, limit = 4): StationWithDistance[] {
+  return stations
+    .map((station) => ({
+      ...station,
+      distance: distanceMeters(from, { lat: station.lat, lng: station.lng }),
+    }))
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, limit)
 }
 
 export const routes: BusRoute[] = [
