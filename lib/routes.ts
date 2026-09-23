@@ -67,6 +67,17 @@ function getIndex(data: TransmilenioData): Index {
  * "Suba" más "Calle 100".
  */
 export function findPlaces(text: string, data: TransmilenioData): Place[] {
+  return findPlaceMentions(text, data).map((m) => m.place)
+}
+
+export type PlaceMention = {
+  place: Place
+  /** Palabras normalizadas que van justo antes de la mención. */
+  before: string
+}
+
+/** Como `findPlaces`, pero con las palabras que preceden a cada mención. */
+export function findPlaceMentions(text: string, data: TransmilenioData): PlaceMention[] {
   const t = ` ${normalize(text)} `
   const found: { start: number; end: number; place: Place }[] = []
 
@@ -82,7 +93,9 @@ export function findPlaces(text: string, data: TransmilenioData): Place[] {
     if (!overlaps && !duplicate) found.push({ start: c.start, end, place: c.place })
   }
 
-  return found.sort((a, b) => a.start - b.start).map((f) => f.place)
+  return found
+    .sort((a, b) => a.start - b.start)
+    .map((f) => ({ place: f.place, before: t.slice(Math.max(0, f.start - 30), f.start).trim() }))
 }
 
 /** Ruta cuyo código aparece en el texto: "la B23", "ruta h 54", "K86". */

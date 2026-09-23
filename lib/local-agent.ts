@@ -1,5 +1,6 @@
 import { spokenDistance, type LatLng } from "@/lib/geo"
 import {
+  findPlaceMentions,
   findPlaces,
   findRouteByCode,
   nearestStations,
@@ -33,6 +34,7 @@ export type Intent =
   | { type: "route_info"; routeCode: string }
   | { type: "schedule"; routeCode: string }
   | { type: "trip"; origin?: string; destination: string }
+  | { type: "trip_missing_destination"; origin: string }
   | { type: "unsupported"; topic: "tarifas" | "tiempo_real" }
   | { type: "unknown" }
 
@@ -78,6 +80,10 @@ const FREQUENT = ["frecuente", "frecuentes", "de siempre", "favorita", "favorita
 const GPS = ["gps", "ubicacion", "donde estoy", "cerca", "cercana", "cercanas", "caminar", "caminando", "a pie"]
 const GREETING = ["hola", "buenos dias", "buenas tardes", "buenas noches", "buenas", "gracias", "muchas gracias"]
 
+/** Palabras que, justo antes de una estación, la marcan como origen o destino. */
+const ORIGIN_MARKER = /(?:^|\s)(desde|de|del|saliendo de|salgo de|estoy en)$/
+const DESTINATION_MARKER = /(?:^|\s)(a|al|hacia|hasta|para|llegar a|ir a|voy a)$/
+
 /** Interpreta una frase por reglas. */
 export function parseIntent(text: string, data: TransmilenioData): Intent {
   const t = normalize(text)
@@ -96,11 +102,22 @@ export function parseIntent(text: string, data: TransmilenioData): Intent {
 
   if (has(t, FREQUENT)) return { type: "frequent" }
 
-  const places = findPlaces(text, data)
-  if (places.length >= 2) {
-    return { type: "trip", origin: places[0].name, destination: places[places.length - 1].name }
+  const mentions = findPlaceMentions(text, data)
+  if (mentions.length >= 2) {
+    // "desde X" marca el origen aunque se diga al final: "llegar a Y saliendo desde X".
+    const origin = mentions.find((m) => ORIGIN_MARKER.test(m.before)) ?? mentions[0]
+    const destination = mentions.find((m) => m !== origin && DESTINATION_MARKER.test(m.before)) ??
+      mentions.find((m) => m !== origin)!
+    return { type: "trip", origin: origin.place.name, destination: destination.place.name }
   }
-  if (places.length === 1) return { type: "trip", destination: places[0].name }
+  if (mentions.length === 1) {
+    const [only] = mentions
+    // "desde Ricaurte" sin destino: se entiende como origen, falta el destino.
+    if (ORIGIN_MARKER.test(only.before) && !DESTINATION_MARKER.test(only.before)) {
+      return { type: "trip_missing_destination", origin: only.place.name }
+    }
+    return { type: "trip", destination: only.place.name }
+  }
 
   if (has(t, GPS)) return { type: "gps" }
   if (has(t, GREETING)) return { type: "greeting" }
@@ -251,6 +268,9 @@ export function runIntent(
         best.length === 1 && others.length > 0 ? ` También te sirven ${listCodes(others.map((p) => p[0].route.code))}.` : ""
       return done(`${describePlan(best)}${alternatives}`, "trip", `${origin.name} → ${destination.name}`, summarize(best))
     }
+
+    case "trip_missing_destination":
+      return done(`Entendí que sales de ${intent.origin}. ¿A qué estación quieres ir?`)
 
     case "unknown":
       return done("No te entendí. Puedes decir, por ejemplo: cómo llego a Ricaurte, o información de la ruta B23.")

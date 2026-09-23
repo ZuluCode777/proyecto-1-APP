@@ -87,6 +87,21 @@ Medidas con los datos reales:
 | "hola" / "¿qué puedes hacer?" | Saludo y ayuda |
 | "¿cuánto cuesta el pasaje?" | Dice que no tiene tarifas |
 
+Con Ollama activo (`/diagnostico` dice "Motor: Ollama") también entiende frases
+libres. Medidas en la máquina con Windows con `qwen2.5:3b`, unos 200 ms cada
+una:
+
+| Frase | Resultado |
+| --- | --- |
+| "necesito llegar a la Universidad Nacional saliendo desde Ricaurte" | Directa: 4 H, 4 estaciones |
+| "oye, ¿me podrías decir hasta qué hora funciona la B23?" | Horario de la B23 |
+| "estoy saliendo del Portal Suba y voy para el Portal Sur" | Directa: G30, 35 estaciones |
+| "me gustaría saber qué buses paran en Héroes" | 29 rutas |
+| "quiero ver las rutas que tengo guardadas" | Rutas frecuentes |
+
+En la lista de pasos, "Motor: Ollama" muestra que respondió el modelo. Si sale
+"Motor: reglas", el modelo no respondió a tiempo y contestaron las reglas.
+
 Una estación sola ("quiero ir a Ricaurte") sin ubicación lista las rutas que
 pasan por ahí y pide el origen. Con la ubicación activada, usa la estación más
 cercana como origen.

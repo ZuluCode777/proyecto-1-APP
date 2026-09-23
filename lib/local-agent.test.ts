@@ -73,3 +73,22 @@ test("no inventa estaciones", () => {
   const reply = interpretCommand("quiero ir a Narnia", data)
   assert.equal(reply.action, "none")
 })
+
+test("el origen es la estación que sigue a «desde», aunque se diga al final", () => {
+  assert.deepEqual(parseIntent("necesito llegar a la Universidad Nacional saliendo desde Ricaurte", data), {
+    type: "trip",
+    origin: "Ricaurte",
+    destination: "Universidad Nacional",
+  })
+  assert.deepEqual(parseIntent("voy para Calle 72 desde Ricaurte", data), {
+    type: "trip",
+    origin: "Ricaurte",
+    destination: "Calle 72",
+  })
+})
+
+test("si solo dice de dónde sale, pregunta a dónde va", () => {
+  const reply = interpretCommand("salgo desde Ricaurte", data)
+  assert.equal(reply.action, "none")
+  assert.match(reply.reply, /sales de Ricaurte/)
+})

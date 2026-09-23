@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --import ./test/register.mjs --test 'lib/**/*.test.ts'",
+    "test": "node --import ./test/register.mjs --test \"lib/**/*.test.ts\"",
     "sync:transmilenio": "node --import ./test/register.mjs scripts/sync-transmilenio.ts",
     "verificar": "node scripts/verificar.mjs"
   },
