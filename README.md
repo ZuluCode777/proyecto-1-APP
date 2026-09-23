@@ -1,8 +1,9 @@
 # TransMiVoz
 
 Accessible client for TransMilenio, Bogotá, aimed at people with a visual
-disability. Built with v0 and deployed on Vercel:
-https://visionaria-tawny.vercel.app
+disability. Originally generated with v0; now developed and self-hosted from
+this repository. See [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md) for running it
+on Windows.
 
 The app has two modes, chosen from the menu and remembered in `localStorage`:
 
