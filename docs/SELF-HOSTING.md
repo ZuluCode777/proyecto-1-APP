@@ -16,7 +16,7 @@ configuración que usamos.
 ## Primera vez
 
 ```powershell
-git clone https://github.com/zulucode-design/visionaria
+git clone https://github.com/zulucode-design/proyecto-1-APP visionaria
 cd visionaria
 corepack enable
 pnpm install
