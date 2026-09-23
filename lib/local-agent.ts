@@ -1,4 +1,4 @@
-import { searchRoutes, stations } from "@/lib/routes"
+import { DEMO_DATA_NOTICE, searchRoutes, stations } from "@/lib/routes"
 
 export type AgentAction = "search" | "frequent" | "gps" | "none"
 
@@ -59,7 +59,7 @@ export function interpretCommand(text: string): AgentReply {
 
   if (FREQUENT_WORDS.some((w) => t.includes(w))) {
     return {
-      reply: "Estas son tus rutas frecuentes.",
+      reply: `Estas son tus rutas frecuentes. ${DEMO_DATA_NOTICE}`,
       action: "frequent",
       query: "",
     }
@@ -81,7 +81,7 @@ export function interpretCommand(text: string): AgentReply {
   const codes = found.map((r) => r.code).join(", ")
   const count = found.length
   return {
-    reply: `Encontré ${count} ${count === 1 ? "ruta" : "rutas"} para ${query}: ${codes}. Te muestro los detalles.`,
+    reply: `Encontré ${count} ${count === 1 ? "ruta" : "rutas"} para ${query}: ${codes}. Te muestro los detalles. ${DEMO_DATA_NOTICE}`,
     action: "search",
     query,
   }
