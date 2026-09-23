@@ -16,7 +16,14 @@ const RATE_WINDOW_MS = 60_000
 
 const rateLimit = createRateLimiter({ limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS })
 
-/** Identifica a quien llama para el límite de peticiones. */
+/**
+ * Identifica a quien llama para el límite de peticiones.
+ *
+ * ponytail: confía en `x-forwarded-for`, que solo es fiable detrás de un proxy
+ * que lo reescriba (Vercel lo hace). Si algún día se expone el servidor
+ * directamente a internet, poner un proxy inverso delante o leer la IP del
+ * socket, porque esta cabecera se puede falsificar.
+ */
 function clientKey(req: Request): string {
   const forwarded = req.headers.get("x-forwarded-for")
   if (forwarded) return forwarded.split(",")[0].trim()
