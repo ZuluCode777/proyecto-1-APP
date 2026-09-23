@@ -53,7 +53,7 @@ nothing.
 
 ## Quick check before presenting
 
-- Menu → **Ceguera total** → tap → say "quiero ir a Calle 72" → it answers aloud.
+- Menu → **Ceguera total** → tap → say "quiero ir a Ricaurte" → it answers aloud with three routes.
 - Menu → **Baja visión** → **Asistente visual** → camera feed appears.
 - **GPS auditivo** → **Activar mi ubicación** → nearest stations listed.
 
@@ -96,8 +96,19 @@ fallback is a single `pnpm start` on the day.
   a model. See the README.
 - **Route data is demo data.** Every spoken route answer ends with a notice
   saying so. That is intentional.
-- **"Portal Norte" returns all eight routes.** Known defect in `searchRoutes`,
-  tracked in issue #3. Prefer station names without "Portal" when demoing:
-  "Calle 72", "Ricaurte", "Héroes".
+- **Some station names flood the answer.** `searchRoutes` keeps a route if any
+  word matches, so shared words drag in unrelated routes. Known defect, issue #3.
+  Measured with `interpretCommand`:
+
+  | Say | Routes returned |
+  | --- | --- |
+  | "quiero ir a Héroes" | 1 — B12 |
+  | "quiero ir a Marly" | 1 — B12 |
+  | "quiero ir a Banderas" | 1 — D21 |
+  | "quiero ir a Ricaurte" | 3 — K43, D21, C15, all correct |
+  | "quiero ir a Calle 72" | 5 — "calle" matches Calle 100, Calle 45 and others |
+  | "quiero ir a Portal Norte" | 8 — "portal" matches every route |
+
+  Demo with the first four. Avoid anything containing "Portal" or "Calle".
 - **Latency is about 120 ms** when Tailscale relays through DERP. On the same
   network it usually connects directly and gets faster.
