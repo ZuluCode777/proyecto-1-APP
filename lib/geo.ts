@@ -67,3 +67,38 @@ export function spokenDistance(meters: number): string {
   const km = meters / 1000
   return `${km.toFixed(1).replace(".", ",")} kilómetros`
 }
+
+/**
+ * Distancia en metros desde un punto hasta un recorrido (polilínea), y la
+ * posición a lo largo del recorrido donde queda más cerca. `along` es el
+ * índice del tramo más cercano más la fracción recorrida dentro de él, así que
+ * sirve para ordenar puntos según el sentido del recorrido.
+ *
+ * Usa una proyección equirectangular local: a escala de una ciudad el error es
+ * de centímetros, y evita trigonometría por cada tramo.
+ */
+export function distanceToPath(point: LatLng, path: LatLng[]): { distance: number; along: number } {
+  if (path.length === 0) return { distance: Infinity, along: 0 }
+  const R = 6371000
+  const k = Math.cos(toRad(point.lat))
+  const project = (p: LatLng) => ({ x: toRad(p.lng) * k * R, y: toRad(p.lat) * R })
+  const p = project(point)
+
+  if (path.length === 1) {
+    const a = project(path[0])
+    return { distance: Math.hypot(p.x - a.x, p.y - a.y), along: 0 }
+  }
+
+  let best = { distance: Infinity, along: 0 }
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = project(path[i])
+    const b = project(path[i + 1])
+    const dx = b.x - a.x
+    const dy = b.y - a.y
+    const lengthSq = dx * dx + dy * dy
+    const t = lengthSq === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSq))
+    const distance = Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
+    if (distance < best.distance) best = { distance, along: i + t }
+  }
+  return best
+}

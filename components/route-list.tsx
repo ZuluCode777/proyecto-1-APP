@@ -1,7 +1,7 @@
 "use client"
 
-import { Bus, MapPin, ChevronRight, TriangleAlert } from "lucide-react"
-import { DEMO_DATA_NOTICE, type BusRoute } from "@/lib/routes"
+import { Bus, ChevronRight, Database, MapPin } from "lucide-react"
+import type { BusRoute } from "@/lib/routes"
 import { useSpeech } from "@/hooks/use-speech"
 import { ScreenHeader } from "@/components/screen-header"
 
@@ -9,61 +9,51 @@ type RouteListProps = {
   title: string
   routes: BusRoute[]
   emptyMessage: string
+  /** Fecha de la consulta a TransMilenio, para citar la fuente. */
+  fetchedAt?: string
+  onOpen: (route: BusRoute) => void
   onBack: () => void
 }
 
-export function RouteList({ title, routes, emptyMessage, onBack }: RouteListProps) {
+export function RouteList({ title, routes, emptyMessage, fetchedAt, onOpen, onBack }: RouteListProps) {
   const { speak } = useSpeech()
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4" aria-label={title}>
-      <ScreenHeader title={title} icon={Bus} onBack={onBack} />
+      <ScreenHeader title={title} subtitle={`${routes.length} ${routes.length === 1 ? "ruta" : "rutas"}`} icon={Bus} onBack={onBack} />
 
-      <p
-        role="note"
-        className="mb-3 flex items-start gap-2 rounded-2xl border border-border bg-muted p-3 text-base font-semibold"
-      >
-        <TriangleAlert className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden="true" />
-        {DEMO_DATA_NOTICE}
-      </p>
+      {fetchedAt && (
+        <p className="mb-3 flex items-start gap-2 text-base text-muted-foreground">
+          <Database className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
+          Datos abiertos de TransMilenio, consultados el {new Date(fetchedAt).toLocaleDateString("es-CO")}.
+        </p>
+      )}
 
       {routes.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
-          <span className="flex size-14 items-center justify-center rounded-2xl bg-brand-soft text-brand">
-            <Bus className="size-7" aria-hidden="true" />
-          </span>
-          <p className="text-lg text-muted-foreground" role="status">
-            {emptyMessage}
-          </p>
-        </div>
+        <p className="rounded-2xl border-2 border-border bg-card p-8 text-center text-xl" role="status">
+          {emptyMessage}
+        </p>
       ) : (
         <ul className="flex flex-col gap-3">
           {routes.map((route) => (
             <li key={route.id}>
               <button
                 type="button"
-                onFocus={() =>
-                  speak(`Ruta ${route.code}. ${route.label}. Paradas principales: ${route.stops.join(", ")}.`)
-                }
-                onClick={() =>
-                  speak(`Ruta ${route.code}. ${route.label}. Paradas principales: ${route.stops.join(", ")}.`)
-                }
-                className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition active:scale-[0.99]"
+                onFocus={() => speak(`Ruta ${route.code}, de ${route.from} hacia ${route.to}.`)}
+                onClick={() => onOpen(route)}
+                className="flex min-h-20 w-full items-center gap-4 rounded-2xl border-2 border-border bg-card p-4 text-left"
               >
-                <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-lg font-bold text-brand">
+                <span className="flex min-w-16 shrink-0 items-center justify-center rounded-xl bg-brand px-2 py-3 text-xl font-bold text-brand-foreground">
                   {route.code}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2 text-lg font-bold">
-                    <Bus className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                    <span className="truncate">{route.from}</span>
-                  </span>
-                  <span className="mt-1 flex items-center gap-2 text-base text-muted-foreground">
-                    <MapPin className="size-4 shrink-0" aria-hidden="true" />
-                    <span className="truncate">hacia {route.to}</span>
+                  <span className="block text-xl font-bold leading-snug">{route.from}</span>
+                  <span className="mt-1 flex items-center gap-2 text-lg">
+                    <MapPin className="size-5 shrink-0" aria-hidden="true" />
+                    hacia {route.to}
                   </span>
                 </span>
-                <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <ChevronRight className="size-7 shrink-0" aria-hidden="true" />
               </button>
             </li>
           ))}

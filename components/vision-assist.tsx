@@ -69,7 +69,7 @@ export function VisionAssist({ onBack }: VisionAssistProps) {
           await videoRef.current.play().catch(() => undefined)
         }
         setStatus("active")
-        speak("Asistente de visión listo. Apunta al letrero para leerlo con más contraste.")
+        speak("Lupa lista. Apunta al letrero para verlo más grande y con más contraste.", { queue: true })
       } catch {
         setStatus("error")
         setErrorMessage("No se pudo acceder a la cámara. Revisa los permisos.")
@@ -108,7 +108,7 @@ export function VisionAssist({ onBack }: VisionAssistProps) {
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col p-4" aria-label="Asistente de visión">
+    <section className="flex min-h-0 flex-1 flex-col p-4" aria-label="Lupa">
       <div className="mb-3 flex shrink-0 items-center gap-3">
         <button
           type="button"
@@ -120,7 +120,7 @@ export function VisionAssist({ onBack }: VisionAssistProps) {
         </button>
         <span className="flex items-center gap-2 text-xl font-bold tracking-tight">
           <ScanText className="size-6 text-brand" aria-hidden="true" />
-          Asistente de visión
+          Lupa
         </span>
       </div>
 
@@ -135,7 +135,7 @@ export function VisionAssist({ onBack }: VisionAssistProps) {
         />
 
         {status === "active" && frozen && (
-          <span className="absolute left-3 top-3 rounded-full bg-brand px-3 py-1 text-sm font-bold text-brand-foreground shadow-sm">
+          <span className="absolute left-3 top-3 rounded-full bg-brand px-3 py-1 text-lg font-bold text-brand-foreground shadow-sm">
             Congelada
           </span>
         )}
@@ -205,7 +205,7 @@ export function VisionAssist({ onBack }: VisionAssistProps) {
           ) : (
             <>
               <Pause className="size-5" aria-hidden="true" />
-              Congelar para leer
+              Congelar imagen
             </>
           )}
         </button>

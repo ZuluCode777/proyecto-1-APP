@@ -1,0 +1,39 @@
+# Comprueba cada cambio: tipos, pruebas, compilación y la verificación de
+# extremo a extremo en Chrome contra la app compilada.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Tipos
+        run: pnpm exec tsc --noEmit
+
+      - name: Pruebas
+        run: pnpm test
+
+      - name: Compilación
+        run: pnpm build
+
+      - name: Verificación de extremo a extremo
+        run: |
+          pnpm start -H 127.0.0.1 -p 3000 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:3000/ >/dev/null && break; sleep 1; done
+          pnpm verificar http://127.0.0.1:3000

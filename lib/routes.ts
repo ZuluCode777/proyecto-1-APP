@@ -1,162 +1,207 @@
 import { distanceMeters, type LatLng } from "@/lib/geo"
+import { contentWords, normalize } from "@/lib/text"
+import type { BusRoute, Station, TransmilenioData } from "@/lib/transmilenio"
 
-/**
- * Aviso que se lee en voz alta cada vez que la app entrega rutas.
- * Los códigos, paradas y coordenadas de este archivo son datos de
- * demostración: no provienen de una fuente oficial de TransMilenio.
- * Debe sonar siempre que se anuncien rutas, porque la persona usuaria
- * no puede ver ninguna etiqueta en pantalla.
- */
-export const DEMO_DATA_NOTICE =
-  "Aviso: estas rutas son datos de demostración, no información oficial de TransMilenio. Confirma con TransMilenio antes de viajar."
-
-export type BusRoute = {
-  id: string
-  code: string
-  label: string
-  from: string
-  to: string
-  stops: string[]
-  frequent: boolean
-}
-
-export type Station = {
-  id: string
-  name: string
-  lat: number
-  lng: number
-}
-
-/** DATOS DE DEMOSTRACIÓN: estaciones y portales con coordenadas aproximadas, sin fuente oficial. */
-export const stations: Station[] = [
-  { id: "portal-norte", name: "Portal Norte", lat: 4.75658, lng: -74.04555 },
-  { id: "calle-100", name: "Calle 100", lat: 4.68624, lng: -74.05093 },
-  { id: "heroes", name: "Héroes", lat: 4.66931, lng: -74.06405 },
-  { id: "calle-72", name: "Calle 72", lat: 4.65803, lng: -74.06203 },
-  { id: "calle-45", name: "Calle 45", lat: 4.63305, lng: -74.06803 },
-  { id: "marly", name: "Marly", lat: 4.63201, lng: -74.06552 },
-  { id: "av-jimenez", name: "Av. Jiménez", lat: 4.60152, lng: -74.07231 },
-  { id: "ricaurte", name: "Ricaurte", lat: 4.61192, lng: -74.09381 },
-  { id: "banderas", name: "Banderas", lat: 4.62801, lng: -74.14403 },
-  { id: "portal-80", name: "Portal 80", lat: 4.71083, lng: -74.11281 },
-  { id: "portal-suba", name: "Portal Suba", lat: 4.74692, lng: -74.09383 },
-  { id: "portal-sur", name: "Portal Sur", lat: 4.59623, lng: -74.14361 },
-  { id: "portal-usme", name: "Portal Usme", lat: 4.49381, lng: -74.12492 },
-  { id: "portal-americas", name: "Portal Américas", lat: 4.62999, lng: -74.17801 },
-  { id: "portal-dorado", name: "Portal El Dorado", lat: 4.67521, lng: -74.11782 },
-  { id: "portal-tunal", name: "Portal Tunal", lat: 4.57201, lng: -74.13102 },
-  { id: "portal-20-julio", name: "Portal 20 de Julio", lat: 4.57172, lng: -74.09683 },
-  { id: "tercer-milenio", name: "Tercer Milenio", lat: 4.59712, lng: -74.08213 },
-  { id: "restrepo", name: "Restrepo", lat: 4.57912, lng: -74.09903 },
-]
+export type { BusRoute, Station, TransmilenioData }
 
 export type StationWithDistance = Station & { distance: number }
 
+/**
+ * Un lugar al que la gente se refiere con un solo nombre, aunque TransMilenio
+ * lo publique como varias estaciones. "Ricaurte" son "Ricaurte - CL 13" y
+ * "Ricaurte - NQS"; una ruta sirve si pasa por cualquiera de las dos.
+ */
+export type Place = {
+  name: string
+  stations: Station[]
+}
+
+type Index = {
+  keys: { key: string; place: Place }[]
+  byCode: Map<string, BusRoute>
+}
+
+const indexes = new WeakMap<TransmilenioData, Index>()
+
+/** Nombre corto de una estación: lo que va antes del guion, sin "Temporal". */
+function shortName(name: string): string {
+  return name.split(/\s[-–]\s/)[0].replace(/^Temporal\s+/i, "").trim()
+}
+
+/** Claves genéricas que, solas, no identifican una estación. */
+const GENERIC_KEYS = new Set(["temporal", "portal", "calle", "avenida", "carrera"])
+
+function buildIndex(data: TransmilenioData): Index {
+  const places = new Map<string, Place>()
+  const keys = new Map<string, Place>()
+
+  for (const station of data.stations) {
+    const short = shortName(station.name)
+    const shortKey = normalize(short)
+    const place = places.get(shortKey) ?? { name: short, stations: [] }
+    place.stations.push(station)
+    places.set(shortKey, place)
+
+    // El nombre completo apunta solo a esta estación; el corto, al grupo.
+    const fullKey = normalize(station.name)
+    if (fullKey !== shortKey && !keys.has(fullKey)) keys.set(fullKey, { name: station.name, stations: [station] })
+    if (!GENERIC_KEYS.has(shortKey) && !keys.has(shortKey)) keys.set(shortKey, place)
+  }
+
+  const byCode = new Map(data.routes.map((r) => [normalize(r.code).replace(/\s/g, ""), r]))
+  return { keys: [...keys].map(([key, place]) => ({ key, place })), byCode }
+}
+
+function getIndex(data: TransmilenioData): Index {
+  let index = indexes.get(data)
+  if (!index) {
+    index = buildIndex(data)
+    indexes.set(data, index)
+  }
+  return index
+}
+
+/**
+ * Estaciones mencionadas en un texto, en el orden en que aparecen.
+ * Gana la coincidencia más larga: "Suba Calle 100" es una estación, no
+ * "Suba" más "Calle 100".
+ */
+export function findPlaces(text: string, data: TransmilenioData): Place[] {
+  const t = ` ${normalize(text)} `
+  const found: { start: number; end: number; place: Place }[] = []
+
+  const candidates = getIndex(data).keys
+    .map(({ key, place }) => ({ key, place, start: t.indexOf(` ${key} `) }))
+    .filter((c) => c.start >= 0)
+    .sort((a, b) => b.key.length - a.key.length)
+
+  for (const c of candidates) {
+    const end = c.start + c.key.length + 1
+    const overlaps = found.some((f) => c.start < f.end && f.start < end)
+    const duplicate = found.some((f) => f.place === c.place)
+    if (!overlaps && !duplicate) found.push({ start: c.start, end, place: c.place })
+  }
+
+  return found.sort((a, b) => a.start - b.start).map((f) => f.place)
+}
+
+/** Ruta cuyo código aparece en el texto: "la B23", "ruta h 54", "K86". */
+export function findRouteByCode(text: string, data: TransmilenioData): BusRoute | undefined {
+  const byCode = getIndex(data).byCode
+  const t = normalize(text)
+  for (const match of t.matchAll(/\b([a-z]{1,2})\s?(\d{1,2})([a-z]{0,2})\b/g)) {
+    const route = byCode.get(`${match[1]}${match[2]}${match[3]}`)
+    if (route) return route
+  }
+  return undefined
+}
+
+const stopsAt = (route: BusRoute, place: Place): number =>
+  route.stops.findIndex((stop) => place.stations.some((s) => s.name === stop))
+
+/** Rutas que pasan por un lugar. */
+export function routesThrough(place: Place, data: TransmilenioData): BusRoute[] {
+  return data.routes.filter((route) => stopsAt(route, place) >= 0)
+}
+
+/**
+ * Búsqueda de rutas para la pantalla de búsqueda. En orden de prioridad:
+ * un código de ruta exacto, las rutas que pasan por una estación mencionada,
+ * y por último las rutas cuyo origen o destino contienen todas las palabras.
+ */
+export function searchRoutes(query: string, data: TransmilenioData): BusRoute[] {
+  if (!normalize(query)) return []
+
+  const byCode = findRouteByCode(query, data)
+  if (byCode) return [byCode]
+
+  const [place] = findPlaces(query, data)
+  if (place) return routesThrough(place, data)
+
+  const words = contentWords(query)
+  if (words.length === 0) return []
+  return data.routes.filter((route) => {
+    const haystack = normalize(`${route.code} ${route.from} ${route.to}`)
+    return words.every((word) => haystack.includes(word))
+  })
+}
+
+export type TripLeg = {
+  route: BusRoute
+  board: string
+  alight: string
+  /** Estaciones recorridas entre subir y bajar, sin contar la de subida. */
+  stationsRidden: number
+}
+
+export type TripPlan = TripLeg[]
+
+/**
+ * Planea un viaje de un lugar a otro: primero rutas directas, y si no hay,
+ * combinaciones con un transbordo. Devuelve los planes ordenados de menos a
+ * más estaciones recorridas.
+ *
+ * ponytail: prueba todos los pares de rutas para el transbordo (124² ≈ 15 000
+ * combinaciones), que es instantáneo con los datos troncales. Si algún día se
+ * suman las 567 rutas zonales, conviene un índice por estación.
+ */
+export function planTrip(origin: Place, destination: Place, data: TransmilenioData, limit = 3): TripPlan[] {
+  const direct: TripPlan[] = []
+  for (const route of data.routes) {
+    const board = stopsAt(route, origin)
+    const alight = stopsAt(route, destination)
+    if (board >= 0 && alight > board) {
+      direct.push([{ route, board: route.stops[board], alight: route.stops[alight], stationsRidden: alight - board }])
+    }
+  }
+  if (direct.length > 0) return rank(direct).slice(0, limit)
+
+  const transfers: TripPlan[] = []
+  const fromOrigin = data.routes
+    .map((route) => ({ route, board: stopsAt(route, origin) }))
+    .filter((r) => r.board >= 0)
+  const toDestination = data.routes
+    .map((route) => ({ route, alight: stopsAt(route, destination) }))
+    .filter((r) => r.alight >= 0)
+
+  for (const first of fromOrigin) {
+    for (const second of toDestination) {
+      if (first.route === second.route) continue
+      // Primera estación compartida después de subir y antes de bajar.
+      for (let i = first.board + 1; i < first.route.stops.length; i++) {
+        const transfer = first.route.stops[i]
+        const j = second.route.stops.indexOf(transfer)
+        if (j >= 0 && j < second.alight) {
+          transfers.push([
+            { route: first.route, board: first.route.stops[first.board], alight: transfer, stationsRidden: i - first.board },
+            { route: second.route, board: transfer, alight: second.route.stops[second.alight], stationsRidden: second.alight - j },
+          ])
+          break
+        }
+      }
+    }
+  }
+  return rank(transfers).slice(0, limit)
+}
+
+const totalStations = (plan: TripPlan) => plan.reduce((sum, leg) => sum + leg.stationsRidden, 0)
+
+function rank(plans: TripPlan[]): TripPlan[] {
+  return plans.sort((a, b) => a.length - b.length || totalStations(a) - totalStations(b))
+}
+
 /** Estaciones ordenadas por cercanía a una coordenada. */
-export function nearestStations(from: LatLng, limit = 4): StationWithDistance[] {
-  return stations
-    .map((station) => ({
-      ...station,
-      distance: distanceMeters(from, { lat: station.lat, lng: station.lng }),
-    }))
+export function nearestStations(from: LatLng, data: TransmilenioData, limit = 4): StationWithDistance[] {
+  return data.stations
+    .map((station) => ({ ...station, distance: distanceMeters(from, station) }))
     .sort((a, b) => a.distance - b.distance)
     .slice(0, limit)
 }
 
-/** DATOS DE DEMOSTRACIÓN: códigos y paradas inventados, no corresponden a rutas reales. */
-export const routes: BusRoute[] = [
-  {
-    id: "b12",
-    code: "B12",
-    label: "Portal Norte hacia Av. Jiménez",
-    from: "Portal Norte",
-    to: "Av. Jiménez",
-    stops: ["Calle 100", "Héroes", "Calle 72", "Calle 45", "Marly"],
-    frequent: true,
-  },
-  {
-    id: "k43",
-    code: "K43",
-    label: "Portal 80 hacia Portal Sur",
-    from: "Portal 80",
-    to: "Portal Sur",
-    stops: ["Av. Rojas", "Ricaurte", "Tercer Milenio", "Santa Isabel"],
-    frequent: true,
-  },
-  {
-    id: "f19",
-    code: "F19",
-    label: "Portal Suba hacia Portal Tunal",
-    from: "Portal Suba",
-    to: "Portal Tunal",
-    stops: ["Suba Calle 100", "La Campiña", "Puente Aranda", "Restrepo"],
-    frequent: false,
-  },
-  {
-    id: "h13",
-    code: "H13",
-    label: "Portal Usme hacia Portal Norte",
-    from: "Portal Usme",
-    to: "Portal Norte",
-    stops: ["Molinos", "Calle 40 Sur", "Av. Jiménez", "Calle 100"],
-    frequent: true,
-  },
-  {
-    id: "d21",
-    code: "D21",
-    label: "Portal Américas hacia Calle 100",
-    from: "Portal Américas",
-    to: "Calle 100",
-    stops: ["Banderas", "Ricaurte", "Calle 26", "Calle 76"],
-    frequent: false,
-  },
-  {
-    id: "g12",
-    code: "G12",
-    label: "Portal Dorado hacia Portal 20 de Julio",
-    from: "Portal Dorado",
-    to: "Portal 20 de Julio",
-    stops: ["Modelia", "Av. Jiménez", "Hospital", "Country Sur"],
-    frequent: false,
-  },
-  {
-    id: "j24",
-    code: "J24",
-    label: "Portal Tunal hacia Calle 72",
-    from: "Portal Tunal",
-    to: "Calle 72",
-    stops: ["Parque", "Santa Isabel", "Calle 45", "Calle 63"],
-    frequent: false,
-  },
-  {
-    id: "c15",
-    code: "C15",
-    label: "Portal Sur hacia Portal Suba",
-    from: "Portal Sur",
-    to: "Portal Suba",
-    stops: ["Perdomo", "Ricaurte", "Av. Rojas", "Suba"],
-    frequent: false,
-  },
-]
-
-const normalize = (value: string) =>
-  value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-
-export function searchRoutes(query: string): BusRoute[] {
-  const q = normalize(query)
-  if (!q) return routes
-  return routes.filter((route) => {
-    const haystack = normalize(
-      [route.code, route.label, route.from, route.to, ...route.stops].join(" "),
-    )
-    return q.split(/\s+/).some((word) => word.length > 1 && haystack.includes(word))
-  })
+/** Lugar que contiene una estación dada. */
+export function placeOf(station: Station, data: TransmilenioData): Place {
+  return findPlaces(station.name, data)[0] ?? { name: shortName(station.name), stations: [station] }
 }
 
-export function frequentRoutes(): BusRoute[] {
-  return routes.filter((route) => route.frequent)
-}
+/** Rutas sugeridas mientras la persona no ha guardado ninguna. */
+export const DEFAULT_FAVORITES = ["B23", "H54", "M83"]
