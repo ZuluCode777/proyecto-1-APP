@@ -1,12 +1,13 @@
 {
-  "name": "my-project",
+  "name": "visionaria",
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@12.3.4",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test": "node --test 'lib/*.test.ts'"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

@@ -1,5 +1,15 @@
 import { distanceMeters, type LatLng } from "@/lib/geo"
 
+/**
+ * Aviso que se lee en voz alta cada vez que la app entrega rutas.
+ * Los códigos, paradas y coordenadas de este archivo son datos de
+ * demostración: no provienen de una fuente oficial de TransMilenio.
+ * Debe sonar siempre que se anuncien rutas, porque la persona usuaria
+ * no puede ver ninguna etiqueta en pantalla.
+ */
+export const DEMO_DATA_NOTICE =
+  "Aviso: estas rutas son datos de demostración, no información oficial de TransMilenio. Confirma con TransMilenio antes de viajar."
+
 export type BusRoute = {
   id: string
   code: string
@@ -17,7 +27,7 @@ export type Station = {
   lng: number
 }
 
-/** Estaciones y portales de TransMilenio con coordenadas reales aproximadas. */
+/** DATOS DE DEMOSTRACIÓN: estaciones y portales con coordenadas aproximadas, sin fuente oficial. */
 export const stations: Station[] = [
   { id: "portal-norte", name: "Portal Norte", lat: 4.75658, lng: -74.04555 },
   { id: "calle-100", name: "Calle 100", lat: 4.68624, lng: -74.05093 },
@@ -53,6 +63,7 @@ export function nearestStations(from: LatLng, limit = 4): StationWithDistance[] 
     .slice(0, limit)
 }
 
+/** DATOS DE DEMOSTRACIÓN: códigos y paradas inventados, no corresponden a rutas reales. */
 export const routes: BusRoute[] = [
   {
     id: "b12",

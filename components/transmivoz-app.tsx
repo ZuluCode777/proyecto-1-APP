@@ -12,7 +12,7 @@ import { VisionAssist } from "@/components/vision-assist"
 import { AuditoryGps } from "@/components/auditory-gps"
 import { VoiceOverlay } from "@/components/voice-overlay"
 import { useSpeech } from "@/hooks/use-speech"
-import { searchRoutes, frequentRoutes, type BusRoute } from "@/lib/routes"
+import { DEMO_DATA_NOTICE, searchRoutes, frequentRoutes, type BusRoute } from "@/lib/routes"
 
 export type Mode = "parcial" | "total"
 type Screen = "home" | "rutas" | "buscar" | "frecuentes" | "asistencia" | "vision" | "gps"
@@ -71,7 +71,7 @@ export function TransMiVozApp() {
         speak(`No encontré rutas para ${text}.`)
       } else {
         speak(
-          `Encontré ${found.length} ${found.length === 1 ? "ruta" : "rutas"} para ${text || "tu búsqueda"}.`,
+          `Encontré ${found.length} ${found.length === 1 ? "ruta" : "rutas"} para ${text || "tu búsqueda"}. ${DEMO_DATA_NOTICE}`,
         )
       }
     },
@@ -90,12 +90,12 @@ export function TransMiVozApp() {
   const openFrequent = useCallback(() => {
     setResults(frequentRoutes())
     setScreen("frecuentes")
-    speak("Rutas frecuentes.")
+    speak(`Rutas frecuentes. ${DEMO_DATA_NOTICE}`)
   }, [speak])
 
   const openRoutes = useCallback(() => {
     setScreen("rutas")
-    speak("Rutas. Busca por estación o toca rutas frecuentes.")
+    speak(`Rutas. Busca por estación o toca rutas frecuentes. ${DEMO_DATA_NOTICE}`)
   }, [speak])
   const openAssistance = useCallback(() => setScreen("asistencia"), [])
   const openVision = useCallback(() => {

@@ -1,7 +1,7 @@
 "use client"
 
-import { Bus, MapPin, ChevronRight } from "lucide-react"
-import type { BusRoute } from "@/lib/routes"
+import { Bus, MapPin, ChevronRight, TriangleAlert } from "lucide-react"
+import { DEMO_DATA_NOTICE, type BusRoute } from "@/lib/routes"
 import { useSpeech } from "@/hooks/use-speech"
 import { ScreenHeader } from "@/components/screen-header"
 
@@ -18,6 +18,14 @@ export function RouteList({ title, routes, emptyMessage, onBack }: RouteListProp
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4" aria-label={title}>
       <ScreenHeader title={title} icon={Bus} onBack={onBack} />
+
+      <p
+        role="note"
+        className="mb-3 flex items-start gap-2 rounded-2xl border border-border bg-muted p-3 text-base font-semibold"
+      >
+        <TriangleAlert className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden="true" />
+        {DEMO_DATA_NOTICE}
+      </p>
 
       {routes.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
