@@ -1,54 +1,98 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
-import { Mic, Loader2, Ear } from "lucide-react"
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
+import { CheckCircle2, Ear, Loader2, Mic, Send } from "lucide-react"
 import { useSpeech, useVoiceRecognition } from "@/hooks/use-speech"
-import { interpretCommand, type AgentAction, type AgentReply } from "@/lib/local-agent"
-
-export type { AgentAction }
+import type { LatLng } from "@/lib/geo"
+import { interpretCommand, type AgentReply, type AgentStep } from "@/lib/local-agent"
+import type { TransmilenioData } from "@/lib/routes"
 
 type TotalAgentProps = {
-  onAction: (action: AgentAction, query: string) => void
+  data: TransmilenioData | null
+  onAction: (reply: AgentReply) => void
 }
 
 type Status = "idle" | "listening" | "thinking" | "error"
 
-export function TotalAgent({ onAction }: TotalAgentProps) {
+/** Pausa entre pasos, para que se vea y se oiga el razonamiento del asistente. */
+const STEP_DELAY_MS = 450
+/** Tiempo que se queda la respuesta en pantalla antes de abrir el resultado. */
+const NAVIGATE_DELAY_MS = 2500
+
+/**
+ * Asistente de voz. Toda la pantalla es el botón para hablar. Debajo muestra
+ * los pasos que siguió para responder y un campo para escribir, útil cuando
+ * hay ruido o el micrófono no está disponible.
+ */
+export function TotalAgent({ data, onAction }: TotalAgentProps) {
   const { speak } = useSpeech()
   const [status, setStatus] = useState<Status>("idle")
   const [caption, setCaption] = useState("Toca la pantalla y dime a dónde quieres ir")
+  const [steps, setSteps] = useState<AgentStep[]>([])
+  const [engine, setEngine] = useState<AgentReply["engine"] | null>(null)
+  const [typed, setTyped] = useState("")
   const busyRef = useRef(false)
+  const positionRef = useRef<LatLng | undefined>(undefined)
+
+  /** Pide la ubicación sin bloquear: si llega, el asistente la usa como origen. */
+  const locate = useCallback(() => {
+    if (positionRef.current || !navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        positionRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+      },
+      () => undefined,
+      { maximumAge: 60_000, timeout: 10_000 },
+    )
+  }, [])
 
   const askAgent = useCallback(
     async (message: string) => {
+      busyRef.current = true
       setStatus("thinking")
-      setCaption("Un momento…")
-      let data: AgentReply
+      setCaption("Pensando…")
+      setSteps([])
+
+      let reply: AgentReply
       try {
         const res = await fetch("/api/agent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message }),
+          body: JSON.stringify({ message, position: positionRef.current }),
         })
-        if (!res.ok) throw new Error("bad status")
-        data = (await res.json()) as AgentReply
-      } catch (error) {
-        console.log("[v0] agent request failed, using local interpreter:", error)
-        data = interpretCommand(message)
+        if (!res.ok && res.status !== 429 && res.status !== 413) throw new Error(`HTTP ${res.status}`)
+        reply = (await res.json()) as AgentReply
+      } catch {
+        // Sin servidor: el mismo intérprete corre en el navegador con los datos ya cargados.
+        if (!data) {
+          reply = { reply: "No tengo conexión con el servidor. Inténtalo de nuevo.", action: "none", query: "", steps: [], engine: "reglas" }
+        } else {
+          reply = interpretCommand(message, data, { position: positionRef.current })
+        }
       }
-      speak(data.reply)
-      setCaption(data.reply)
-      if (data.action !== "none") onAction(data.action, data.query)
+
+      for (let i = 0; i < reply.steps.length; i++) {
+        await new Promise((r) => setTimeout(r, STEP_DELAY_MS))
+        setSteps(reply.steps.slice(0, i + 1))
+      }
+
+      setEngine(reply.engine)
+      setCaption(reply.reply)
+      speak(reply.reply)
       busyRef.current = false
       setStatus("idle")
+      if (reply.action === "none") return
+      // Deja ver los pasos y la respuesta antes de cambiar de pantalla.
+      if (reply.steps.length > 0) await new Promise((r) => setTimeout(r, NAVIGATE_DELAY_MS))
+      onAction(reply)
     },
-    [onAction, speak],
+    [data, onAction, speak],
   )
 
   const handleResult = useCallback(
     (text: string) => {
       setCaption(`“${text}”`)
-      askAgent(text)
+      void askAgent(text)
     },
     [askAgent],
   )
@@ -59,23 +103,20 @@ export function TotalAgent({ onAction }: TotalAgentProps) {
       setStatus("error")
       const message =
         error === "not-allowed"
-          ? "No tengo permiso para el micrófono. Actívalo e intenta de nuevo."
+          ? "No tengo permiso para el micrófono. Actívalo o escribe tu pregunta abajo."
           : error === "no-speech"
             ? "No te escuché. Toca la pantalla e inténtalo otra vez."
-            : "Hubo un problema con el micrófono. Toca para reintentar."
+            : "Hubo un problema con el micrófono. Toca para reintentar o escribe abajo."
       setCaption(message)
       speak(message)
     },
     [speak],
   )
 
-  const { listening, supported, start, stop } = useVoiceRecognition({
-    onResult: handleResult,
-    onError: handleError,
-  })
+  const { listening, supported, start, stop } = useVoiceRecognition({ onResult: handleResult, onError: handleError })
 
   useEffect(() => {
-    speak("Modo asistente. Toca la pantalla y dime a dónde quieres ir.")
+    speak("Asistente de voz. Toca la pantalla y dime a dónde quieres ir.", { queue: true })
     return () => stop()
   }, [speak, stop])
 
@@ -85,8 +126,9 @@ export function TotalAgent({ onAction }: TotalAgentProps) {
       stop()
       return
     }
+    locate()
     if (!supported) {
-      const message = "Este dispositivo no permite reconocimiento de voz."
+      const message = "Este navegador no reconoce la voz. Escribe tu pregunta abajo."
       setStatus("error")
       setCaption(message)
       speak(message)
@@ -95,84 +137,111 @@ export function TotalAgent({ onAction }: TotalAgentProps) {
     busyRef.current = true
     setStatus("listening")
     setCaption("Escuchando…")
-    if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate?.(40)
+    navigator.vibrate?.(40)
     speak("Te escucho.")
     window.setTimeout(() => start(), 650)
-  }, [listening, status, supported, start, stop, speak])
+  }, [listening, status, supported, start, stop, speak, locate])
+
+  const handleTyped = (event: FormEvent) => {
+    event.preventDefault()
+    const text = typed.trim()
+    if (!text || busyRef.current) return
+    locate()
+    setTyped("")
+    setCaption(`“${text}”`)
+    void askAgent(text)
+  }
 
   const active = status === "listening" || listening
   const thinking = status === "thinking"
 
   return (
-    <button
-      type="button"
-      onClick={handleTap}
-      aria-label="Asistente de voz. Toca la pantalla para hablar y pedir rutas o el GPS."
-      className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-brand/25 via-background to-background px-6 text-center transition active:scale-[0.99]"
-    >
-      {/* Anillos que laten mientras escucha */}
-      <span className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden="true">
-        {active &&
-          [0, 1, 2].map((i) => (
-            <span
-              key={i}
-              className="absolute rounded-full border border-brand/40"
-              style={{
-                width: `${180 + i * 90}px`,
-                height: `${180 + i * 90}px`,
-                animation: "ping 1.8s cubic-bezier(0,0,0.2,1) infinite",
-                animationDelay: `${i * 0.4}s`,
-              }}
-            />
-          ))}
-      </span>
-
-      {/* Círculo central */}
-      <span
-        className={[
-          "relative z-10 flex size-40 items-center justify-center rounded-full text-brand-foreground shadow-lg transition-all duration-300",
-          active
-            ? "bg-brand shadow-brand/50 scale-105"
-            : thinking
-              ? "bg-brand shadow-brand/40"
-              : "bg-brand shadow-brand/30",
-        ].join(" ")}
+    <section className="flex min-h-0 flex-1 flex-col overflow-y-auto" aria-label="Asistente de voz">
+      <button
+        type="button"
+        onClick={handleTap}
+        aria-label="Asistente de voz. Toca para hablar y pedir rutas, horarios o tu ubicación."
+        className="relative flex min-h-[55%] shrink-0 flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-brand/25 via-background to-background px-6 py-8 text-center"
       >
-        {thinking ? (
-          <Loader2 className="size-16 animate-spin" aria-hidden="true" />
-        ) : active ? (
-          <Ear className="size-16" aria-hidden="true" />
-        ) : (
-          <Mic className="size-16" aria-hidden="true" />
-        )}
-      </span>
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden="true">
+          {active &&
+            [0, 1, 2].map((i) => (
+              <span
+                key={i}
+                className="absolute rounded-full border-2 border-brand/50"
+                style={{
+                  width: `${180 + i * 90}px`,
+                  height: `${180 + i * 90}px`,
+                  animation: "ping 1.8s cubic-bezier(0,0,0.2,1) infinite",
+                  animationDelay: `${i * 0.4}s`,
+                }}
+              />
+            ))}
+        </span>
 
-      <span className="relative z-10 mt-10 flex flex-col items-center gap-2">
-        <span className="text-2xl font-bold tracking-tight">
+        <span className="relative z-10 flex size-40 items-center justify-center rounded-full bg-brand text-brand-foreground shadow-lg">
+          {thinking ? (
+            <Loader2 className="size-16 animate-spin" aria-hidden="true" />
+          ) : active ? (
+            <Ear className="size-16" aria-hidden="true" />
+          ) : (
+            <Mic className="size-16" aria-hidden="true" />
+          )}
+        </span>
+
+        <span className="relative z-10 mt-8 text-3xl font-bold tracking-tight">
           {active ? "Escuchando…" : thinking ? "Pensando…" : "Asistente de voz"}
         </span>
-        <span
-          className="min-h-[3.5rem] max-w-xs text-pretty text-base text-muted-foreground"
-          aria-live="polite"
-        >
+        <span className="relative z-10 mt-3 min-h-[4rem] max-w-sm text-pretty text-xl" aria-live="polite">
           {caption}
         </span>
-      </span>
+      </button>
 
-      {/* Barra inferior tipo Shazam */}
-      <span className="relative z-10 mt-8 flex items-end gap-1" aria-hidden="true">
-        {[0, 1, 2, 3, 4].map((i) => (
-          <span
-            key={i}
-            className="w-1.5 rounded-full bg-brand/70"
-            style={{
-              height: active ? `${10 + ((i % 3) + 1) * 8}px` : "8px",
-              animation: active ? "pulse 1s ease-in-out infinite" : "none",
-              animationDelay: `${i * 0.12}s`,
-            }}
+      <div className="flex flex-col gap-4 px-4 pb-4">
+        {steps.length > 0 && (
+          <div className="rounded-2xl border-2 border-border bg-card p-4">
+            <h3 className="flex items-center justify-between text-lg font-bold">
+              Lo que hice
+              {engine && (
+                <span className="rounded-full bg-muted px-3 py-1 text-base font-semibold">
+                  Motor: {engine === "ollama" ? "Ollama" : "reglas"}
+                </span>
+              )}
+            </h3>
+            <ol className="mt-2 flex flex-col gap-2">
+              {steps.map((step, i) => (
+                <li key={i} className="flex items-start gap-2 text-lg">
+                  <CheckCircle2 className="mt-1 size-5 shrink-0 text-brand" aria-hidden="true" />
+                  <span>
+                    {step.label}
+                    {step.detail && <span className="block text-base text-muted-foreground">{step.detail}</span>}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+
+        <form onSubmit={handleTyped} className="flex gap-2">
+          <label htmlFor="agent-text" className="sr-only">
+            Escribe tu pregunta
+          </label>
+          <input
+            id="agent-text"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            placeholder="O escribe: cómo llego a Ricaurte"
+            className="min-h-14 min-w-0 flex-1 rounded-2xl border-2 border-border bg-card px-4 text-lg placeholder:text-muted-foreground"
           />
-        ))}
-      </span>
-    </button>
+          <button
+            type="submit"
+            aria-label="Enviar pregunta"
+            className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-brand text-brand-foreground"
+          >
+            <Send className="size-6" aria-hidden="true" />
+          </button>
+        </form>
+      </div>
+    </section>
   )
 }

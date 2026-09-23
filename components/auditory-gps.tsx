@@ -1,19 +1,22 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Navigation, MapPin, Volume2, Map, LocateFixed } from "lucide-react"
 import { useSpeech } from "@/hooks/use-speech"
 import { ScreenHeader } from "@/components/screen-header"
+import { TransitMap, type MapMarker } from "@/components/transit-map"
 import {
   bearingDegrees,
   cardinal,
+  distanceMeters,
   relativeDirection,
   spokenDistance,
   type LatLng,
 } from "@/lib/geo"
-import { nearestStations, type StationWithDistance } from "@/lib/routes"
+import { nearestStations, type StationWithDistance, type TransmilenioData } from "@/lib/routes"
 
 type AuditoryGpsProps = {
+  data: TransmilenioData
   onBack: () => void
 }
 
@@ -27,7 +30,7 @@ type DeviceOrientationCtor = {
 
 const ARRIVAL_METERS = 30
 
-export function AuditoryGps({ onBack }: AuditoryGpsProps) {
+export function AuditoryGps({ data, onBack }: AuditoryGpsProps) {
   const { speak } = useSpeech()
   const [active, setActive] = useState(false)
   const [position, setPosition] = useState<LatLng | null>(null)
@@ -38,7 +41,7 @@ export function AuditoryGps({ onBack }: AuditoryGpsProps) {
   const watchIdRef = useRef<number | null>(null)
   const arrivedRef = useRef(false)
 
-  const nearby = position ? nearestStations(position, 4) : []
+  const nearby = useMemo(() => (position ? nearestStations(position, data, 4) : []), [position, data])
 
   const instruction = useCallback(
     (station: StationWithDistance, current: LatLng): string => {
@@ -117,10 +120,10 @@ export function AuditoryGps({ onBack }: AuditoryGpsProps) {
   // Aviso de llegada cuando el destino queda muy cerca.
   useEffect(() => {
     if (!target || !position) return
-    const fresh = nearestStations(position, 20).find((s) => s.id === target.id)
-    if (fresh && fresh.distance <= ARRIVAL_METERS && !arrivedRef.current) {
+    const distance = distanceMeters(position, target)
+    if (distance <= ARRIVAL_METERS && !arrivedRef.current) {
       arrivedRef.current = true
-      speak(`Has llegado a ${target.name}. Estás a ${spokenDistance(fresh.distance)}.`)
+      speak(`Has llegado a ${target.name}. Estás a ${spokenDistance(distance)}.`)
     }
   }, [position, target, speak])
 
@@ -137,9 +140,7 @@ export function AuditoryGps({ onBack }: AuditoryGpsProps) {
   const repeat = useCallback(() => {
     if (!position) return
     if (target) {
-      const fresh =
-        nearestStations(position, 20).find((s) => s.id === target.id) ?? target
-      speak(instruction(fresh, position))
+      speak(instruction({ ...target, distance: distanceMeters(position, target) }, position))
     } else if (nearby.length > 0) {
       speak(instruction(nearby[0], position))
     }
@@ -149,21 +150,31 @@ export function AuditoryGps({ onBack }: AuditoryGpsProps) {
     (station: StationWithDistance) => {
       if (!position) return
       const url = `https://www.google.com/maps/dir/?api=1&origin=${position.lat},${position.lng}&destination=${station.lat},${station.lng}&travelmode=walking`
-      if (window.self !== window.top) {
-        window.open(url, "_blank", "noopener,noreferrer")
-      } else {
-        window.location.href = url
-      }
-      speak(`Abriendo la ruta a pie hacia ${station.name} en Google Maps.`)
+      // Pestaña nueva: TransMiVoz sigue abierta detrás, con el destino elegido.
+      window.open(url, "_blank", "noopener,noreferrer")
+      speak(`Abrí la ruta a pie hacia ${station.name} en Google Maps, en otra pestaña.`)
     },
     [position, speak],
   )
 
+  const mapMarkers = useMemo<MapMarker[]>(() => {
+    if (!position) return []
+    return [
+      { ...position, label: "Tú estás aquí", kind: "user" as const },
+      ...nearby.map((s) => ({
+        lat: s.lat,
+        lng: s.lng,
+        label: s.name,
+        kind: s.id === target?.id ? ("target" as const) : ("station" as const),
+      })),
+    ]
+  }, [position, nearby, target])
+
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4" aria-label="GPS auditivo">
       <ScreenHeader
-        title="GPS auditivo"
-        subtitle="Te guío por voz a estaciones cercanas"
+        title="Mapa y GPS"
+        subtitle="Te guío por voz a la estación más cercana"
         icon={Navigation}
         onBack={onBack}
       />
@@ -201,7 +212,13 @@ export function AuditoryGps({ onBack }: AuditoryGpsProps) {
             Repetir indicación
           </button>
 
-          <h3 className="mb-3 text-base font-bold text-muted-foreground" role="status">
+          <TransitMap
+            markers={mapMarkers}
+            label="Mapa con tu ubicación y las estaciones cercanas"
+            className="mb-5 h-64 shrink-0"
+          />
+
+          <h3 className="mb-3 text-xl font-bold" role="status">
             Estaciones cercanas
           </h3>
           <ul className="flex flex-col gap-3">

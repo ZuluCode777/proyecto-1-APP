@@ -1,4 +1,3 @@
-import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import './globals.css'
@@ -13,7 +12,6 @@ export const metadata: Metadata = {
   title: 'TransMiVoz — Accesibilidad TransMilenio',
   description:
     'Herramienta accesible para que personas con discapacidad visual usen el TransMilenio de Bogotá: buscar rutas, asistencia, hablar y escanear.',
-  generator: 'v0.app',
   icons: {
     icon: [
       {
@@ -53,7 +51,6 @@ export default function RootLayout({
     <html lang="es" className={jakarta.variable}>
       <body className="font-sans antialiased">
         {children}
-        {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
   )

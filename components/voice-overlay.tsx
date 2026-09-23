@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { Mic, X } from "lucide-react"
+import { Modal } from "@/components/modal"
 import { useSpeech, useVoiceRecognition } from "@/hooks/use-speech"
 
 type VoiceOverlayProps = {
@@ -47,7 +48,7 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
     setTranscript("")
     setErrorMessage("")
     if (supported) {
-      speak("Te escucho. Di el nombre de una estación o ruta.")
+      speak("Te escucho. Di el nombre de una estación o un código de ruta.")
       const timer = setTimeout(() => start(), 900)
       return () => clearTimeout(timer)
     }
@@ -61,15 +62,8 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
     onClose()
   }, [stop, cancel, onClose])
 
-  if (!open) return null
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-8 bg-background/95 p-6 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Comando de voz"
-    >
+    <Modal open={open} onClose={close} label="Comando de voz" className="open:flex open:flex-col open:items-center open:justify-center open:gap-8 open:p-6">
       <button
         type="button"
         onClick={close}
@@ -111,6 +105,6 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
       >
         {listening ? "Detener" : "Hablar de nuevo"}
       </button>
-    </div>
+    </Modal>
   )
 }

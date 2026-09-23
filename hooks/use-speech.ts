@@ -29,15 +29,21 @@ declare global {
 
 const LANG = "es-CO"
 
-/** Text-to-speech: reads text aloud for users who cannot see the screen. */
-export function useSpeech() {
-  const supported =
-    typeof window !== "undefined" && "speechSynthesis" in window
+type SpeakOptions = {
+  /**
+   * Espera a que termine lo que se está diciendo en vez de cortarlo. Úsalo
+   * para anuncios que siguen a otro, como el de una pantalla que se abre justo
+   * después de que se anunció el cambio.
+   */
+  queue?: boolean
+}
 
+/** Lee texto en voz alta para quien no puede ver la pantalla. */
+export function useSpeech() {
   const speak = useCallback(
-    (text: string) => {
+    (text: string, { queue = false }: SpeakOptions = {}) => {
       if (typeof window === "undefined" || !("speechSynthesis" in window)) return
-      window.speechSynthesis.cancel()
+      if (!queue) window.speechSynthesis.cancel()
       const utterance = new SpeechSynthesisUtterance(text)
       utterance.lang = LANG
       utterance.rate = 1
@@ -52,7 +58,7 @@ export function useSpeech() {
     window.speechSynthesis.cancel()
   }, [])
 
-  return { speak, cancel, supported }
+  return { speak, cancel }
 }
 
 type VoiceRecognitionOptions = {
@@ -60,7 +66,7 @@ type VoiceRecognitionOptions = {
   onError?: (error: string) => void
 }
 
-/** Voice recognition wrapper around the Web Speech API. */
+/** Reconocimiento de voz con la Web Speech API. */
 export function useVoiceRecognition({ onResult, onError }: VoiceRecognitionOptions) {
   const [listening, setListening] = useState(false)
   const [supported, setSupported] = useState(false)
@@ -102,7 +108,7 @@ export function useVoiceRecognition({ onResult, onError }: VoiceRecognitionOptio
     try {
       recognitionRef.current.start()
     } catch {
-      // start() throws if called while already active; ignore.
+      // start() lanza un error si ya está escuchando; se ignora.
     }
   }, [listening])
 

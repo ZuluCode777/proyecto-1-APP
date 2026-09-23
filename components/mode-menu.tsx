@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useRef } from "react"
 import { X, Eye, EyeOff, Check } from "lucide-react"
+import { Modal } from "@/components/modal"
 import type { Mode } from "@/components/transmivoz-app"
 
 type ModeMenuProps = {
@@ -27,29 +27,10 @@ const options: { value: Mode; title: string; description: string; icon: typeof E
 ]
 
 export function ModeMenu({ open, mode, onClose, onSelect }: ModeMenuProps) {
-  const panelRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose()
-    }
-    window.addEventListener("keydown", onKey)
-    panelRef.current?.focus()
-    return () => window.removeEventListener("keydown", onKey)
-  }, [open, onClose])
-
-  if (!open) return null
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Menú de modo de visualización"
-    >
+    <Modal open={open} onClose={onClose} label="Menú de modo de visualización" className="open:flex open:flex-col">
       <div className="flex items-center justify-between border-b border-border px-4 pb-3 pt-5">
-        <h2 className="text-xl font-bold tracking-tight">Modo de visualización</h2>
+        <h2 className="text-2xl font-bold tracking-tight">Modo de visualización</h2>
         <button
           type="button"
           onClick={onClose}
@@ -60,7 +41,7 @@ export function ModeMenu({ open, mode, onClose, onSelect }: ModeMenuProps) {
         </button>
       </div>
 
-      <div ref={panelRef} tabIndex={-1} className="flex flex-col gap-3 p-4 outline-none">
+      <div className="flex flex-col gap-3 p-4">
         {options.map((option) => {
           const Icon = option.icon
           const active = option.value === mode
@@ -71,7 +52,7 @@ export function ModeMenu({ open, mode, onClose, onSelect }: ModeMenuProps) {
               onClick={() => onSelect(option.value)}
               aria-pressed={active}
               className={[
-                "flex items-start gap-4 rounded-2xl border p-4 text-left shadow-sm transition active:scale-[0.99]",
+                "flex items-start gap-4 rounded-2xl border-2 p-4 text-left",
                 active ? "border-brand bg-brand-soft" : "border-border bg-card",
               ].join(" ")}
             >
@@ -84,11 +65,11 @@ export function ModeMenu({ open, mode, onClose, onSelect }: ModeMenuProps) {
                 <Icon className="size-6" aria-hidden="true" />
               </span>
               <span className="flex-1">
-                <span className="flex items-center gap-2 text-lg font-bold">
+                <span className="flex items-center gap-2 text-2xl font-bold">
                   {option.title}
                   {active && <Check className="size-5 text-brand" aria-hidden="true" />}
                 </span>
-                <span className="mt-1 block text-sm text-muted-foreground">
+                <span className="mt-1 block text-lg">
                   {option.description}
                 </span>
                 {active && <span className="sr-only">Modo activo</span>}
@@ -96,7 +77,10 @@ export function ModeMenu({ open, mode, onClose, onSelect }: ModeMenuProps) {
             </button>
           )
         })}
+        <a href="/diagnostico" className="mt-2 rounded-2xl border-2 border-border p-4 text-center text-xl font-bold">
+          Diagnóstico: comprobar que todo funciona
+        </a>
       </div>
-    </div>
+    </Modal>
   )
 }
