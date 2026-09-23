@@ -1,31 +1,33 @@
-# Demo runbook — Friday 2026-09-25
+# Guion de la presentación — viernes 2026-09-25
 
-How to show TransMiVoz from the laptop, with the app served from the Windows
-machine. Readiness is tracked in the demo readiness issue; general setup lives
-in [SELF-HOSTING.md](SELF-HOSTING.md).
+Cómo mostrar TransMiVoz desde el portátil, con la app servida desde la máquina
+con Windows. La preparación está en el issue #5; la configuración general, en
+[SELF-HOSTING.md](SELF-HOSTING.md).
 
-## The machines
+## Las máquinas
 
-| Role | Tailscale name | Tailscale IP |
+| Papel | Nombre en Tailscale | IP en Tailscale |
 | --- | --- | --- |
-| Server (Windows) | `desktop-oa6r547` | `100.66.19.15` |
-| Client (Fedora laptop) | `fedora` | `100.124.210.13` |
+| Servidor (Windows) | `desktop-oa6r547` | `100.66.19.15` |
+| Cliente (portátil Fedora) | `fedora` | `100.124.210.13` |
 
 Tailnet: `taila37867.ts.net`
 
-**Demo URL:** `https://desktop-oa6r547.taila37867.ts.net`
+**Dirección de la demo:** `https://desktop-oa6r547.taila37867.ts.net`
 
-## Before leaving home
+## Antes de salir de casa
 
-1. HTTPS certificates are enabled on the tailnet (issue #4). Without them there
-   is no HTTPS, and without HTTPS the microphone, camera and GPS are refused.
-2. The Windows machine will not sleep. Settings → System → Power → set sleep to
-   **Never** while plugged in. A sleeping server ends the demo.
-3. The laptop fallback is built and tested (see below).
+1. Certificados HTTPS activados en la tailnet (issue #4). Sin ellos no hay
+   HTTPS, y sin HTTPS se bloquean el micrófono, la cámara y el GPS.
+2. La máquina con Windows no se suspende. Configuración → Sistema →
+   Energía → suspender **Nunca** mientras esté enchufada.
+3. El respaldo en el portátil está compilado y probado (ver abajo).
+4. `pnpm sync:transmilenio` corrido hace poco, para que la copia de los datos
+   esté al día si el servicio de TransMilenio falla ese día.
 
-## On the day
+## El día de la presentación
 
-On the Windows machine, first terminal:
+En la máquina con Windows, primera terminal:
 
 ```powershell
 cd visionaria
@@ -35,47 +37,79 @@ pnpm build
 pnpm exec next start -H 127.0.0.1 -p 3000
 ```
 
-Second terminal:
+Segunda terminal:
 
 ```powershell
 tailscale serve --bg 3000
 tailscale serve status
 ```
 
-On the laptop:
+En el portátil:
 
-1. Check the path: `tailscale ping desktop-oa6r547` should answer `pong`.
-2. Open **Chrome** — not Firefox — at `https://desktop-oa6r547.taila37867.ts.net`.
-3. Grant microphone, camera and location when asked.
+1. Comprueba el camino: `tailscale ping desktop-oa6r547` debe responder `pong`.
+2. Abre **Chrome** (no Firefox) en `https://desktop-oa6r547.taila37867.ts.net/diagnostico`.
+3. Pulsa **Probar todo** y acepta micrófono, cámara y ubicación. Deben salir
+   las nueve pruebas en verde.
+4. Vuelve a la app.
 
-Firefox has no `SpeechRecognition`, so both voice modes would load and do
-nothing.
+Firefox no tiene `SpeechRecognition`, así que los modos de voz no harían nada.
 
-## Quick check before presenting
+## Qué mostrar
 
-- Menu → **Ceguera total** → tap → say "quiero ir a Ricaurte" → it answers aloud with three routes.
-- Menu → **Baja visión** → **Asistente visual** → camera feed appears.
-- **GPS auditivo** → **Activar mi ubicación** → nearest stations listed.
+La pantalla de diagnóstico es la prueba de que todo funciona. Después, en este
+orden:
 
-## If the campus network blocks Tailscale
+1. **Asistente** → escribe o di "cómo llego de Ricaurte a Calle 72". Se ven los
+   pasos que sigue, dice la respuesta y abre el plan de viaje en el mapa.
+2. **Asistente** → "cómo llego de Portal Norte a Portal Usme". No hay ruta
+   directa: propone un transbordo y dibuja los dos buses.
+3. **Asistente** → "¿a qué hora pasa la H54?". Lee el horario real.
+4. **Rutas** → busca "B23" → abre el detalle: recorrido en el mapa, 32
+   estaciones y horarios. Toca **Guardar** y muéstrala en **Rutas frecuentes**.
+5. **Mapa y GPS** → activa la ubicación → estaciones más cercanas en el mapa →
+   **Guíame por voz**.
+6. **Lupa** → cámara con zoom y filtros de contraste.
+7. **Menú** → **Ceguera total** → toca la pantalla y habla.
+8. **Alto contraste** en el inicio del modo baja visión.
 
-On the Windows machine:
+## Frases que funcionan bien
+
+Medidas con los datos reales:
+
+| Frase | Resultado |
+| --- | --- |
+| "cómo llego de Ricaurte a Calle 72" | Directa: A52, 13 estaciones; también A60 y A61 |
+| "cómo llego de Portal Usme a Molinos" | Directa: B72, 2 estaciones |
+| "de Calle 100 a Museo del Oro" | Directa: J70, 15 estaciones |
+| "cómo llego de Portal Norte a Portal Usme" | Transbordo: 8 G hasta Toberín y luego H72 |
+| "información de la B23" | Recorrido: 32 estaciones y horario |
+| "¿a qué hora pasa la H54?" | Horario entre semana, sábados y festivos |
+| "hola" / "¿qué puedes hacer?" | Saludo y ayuda |
+| "¿cuánto cuesta el pasaje?" | Dice que no tiene tarifas |
+
+Una estación sola ("quiero ir a Ricaurte") sin ubicación lista las rutas que
+pasan por ahí y pide el origen. Con la ubicación activada, usa la estación más
+cercana como origen.
+
+## Si la red del campus bloquea Tailscale
+
+En la máquina con Windows:
 
 ```powershell
 tailscale funnel --bg 3000
 ```
 
-That publishes the app on a public HTTPS URL that any browser can open,
-without a Tailscale client. It needs the same HTTPS certificates. There is no
-authentication in front of the app, so turn it off right after:
+Publica la app en una dirección HTTPS pública que cualquier navegador puede
+abrir sin Tailscale. Necesita los mismos certificados. La app no tiene
+autenticación, así que apágalo apenas termine:
 
 ```powershell
 tailscale funnel --https=443 off
 ```
 
-## If nothing reaches the Windows machine
+## Si nada llega a la máquina con Windows
 
-Run the app on the laptop itself. No network involved.
+Corre la app en el portátil. Sin red de por medio, salvo el mapa base.
 
 ```bash
 cd visionaria
@@ -84,31 +118,18 @@ pnpm build
 pnpm start
 ```
 
-Chrome → `http://localhost:3000`. `localhost` is a secure context, so every
-device API works.
+Chrome → `http://localhost:3000`. `localhost` es un contexto seguro, así que
+funcionan todos los permisos. Si no hay internet, la app usa la copia guardada
+de los datos de TransMilenio; el mapa base no carga, pero todo lo demás sí.
 
-This only helps if it was built beforehand. Do it once before Friday, so the
-fallback is a single `pnpm start` on the day.
+Esto solo sirve si ya estaba compilado. Hazlo una vez antes del viernes para
+que el día sea un solo `pnpm start`.
 
-## Expected behaviour worth knowing
+## Bueno saberlo
 
-- **The assistant is rule-based.** Answers come from `lib/local-agent.ts`, not
-  a model. See the README.
-- **Route data is demo data.** Every spoken route answer ends with a notice
-  saying so. That is intentional.
-- **Some station names flood the answer.** `searchRoutes` keeps a route if any
-  word matches, so shared words drag in unrelated routes. Known defect, issue #3.
-  Measured with `interpretCommand`:
-
-  | Say | Routes returned |
-  | --- | --- |
-  | "quiero ir a Héroes" | 1 — B12 |
-  | "quiero ir a Marly" | 1 — B12 |
-  | "quiero ir a Banderas" | 1 — D21 |
-  | "quiero ir a Ricaurte" | 3 — K43, D21, C15, all correct |
-  | "quiero ir a Calle 72" | 5 — "calle" matches Calle 100, Calle 45 and others |
-  | "quiero ir a Portal Norte" | 8 — "portal" matches every route |
-
-  Demo with the first four. Avoid anything containing "Portal" or "Calle".
-- **Latency is about 120 ms** when Tailscale relays through DERP. On the same
-  network it usually connects directly and gets faster.
+- **Latencia de unos 120 ms** cuando Tailscale pasa por un relé DERP. En la
+  misma red suele conectar directo y va más rápido.
+- **Las estaciones de una ruta son las que quedan sobre su recorrido.** Un
+  expreso no para en todas; la pantalla de la ruta lo dice.
+- **No hay tiempos de llegada.** TransMilenio no publica la posición de los
+  buses; la app da horarios.
