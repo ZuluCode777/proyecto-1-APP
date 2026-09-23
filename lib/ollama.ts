@@ -13,6 +13,15 @@ import { findPlaces, findRouteByCode, type TransmilenioData } from "@/lib/routes
 export const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434"
 export const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? ""
 
+/**
+ * Tiempo máximo de espera por el modelo. Ya cargado, qwen2.5:3b responde en
+ * unos 150 ms en una RTX 3080; si tarda más, es que se está cargando, y el
+ * asistente responde con las reglas en vez de dejar a la persona esperando.
+ */
+const TIMEOUT_MS = 8_000
+/** Cuánto tiempo mantiene Ollama el modelo en memoria sin uso. */
+const KEEP_ALIVE = "1h"
+
 const Extraction = z.object({
   intent: z.enum([
     "greeting",
@@ -56,14 +65,33 @@ export function ollamaConfigured(): boolean {
   return OLLAMA_MODEL.length > 0
 }
 
-/** Comprueba que Ollama responde y que el modelo está descargado. */
+/**
+ * Carga el modelo en memoria sin generar nada. La primera carga tarda varios
+ * segundos; hacerla antes evita que la primera pregunta real caiga en las
+ * reglas por tiempo de espera.
+ */
+export function warmUpOllama(): Promise<void> {
+  return fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: OLLAMA_MODEL, messages: [], keep_alive: KEEP_ALIVE }),
+    signal: AbortSignal.timeout(60_000),
+  }).then(
+    () => undefined,
+    () => undefined,
+  )
+}
+
+/** Comprueba que Ollama responde y que el modelo está descargado, y lo precarga. */
 export async function ollamaStatus(): Promise<{ reachable: boolean; hasModel: boolean }> {
   try {
     const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, { signal: AbortSignal.timeout(3_000) })
     if (!response.ok) return { reachable: false, hasModel: false }
     const body = (await response.json()) as { models?: { name: string }[] }
     const names = (body.models ?? []).map((m) => m.name)
-    return { reachable: true, hasModel: names.some((n) => n === OLLAMA_MODEL || n.startsWith(`${OLLAMA_MODEL}:`)) }
+    const hasModel = names.some((n) => n === OLLAMA_MODEL || n.startsWith(`${OLLAMA_MODEL}:`))
+    if (hasModel) void warmUpOllama()
+    return { reachable: true, hasModel }
   } catch {
     return { reachable: false, hasModel: false }
   }
@@ -83,12 +111,13 @@ export async function parseIntentWithOllama(text: string, data: TransmilenioData
       stream: false,
       format: z.toJSONSchema(Extraction),
       options: { temperature: 0 },
+      keep_alive: KEEP_ALIVE,
       messages: [
         { role: "system", content: system(data) },
         { role: "user", content: text },
       ],
     }),
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   })
   if (!response.ok) throw new Error(`Ollama: HTTP ${response.status}`)
 
