@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { createRateLimiter } from "./rate-limit.ts"
+import { createRateLimiter } from "./rate-limit"
 
 test("allows requests up to the limit and blocks the next one", () => {
   const rateLimit = createRateLimiter({ limit: 3, windowMs: 60_000, now: () => 0 })

@@ -1,14 +1,13 @@
-import { generateObject } from "ai"
-import { z } from "zod"
-import { DEMO_DATA_NOTICE, routes, stations } from "@/lib/routes"
-import { interpretCommand } from "@/lib/local-agent"
+import { interpretCommand, parseIntent, runIntent, type AgentContext } from "@/lib/local-agent"
+import { OLLAMA_MODEL, ollamaConfigured, ollamaStatus, parseIntentWithOllama } from "@/lib/ollama"
 import { createRateLimiter } from "@/lib/rate-limit"
+import { getTransmilenioData } from "@/lib/transmilenio-data"
 
 export const maxDuration = 30
 
 /** Tamaño máximo del cuerpo de la petición, en caracteres. */
 const MAX_BODY_CHARS = 2_000
-/** Longitud máxima del mensaje que se envía al modelo. */
+/** Longitud máxima de la frase que se interpreta. */
 const MAX_MESSAGE_CHARS = 300
 /** Peticiones por IP y por minuto. */
 const RATE_LIMIT = 20
@@ -20,111 +19,69 @@ const rateLimit = createRateLimiter({ limit: RATE_LIMIT, windowMs: RATE_WINDOW_M
  * Identifica a quien llama para el límite de peticiones.
  *
  * ponytail: confía en `x-forwarded-for`, que solo es fiable detrás de un proxy
- * que lo reescriba (Vercel lo hace). Si algún día se expone el servidor
- * directamente a internet, poner un proxy inverso delante o leer la IP del
- * socket, porque esta cabecera se puede falsificar.
+ * que lo reescriba (Tailscale serve lo hace). Si algún día se expone el
+ * servidor directamente a internet, leer la IP del socket, porque esta
+ * cabecera se puede falsificar.
  */
 function clientKey(req: Request): string {
   const forwarded = req.headers.get("x-forwarded-for")
   if (forwarded) return forwarded.split(",")[0].trim()
-  return req.headers.get("x-real-ip") ?? "anon"
+  return req.headers.get("x-real-ip") ?? "local"
 }
 
-/** Añade el aviso de datos de demostración cuando la respuesta habla de rutas. */
-function withDemoNotice(reply: string, action: string): string {
-  if (action !== "search" && action !== "frequent") return reply
-  if (reply.includes("demostración")) return reply
-  return `${reply} ${DEMO_DATA_NOTICE}`
+/** Acepta una ubicación solo si son coordenadas válidas. */
+function parsePosition(value: unknown): AgentContext["position"] {
+  if (!value || typeof value !== "object") return undefined
+  const { lat, lng } = value as { lat?: unknown; lng?: unknown }
+  if (typeof lat !== "number" || typeof lng !== "number") return undefined
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return undefined
+  return { lat, lng }
 }
 
-const schema = z.object({
-  reply: z
-    .string()
-    .describe(
-      "Respuesta hablada, breve y clara, en español de Colombia. Se lee en voz alta a una persona ciega.",
-    ),
-  action: z
-    .enum(["search", "frequent", "gps", "none"])
-    .describe("La acción que la app debe ejecutar."),
-  query: z
-    .string()
-    .describe('Estación o ruta a buscar cuando action es "search". En otros casos, cadena vacía.'),
-})
+const answer = (reply: string, status = 200, headers?: HeadersInit) =>
+  Response.json({ reply, action: "none", query: "", steps: [], engine: "reglas" }, { status, headers })
 
-const catalog = routes
-  .map((r) => `${r.code}: ${r.from} hacia ${r.to}. Paradas: ${r.stops.join(", ")}.`)
-  .join("\n")
-
-const stationNames = stations.map((s) => s.name).join(", ")
-
-const system = `Eres el asistente de voz de TransMiVoz, una app del sistema TransMilenio de Bogotá pensada para personas ciegas.
-Respondes SIEMPRE en español de Colombia, con frases cortas, cálidas y fáciles de escuchar, porque tu respuesta se lee en voz alta.
-
-Rutas disponibles:
-${catalog}
-
-Estaciones conocidas: ${stationNames}.
-
-Cómo decidir la acción:
-- Si la persona quiere ir a una estación o busca rutas (por ejemplo "quiero ir a Portal Norte", "rutas hacia la Calle 72"), usa action="search", pon en "query" el nombre de la estación mencionada y en "reply" resume en voz las rutas del catálogo que sirven, con su código.
-- Si pide "mis rutas frecuentes" o "las rutas de siempre", usa action="frequent".
-- Si quiere caminar, saber dónde está, la estación más cercana o menciona GPS o ubicación, usa action="gps" y en "reply" dile que vas a abrir el GPS auditivo.
-- Si es un saludo, un agradecimiento o una pregunta general, usa action="none" y responde con amabilidad, recordándole que puede pedirte rutas o el GPS.
-
-Reglas: nunca inventes rutas o estaciones que no estén en las listas. Los datos de rutas son de demostración, no oficiales: no los presentes como información confirmada de TransMilenio. Si no encuentras una ruta para lo que pide, dilo con claridad y sugiere una estación conocida.`
+/** Qué motor interpreta las frases, para la pantalla de diagnóstico. */
+export async function GET() {
+  if (!ollamaConfigured()) return Response.json({ engine: "reglas" })
+  const status = await ollamaStatus()
+  return Response.json({ engine: "ollama", model: OLLAMA_MODEL, ...status })
+}
 
 export async function POST(req: Request) {
   const { allowed, retryAfterSeconds } = rateLimit(clientKey(req))
   if (!allowed) {
-    return Response.json(
-      {
-        reply: "Estás haciendo muchas peticiones seguidas. Espera un momento e inténtalo otra vez.",
-        action: "none",
-        query: "",
-      },
-      { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
-    )
+    return answer("Estás haciendo muchas peticiones seguidas. Espera un momento e inténtalo otra vez.", 429, {
+      "Retry-After": String(retryAfterSeconds),
+    })
   }
 
   let message = ""
+  let position: AgentContext["position"]
   try {
     const raw = await req.text()
-    if (raw.length > MAX_BODY_CHARS) {
-      return Response.json(
-        {
-          reply: "Ese mensaje es demasiado largo. Dilo en una frase corta.",
-          action: "none",
-          query: "",
-        },
-        { status: 413 },
-      )
-    }
-    const body = JSON.parse(raw) as { message?: unknown }
+    if (raw.length > MAX_BODY_CHARS) return answer("Ese mensaje es demasiado largo. Dilo en una frase corta.", 413)
+    const body = JSON.parse(raw) as { message?: unknown; position?: unknown }
     if (typeof body.message === "string") message = body.message.slice(0, MAX_MESSAGE_CHARS)
+    position = parsePosition(body.position)
   } catch {
     // Cuerpo inválido: se maneja como mensaje vacío más abajo.
   }
 
-  if (!message.trim()) {
-    return Response.json({
-      reply: "No te escuché bien. Toca la pantalla e inténtalo de nuevo.",
-      action: "none",
-      query: "",
-    })
+  if (!message.trim()) return answer("No te escuché bien. Toca la pantalla e inténtalo de nuevo.")
+
+  const data = await getTransmilenioData()
+  const context = { position }
+
+  if (ollamaConfigured()) {
+    try {
+      const intent = await parseIntentWithOllama(message, data)
+      if (intent) return Response.json(runIntent(intent, data, context, "ollama"))
+    } catch (error) {
+      console.warn("[agente] Ollama no respondió, uso las reglas:", error)
+    }
+    return Response.json(runIntent(parseIntent(message, data), data, context, "reglas"))
   }
 
-  try {
-    const { object } = await generateObject({
-      model: "google/gemini-3.5-flash",
-      schema,
-      system,
-      prompt: message,
-    })
-    return Response.json({ ...object, reply: withDemoNotice(object.reply, object.action) })
-  } catch (error) {
-    console.log("[v0] agent route error, using local interpreter:", error)
-    // Respaldo sin nube: interpreta el comando con reglas locales para que el
-    // modo asistente siga funcionando aunque el modelo no esté disponible.
-    return Response.json(interpretCommand(message), { status: 200 })
-  }
+  return Response.json(interpretCommand(message, data, context))
 }
