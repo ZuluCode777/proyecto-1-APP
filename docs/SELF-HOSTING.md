@@ -45,24 +45,33 @@ pnpm verificar
 
 ## Conectar Ollama
 
-Con Ollama en la misma máquina, el asistente puede usar un modelo local para
-entender frases que las reglas no cubren.
+Con Ollama en la misma máquina, el asistente usa un modelo local para entender
+frases libres, como "necesito llegar a la Universidad Nacional saliendo desde
+Ricaurte" o "¿hasta qué hora funciona la B23?".
+
+Probado en la máquina con Windows (RTX 3080) el 2026-09-23 con `qwen2.5:3b`:
+responde en unos 200 ms por pregunta y maneja bien el español y el formato
+JSON que pide la app.
 
 ```powershell
-ollama pull llama3.2
+ollama pull qwen2.5:3b
 copy .env.example .env.local
 ```
 
-Edita `.env.local` y pon `OLLAMA_MODEL=llama3.2`. Después vuelve a compilar y
-arrancar:
+Edita `.env.local` y pon `OLLAMA_MODEL=qwen2.5:3b`. Después vuelve a compilar
+y arrancar:
 
 ```powershell
 pnpm build
 pnpm start
 ```
 
-`/diagnostico` muestra qué motor está usando el asistente y si Ollama responde.
-Si Ollama se cae, el asistente sigue funcionando con las reglas.
+`/diagnostico` muestra "Motor: Ollama (qwen2.5:3b)" cuando está activo.
+
+Cargar el modelo en la GPU tarda unos segundos. El servidor lo precarga al
+arrancar y al abrir `/diagnostico`, y Ollama lo mantiene una hora en memoria.
+Si aun así el modelo tarda más de 8 s, o se cae, el asistente responde con
+las reglas; la persona nunca se queda esperando.
 
 Ollama escucha por defecto solo en `127.0.0.1:11434`. Como la app corre en la
 misma máquina, no hace falta abrir ese puerto a la red.
