@@ -4,6 +4,11 @@
 > El alcance está en el issue fijado #6. Para comprobar que todo funciona,
 > abre `/diagnostico` o corre `pnpm verificar`.
 
+**App en línea:** <https://desktop-oa6r547.taila37867.ts.net>
+([diagnóstico](https://desktop-oa6r547.taila37867.ts.net/diagnostico)).
+Se sirve desde la máquina con Windows por Tailscale, así que solo se abre desde
+un equipo conectado a la misma tailnet. Usa Chrome: Firefox no reconoce la voz.
+
 Cliente accesible de TransMilenio, Bogotá, pensado para personas con
 discapacidad visual. Usa los datos abiertos reales de TransMilenio, un mapa con
 OpenStreetMap y un asistente que entiende preguntas en español y muestra los
