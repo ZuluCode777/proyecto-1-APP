@@ -21,12 +21,12 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 const BASE = (process.argv[2] ?? "http://localhost:3000").replace(/\/$/, "")
-const ORIGIN = new URL(BASE).origin
+const ORIGEN = new URL(BASE).origin
 const PORT = 9333
 /** Espera máxima a que Chrome abra el puerto de depuración y liste la pestaña. */
 const CHROME_WAIT_MS = 30_000
 const RICAURTE = { latitude: 4.6124, longitude: -74.0935, accuracy: 20 }
-const PASSWORD = process.env.APP_PASSWORD
+const CLAVE = process.env.APP_PASSWORD
 
 const CANDIDATES = [
   process.env.CHROME_PATH,
@@ -87,8 +87,8 @@ async function main() {
   const waiting = new Map()
   // Peticiones a las que ya se dio la clave. Si la app la vuelve a pedir, la
   // clave es incorrecta: se cancela en vez de repetirla sin fin.
-  const answered = new Set()
-  let passwordRejected = false
+  const respondidas = new Set()
+  let claveRechazada = false
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data)
     if (msg.id && waiting.has(msg.id)) {
@@ -97,17 +97,17 @@ async function main() {
     }
     // Con Fetch activo, Chrome detiene cada petición al origen hasta que se
     // continúa, y pregunta qué hacer cuando la app pide la clave.
-    const requestId = msg.params?.requestId
-    if (msg.method === "Fetch.requestPaused") send("Fetch.continueRequest", { requestId }).catch(() => undefined)
+    const idSolicitud = msg.params?.requestId
+    if (msg.method === "Fetch.requestPaused") send("Fetch.continueRequest", { requestId: idSolicitud }).catch(() => undefined)
     if (msg.method === "Fetch.authRequired") {
-      const retry = answered.has(requestId)
-      answered.add(requestId)
-      if (retry) passwordRejected = true
+      const reintento = respondidas.has(idSolicitud)
+      respondidas.add(idSolicitud)
+      if (reintento) claveRechazada = true
       send("Fetch.continueWithAuth", {
-        requestId,
-        authChallengeResponse: retry
+        requestId: idSolicitud,
+        authChallengeResponse: reintento
           ? { response: "CancelAuth" }
-          : { response: "ProvideCredentials", username: "verificar", password: PASSWORD },
+          : { response: "ProvideCredentials", username: "verificar", password: CLAVE },
       }).catch(() => undefined)
     }
   }
@@ -120,11 +120,11 @@ async function main() {
   const evaluate = async (expression) =>
     (await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true })).result.value
 
-  if (PASSWORD) {
-    await send("Fetch.enable", { handleAuthRequests: true, patterns: [{ urlPattern: `${ORIGIN}/*` }] })
+  if (CLAVE) {
+    await send("Fetch.enable", { handleAuthRequests: true, patterns: [{ urlPattern: `${ORIGEN}/*` }] })
   }
   await send("Browser.grantPermissions", {
-    origin: ORIGIN,
+    origin: ORIGEN,
     permissions: ["geolocation", "audioCapture", "videoCapture"],
   }).catch(() => undefined)
   await send("Emulation.setGeolocationOverride", RICAURTE)
@@ -132,10 +132,10 @@ async function main() {
   await send("Page.navigate", { url: `${BASE}/diagnostico` })
 
   for (let i = 0; i < 50; i++) {
-    if (passwordRejected || (await evaluate(`!!document.querySelector("[data-ready]")`))) break
+    if (claveRechazada || (await evaluate(`!!document.querySelector("[data-ready]")`))) break
     await sleep(200)
   }
-  if (passwordRejected) throw new Error("La app rechazó la clave de APP_PASSWORD.")
+  if (claveRechazada) throw new Error("La app rechazó la clave de APP_PASSWORD.")
   await evaluate(`[...document.querySelectorAll("button")].find(b => b.innerText.trim() === "Probar todo").click()`)
 
   // Espera a que ninguna prueba siga pendiente.
