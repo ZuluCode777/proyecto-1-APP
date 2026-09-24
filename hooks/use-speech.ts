@@ -100,6 +100,8 @@ export function useVoiceRecognition({ onResult, onError }: VoiceRecognitionOptio
       recognition.onstart = null
       recognition.abort()
       recognitionRef.current = null
+      // onend ya no llega: sin esto, "escuchando" quedaría encendido para siempre.
+      setListening(false)
     }
   }, [onResult, onError])
 

@@ -25,12 +25,11 @@ export function TripView({ legs, data, onOpenRoute, onBack }: TripViewProps) {
       legs.flatMap((leg, i) => {
         const route = data.routes.find((r) => r.code === leg.routeCode)
         if (!route) return []
-        const board = station(leg.board)
-        const alight = station(leg.alight)
+        const board = data.stations.find((s) => s.name === leg.board)
+        const alight = data.stations.find((s) => s.name === leg.alight)
         const path = board && alight ? pathBetween(route.path, board, alight) : route.path
         return [{ path, secondary: i > 0 }]
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [legs, data],
   )
 

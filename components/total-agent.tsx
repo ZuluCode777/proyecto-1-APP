@@ -18,6 +18,7 @@ type Status = "idle" | "listening" | "thinking" | "error"
 const STEP_DELAY_MS = 450
 /** Tiempo que se queda la respuesta en pantalla antes de abrir el resultado. */
 const NAVIGATE_DELAY_MS = 2500
+/** Texto en reposo, a la espera de un toque. */
 const IDLE_CAPTION = "Toca la pantalla y dime a dónde quieres ir"
 
 /**
@@ -35,6 +36,8 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
   /** Verdadero mientras el asistente piensa una respuesta. */
   const busyRef = useRef(false)
   const startTimerRef = useRef<number | undefined>(undefined)
+  /** Número de la última pregunta: una respuesta vieja no navega si ya hay otra. */
+  const lastAskRef = useRef(0)
   const positionRef = useRef<LatLng | undefined>(undefined)
 
   /** Pide la ubicación sin bloquear: si llega, el asistente la usa como origen. */
@@ -51,6 +54,7 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
 
   const askAgent = useCallback(
     async (message: string) => {
+      const ask = ++lastAskRef.current
       busyRef.current = true
       setStatus("thinking")
       setCaption("Pensando…")
@@ -85,9 +89,10 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
       busyRef.current = false
       setStatus("idle")
       if (reply.action === "none") return
-      // Deja ver los pasos y la respuesta antes de cambiar de pantalla.
+      // Deja ver los pasos y la respuesta antes de cambiar de pantalla. Si en
+      // esa pausa llega otra pregunta, esta respuesta ya no navega.
       if (reply.steps.length > 0) await new Promise((r) => setTimeout(r, NAVIGATE_DELAY_MS))
-      onAction(reply)
+      if (ask === lastAskRef.current) onAction(reply)
     },
     [data, onAction, speak],
   )
@@ -118,15 +123,9 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
     [speak],
   )
 
-  const { listening, supported, start, stop, abort } = useVoiceRecognition({ onResult: handleResult, onError: handleError })
-
-  useEffect(() => {
-    speak("Asistente de voz. Toca la pantalla y dime a dónde quieres ir.", { queue: true })
-    return () => {
-      window.clearTimeout(startTimerRef.current)
-      stop()
-    }
-  }, [speak, stop])
+  const { listening, supported, start, abort } = useVoiceRecognition({ onResult: handleResult, onError: handleError })
+  const active = status === "listening" || listening
+  const thinking = status === "thinking"
 
   /**
    * Deja de escuchar, incluso si el micrófono aún no había arrancado, y
@@ -137,22 +136,32 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
     abort()
   }, [abort])
 
+  const backToIdle = useCallback(() => {
+    setStatus("idle")
+    setCaption(IDLE_CAPTION)
+  }, [])
+
+  useEffect(() => {
+    speak("Asistente de voz. Toca la pantalla y dime a dónde quieres ir.", { queue: true })
+    return () => {
+      stopListening()
+      // Si la persona sale en la pausa antes de navegar, la respuesta ya no abre su pantalla.
+      lastAskRef.current++
+    }
+  }, [speak, stopListening])
+
   // Si el micrófono se apaga sin oír nada, vuelve a esperar un toque.
   const wasListeningRef = useRef(false)
   useEffect(() => {
-    if (wasListeningRef.current && !listening && status === "listening") {
-      setStatus("idle")
-      setCaption(IDLE_CAPTION)
-    }
+    if (wasListeningRef.current && !listening && status === "listening") backToIdle()
     wasListeningRef.current = listening
-  }, [listening, status])
+  }, [listening, status, backToIdle])
 
   const handleTap = useCallback(() => {
     if (busyRef.current) return
-    if (status === "listening" || listening) {
+    if (active) {
       stopListening()
-      setStatus("idle")
-      setCaption(IDLE_CAPTION)
+      backToIdle()
       return
     }
     locate()
@@ -163,12 +172,14 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
       speak(message)
       return
     }
+    // Una pregunta nueva: la respuesta anterior ya no abre su pantalla.
+    lastAskRef.current++
     setStatus("listening")
     setCaption("Escuchando…")
     navigator.vibrate?.(40)
     speak("Te escucho.")
     startTimerRef.current = window.setTimeout(() => start(), 650)
-  }, [listening, status, supported, start, stopListening, speak, locate])
+  }, [active, supported, start, stopListening, backToIdle, speak, locate])
 
   const handleTyped = (event: FormEvent) => {
     event.preventDefault()
@@ -181,9 +192,6 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
     setCaption(`“${text}”`)
     void askAgent(text)
   }
-
-  const active = status === "listening" || listening
-  const thinking = status === "thinking"
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-y-auto" aria-label="Asistente de voz">
