@@ -182,10 +182,30 @@ caen, y el instalador se puede volver a correr: reemplaza las tareas y las
 reinicia. Necesita que la app ya esté compilada.
 
 Ollama carga cada modelo en un proceso aparte, como `llama-server.exe`, que
-ocupa la memoria de la GPU. El instalador y la tarea **TransMiVoz Ollama** los
-detienen junto con el Ollama propio; los avisos de la tarea quedan en
-`.ollama-transmivoz.log`. Si alguien termina la tarea a mano, esa limpieza ya
-no ocurre.
+ocupa la memoria de la GPU. Detener la tarea **TransMiVoz Ollama**, desde el
+instalador o a mano en el Programador de tareas, detiene también al Ollama
+propio y a esos procesos. Para apagar el modelo sin quitar la tarea:
+
+```powershell
+Stop-ScheduledTask -TaskName "TransMiVoz Ollama"
+```
+
+La tarea vuelve a arrancar a Ollama al iniciar sesión, o con
+`Start-ScheduledTask -TaskName "TransMiVoz Ollama"`. Los avisos de la tarea
+quedan en `.ollama-transmivoz.log`.
+
+Si `.ollama-transmivoz.log` dice que Ollama no entró en el objeto de trabajo,
+detener la tarea no lo detiene. Antes de volver a arrancar la tarea, que
+reemplazaría el archivo del PID, detén a Ollama y a los procesos que cargan
+sus modelos con el PID y la hora de inicio guardados. Si ese PID ya es de
+otro proceso, o si Ollama ya terminó, no se detiene nada:
+
+```powershell
+cd D:\visionaria
+. .\scripts\detener-ollama.ps1
+$guardado = @(Get-Content .ollama-transmivoz.pid)
+Stop-OllamaConHijos ([int]$guardado[0]) ([datetime]::new([long]$guardado[1]))
+```
 
 `tailscale serve --bg` ya persiste entre reinicios, no necesita su propia
 tarea.

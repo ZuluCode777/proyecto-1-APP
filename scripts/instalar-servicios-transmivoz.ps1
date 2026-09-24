@@ -60,13 +60,25 @@ function Test-PuertoOcupado($url) {
   }
 }
 
+# Devuelve un texto con el PID y el nombre de cada proceso que escucha en un
+# puerto local, para el mensaje de error.
+function Format-OcupantesPuerto($puerto) {
+  $ids = @(Get-NetTCPConnection -LocalPort $puerto -State Listen -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty OwningProcess -Unique)
+  if (-not $ids) { return 'un proceso que no se pudo identificar' }
+  ($ids | ForEach-Object {
+    $nombre = (Get-Process -Id $_ -ErrorAction SilentlyContinue).ProcessName
+    "PID $_ ($(if ($nombre) { $nombre } else { 'ya terminó' }))"
+  }) -join ', '
+}
+
 . (Join-Path $PSScriptRoot 'detener-ollama.ps1')
 
 # Detiene el Ollama que arrancó esta misma tarea antes, y sus hijos, por su PID
 # y su hora de inicio. No toca el Ollama de uso personal ni ningún otro proceso
-# llamado ollama. Hace falta porque detener la tarea solo detiene el script que
-# arrancó a Ollama. Si ese Ollama ya terminó mientras la tarea corría, la tarea
-# ya detuvo a sus hijos.
+# llamado ollama. Detener la tarea ya detiene a Ollama y sus hijos (ver
+# scripts/ollama-transmivoz.ps1); esto cubre un Ollama que no quedó dentro del
+# objeto de trabajo, como uno arrancado por una versión anterior del script.
 #
 # Un archivo sin hora de inicio (de una versión anterior) o ilegible no detiene
 # nada, porque no se sabe si el PID sigue siendo de ese Ollama.
@@ -88,7 +100,7 @@ Stop-TransMiVozOllama
 # Si algo sigue escuchando en el 11435, el Ollama nuevo no podría usar el
 # puerto y la espera de abajo daría por bueno a ese otro proceso.
 if (Test-PuertoOcupado 'http://127.0.0.1:11435/api/version') {
-  'Algo sigue escuchando en 127.0.0.1:11435 después de detener el Ollama de TransMiVoz. Detén ese proceso por su PID y vuelve a correr el instalador.'
+  "Algo sigue escuchando en 127.0.0.1:11435 después de detener el Ollama de TransMiVoz: $(Format-OcupantesPuerto 11435). Detén ese proceso por su PID y vuelve a correr el instalador."
   exit 1
 }
 Register-TransMiVozTask 'TransMiVoz Ollama' 'Ollama de TransMiVoz en 127.0.0.1:11435' `
