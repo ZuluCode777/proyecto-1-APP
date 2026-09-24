@@ -9,7 +9,8 @@ const sha256 = (text: string) => createHash("sha256").update(text).digest()
  */
 export function isAuthorized(authorization: string | null, password: string | undefined): boolean {
   if (!password) return true
-  if (!authorization?.startsWith("Basic ")) return false
+  // El esquema no distingue mayúsculas (RFC 7617).
+  if (!authorization || !/^basic /i.test(authorization)) return false
   const credentials = Buffer.from(authorization.slice("Basic ".length), "base64").toString("utf8")
   const colon = credentials.indexOf(":")
   if (colon === -1) return false

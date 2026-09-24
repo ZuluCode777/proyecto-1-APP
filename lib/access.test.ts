@@ -19,6 +19,10 @@ test("con clave, solo pasa la clave correcta", () => {
   assert.equal(isAuthorized("Bearer secreta", "secreta"), false)
 })
 
+test("el esquema no distingue mayúsculas", () => {
+  assert.equal(isAuthorized(basic("equipo:secreta").replace("Basic", "basic"), "secreta"), true)
+})
+
 test("la clave puede tener dos puntos y tildes", () => {
   assert.equal(isAuthorized(basic("equipo:a:b:ñ"), "a:b:ñ"), true)
 })

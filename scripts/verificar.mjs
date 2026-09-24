@@ -21,6 +21,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 const BASE = (process.argv[2] ?? "http://localhost:3000").replace(/\/$/, "")
+const ORIGIN = new URL(BASE).origin
 const PORT = 9333
 /** Espera máxima a que Chrome abra el puerto de depuración y liste la pestaña. */
 const CHROME_WAIT_MS = 30_000
@@ -84,6 +85,10 @@ async function main() {
   })
   let nextId = 1
   const waiting = new Map()
+  // Peticiones a las que ya se dio la clave. Si la app la vuelve a pedir, la
+  // clave es incorrecta: se cancela en vez de repetirla sin fin.
+  const answered = new Set()
+  let passwordRejected = false
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data)
     if (msg.id && waiting.has(msg.id)) {
@@ -95,9 +100,14 @@ async function main() {
     const requestId = msg.params?.requestId
     if (msg.method === "Fetch.requestPaused") send("Fetch.continueRequest", { requestId }).catch(() => undefined)
     if (msg.method === "Fetch.authRequired") {
+      const retry = answered.has(requestId)
+      answered.add(requestId)
+      if (retry) passwordRejected = true
       send("Fetch.continueWithAuth", {
         requestId,
-        authChallengeResponse: { response: "ProvideCredentials", username: "verificar", password: PASSWORD },
+        authChallengeResponse: retry
+          ? { response: "CancelAuth" }
+          : { response: "ProvideCredentials", username: "verificar", password: PASSWORD },
       }).catch(() => undefined)
     }
   }
@@ -111,10 +121,10 @@ async function main() {
     (await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true })).result.value
 
   if (PASSWORD) {
-    await send("Fetch.enable", { handleAuthRequests: true, patterns: [{ urlPattern: `${new URL(BASE).origin}/*` }] })
+    await send("Fetch.enable", { handleAuthRequests: true, patterns: [{ urlPattern: `${ORIGIN}/*` }] })
   }
   await send("Browser.grantPermissions", {
-    origin: new URL(BASE).origin,
+    origin: ORIGIN,
     permissions: ["geolocation", "audioCapture", "videoCapture"],
   }).catch(() => undefined)
   await send("Emulation.setGeolocationOverride", RICAURTE)
@@ -122,9 +132,10 @@ async function main() {
   await send("Page.navigate", { url: `${BASE}/diagnostico` })
 
   for (let i = 0; i < 50; i++) {
-    if (await evaluate(`!!document.querySelector("[data-ready]")`)) break
+    if (passwordRejected || (await evaluate(`!!document.querySelector("[data-ready]")`))) break
     await sleep(200)
   }
+  if (passwordRejected) throw new Error("La app rechazó la clave de APP_PASSWORD.")
   await evaluate(`[...document.querySelectorAll("button")].find(b => b.innerText.trim() === "Probar todo").click()`)
 
   // Espera a que ninguna prueba siga pendiente.

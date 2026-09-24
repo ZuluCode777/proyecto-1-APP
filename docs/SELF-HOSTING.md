@@ -141,13 +141,23 @@ tailscale funnel status
 
 La dirección es la misma, `https://<máquina>.<tailnet>.ts.net`, ahora abierta a
 internet. Funnel tiene que estar permitido en la política de la tailnet
-(atributo `funnel`); si no, el comando da el enlace para activarlo. Para
-comprobar desde fuera:
+(atributo `funnel`); si no, el comando da el enlace para activarlo. Si la app
+arranca sin clave, lo advierte en su salida.
 
-```powershell
-$env:APP_PASSWORD = "la-clave"
-pnpm verificar https://<máquina>.<tailnet>.ts.net
-```
+La comprobación tiene que hacerse **desde fuera de la tailnet**, por ejemplo
+desde un celular con datos móviles o un equipo sin Tailscale. Desde un equipo
+de la tailnet, el nombre `ts.net` lleva a la dirección interna y la petición
+no pasa por Funnel.
+
+- Sin clave, la app responde 401 y el navegador pide usuario y clave:
+  `curl -I https://<máquina>.<tailnet>.ts.net`
+- Con clave, pasan las nueve pruebas. La clave se escribe sin mostrarla, para
+  que no quede en el historial de la consola:
+
+  ```bash
+  read -rs APP_PASSWORD && export APP_PASSWORD
+  pnpm verificar https://<máquina>.<tailnet>.ts.net
+  ```
 
 Para volver a dejarla solo en la tailnet: `tailscale funnel --https=443 off` y
 de nuevo `tailscale serve --bg 3000`.
