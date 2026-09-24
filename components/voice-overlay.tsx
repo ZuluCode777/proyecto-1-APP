@@ -68,7 +68,7 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
         type="button"
         onClick={close}
         aria-label="Cerrar micrófono"
-        className="absolute right-4 top-5 flex size-12 items-center justify-center rounded-2xl border border-border bg-card shadow-sm transition active:scale-95"
+        className="absolute right-4 top-5 flex size-12 items-center justify-center rounded-2xl border-3 border-border bg-card shadow-sm transition active:scale-95"
       >
         <X className="size-6" aria-hidden="true" />
       </button>
@@ -77,7 +77,7 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
         className={[
           "flex size-40 items-center justify-center rounded-full transition-colors",
           listening
-            ? "animate-pulse border-[3px] border-border bg-brand text-brand-foreground"
+            ? "animate-pulse border-3 border-border bg-brand text-brand-foreground"
             : "bg-brand-soft text-brand-ink",
         ].join(" ")}
       >
@@ -101,7 +101,7 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
         type="button"
         onClick={() => (listening ? stop() : start())}
         disabled={!supported}
-        className="rounded-2xl border border-border bg-card px-8 py-4 text-lg font-bold shadow-sm transition active:scale-[0.98] disabled:opacity-50"
+        className="rounded-2xl border-3 border-border bg-card px-8 py-4 text-lg font-bold shadow-sm transition active:scale-[0.98] disabled:opacity-50"
       >
         {listening ? "Detener" : "Hablar de nuevo"}
       </button>

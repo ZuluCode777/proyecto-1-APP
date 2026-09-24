@@ -192,11 +192,11 @@ export function Diagnostics() {
         <button
           type="button"
           onClick={runAll}
-          className="min-h-14 rounded-2xl border-[3px] border-border bg-brand px-6 text-xl font-bold text-brand-foreground"
+          className="min-h-14 rounded-2xl border-3 border-border bg-brand px-6 text-xl font-bold text-brand-foreground"
         >
           Probar todo
         </button>
-        <a href="/" className="min-h-14 rounded-2xl border-2 border-border px-6 py-3 text-xl font-bold">
+        <a href="/" className="min-h-14 rounded-2xl border-3 border-border px-6 py-3 text-xl font-bold">
           Volver a la app
         </a>
         <span className="text-xl font-bold" role="status" aria-live="polite">
@@ -214,7 +214,7 @@ export function Diagnostics() {
             <li
               key={check.id}
               data-state={result.state}
-              className={`flex items-start gap-3 rounded-2xl border-2 bg-card p-4 ${result.state === "fail" ? "border-fail" : "border-border"}`}
+              className={`flex items-start gap-3 rounded-2xl border-3 bg-card p-4 ${result.state === "fail" ? "border-fail" : "border-border"}`}
             >
               <Icon className={`mt-1 size-7 shrink-0 ${iconColor} ${result.state === "running" ? "animate-spin" : ""}`} aria-hidden="true" />
               <div className="min-w-0 flex-1">
@@ -230,7 +230,7 @@ export function Diagnostics() {
               <button
                 type="button"
                 onClick={() => run(check)}
-                className="min-h-12 shrink-0 rounded-xl border-2 border-border px-4 text-lg font-bold"
+                className="min-h-12 shrink-0 rounded-xl border-3 border-border px-4 text-lg font-bold"
               >
                 Probar
               </button>

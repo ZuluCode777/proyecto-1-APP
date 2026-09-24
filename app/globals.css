@@ -62,10 +62,11 @@
 :root {
   color-scheme: light;
   /*
-   * Esquema "3 · Cabecera lima" (paletas-contraste.html): pantalla blanca,
-   * cabecera y banda de título lima, un neón distinto por botón del menú,
-   * letra negra (al menos 8,9:1 sobre cada neón) y contornos negros gruesos
-   * (21:1 contra el blanco). Sin naranja, para no confundirlo con Emergencia.
+   * Esquema "cabecera lima" (issue #11): pantalla blanca, cabecera, banda de
+   * título y tarjetas lima, un neón distinto por botón del menú, letra negra
+   * (al menos 7,9:1 sobre cada neón; 17,9:1 sobre el lima) y contornos
+   * negros de 3 px (21:1 contra el blanco). Sin naranja, para no
+   * confundirlo con Emergencia.
    */
   --bar: #ccff00;
   --fill-switch: #00ffff;
@@ -84,10 +85,11 @@
   --foreground: #000000;
   --brand: #ff6eff;
   --brand-foreground: #000000;
-  --brand-soft: #ccff00;
+  --brand-soft: var(--bar);
   /* Íconos y texto de acento sobre blanco o lima: negro. */
   --brand-ink: #000000;
-  --card: #ffffff;
+  /* Tarjetas en lima: la letra nunca va directamente sobre el blanco. */
+  --card: var(--bar);
   --card-foreground: #000000;
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);

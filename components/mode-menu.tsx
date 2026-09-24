@@ -29,13 +29,13 @@ const options: { value: Mode; title: string; description: string; icon: typeof E
 export function ModeMenu({ open, mode, onClose, onSelect }: ModeMenuProps) {
   return (
     <Modal open={open} onClose={onClose} label="Menú de modo de visualización" className="open:flex open:flex-col">
-      <div className="flex items-center justify-between border-b border-border px-4 pb-3 pt-5">
+      <div className="flex items-center justify-between border-b-3 border-border bg-bar px-4 pb-3 pt-5">
         <h2 className="text-2xl font-bold tracking-tight">Modo de visualización</h2>
         <button
           type="button"
           onClick={onClose}
           aria-label="Cerrar menú"
-          className="flex size-12 items-center justify-center rounded-2xl border border-border bg-card shadow-sm transition active:scale-95"
+          className="flex size-12 items-center justify-center rounded-2xl border-3 border-border bg-bar transition active:scale-95"
         >
           <X className="size-6" aria-hidden="true" />
         </button>
@@ -52,14 +52,14 @@ export function ModeMenu({ open, mode, onClose, onSelect }: ModeMenuProps) {
               onClick={() => onSelect(option.value)}
               aria-pressed={active}
               className={[
-                "flex items-start gap-4 rounded-2xl border-2 p-4 text-left",
-                active ? "border-border bg-brand-soft" : "border-border bg-card",
+                "flex items-start gap-4 rounded-2xl border-3 border-border p-4 text-left",
+                active ? "bg-brand text-brand-foreground" : "bg-card",
               ].join(" ")}
             >
               <span
                 className={[
                   "flex size-12 shrink-0 items-center justify-center rounded-2xl",
-                  active ? "bg-brand text-brand-foreground" : "bg-brand-soft text-brand-ink",
+                  active ? "border-3 border-current" : "bg-brand-soft text-brand-ink",
                 ].join(" ")}
               >
                 <Icon className="size-6" aria-hidden="true" />
@@ -67,7 +67,7 @@ export function ModeMenu({ open, mode, onClose, onSelect }: ModeMenuProps) {
               <span className="flex-1">
                 <span className="flex items-center gap-2 text-2xl font-bold">
                   {option.title}
-                  {active && <Check className="size-5 text-brand-ink" aria-hidden="true" />}
+                  {active && <Check className="size-5" aria-hidden="true" />}
                 </span>
                 <span className="mt-1 block text-lg">
                   {option.description}
@@ -77,7 +77,7 @@ export function ModeMenu({ open, mode, onClose, onSelect }: ModeMenuProps) {
             </button>
           )
         })}
-        <a href="/diagnostico" className="mt-2 rounded-2xl border-2 border-border p-4 text-center text-xl font-bold">
+        <a href="/diagnostico" className="mt-2 rounded-2xl border-3 border-border bg-card p-4 text-center text-xl font-bold">
           Diagnóstico: comprobar que todo funciona
         </a>
       </div>

@@ -32,7 +32,7 @@ export function Modal({ open, onClose, label, className = "", children }: ModalP
         event.preventDefault()
         onClose()
       }}
-      className={`fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none bg-background/95 p-0 text-foreground backdrop:bg-black/60 ${className}`}
+      className={`fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none bg-background p-0 text-foreground backdrop:bg-black/60 ${className}`}
     >
       {open && children}
     </dialog>

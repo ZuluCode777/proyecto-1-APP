@@ -183,7 +183,7 @@ export function AuditoryGps({ data, onBack }: AuditoryGpsProps) {
         <button
           type="button"
           onClick={activate}
-          className="flex flex-col items-center justify-center gap-3 rounded-3xl border-[3px] border-border bg-brand p-6 text-brand-foreground transition active:scale-[0.99]"
+          className="flex flex-col items-center justify-center gap-3 rounded-3xl border-3 border-border bg-brand p-6 text-brand-foreground transition active:scale-[0.99]"
         >
           <span className="flex size-16 items-center justify-center rounded-full bg-brand-foreground/15">
             <LocateFixed className="size-9" aria-hidden="true" />
@@ -194,7 +194,7 @@ export function AuditoryGps({ data, onBack }: AuditoryGpsProps) {
 
       {error && (
         <p
-          className="rounded-2xl border-2 border-fail bg-card p-4 text-lg font-bold"
+          className="rounded-2xl border-3 border-fail bg-card p-4 text-lg font-bold"
           role="alert"
         >
           {error}
@@ -206,7 +206,7 @@ export function AuditoryGps({ data, onBack }: AuditoryGpsProps) {
           <button
             type="button"
             onClick={repeat}
-            className="mb-5 flex items-center justify-center gap-3 rounded-2xl border border-border bg-card p-4 text-lg font-bold shadow-sm transition active:scale-[0.99]"
+            className="mb-5 flex items-center justify-center gap-3 rounded-2xl border-3 border-border bg-card p-4 text-lg font-bold shadow-sm transition active:scale-[0.99]"
           >
             <Volume2 className="size-6 text-brand-ink" aria-hidden="true" />
             Repetir indicación
@@ -228,8 +228,8 @@ export function AuditoryGps({ data, onBack }: AuditoryGpsProps) {
                 <li
                   key={station.id}
                   className={[
-                    "rounded-2xl border p-4 shadow-sm",
-                    isTarget ? "border-border bg-brand-soft" : "border-border bg-card",
+                    "rounded-2xl border-3 border-border p-4 shadow-sm",
+                    isTarget ? "bg-brand text-brand-foreground" : "bg-card",
                   ].join(" ")}
                 >
                   <div className="flex items-center gap-3">
@@ -251,7 +251,7 @@ export function AuditoryGps({ data, onBack }: AuditoryGpsProps) {
                     <button
                       type="button"
                       onClick={() => guideTo(station)}
-                      className="flex items-center justify-center gap-2 rounded-xl border-[3px] border-border bg-brand px-4 py-3 text-base font-bold text-brand-foreground shadow-sm transition active:scale-[0.98]"
+                      className="flex items-center justify-center gap-2 rounded-xl border-3 border-border bg-brand px-4 py-3 text-base font-bold text-brand-foreground shadow-sm transition active:scale-[0.98]"
                     >
                       <Navigation className="size-5" aria-hidden="true" />
                       Guíame por voz
@@ -259,7 +259,7 @@ export function AuditoryGps({ data, onBack }: AuditoryGpsProps) {
                     <button
                       type="button"
                       onClick={() => openInMaps(station)}
-                      className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-base font-bold shadow-sm transition active:scale-[0.98]"
+                      className="flex items-center justify-center gap-2 rounded-xl border-3 border-border bg-card px-4 py-3 text-base font-bold shadow-sm transition active:scale-[0.98]"
                     >
                       <Map className="size-5 text-brand-ink" aria-hidden="true" />
                       Abrir en Google Maps

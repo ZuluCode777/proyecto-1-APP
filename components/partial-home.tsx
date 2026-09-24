@@ -19,17 +19,17 @@ type PartialHomeProps = {
 export function PartialHome({ fluor, onToggleFluor, onAgent, onRoutes, onVision, onGps, onAssistance }: PartialHomeProps) {
   const actions = [
     // Un color distinto por botón, sin repetir el de la cabecera.
-    { key: "asistente", label: "Asistente", hint: "Pregunta cómo llegar", icon: Bot, onClick: onAgent, fill: "border-[3px] border-border bg-fill-agent" },
-    { key: "rutas", label: "Rutas", hint: "Buscar y frecuentes", icon: Bus, onClick: onRoutes, fill: "border-[3px] border-border bg-fill-routes" },
-    { key: "gps", label: "Mapa y GPS", hint: "Estaciones cercanas", icon: Map, onClick: onGps, fill: "border-[3px] border-border bg-fill-map" },
-    { key: "vision", label: "Lupa", hint: "Ampliar letreros", icon: ScanText, onClick: onVision, fill: "border-[3px] border-border bg-fill-lens" },
+    { key: "asistente", label: "Asistente", hint: "Pregunta cómo llegar", icon: Bot, onClick: onAgent, fill: "bg-fill-agent", emergency: false },
+    { key: "rutas", label: "Rutas", hint: "Buscar y frecuentes", icon: Bus, onClick: onRoutes, fill: "bg-fill-routes", emergency: false },
+    { key: "gps", label: "Mapa y GPS", hint: "Estaciones cercanas", icon: Map, onClick: onGps, fill: "bg-fill-map", emergency: false },
+    { key: "vision", label: "Lupa", hint: "Ampliar letreros", icon: ScanText, onClick: onVision, fill: "bg-fill-lens", emergency: false },
     // Emergencia va siempre al final, con el contorno más grueso.
-    { key: "asistencia", label: "Emergencia", hint: "Llamar al 123", icon: PhoneCall, onClick: onAssistance, fill: "border-[5px] border-sos-border bg-sos text-sos-foreground" },
+    { key: "asistencia", label: "Emergencia", hint: "Llamar al 123", icon: PhoneCall, onClick: onAssistance, fill: "bg-sos text-sos-foreground", emergency: true },
   ]
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4 pt-3">
-      <h2 className="rounded-2xl border-[3px] border-border bg-bar px-3 py-1.5 text-2xl font-extrabold">¿Qué necesitas?</h2>
+      <h2 className="rounded-2xl border-3 border-border bg-bar px-3 py-1.5 text-2xl font-extrabold">¿Qué necesitas?</h2>
 
       <button
         type="button"
@@ -37,8 +37,8 @@ export function PartialHome({ fluor, onToggleFluor, onAgent, onRoutes, onVision,
         aria-checked={fluor}
         onClick={onToggleFluor}
         className={[
-          "flex min-h-16 shrink-0 items-center justify-between gap-3 rounded-2xl border-[3px] px-4",
-          fluor ? "border-border bg-brand text-brand-foreground" : "border-border bg-fill-switch",
+          "flex min-h-16 shrink-0 items-center justify-between gap-3 rounded-2xl border-3 border-border px-4",
+          fluor ? "bg-brand text-brand-foreground" : "bg-fill-switch",
         ].join(" ")}
       >
         <span className="flex items-center gap-3 text-xl font-bold">
@@ -57,6 +57,7 @@ export function PartialHome({ fluor, onToggleFluor, onAgent, onRoutes, onVision,
             onClick={action.onClick}
             className={[
               "flex min-h-[4.5rem] shrink-0 items-center gap-4 rounded-2xl px-4 text-left",
+              action.emergency ? "border-5 border-sos-border" : "border-3 border-border",
               action.fill,
             ].join(" ")}
           >
