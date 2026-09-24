@@ -7,27 +7,28 @@
 # Se arranca solo al iniciar sesión con la tarea programada que crea
 # scripts/instalar-servicios-transmivoz.ps1.
 #
-# Guarda el PID de Ollama en .ollama-transmivoz.pid: detener la tarea programada
-# solo detiene este script, no a Ollama, así que el instalador usa ese PID para
-# detener exactamente este proceso y no otro.
+# Guarda el PID de Ollama y su hora de inicio en .ollama-transmivoz.pid:
+# detener la tarea programada solo detiene este script, no a Ollama, así que el
+# instalador usa esos datos para detener exactamente este proceso y no otro.
 #
-# Si Ollama termina mientras este script espera, el script detiene los procesos
-# que cargaban sus modelos (ver scripts/detener-ollama.ps1).
+# Si Ollama termina mientras este script espera (una falla, o alguien lo
+# detuvo a mano), el script detiene los procesos que cargaban sus modelos. Los
+# avisos quedan en .ollama-transmivoz.log, porque la tarea no tiene ventana.
+
+. (Join-Path $PSScriptRoot 'detener-ollama.ps1')
 
 $ollamaExe = Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama.exe'
 if (-not (Test-Path -LiteralPath $ollamaExe)) {
   $ollamaExe = (Get-Command ollama -ErrorAction Stop).Source
 }
-$pidFile = Join-Path (Split-Path -Parent $PSScriptRoot) '.ollama-transmivoz.pid'
+$repoDir = Split-Path -Parent $PSScriptRoot
+$pidFile = Join-Path $repoDir '.ollama-transmivoz.pid'
+$logFile = Join-Path $repoDir '.ollama-transmivoz.log'
 
 $env:OLLAMA_HOST = '127.0.0.1:11435'
 $env:OLLAMA_KEEP_ALIVE = '1h'
 $ollamaProc = Start-Process -FilePath $ollamaExe -ArgumentList 'serve' -PassThru -WindowStyle Hidden
 $inicio = $ollamaProc.StartTime
-Set-Content -LiteralPath $pidFile -Value $ollamaProc.Id -Encoding ascii
+Set-Content -LiteralPath $pidFile -Value $ollamaProc.Id, $inicio.Ticks -Encoding ascii
 Wait-Process -Id $ollamaProc.Id
-
-# Si Ollama termina solo (una falla, o alguien lo detuvo a mano), sus hijos
-# siguen vivos ocupando la memoria de la GPU.
-. (Join-Path $PSScriptRoot 'detener-ollama.ps1')
-Stop-OllamaConHijos $ollamaProc.Id $inicio
+Stop-OllamaConHijos $ollamaProc.Id $inicio (Get-Date) 3>> $logFile

@@ -5,38 +5,44 @@
 # 0.34, ollama.exe en otras. Windows no detiene los hijos junto con el padre, y
 # un hijo huérfano sigue ocupando la memoria de la GPU.
 #
-# $Id es el PID del `ollama serve` que arrancó TransMiVoz. $Desde es un momento
-# en que ese proceso ya corría: su hora de inicio o la de guardar su PID.
-# Cuando el proceso termina, Windows puede dar el mismo PID a otro, incluso al
-# Ollama de uso personal. Por eso solo se detiene:
-# - el proceso con ese PID, si empezó antes de $Desde (si no, es otro);
-# - sus hijos creados desde $Desde, y, si el PID ya es de otro proceso, antes
-#   de que ese otro empezara.
-function Stop-OllamaConHijos([int]$Id, [datetime]$Desde) {
-  $hasta = [datetime]::MaxValue
+# $Id y $Inicio son el PID y la hora de inicio del `ollama serve` que arrancó
+# TransMiVoz. Cuando ese proceso termina, Windows puede dar el mismo PID a
+# otro, incluso al Ollama de uso personal. Por eso:
+# - El proceso con ese PID se detiene solo si empezó exactamente en $Inicio.
+#   Si no se puede leer su hora de inicio, no se detiene.
+# - Un hijo se detiene solo si se creó mientras ese Ollama corría. Si sigue
+#   vivo, vale cualquier hijo creado desde $Inicio. Si ya terminó, solo los
+#   creados entre $Inicio y $Fin, la hora en que terminó.
+# - Sin $Fin y con el proceso ya terminado, no se detiene nada: no se sabe
+#   desde cuándo el PID puede ser de otro.
+function Stop-OllamaConHijos([int]$Id, [datetime]$Inicio, $Fin) {
+  $detener = { param($idProceso)
+    try {
+      Stop-Process -Id $idProceso -ErrorAction Stop
+      $true
+    } catch {
+      if (Get-Process -Id $idProceso -ErrorAction SilentlyContinue) {
+        Write-Warning "No se pudo detener el proceso $idProceso de Ollama; sigue ocupando memoria: $_"
+      }
+      $false
+    }
+  }
   $detenidos = 0
   $proceso = Get-Process -Id $Id -ErrorAction SilentlyContinue
-  if ($proceso -and $proceso.StartTime -gt $Desde) {
-    $hasta = $proceso.StartTime
-  } elseif ($proceso -and $proceso.ProcessName -eq 'ollama') {
-    Stop-Process -Id $Id
-    $detenidos++
+  if ($proceso -and $proceso.StartTime -eq $Inicio) {
+    $Fin = [datetime]::MaxValue
+    if (& $detener $Id) { $detenidos++ }
+  } elseif (-not $Fin) {
+    return
   }
   # Se buscan después de detener al padre: así no queda afuera un modelo que
   # se cargue mientras tanto.
   $hijos = @(Get-CimInstance Win32_Process | Where-Object {
     $_.ParentProcessId -eq $Id -and $_.Name -like '*llama*' -and
-      $_.CreationDate -ge $Desde -and $_.CreationDate -lt $hasta
+      $_.CreationDate -ge $Inicio -and $_.CreationDate -le $Fin
   })
   foreach ($hijo in $hijos) {
-    try {
-      Stop-Process -Id $hijo.ProcessId -ErrorAction Stop
-      $detenidos++
-    } catch {
-      if (Get-Process -Id $hijo.ProcessId -ErrorAction SilentlyContinue) {
-        Write-Warning "No se pudo detener el proceso $($hijo.ProcessId) de Ollama; sigue ocupando memoria: $_"
-      }
-    }
+    if (& $detener $hijo.ProcessId) { $detenidos++ }
   }
   if ($detenidos) { Start-Sleep -Seconds 2 }
 }

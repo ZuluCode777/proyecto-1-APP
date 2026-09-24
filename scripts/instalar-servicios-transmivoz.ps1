@@ -49,15 +49,21 @@ function Wait-Url($url, [switch]$aceptar401) {
   return $false
 }
 
-# Detiene el Ollama que arrancó esta misma tarea antes, y sus hijos, por su PID
-# exacto. No toca el Ollama de uso personal ni ningún otro proceso llamado
-# ollama. Detener la tarea no alcanza: solo detiene el script que lo arrancó.
 . (Join-Path $PSScriptRoot 'detener-ollama.ps1')
+
+# Detiene el Ollama que arrancó esta misma tarea antes, y sus hijos, por su PID
+# y su hora de inicio. No toca el Ollama de uso personal ni ningún otro proceso
+# llamado ollama. Detener la tarea no alcanza: solo detiene el script que lo
+# arrancó. Si ese Ollama ya terminó, su tarea ya detuvo a los hijos.
 function Stop-TransMiVozOllama {
   $pidFile = Join-Path $repoDir '.ollama-transmivoz.pid'
   if (-not (Test-Path -LiteralPath $pidFile -PathType Leaf)) { return }
-  $savedId = [int](Get-Content -LiteralPath $pidFile -Raw)
-  Stop-OllamaConHijos $savedId (Get-Item -LiteralPath $pidFile -Force).LastWriteTime
+  $lineas = @(Get-Content -LiteralPath $pidFile)
+  # Un archivo sin hora de inicio es de una versión anterior: sin ella no se
+  # sabe si el PID sigue siendo de ese Ollama, así que no se detiene nada.
+  if ($lineas.Count -ge 2) {
+    Stop-OllamaConHijos ([int]$lineas[0]) ([datetime]::new([long]$lineas[1]))
+  }
   Remove-Item -LiteralPath $pidFile -Force
 }
 
