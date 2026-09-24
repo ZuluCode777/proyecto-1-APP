@@ -3,10 +3,12 @@
 $ErrorActionPreference = 'Stop'
 $archivo = Join-Path $PSScriptRoot '../scripts/instalar-servicios-transmivoz.ps1'
 $arbol = [System.Management.Automation.Language.Parser]::ParseFile($archivo, [ref]$null, [ref]$null)
-$funcion = $arbol.Find({ param($nodo)
-  $nodo -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $nodo.Name -eq 'Wait-Url'
-}, $true)
-Invoke-Expression $funcion.Extent.Text
+foreach ($nombre in 'Wait-Url', 'Stop-TransMiVozOllama') {
+  $funcion = $arbol.Find({ param($nodo)
+    $nodo -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $nodo.Name -eq $nombre
+  }, $true)
+  Invoke-Expression $funcion.Extent.Text
+}
 
 function Start-Sleep { param($Seconds) }
 function Invoke-WebRequest {
@@ -33,10 +35,6 @@ foreach ($script:estado in @(200, 401, 500, 0)) {
 # y sus hijos, y nada mas, tampoco si Windows dio el PID a otro proceso. Los
 # procesos son simulados.
 . (Join-Path $PSScriptRoot '../scripts/detener-ollama.ps1')
-$funcion = $arbol.Find({ param($nodo)
-  $nodo -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $nodo.Name -eq 'Stop-TransMiVozOllama'
-}, $true)
-Invoke-Expression $funcion.Extent.Text
 
 $inicio = [datetime]'2026-09-24 12:00'
 function Get-CimInstance {
@@ -54,13 +52,15 @@ function Stop-Process {
   if ($script:fallan -contains $Id) { throw 'Acceso denegado' }
   $script:stopProcess += $Id
 }
-function Proceso($minutos) { [pscustomobject]@{ ProcessName = 'ollama'; StartTime = $(if ($null -ne $minutos) { $inicio.AddMinutes($minutos) }) } }
+function Proceso($minutos) { [pscustomobject]@{ StartTime = $(if ($null -ne $minutos) { $inicio.AddMinutes($minutos) }) } }
 
 $casos = @(
   @{ Nombre = 'Ollama vivo'; Vivos = @{ 100 = (Proceso 0) }; Esperados = '100,201,205' }
   @{ Nombre = 'Ollama terminado a las 12:05'; Vivos = @{}; Fin = $inicio.AddMinutes(5); Esperados = '201' }
   @{ Nombre = 'Ollama terminado sin hora'; Vivos = @{}; Esperados = '' }
   @{ Nombre = 'PID de otro Ollama'; Vivos = @{ 100 = (Proceso 5) }; Esperados = '' }
+  @{ Nombre = 'PID de otro Ollama desde las 12:05, visto a las 12:07'; Vivos = @{ 100 = (Proceso 5) }; Fin = $inicio.AddMinutes(7); Esperados = '201' }
+  @{ Nombre = 'PID de otro proceso ilegible, visto a las 12:07'; Vivos = @{ 100 = (Proceso $null) }; Fin = $inicio.AddMinutes(7); Esperados = '' }
   @{ Nombre = 'hora de inicio ilegible'; Vivos = @{ 100 = (Proceso $null) }; Esperados = '' }
   @{ Nombre = 'hijo que no se detiene'; Vivos = @{ 100 = (Proceso 0); 201 = (Proceso 2) }; Fallan = 201; Esperados = '100,205'; Aviso = 201 }
 )
@@ -79,11 +79,16 @@ foreach ($caso in $casos) {
 }
 
 # El instalador lee el PID y la hora de inicio del archivo, y lo borra. Un
-# archivo sin hora de inicio (version anterior) no detiene nada.
+# archivo sin hora de inicio (version anterior) o ilegible no detiene nada.
 $repoDir = [System.IO.Path]::GetTempPath()
 $pidFile = Join-Path $repoDir '.ollama-transmivoz.pid'
 try {
-  foreach ($caso in @(@{ Contenido = @('100', $inicio.Ticks); Esperados = '100,201,205' }, @{ Contenido = @('100'); Esperados = '' })) {
+  $archivos = @(
+    @{ Contenido = @('100', $inicio.Ticks); Esperados = '100,201,205' }
+    @{ Contenido = @('100'); Esperados = '' }
+    @{ Contenido = @('basura', 'x'); Esperados = '' }
+  )
+  foreach ($caso in $archivos) {
     $script:vivos = @{ 100 = (Proceso 0) }
     $script:fallan = @()
     $script:stopProcess = @()

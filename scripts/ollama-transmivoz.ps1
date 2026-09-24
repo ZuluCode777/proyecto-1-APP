@@ -13,7 +13,8 @@
 #
 # Si Ollama termina mientras este script espera (una falla, o alguien lo
 # detuvo a mano), el script detiene los procesos que cargaban sus modelos. Los
-# avisos quedan en .ollama-transmivoz.log, porque la tarea no tiene ventana.
+# avisos y errores quedan en .ollama-transmivoz.log, porque la tarea no tiene
+# ventana.
 
 . (Join-Path $PSScriptRoot 'detener-ollama.ps1')
 
@@ -31,4 +32,4 @@ $ollamaProc = Start-Process -FilePath $ollamaExe -ArgumentList 'serve' -PassThru
 $inicio = $ollamaProc.StartTime
 Set-Content -LiteralPath $pidFile -Value $ollamaProc.Id, $inicio.Ticks -Encoding ascii
 Wait-Process -Id $ollamaProc.Id
-Stop-OllamaConHijos $ollamaProc.Id $inicio (Get-Date) 3>> $logFile
+Stop-OllamaConHijos $ollamaProc.Id $inicio (Get-Date) *>> $logFile

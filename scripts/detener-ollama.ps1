@@ -12,10 +12,11 @@
 #   Si no se puede leer su hora de inicio, no se detiene.
 # - Un hijo se detiene solo si se creó mientras ese Ollama corría. Si sigue
 #   vivo, vale cualquier hijo creado desde $Inicio. Si ya terminó, solo los
-#   creados entre $Inicio y $Fin, la hora en que terminó.
-# - Sin $Fin y con el proceso ya terminado, no se detiene nada: no se sabe
-#   desde cuándo el PID puede ser de otro.
-function Stop-OllamaConHijos([int]$Id, [datetime]$Inicio, $Fin) {
+#   creados entre $Inicio y $Fin, un momento en que ya había terminado. Si
+#   otro proceso ya tiene el PID, el límite es la hora en que ese empezó.
+# - Si el proceso ya terminó y no hay $Fin, no se detiene nada, porque no se
+#   sabe desde cuándo el PID puede ser de otro.
+function Stop-OllamaConHijos([int]$Id, [datetime]$Inicio, [Nullable[datetime]]$Fin) {
   $detener = { param($idProceso)
     try {
       Stop-Process -Id $idProceso -ErrorAction Stop
@@ -32,11 +33,13 @@ function Stop-OllamaConHijos([int]$Id, [datetime]$Inicio, $Fin) {
   if ($proceso -and $proceso.StartTime -eq $Inicio) {
     $Fin = [datetime]::MaxValue
     if (& $detener $Id) { $detenidos++ }
-  } elseif (-not $Fin) {
+  } elseif (-not $Fin -or ($proceso -and -not $proceso.StartTime)) {
     return
+  } elseif ($proceso -and $proceso.StartTime -lt $Fin) {
+    $Fin = $proceso.StartTime
   }
-  # Se buscan después de detener al padre: así no queda afuera un modelo que
-  # se cargue mientras tanto.
+  # Los hijos se buscan después de detener al padre, para no dejar afuera un
+  # modelo que se cargue mientras tanto.
   $hijos = @(Get-CimInstance Win32_Process | Where-Object {
     $_.ParentProcessId -eq $Id -and $_.Name -like '*llama*' -and
       $_.CreationDate -ge $Inicio -and $_.CreationDate -le $Fin

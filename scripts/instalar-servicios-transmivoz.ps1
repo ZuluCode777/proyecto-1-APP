@@ -53,16 +53,20 @@ function Wait-Url($url, [switch]$aceptar401) {
 
 # Detiene el Ollama que arrancó esta misma tarea antes, y sus hijos, por su PID
 # y su hora de inicio. No toca el Ollama de uso personal ni ningún otro proceso
-# llamado ollama. Detener la tarea no alcanza: solo detiene el script que lo
-# arrancó. Si ese Ollama ya terminó, su tarea ya detuvo a los hijos.
+# llamado ollama. Hace falta porque detener la tarea solo detiene el script que
+# arrancó a Ollama. Si ese Ollama ya terminó mientras la tarea corría, la tarea
+# ya detuvo a sus hijos.
+#
+# Un archivo sin hora de inicio (de una versión anterior) o ilegible no detiene
+# nada, porque no se sabe si el PID sigue siendo de ese Ollama.
 function Stop-TransMiVozOllama {
   $pidFile = Join-Path $repoDir '.ollama-transmivoz.pid'
   if (-not (Test-Path -LiteralPath $pidFile -PathType Leaf)) { return }
   $lineas = @(Get-Content -LiteralPath $pidFile)
-  # Un archivo sin hora de inicio es de una versión anterior: sin ella no se
-  # sabe si el PID sigue siendo de ese Ollama, así que no se detiene nada.
-  if ($lineas.Count -ge 2) {
-    Stop-OllamaConHijos ([int]$lineas[0]) ([datetime]::new([long]$lineas[1]))
+  $idGuardado = $lineas[0] -as [int]
+  $ticks = $(if ($lineas.Count -ge 2) { $lineas[1] -as [long] })
+  if ($idGuardado -and $ticks) {
+    Stop-OllamaConHijos $idGuardado ([datetime]::new($ticks))
   }
   Remove-Item -LiteralPath $pidFile -Force
 }
@@ -70,6 +74,13 @@ function Stop-TransMiVozOllama {
 $ollamaScript = Join-Path $PSScriptRoot 'ollama-transmivoz.ps1'
 Stop-ScheduledTask -TaskName 'TransMiVoz Ollama' -ErrorAction SilentlyContinue
 Stop-TransMiVozOllama
+# Si algo sigue escuchando en el 11435, el Ollama nuevo no podría usar el
+# puerto y la espera de abajo daría por bueno a ese otro proceso.
+try {
+  Invoke-WebRequest 'http://127.0.0.1:11435/api/version' -UseBasicParsing -TimeoutSec 2 | Out-Null
+  'Otro proceso sigue escuchando en 127.0.0.1:11435 y no es el Ollama que arrancó esta tarea. Detenlo por su PID y vuelve a correr el instalador.'
+  exit 1
+} catch {}
 Register-TransMiVozTask 'TransMiVoz Ollama' 'Ollama de TransMiVoz en 127.0.0.1:11435' `
   (New-ScheduledTaskAction -Execute 'powershell.exe' `
     -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$ollamaScript`"")
