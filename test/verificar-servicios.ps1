@@ -41,7 +41,7 @@ function Get-CimInstance {
   $hijo = { param($id, $padre, $nombre, $minutos)
     [pscustomobject]@{ ProcessId = $id; ParentProcessId = $padre; Name = $nombre; CreationDate = $inicio.AddMinutes($minutos) } }
   & $hijo 201 100 'llama-server.exe' 2   # del Ollama de TransMiVoz
-  & $hijo 202 100 'llama-server.exe' -2  # de un proceso anterior con ese PID
+  & $hijo 202 100 'llama-server.exe' (-2) # de un proceso anterior con ese PID
   & $hijo 203 100 'conhost.exe' 2        # no carga modelos
   & $hijo 204 999 'llama-server.exe' 2   # de otro padre
   & $hijo 205 100 'llama-server.exe' 6   # del Ollama de TransMiVoz si sigue vivo; si no, de otro
@@ -60,6 +60,7 @@ $casos = @(
   @{ Nombre = 'Ollama terminado sin hora'; Vivos = @{}; Esperados = '' }
   @{ Nombre = 'PID de otro Ollama'; Vivos = @{ 100 = (Proceso 5) }; Esperados = '' }
   @{ Nombre = 'PID de otro Ollama desde las 12:05, visto a las 12:07'; Vivos = @{ 100 = (Proceso 5) }; Fin = $inicio.AddMinutes(7); Esperados = '201' }
+  @{ Nombre = 'PID de otro Ollama desde las 12:07, visto a las 12:05'; Vivos = @{ 100 = (Proceso 7) }; Fin = $inicio.AddMinutes(5); Esperados = '201' }
   @{ Nombre = 'PID de otro proceso ilegible, visto a las 12:07'; Vivos = @{ 100 = (Proceso $null) }; Fin = $inicio.AddMinutes(7); Esperados = '' }
   @{ Nombre = 'hora de inicio ilegible'; Vivos = @{ 100 = (Proceso $null) }; Esperados = '' }
   @{ Nombre = 'hijo que no se detiene'; Vivos = @{ 100 = (Proceso 0); 201 = (Proceso 2) }; Fallan = 201; Esperados = '100,205'; Aviso = 201 }
@@ -87,6 +88,7 @@ try {
     @{ Contenido = @('100', $inicio.Ticks); Esperados = '100,201,205' }
     @{ Contenido = @('100'); Esperados = '' }
     @{ Contenido = @('basura', 'x'); Esperados = '' }
+    @{ Contenido = @('100', '-5'); Esperados = '' }
   )
   foreach ($caso in $archivos) {
     $script:vivos = @{ 100 = (Proceso 0) }

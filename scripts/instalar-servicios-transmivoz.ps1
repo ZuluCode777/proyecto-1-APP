@@ -65,7 +65,7 @@ function Stop-TransMiVozOllama {
   $lineas = @(Get-Content -LiteralPath $pidFile)
   $idGuardado = $lineas[0] -as [int]
   $ticks = $(if ($lineas.Count -ge 2) { $lineas[1] -as [long] })
-  if ($idGuardado -and $ticks) {
+  if ($idGuardado -and $ticks -gt 0 -and $ticks -le [datetime]::MaxValue.Ticks) {
     Stop-OllamaConHijos $idGuardado ([datetime]::new($ticks))
   }
   Remove-Item -LiteralPath $pidFile -Force
@@ -75,12 +75,18 @@ $ollamaScript = Join-Path $PSScriptRoot 'ollama-transmivoz.ps1'
 Stop-ScheduledTask -TaskName 'TransMiVoz Ollama' -ErrorAction SilentlyContinue
 Stop-TransMiVozOllama
 # Si algo sigue escuchando en el 11435, el Ollama nuevo no podría usar el
-# puerto y la espera de abajo daría por bueno a ese otro proceso.
+# puerto y la espera de abajo daría por bueno a ese otro proceso. Cualquier
+# respuesta HTTP, aunque sea un error, significa que el puerto está ocupado.
+$puertoOcupado = $true
 try {
   Invoke-WebRequest 'http://127.0.0.1:11435/api/version' -UseBasicParsing -TimeoutSec 2 | Out-Null
-  'Otro proceso sigue escuchando en 127.0.0.1:11435 y no es el Ollama que arrancó esta tarea. Detenlo por su PID y vuelve a correr el instalador.'
+} catch {
+  $puertoOcupado = [bool]$_.Exception.Response
+}
+if ($puertoOcupado) {
+  'Algo sigue escuchando en 127.0.0.1:11435 después de detener el Ollama de TransMiVoz. Detén ese proceso por su PID y vuelve a correr el instalador.'
   exit 1
-} catch {}
+}
 Register-TransMiVozTask 'TransMiVoz Ollama' 'Ollama de TransMiVoz en 127.0.0.1:11435' `
   (New-ScheduledTaskAction -Execute 'powershell.exe' `
     -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$ollamaScript`"")
