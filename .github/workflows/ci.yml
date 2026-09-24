@@ -29,11 +29,21 @@ jobs:
       - name: Pruebas
         run: pnpm test
 
+      - name: Prueba del instalador de servicios
+        shell: pwsh
+        run: ./test/verificar-servicios.ps1
+
       - name: Compilación
         run: pnpm build
 
+      # Se arranca con clave, como en la máquina con Windows: sin clave la app
+      # responde 401, y con clave pasan las pruebas de /diagnostico.
       - name: Verificación de extremo a extremo
+        env:
+          APP_PASSWORD: clave-de-prueba-ci
         run: |
           pnpm start -H 127.0.0.1 -p 3000 &
-          for i in $(seq 1 60); do curl -sf http://127.0.0.1:3000/ >/dev/null && break; sleep 1; done
+          for i in $(seq 1 60); do curl -sf -u "ci:$APP_PASSWORD" http://127.0.0.1:3000/ >/dev/null && break; sleep 1; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -u ci:mala http://127.0.0.1:3000/api/transmilenio)" = 401
           pnpm verificar http://127.0.0.1:3000

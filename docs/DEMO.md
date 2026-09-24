@@ -109,19 +109,10 @@ cercana como origen.
 
 ## Si la red del campus bloquea Tailscale
 
-En la máquina con Windows:
-
-```powershell
-tailscale funnel --bg 3000
-```
-
-Publica la app en una dirección HTTPS pública que cualquier navegador puede
-abrir sin Tailscale. Necesita los mismos certificados. La app no tiene
-autenticación, así que apágalo apenas termine:
-
-```powershell
-tailscale funnel --https=443 off
-```
+La app ya está publicada con Tailscale Funnel, así que cualquier navegador la
+abre sin Tailscale en la misma dirección. Pide la clave de `APP_PASSWORD`; el
+usuario puede ser cualquiera. Ver
+[SELF-HOSTING.md](SELF-HOSTING.md#publicarla-en-internet-con-funnel).
 
 ## Si nada llega a la máquina con Windows
 

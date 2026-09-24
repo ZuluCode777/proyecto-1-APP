@@ -6,8 +6,9 @@
 
 **App en línea:** <https://desktop-oa6r547.taila37867.ts.net>
 ([diagnóstico](https://desktop-oa6r547.taila37867.ts.net/diagnostico)).
-Se sirve desde la máquina con Windows por Tailscale, así que solo se abre desde
-un equipo conectado a la misma tailnet. Usa Chrome: Firefox no reconoce la voz.
+Se sirve desde la máquina con Windows por Tailscale Funnel y pide una clave:
+el usuario puede ser cualquiera, y la clave la tiene Nicolás. Usa Chrome:
+Firefox no reconoce la voz.
 
 Cliente accesible de TransMilenio, Bogotá, pensado para personas con
 discapacidad visual. Usa los datos abiertos reales de TransMilenio, un mapa con
