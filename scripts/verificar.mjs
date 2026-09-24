@@ -18,6 +18,8 @@ import { join } from "node:path"
 
 const BASE = (process.argv[2] ?? "http://localhost:3000").replace(/\/$/, "")
 const PORT = 9333
+/** Espera máxima a que Chrome abra el puerto de depuración y liste la pestaña. */
+const CHROME_WAIT_MS = 30_000
 const RICAURTE = { latitude: 4.6124, longitude: -74.0935, accuracy: 20 }
 
 const CANDIDATES = [
@@ -54,17 +56,21 @@ const chrome = spawn(
 )
 
 async function main() {
-  // Espera a que Chrome abra el puerto de depuración.
+  // En la integración continua el primer arranque de Chrome a veces tarda más
+  // de 10 s. Se espera en cada intento, también cuando el puerto responde
+  // pero la pestaña aún no aparece.
   let target
-  for (let i = 0; i < 50 && !target; i++) {
+  const deadline = Date.now() + CHROME_WAIT_MS
+  while (!target && Date.now() < deadline) {
     try {
-      const pages = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()
-      target = pages.find((p) => p.type === "page")
+      const res = await fetch(`http://127.0.0.1:${PORT}/json/list`, { signal: AbortSignal.timeout(2000) })
+      target = (await res.json()).find((p) => p.type === "page")
     } catch {
-      await sleep(200)
+      // Puerto cerrado, sin respuesta o con una respuesta aún inválida.
     }
+    if (!target) await sleep(200)
   }
-  if (!target) throw new Error("Chrome no respondió en el puerto de depuración.")
+  if (!target) throw new Error("Chrome no abrió una pestaña en el puerto de depuración.")
 
   const ws = new WebSocket(target.webSocketDebuggerUrl)
   await new Promise((resolve, reject) => {
