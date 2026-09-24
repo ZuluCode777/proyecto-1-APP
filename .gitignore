@@ -16,3 +16,6 @@ node_modules
 # TypeScript build artefacts
 *.tsbuildinfo
 next-env.d.ts
+
+# PID del Ollama propio de TransMiVoz en Windows
+.ollama-transmivoz.pid

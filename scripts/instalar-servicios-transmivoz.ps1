@@ -24,9 +24,14 @@ function Register-TransMiVozTask($taskName, $description, $action) {
   $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) `
     -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
   $principal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Interactive -RunLevel Limited
+  # Se detiene antes de reemplazarla: si se reemplaza mientras corre, el proceso
+  # anterior queda huérfano ocupando el puerto y la tarea nueva no arranca.
+  if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+    Stop-ScheduledTask -TaskName $taskName
+    Start-Sleep -Seconds 2
+  }
   Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings `
     -Principal $principal -Description $description -Force | Out-Null
-  Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
   Start-ScheduledTask -TaskName $taskName
 }
 
@@ -40,7 +45,23 @@ function Wait-Url($url) {
   return $false
 }
 
+# Detiene el Ollama que arrancó esta misma tarea antes, por su PID exacto.
+# No toca el Ollama de uso personal ni ningún otro proceso llamado ollama.
+function Stop-TransMiVozOllama {
+  $pidFile = Join-Path $repoDir '.ollama-transmivoz.pid'
+  if (-not (Test-Path -LiteralPath $pidFile -PathType Leaf)) { return }
+  $savedId = [int](Get-Content -LiteralPath $pidFile -Raw)
+  $running = Get-Process -Id $savedId -ErrorAction SilentlyContinue
+  if ($running -and $running.ProcessName -eq 'ollama') {
+    Stop-Process -Id $savedId
+    Start-Sleep -Seconds 2
+  }
+  Remove-Item -LiteralPath $pidFile
+}
+
 $ollamaScript = Join-Path $PSScriptRoot 'ollama-transmivoz.ps1'
+Stop-ScheduledTask -TaskName 'TransMiVoz Ollama' -ErrorAction SilentlyContinue
+Stop-TransMiVozOllama
 Register-TransMiVozTask 'TransMiVoz Ollama' 'Ollama de TransMiVoz en 127.0.0.1:11435' `
   (New-ScheduledTaskAction -Execute 'powershell.exe' `
     -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$ollamaScript`"")
