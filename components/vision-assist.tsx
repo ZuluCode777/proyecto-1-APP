@@ -109,22 +109,22 @@ export function VisionAssist({ onBack }: VisionAssistProps) {
 
   return (
     <section className="flex min-h-0 flex-1 flex-col p-4" aria-label="Lupa">
-      <div className="mb-3 flex shrink-0 items-center gap-3">
+      <div className="mb-3 flex shrink-0 items-center gap-3 rounded-2xl border-3 border-border bg-bar p-2">
         <button
           type="button"
           onClick={onBack}
           aria-label="Volver"
-          className="flex size-11 shrink-0 items-center justify-center rounded-full border border-border bg-card shadow-sm transition active:scale-95"
+          className="flex size-11 shrink-0 items-center justify-center rounded-full border-3 border-border bg-card shadow-sm transition active:scale-95"
         >
           <ArrowLeft className="size-5" aria-hidden="true" />
         </button>
         <span className="flex items-center gap-2 text-xl font-bold tracking-tight">
-          <ScanText className="size-6 text-brand" aria-hidden="true" />
+          <ScanText className="size-6 text-brand-ink" aria-hidden="true" />
           Lupa
         </span>
       </div>
 
-      <div className="relative flex flex-1 items-center justify-center overflow-hidden rounded-2xl border border-border bg-black shadow-sm">
+      <div className="relative flex flex-1 items-center justify-center overflow-hidden rounded-2xl border-3 border-border bg-black shadow-sm">
         <video
           ref={videoRef}
           playsInline
@@ -135,7 +135,7 @@ export function VisionAssist({ onBack }: VisionAssistProps) {
         />
 
         {status === "active" && frozen && (
-          <span className="absolute left-3 top-3 rounded-full bg-brand px-3 py-1 text-lg font-bold text-brand-foreground shadow-sm">
+          <span className="absolute left-3 top-3 rounded-full border-3 border-border bg-brand px-3 py-1 text-lg font-bold text-brand-foreground shadow-sm">
             Congelada
           </span>
         )}
@@ -161,10 +161,8 @@ export function VisionAssist({ onBack }: VisionAssistProps) {
                 aria-pressed={active}
                 onClick={() => changeMode(key)}
                 className={[
-                  "rounded-xl border py-2.5 text-base font-bold shadow-sm transition active:scale-[0.97]",
-                  active
-                    ? "border-brand bg-brand text-brand-foreground"
-                    : "border-border bg-card",
+                  "rounded-xl border-3 border-border py-2.5 text-base font-bold shadow-sm transition active:scale-[0.97]",
+                  active ? "bg-brand text-brand-foreground" : "bg-card",
                 ].join(" ")}
               >
                 {FILTERS[key].label}
@@ -173,8 +171,8 @@ export function VisionAssist({ onBack }: VisionAssistProps) {
           })}
         </div>
 
-        <label className="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm">
-          <ZoomIn className="size-5 shrink-0 text-brand" aria-hidden="true" />
+        <label className="flex items-center gap-3 rounded-xl border-3 border-border bg-card px-3 py-2.5 shadow-sm">
+          <ZoomIn className="size-5 shrink-0 text-brand-ink" aria-hidden="true" />
           <span className="sr-only">Nivel de acercamiento</span>
           <input
             type="range"
@@ -195,7 +193,7 @@ export function VisionAssist({ onBack }: VisionAssistProps) {
           type="button"
           onClick={toggleFreeze}
           disabled={status !== "active"}
-          className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card py-3 text-lg font-bold shadow-sm transition active:scale-[0.98] disabled:opacity-50"
+          className="flex items-center justify-center gap-2 rounded-xl border-3 border-border bg-card py-3 text-lg font-bold shadow-sm transition active:scale-[0.98] disabled:opacity-50"
         >
           {frozen ? (
             <>

@@ -150,7 +150,7 @@ export function TransMiVozApp() {
 
   const selectedRoute = data && routeCode ? data.routes.find((r) => r.code === routeCode) : undefined
   const loading = (
-    <p className="m-4 rounded-2xl border-2 border-border bg-card p-6 text-center text-xl" role="status">
+    <p className="m-4 rounded-2xl border-3 border-border bg-card p-6 text-center text-xl" role="status">
       {error ? "No pude cargar las rutas de TransMilenio. Revisa la conexión." : "Cargando rutas de TransMilenio…"}
     </p>
   )

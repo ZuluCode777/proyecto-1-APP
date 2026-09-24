@@ -2,8 +2,6 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 
-@custom-variant dark (&:is(.dark *));
-
 @theme inline {
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -39,7 +37,16 @@
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
   --color-brand-soft: var(--brand-soft);
-  --color-emergency: var(--emergency);
+  --color-brand-ink: var(--brand-ink);
+  --color-bar: var(--bar);
+  --color-fill-switch: var(--fill-switch);
+  --color-fill-agent: var(--fill-agent);
+  --color-fill-routes: var(--fill-routes);
+  --color-fill-map: var(--fill-map);
+  --color-fill-lens: var(--fill-lens);
+  --color-sos: var(--sos);
+  --color-sos-foreground: var(--sos-foreground);
+  --color-sos-border: var(--sos-border);
   --color-ok: var(--ok);
   --color-fail: var(--fail);
   --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, -apple-system, sans-serif;
@@ -54,32 +61,51 @@
 
 :root {
   color-scheme: light;
-  /* Rojo de emergencia fijo en todos los temas: 7,2:1 con texto blanco. */
-  --emergency: oklch(0.48 0.2 27);
-  /* Estados correcto y fallido: al menos 7:1 sobre el fondo y las tarjetas de cada tema. */
+  /*
+   * Esquema "cabecera lima" (issue #11): pantalla blanca, cabecera, banda de
+   * título y tarjetas lima, un neón distinto por botón del menú, letra negra
+   * (al menos 7,9:1 sobre cada neón; 17,9:1 sobre el lima) y contornos
+   * negros de 3 px (21:1 contra el blanco). Sin naranja, para no
+   * confundirlo con Emergencia.
+   */
+  --bar: #ccff00;
+  --fill-switch: #00ffff;
+  --fill-agent: #ff6eff;
+  --fill-routes: #ffff00;
+  --fill-map: #d07bff;
+  --fill-lens: #39ff14;
+  /* Emergencia: rojo fluorescente con letra negra, 7,5:1. */
+  --sos: #ff6b5a;
+  --sos-foreground: #000000;
+  --sos-border: #000000;
+  /* Estados correcto y fallido: 7:1 sobre blanco; sobre lima solo van en íconos y bordes (al menos 3:1). */
   --ok: oklch(0.42 0.12 150);
   --fail: oklch(0.46 0.19 27);
-  --background: oklch(0.99 0.012 75);
-  --foreground: oklch(0.2 0.025 55);
-  --brand: oklch(0.42 0.15 43);
-  --brand-foreground: oklch(0.99 0.01 85);
-  --brand-soft: oklch(0.94 0.045 60);
-  --card: oklch(1 0.008 80);
-  --card-foreground: oklch(0.2 0.025 55);
+  --background: #ffffff;
+  --foreground: #000000;
+  --brand: #ff6eff;
+  --brand-foreground: #000000;
+  /* Chips de íconos: blancos, para que se vean sobre las tarjetas lima. */
+  --brand-soft: #ffffff;
+  /* Íconos y texto de acento sobre blanco o lima: negro. */
+  --brand-ink: #000000;
+  /* Tarjetas en lima: la letra nunca va directamente sobre el blanco. */
+  --card: var(--bar);
+  --card-foreground: #000000;
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
   --primary: oklch(0.205 0 0);
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.96 0.012 78);
-  --muted-foreground: oklch(0.4 0.03 58);
-  --accent: oklch(0.96 0.012 78);
-  --accent-foreground: oklch(0.205 0 0);
+  --muted: #f2f2f2;
+  --muted-foreground: #000000;
+  --accent: #f2f2f2;
+  --accent-foreground: #000000;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.9 0.015 75);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.42 0.15 43);
+  --border: #000000;
+  --input: #000000;
+  --ring: #000000;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -96,90 +122,6 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
-.dark {
-  color-scheme: dark;
-  --background: oklch(0.17 0.016 55);
-  --foreground: oklch(0.97 0.012 85);
-  --brand: oklch(0.76 0.16 60);
-  --ok: oklch(0.82 0.15 150);
-  --fail: oklch(0.75 0.16 25);
-    --brand-foreground: oklch(0.16 0.02 50);
-    --brand-soft: oklch(0.25 0.05 52);
-    --card: oklch(0.22 0.018 55);
-  --card-foreground: oklch(0.97 0.012 85);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.27 0.015 55);
-  --muted-foreground: oklch(0.74 0.03 72);
-  --accent: oklch(0.27 0.015 55);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.76 0.16 60);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not(.light) {
-    color-scheme: dark;
-    --background: oklch(0.17 0.016 55);
-    --foreground: oklch(0.97 0.012 85);
-    --brand: oklch(0.76 0.16 60);
-    --ok: oklch(0.82 0.15 150);
-    --fail: oklch(0.75 0.16 25);
-  --ok: oklch(0.82 0.15 150);
-  --fail: oklch(0.75 0.16 25);
-    --brand-foreground: oklch(0.16 0.02 50);
-    --brand-soft: oklch(0.25 0.05 52);
-    --card: oklch(0.22 0.018 55);
-    --card-foreground: oklch(0.97 0.012 85);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.27 0.015 55);
-    --muted-foreground: oklch(0.74 0.03 72);
-    --accent: oklch(0.27 0.015 55);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 12%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.76 0.16 60);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
-  }
-}
-
 /* Modo de altísimo contraste para baja visión: negro con neón */
 .fluor {
   color-scheme: dark;
@@ -194,6 +136,18 @@
   --fail: oklch(0.75 0.2 25);
   --brand-foreground: oklch(0 0 0);
   --brand-soft: oklch(0.16 0.09 145);
+  --brand-ink: oklch(0.85 0.25 145);
+  /* Cabecera y botones del menú: superficies negras con contorno neón. */
+  --bar: oklch(0.06 0 0);
+  --fill-switch: oklch(0.06 0 0);
+  --fill-agent: oklch(0.06 0 0);
+  --fill-routes: oklch(0.06 0 0);
+  --fill-map: oklch(0.06 0 0);
+  --fill-lens: oklch(0.06 0 0);
+  /* Emergencia: rojo con letra blanca, 7,2:1. */
+  --sos: oklch(0.48 0.2 27);
+  --sos-foreground: oklch(1 0 0);
+  --sos-border: oklch(0.48 0.2 27);
   --border: oklch(0.94 0.22 108);
   --input: oklch(0.94 0.22 108);
   --ring: oklch(0.9 0.24 130);
@@ -215,4 +169,14 @@
   [role='button'] {
     -webkit-tap-highlight-color: transparent;
   }
+}
+
+/* Botones de zoom del mapa (Leaflet) con el mismo contorno que el resto. */
+.leaflet-bar {
+  border: 3px solid var(--border) !important;
+}
+/* leaflet.css carga después y ganaría sin !important. */
+.leaflet-bar a {
+  color: var(--foreground) !important;
+  background-color: var(--card) !important;
 }

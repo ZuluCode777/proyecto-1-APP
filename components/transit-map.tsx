@@ -115,7 +115,7 @@ export function TransitMap({ lines = [], markers = [], label, className = "" }: 
       ref={containerRef}
       role="region"
       aria-label={label}
-      className={`relative z-0 min-h-64 w-full overflow-hidden rounded-2xl border-2 border-border ${className}`}
+      className={`relative z-0 min-h-64 w-full overflow-hidden rounded-2xl border-3 border-border ${className}`}
     />
   )
 }

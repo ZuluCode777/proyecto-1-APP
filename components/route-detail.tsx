@@ -48,9 +48,9 @@ export function RouteDetail({ route, data, favorite, onToggleFavorite, onBack }:
         <button
           type="button"
           onClick={() => speak(describe(route))}
-          className="flex min-h-14 items-center justify-center gap-2 rounded-2xl border-2 border-border bg-card px-3 text-lg font-bold"
+          className="flex min-h-14 items-center justify-center gap-2 rounded-2xl border-3 border-border bg-card px-3 text-lg font-bold"
         >
-          <Volume2 className="size-6 text-brand" aria-hidden="true" />
+          <Volume2 className="size-6 text-brand-ink" aria-hidden="true" />
           Escuchar
         </button>
         <button
@@ -61,8 +61,8 @@ export function RouteDetail({ route, data, favorite, onToggleFavorite, onBack }:
           }}
           aria-pressed={favorite}
           className={[
-            "flex min-h-14 items-center justify-center gap-2 rounded-2xl border-2 px-3 text-lg font-bold",
-            favorite ? "border-brand bg-brand text-brand-foreground" : "border-border bg-card",
+            "flex min-h-14 items-center justify-center gap-2 rounded-2xl border-3 border-border px-3 text-lg font-bold",
+            favorite ? "bg-brand text-brand-foreground" : "bg-card",
           ].join(" ")}
         >
           <Heart className="size-6" aria-hidden="true" fill={favorite ? "currentColor" : "none"} />
@@ -71,7 +71,7 @@ export function RouteDetail({ route, data, favorite, onToggleFavorite, onBack }:
       </div>
 
       <h3 className="mt-6 flex items-center gap-2 text-xl font-bold">
-        <Clock className="size-6 text-brand" aria-hidden="true" />
+        <Clock className="size-6 text-brand-ink" aria-hidden="true" />
         Horario
       </h3>
       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-lg">
@@ -89,8 +89,8 @@ export function RouteDetail({ route, data, favorite, onToggleFavorite, onBack }:
       </p>
       <ol className="mt-3 flex flex-col gap-2">
         {route.stops.map((stop, i) => (
-          <li key={`${stop}-${i}`} className="flex items-center gap-3 rounded-xl border-2 border-border bg-card px-4 py-3 text-lg">
-            <span className="w-8 shrink-0 text-right font-bold tabular-nums text-brand">{i + 1}</span>
+          <li key={`${stop}-${i}`} className="flex items-center gap-3 rounded-xl border-3 border-border bg-card px-4 py-3 text-lg">
+            <span className="w-8 shrink-0 text-right font-bold tabular-nums text-brand-ink">{i + 1}</span>
             {stop}
           </li>
         ))}

@@ -161,14 +161,14 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
         type="button"
         onClick={handleTap}
         aria-label="Asistente de voz. Toca para hablar y pedir rutas, horarios o tu ubicación."
-        className="relative flex min-h-[55%] shrink-0 flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-brand/25 via-background to-background px-6 py-8 text-center"
+        className="relative flex min-h-[55%] shrink-0 flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-bar via-background to-background px-6 py-8 text-center"
       >
         <span className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden="true">
           {active &&
             [0, 1, 2].map((i) => (
               <span
                 key={i}
-                className="absolute rounded-full border-2 border-brand/50"
+                className="absolute rounded-full border-3 border-brand-ink/50"
                 style={{
                   width: `${180 + i * 90}px`,
                   height: `${180 + i * 90}px`,
@@ -179,7 +179,7 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
             ))}
         </span>
 
-        <span className="relative z-10 flex size-40 items-center justify-center rounded-full bg-brand text-brand-foreground shadow-lg">
+        <span className="relative z-10 flex size-40 items-center justify-center rounded-full border-3 border-border bg-brand text-brand-foreground shadow-lg">
           {thinking ? (
             <Loader2 className="size-16 animate-spin" aria-hidden="true" />
           ) : active ? (
@@ -199,11 +199,11 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
 
       <div className="flex flex-col gap-4 px-4 pb-4">
         {steps.length > 0 && (
-          <div className="rounded-2xl border-2 border-border bg-card p-4">
+          <div className="rounded-2xl border-3 border-border bg-card p-4">
             <h3 className="flex items-center justify-between text-lg font-bold">
               Lo que hice
               {engine && (
-                <span className="rounded-full border-2 border-border px-3 py-1 text-base font-semibold">
+                <span className="rounded-full border-3 border-border px-3 py-1 text-base font-semibold">
                   Motor: {engine === "ollama" ? "Ollama" : "reglas"}
                 </span>
               )}
@@ -211,7 +211,7 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
             <ol className="mt-2 flex flex-col gap-2">
               {steps.map((step, i) => (
                 <li key={i} className="flex items-start gap-2 text-lg">
-                  <CheckCircle2 className="mt-1 size-5 shrink-0 text-brand" aria-hidden="true" />
+                  <CheckCircle2 className="mt-1 size-5 shrink-0 text-brand-ink" aria-hidden="true" />
                   <span>
                     {step.label}
                     {step.detail && <span className="block text-base text-muted-foreground">{step.detail}</span>}
@@ -231,12 +231,12 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
             placeholder="O escribe: cómo llego a Ricaurte"
-            className="min-h-14 min-w-0 flex-1 rounded-2xl border-2 border-border bg-card px-4 text-lg placeholder:text-muted-foreground"
+            className="min-h-14 min-w-0 flex-1 rounded-2xl border-3 border-border bg-card px-4 text-lg placeholder:text-muted-foreground"
           />
           <button
             type="submit"
             aria-label="Enviar pregunta"
-            className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-brand text-brand-foreground"
+            className="flex size-14 shrink-0 items-center justify-center rounded-2xl border-3 border-border bg-brand text-brand-foreground"
           >
             <Send className="size-6" aria-hidden="true" />
           </button>
