@@ -1,5 +1,5 @@
 import snapshot from "@/data/transmilenio.json"
-import { fetchTransmilenio, type TransmilenioData } from "@/lib/transmilenio"
+import { fetchTransmilenio, TransmilenioDataSchema, type TransmilenioData } from "@/lib/transmilenio"
 
 /**
  * Datos de TransMilenio para las rutas del servidor.
@@ -23,7 +23,7 @@ export async function getTransmilenioData(): Promise<TransmilenioData> {
     })
     .catch((error) => {
       console.warn("[transmilenio] servicio no disponible, uso la copia guardada:", error)
-      const data = snapshot as TransmilenioData
+      const data = TransmilenioDataSchema.parse(snapshot)
       cache = { data, expires: Date.now() + RETRY_MS }
       return data
     })

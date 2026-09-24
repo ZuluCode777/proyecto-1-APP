@@ -1,15 +1,15 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import type { TransmilenioData } from "@/lib/transmilenio"
+import { TransmilenioDataSchema, type TransmilenioData } from "@/lib/transmilenio"
 
 let request: Promise<TransmilenioData> | null = null
 
 /** Carga una sola vez las estaciones y rutas reales, compartidas por toda la app. */
 function load(): Promise<TransmilenioData> {
-  request ??= fetch("/api/transmilenio").then((res) => {
+  request ??= fetch("/api/transmilenio").then(async (res) => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    return res.json() as Promise<TransmilenioData>
+    return TransmilenioDataSchema.parse(await res.json())
   })
   request.catch(() => {
     request = null

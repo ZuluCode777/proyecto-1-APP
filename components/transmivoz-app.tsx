@@ -124,19 +124,25 @@ export function TransMiVozApp() {
   const handleAgentAction = useCallback(
     (reply: AgentReply) => {
       if (!data) return
-      if (reply.action === "search") {
-        setQuery(reply.query)
-        setResults(searchRoutes(reply.query, data))
-        go("buscar")
-      } else if (reply.action === "frequent") {
-        go("frecuentes")
-      } else if (reply.action === "gps") {
-        go("gps")
-      } else if (reply.action === "route") {
-        openRoute(reply.query)
-      } else if (reply.action === "trip" && reply.trip) {
-        setTrip(reply.trip)
-        go("viaje")
+      switch (reply.action) {
+        case "search":
+          setQuery(reply.station)
+          setResults(searchRoutes(reply.station, data))
+          go("buscar")
+          break
+        case "frequent":
+          go("frecuentes")
+          break
+        case "gps":
+          go("gps")
+          break
+        case "route":
+          openRoute(reply.routeCode)
+          break
+        case "trip":
+          setTrip(reply.trip)
+          go("viaje")
+          break
       }
     },
     [data, go, openRoute],

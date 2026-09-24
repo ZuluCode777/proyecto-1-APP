@@ -110,7 +110,7 @@ async function main() {
     rows = await evaluate(`[...document.querySelectorAll("li")].map(li => ({
       title: li.querySelector("h2").innerText,
       detail: li.querySelector("p.mt-1")?.innerText ?? "",
-      state: li.querySelector("svg.text-green-700") ? "ok" : li.querySelector("svg.text-emergency") ? "fail" : "pending",
+      state: li.dataset.state === "ok" || li.dataset.state === "fail" ? li.dataset.state : "pending",
     }))`)
     if (rows.length && rows.every((r) => r.state !== "pending")) break
   }

@@ -22,7 +22,9 @@ Tailnet: `taila37867.ts.net`
 2. La máquina con Windows no se suspende. Configuración → Sistema →
    Energía → suspender **Nunca** mientras esté enchufada.
 3. El respaldo en el portátil está compilado y probado (ver abajo).
-4. `pnpm sync:transmilenio` corrido hace poco, para que la copia de los datos
+4. La tarea **TransMiVoz Ollama** existe en la máquina con Windows (Programador
+   de tareas), para que el modelo esté disponible en el puerto 11435.
+5. `pnpm sync:transmilenio` corrido hace poco, para que la copia de los datos
    esté al día si el servicio de TransMilenio falla ese día.
 
 ## El día de la presentación
@@ -30,7 +32,7 @@ Tailnet: `taila37867.ts.net`
 En la máquina con Windows, primera terminal:
 
 ```powershell
-cd visionaria
+cd D:\visionaria
 git pull
 pnpm install
 pnpm build
@@ -124,10 +126,11 @@ tailscale funnel --https=443 off
 
 ## Si nada llega a la máquina con Windows
 
-Corre la app en el portátil. Sin red de por medio, salvo el mapa base.
+Corre la app en el portátil, desde la carpeta del repositorio. Sin red de por
+medio, salvo el mapa base.
 
 ```bash
-cd visionaria
+cd ~/"Documents/Intro Ing. Sistemas/Proyecto 1/visionaria"
 pnpm install
 pnpm build
 pnpm start

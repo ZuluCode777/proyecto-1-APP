@@ -15,9 +15,12 @@ configuración que usamos.
 
 ## Primera vez
 
+Proyectos y compilaciones van en `D:`, que tiene más espacio que `C:`.
+
 ```powershell
+cd D:\
 git clone https://github.com/zulucode-design/proyecto-1-APP visionaria
-cd visionaria
+cd D:\visionaria
 corepack enable
 pnpm install
 pnpm build
@@ -45,36 +48,63 @@ pnpm verificar
 
 ## Conectar Ollama
 
-Con Ollama en la misma máquina, el asistente usa un modelo local para entender
-frases libres, como "necesito llegar a la Universidad Nacional saliendo desde
-Ricaurte" o "¿hasta qué hora funciona la B23?".
+Con Ollama, el asistente usa un modelo local para entender frases libres, como
+"necesito llegar a la Universidad Nacional saliendo desde Ricaurte" o "¿hasta
+qué hora funciona la B23?".
 
 Probado en la máquina con Windows (RTX 3080) el 2026-09-23 con `qwen2.5:3b`:
 responde en unos 200 ms por pregunta y maneja bien el español y el formato
 JSON que pide la app.
 
+### Un Ollama propio para TransMiVoz
+
+La app usa su propia instancia de Ollama en el puerto **11435**, separada del
+Ollama de uso personal (puerto 11434). Así la app no depende de que el otro
+esté abierto, y lo que se haga con el otro no afecta a la app. Las dos
+instancias comparten la carpeta de modelos, así que no se descarga nada dos
+veces.
+
 ```powershell
+cd D:\visionaria
 ollama pull qwen2.5:3b
-copy .env.example .env.local
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\instalar-ollama-transmivoz.ps1
 ```
 
-Edita `.env.local` y pon `OLLAMA_MODEL=qwen2.5:3b`. Después vuelve a compilar
-y arrancar:
+`instalar-ollama-transmivoz.ps1` crea la tarea programada **TransMiVoz Ollama**,
+que arranca `scripts\ollama-transmivoz.ps1` al iniciar sesión, y la arranca en
+ese momento. No necesita permisos de administrador. Termina diciendo
+"Ollama de TransMiVoz escuchando en 127.0.0.1:11435".
+
+Después, en `D:\visionaria\.env.local`:
+
+```
+OLLAMA_MODEL=qwen2.5:3b
+OLLAMA_BASE_URL=http://127.0.0.1:11435
+```
+
+y vuelve a compilar y arrancar:
 
 ```powershell
 pnpm build
 pnpm start
 ```
 
-`/diagnostico` muestra "Motor: Ollama (qwen2.5:3b)" cuando está activo.
+`/diagnostico` muestra "Motor: Ollama (qwen2.5:3b)" cuando el modelo contestó
+de verdad. Si Ollama está configurado pero no respondió, lo dice.
 
 Cargar el modelo en la GPU tarda unos segundos. El servidor lo precarga al
 arrancar y al abrir `/diagnostico`, y Ollama lo mantiene una hora en memoria.
-Si aun así el modelo tarda más de 8 s, o se cae, el asistente responde con
-las reglas; la persona nunca se queda esperando.
+Si aun así tarda más de 8 s, o se cae, el asistente responde con las reglas;
+la persona nunca se queda esperando.
 
-Ollama escucha por defecto solo en `127.0.0.1:11434`. Como la app corre en la
-misma máquina, no hace falta abrir ese puerto a la red.
+Las dos instancias escuchan solo en `127.0.0.1`. Como la app corre en la misma
+máquina, no hace falta abrir esos puertos a la red.
+
+Para quitar la instancia propia:
+
+```powershell
+Unregister-ScheduledTask -TaskName "TransMiVoz Ollama" -Confirm:$false
+```
 
 ## Abrir la app desde otro dispositivo
 
@@ -124,7 +154,7 @@ sesión y a los reinicios, usa el Programador de tareas, sin instalar nada:
 4. Acciones → Nueva → Iniciar un programa:
    - Programa: `C:\Program Files\nodejs\node.exe`
    - Argumentos: `node_modules\next\dist\bin\next start -H 127.0.0.1 -p 3000`
-   - Iniciar en: la carpeta del repositorio, por ejemplo `C:\Users\tu-usuario\visionaria`
+   - Iniciar en: `D:\visionaria`
 5. Configuración → desmarca **Detener la tarea si se ejecuta durante más de**.
 
 Apunta la tarea directamente a `node.exe` y no a pnpm, para que no haya un
@@ -136,6 +166,7 @@ tarea.
 ## Después de traer cambios
 
 ```powershell
+cd D:\visionaria
 git pull
 pnpm install
 pnpm build

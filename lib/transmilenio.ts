@@ -1,3 +1,4 @@
+import { z } from "zod"
 import { distanceToPath, type LatLng } from "@/lib/geo"
 
 /**
@@ -20,47 +21,63 @@ export const ARCGIS_BASE =
 /** Distancia máxima entre una estación y la línea de la ruta para contarla. */
 export const STATION_MATCH_METERS = 60
 
-export type Station = {
-  id: string
-  name: string
-  lat: number
-  lng: number
-}
+export const StationSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  lat: z.number(),
+  lng: z.number(),
+})
+export type Station = z.infer<typeof StationSchema>
 
-export type BusRoute = {
-  id: string
+export const BusRouteSchema = z.object({
+  id: z.string(),
   /** Código del servicio, por ejemplo "B23". */
-  code: string
-  label: string
-  from: string
-  to: string
+  code: z.string(),
+  label: z.string(),
+  from: z.string(),
+  to: z.string(),
   /** Nombres de las estaciones por las que pasa, en orden de recorrido. */
-  stops: string[]
+  stops: z.array(z.string()),
   /** Recorrido como pares [lat, lng], simplificado para dibujarlo. */
-  path: [number, number][]
-  schedule: {
-    weekday: string
-    saturday: string
-    holiday: string
-  }
-}
+  path: z.array(z.tuple([z.number(), z.number()])),
+  schedule: z.object({
+    weekday: z.string(),
+    saturday: z.string(),
+    holiday: z.string(),
+  }),
+})
+export type BusRoute = z.infer<typeof BusRouteSchema>
 
-export type TransmilenioData = {
-  stations: Station[]
-  routes: BusRoute[]
+export const TransmilenioDataSchema = z.object({
+  stations: z.array(StationSchema),
+  routes: z.array(BusRouteSchema),
   /** Fecha ISO de la consulta al servicio. */
-  fetchedAt: string
+  fetchedAt: z.string(),
   /** "live" si viene del servicio en esta ejecución, "snapshot" si es la copia guardada. */
-  source: "live" | "snapshot"
-}
+  source: z.enum(["live", "snapshot"]),
+})
+export type TransmilenioData = z.infer<typeof TransmilenioDataSchema>
 
-type ArcgisFeatureSet = {
-  features?: {
-    attributes: Record<string, unknown>
-    geometry?: { x?: number; y?: number; paths?: number[][][] }
-  }[]
-  error?: { message?: string }
-}
+/** Respuesta de una consulta a una capa de ArcGIS, con lo que la app usa. */
+const ArcgisFeatureSetSchema = z.object({
+  features: z
+    .array(
+      z.object({
+        attributes: z.record(z.string(), z.unknown()),
+        geometry: z
+          .object({
+            x: z.number().optional(),
+            y: z.number().optional(),
+            // Cada punto es [lng, lat], a veces con altura o medida al final.
+            paths: z.array(z.array(z.array(z.number()).min(2))).optional(),
+          })
+          .nullish(),
+      }),
+    )
+    .optional(),
+  error: z.object({ message: z.string().optional() }).optional(),
+})
+type ArcgisFeatureSet = z.infer<typeof ArcgisFeatureSetSchema>
 
 /** Quita espacios duros y espacios repetidos que trae el servicio. */
 const clean = (value: unknown): string =>
@@ -130,9 +147,10 @@ async function queryLayer(layer: number, params: Record<string, string>): Promis
 
   const response = await fetch(url, { signal: AbortSignal.timeout(20_000) })
   if (!response.ok) throw new Error(`ArcGIS capa ${layer}: HTTP ${response.status}`)
-  const body = (await response.json()) as ArcgisFeatureSet
-  if (body.error) throw new Error(`ArcGIS capa ${layer}: ${body.error.message ?? "error"}`)
-  return body
+  const parsed = ArcgisFeatureSetSchema.safeParse(await response.json())
+  if (!parsed.success) throw new Error(`ArcGIS capa ${layer}: respuesta con otra forma (${parsed.error.issues[0]?.message})`)
+  if (parsed.data.error) throw new Error(`ArcGIS capa ${layer}: ${parsed.data.error.message ?? "error"}`)
+  return parsed.data
 }
 
 /** Consulta el servicio de TransMilenio en vivo. */

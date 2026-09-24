@@ -9,9 +9,12 @@ la tailnet `taila37867.ts.net`. Desde el portátil se llega por SSH:
 ssh -o BatchMode=yes -o IdentityAgent=none sb-windows
 ```
 
-`sb-windows` es un alias de `~/.ssh/config` en el portátil
-(`Nicolas@100.66.19.15`, con la llave `~/.ssh/id_ed25519_secondbrain_dev`).
-La llave nunca se copia a este repositorio.
+`sb-windows` es un alias de `~/.ssh/config` en el portátil; la dirección, el
+usuario y la llave están ahí, no en este repositorio.
+
+La app vive en `D:\visionaria`. Su Ollama propio escucha en `127.0.0.1:11435`
+(tarea programada **TransMiVoz Ollama**); el de uso personal, en el 11434, no
+se toca.
 
 Es el computador real de Nicolás, no un entorno de pruebas, y lo usan otros
 agentes al mismo tiempo. Reglas:
