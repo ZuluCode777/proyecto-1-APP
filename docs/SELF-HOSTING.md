@@ -181,6 +181,12 @@ Termina diciendo que las dos escuchan. Las tareas se reinician solas si se
 caen, y el instalador se puede volver a correr: reemplaza las tareas y las
 reinicia. Necesita que la app ya esté compilada.
 
+Ollama carga cada modelo en un proceso aparte, como `llama-server.exe`, que
+ocupa la memoria de la GPU. El instalador y la tarea **TransMiVoz Ollama** los
+detienen junto con el Ollama propio; los avisos de la tarea quedan en
+`.ollama-transmivoz.log`. Si alguien termina la tarea a mano, esa limpieza ya
+no ocurre.
+
 `tailscale serve --bg` ya persiste entre reinicios, no necesita su propia
 tarea.
 

@@ -49,36 +49,48 @@ function Wait-Url($url, [switch]$aceptar401) {
   return $false
 }
 
-# Detiene el Ollama que arrancó esta misma tarea antes, por su PID exacto.
-# No toca el Ollama de uso personal ni ningún otro proceso llamado ollama.
+# Cualquier respuesta HTTP, aunque sea un error, significa que algo escucha.
+# Solo detecta servidores HTTP, como Ollama.
+function Test-PuertoOcupado($url) {
+  try {
+    Invoke-WebRequest $url -UseBasicParsing -TimeoutSec 2 | Out-Null
+    return $true
+  } catch {
+    return [bool]$_.Exception.Response
+  }
+}
+
+. (Join-Path $PSScriptRoot 'detener-ollama.ps1')
+
+# Detiene el Ollama que arrancó esta misma tarea antes, y sus hijos, por su PID
+# y su hora de inicio. No toca el Ollama de uso personal ni ningún otro proceso
+# llamado ollama. Hace falta porque detener la tarea solo detiene el script que
+# arrancó a Ollama. Si ese Ollama ya terminó mientras la tarea corría, la tarea
+# ya detuvo a sus hijos.
 #
-# Ollama carga cada modelo en un proceso hijo (llama-server.exe). Windows no
-# detiene los hijos junto con el padre, y el hijo huérfano sigue ocupando la
-# memoria de la GPU, así que también se detienen los hijos de ese PID, aunque
-# el padre ya no exista. Solo cuentan los creados después de guardar el PID:
-# así no se toca a los hijos de otro proceso que haya reutilizado ese número.
+# Un archivo sin hora de inicio (de una versión anterior) o ilegible no detiene
+# nada, porque no se sabe si el PID sigue siendo de ese Ollama.
 function Stop-TransMiVozOllama {
   $pidFile = Join-Path $repoDir '.ollama-transmivoz.pid'
   if (-not (Test-Path -LiteralPath $pidFile -PathType Leaf)) { return }
-  $savedId = [int](Get-Content -LiteralPath $pidFile -Raw)
-  $guardado = (Get-Item -LiteralPath $pidFile -Force).LastWriteTime
-  $hijos = @(Get-CimInstance Win32_Process | Where-Object {
-    $_.ParentProcessId -eq $savedId -and $_.Name -like '*llama*' -and $_.CreationDate -ge $guardado
-  })
-  $running = Get-Process -Id $savedId -ErrorAction SilentlyContinue
-  if ($running -and $running.ProcessName -eq 'ollama') {
-    Stop-Process -Id $savedId
+  $lineas = @(Get-Content -LiteralPath $pidFile)
+  $idGuardado = $lineas[0] -as [int]
+  $ticks = $(if ($lineas.Count -ge 2) { $lineas[1] -as [long] })
+  if ($idGuardado -and $ticks -gt 0 -and $ticks -le [datetime]::MaxValue.Ticks) {
+    Stop-OllamaConHijos $idGuardado ([datetime]::new($ticks))
   }
-  foreach ($hijo in $hijos) {
-    Stop-Process -Id $hijo.ProcessId -ErrorAction SilentlyContinue
-  }
-  if ($running -or $hijos) { Start-Sleep -Seconds 2 }
   Remove-Item -LiteralPath $pidFile -Force
 }
 
 $ollamaScript = Join-Path $PSScriptRoot 'ollama-transmivoz.ps1'
 Stop-ScheduledTask -TaskName 'TransMiVoz Ollama' -ErrorAction SilentlyContinue
 Stop-TransMiVozOllama
+# Si algo sigue escuchando en el 11435, el Ollama nuevo no podría usar el
+# puerto y la espera de abajo daría por bueno a ese otro proceso.
+if (Test-PuertoOcupado 'http://127.0.0.1:11435/api/version') {
+  'Algo sigue escuchando en 127.0.0.1:11435 después de detener el Ollama de TransMiVoz. Detén ese proceso por su PID y vuelve a correr el instalador.'
+  exit 1
+}
 Register-TransMiVozTask 'TransMiVoz Ollama' 'Ollama de TransMiVoz en 127.0.0.1:11435' `
   (New-ScheduledTaskAction -Execute 'powershell.exe' `
     -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$ollamaScript`"")

@@ -19,3 +19,4 @@ next-env.d.ts
 
 # PID del Ollama propio de TransMiVoz en Windows
 .ollama-transmivoz.pid
+.ollama-transmivoz.log

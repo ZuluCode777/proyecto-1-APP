@@ -30,7 +30,9 @@ agentes al mismo tiempo. Reglas:
    comprueba que la ruta resuelta está dentro de la carpeta temporal o de la
    del proyecto, y aborta si no.
 5. **Detén procesos solo por el PID que lanzaste**, nunca por nombre ni por
-   patrón. Igual en el portátil.
+   patrón. Igual en el portátil. La única excepción son los procesos hijo de
+   uno que lanzaste, reconocidos por el PID del padre y su hora de creación,
+   como hace `scripts/detener-ollama.ps1` con los de Ollama.
 6. **No dejes tokens en `.git/config`.** Para llevar código, usa
    `git bundle` y `scp`, o que Nicolás haga `git pull`.
 
