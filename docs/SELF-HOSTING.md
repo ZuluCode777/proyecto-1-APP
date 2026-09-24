@@ -182,10 +182,17 @@ caen, y el instalador se puede volver a correr: reemplaza las tareas y las
 reinicia. Necesita que la app ya esté compilada.
 
 Ollama carga cada modelo en un proceso aparte, como `llama-server.exe`, que
-ocupa la memoria de la GPU. El instalador y la tarea **TransMiVoz Ollama** los
-detienen junto con el Ollama propio; los avisos de la tarea quedan en
-`.ollama-transmivoz.log`. Si alguien termina la tarea a mano, esa limpieza ya
-no ocurre.
+ocupa la memoria de la GPU. Detener la tarea **TransMiVoz Ollama**, desde el
+instalador o a mano en el Programador de tareas, detiene también al Ollama
+propio y a esos procesos. Para apagar el modelo sin quitar la tarea:
+
+```powershell
+Stop-ScheduledTask -TaskName "TransMiVoz Ollama"
+```
+
+Vuelve a arrancar al iniciar sesión, o con
+`Start-ScheduledTask -TaskName "TransMiVoz Ollama"`. Los avisos de la tarea
+quedan en `.ollama-transmivoz.log`.
 
 `tailscale serve --bg` ya persiste entre reinicios, no necesita su propia
 tarea.

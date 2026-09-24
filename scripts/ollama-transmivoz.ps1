@@ -7,9 +7,16 @@
 # Se arranca solo al iniciar sesión con la tarea programada que crea
 # scripts/instalar-servicios-transmivoz.ps1.
 #
-# Guarda el PID de Ollama y su hora de inicio en .ollama-transmivoz.pid:
-# detener la tarea programada solo detiene este script, no a Ollama, así que el
-# instalador usa esos datos para detener exactamente este proceso y no otro.
+# Ollama queda dentro de un objeto de trabajo de Windows que se cierra cuando
+# termina este script, de cualquier forma: al detener la tarea, al terminarla
+# a mano desde el Programador de tareas o al cerrar la sesión. Al cerrarse,
+# Windows detiene todos sus procesos: Ollama y los procesos hijo que cargan
+# los modelos (llama-server.exe), que heredan el trabajo. Sin esto, Ollama
+# seguiría vivo al detener la tarea, porque detenerla solo detiene este script.
+#
+# Guarda además el PID de Ollama y su hora de inicio en .ollama-transmivoz.pid.
+# El instalador los usa para detener exactamente este proceso y no otro si,
+# por ejemplo, no se pudo meter a Ollama en el trabajo.
 #
 # Si Ollama termina mientras este script espera (una falla, o alguien lo
 # detuvo a mano), el script detiene los procesos que cargaban sus modelos. Los
@@ -28,8 +35,60 @@ $logFile = Join-Path $repoDir '.ollama-transmivoz.log'
 
 $env:OLLAMA_HOST = '127.0.0.1:11435'
 $env:OLLAMA_KEEP_ALIVE = '1h'
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class TrabajoTransMiVoz {
+  [StructLayout(LayoutKind.Sequential)]
+  struct LimitesBasicos {
+    public long PerProcessUserTimeLimit, PerJobUserTimeLimit;
+    public uint LimitFlags;
+    public UIntPtr MinimumWorkingSetSize, MaximumWorkingSetSize;
+    public uint ActiveProcessLimit;
+    public UIntPtr Affinity;
+    public uint PriorityClass, SchedulingClass;
+  }
+
+  [StructLayout(LayoutKind.Sequential)]
+  struct LimitesExtendidos {
+    public LimitesBasicos Basicos;
+    public ulong ReadOps, WriteOps, OtherOps, ReadBytes, WriteBytes, OtherBytes;
+    public UIntPtr ProcessMemoryLimit, JobMemoryLimit, PeakProcessMemoryUsed, PeakJobMemoryUsed;
+  }
+
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern IntPtr CreateJobObject(IntPtr atributos, string nombre);
+
+  [DllImport("kernel32.dll", SetLastError = true)]
+  static extern bool SetInformationJobObject(IntPtr trabajo, int clase, ref LimitesExtendidos info, uint largo);
+
+  [DllImport("kernel32.dll", SetLastError = true)]
+  static extern bool AssignProcessToJobObject(IntPtr trabajo, IntPtr proceso);
+
+  // Crea un trabajo que detiene todos sus procesos cuando se cierra y mete en
+  // él al proceso. El trabajo se cierra cuando termina el proceso que lo creó.
+  public static void Meter(IntPtr proceso) {
+    IntPtr trabajo = CreateJobObject(IntPtr.Zero, null);
+    if (trabajo == IntPtr.Zero) throw new System.ComponentModel.Win32Exception();
+    LimitesExtendidos info = new LimitesExtendidos();
+    info.Basicos.LimitFlags = 0x2000; // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    if (!SetInformationJobObject(trabajo, 9, ref info, (uint)Marshal.SizeOf(info)))
+      throw new System.ComponentModel.Win32Exception();
+    if (!AssignProcessToJobObject(trabajo, proceso))
+      throw new System.ComponentModel.Win32Exception();
+  }
+}
+'@
+
 $ollamaProc = Start-Process -FilePath $ollamaExe -ArgumentList 'serve' -PassThru -WindowStyle Hidden
 $inicio = $ollamaProc.StartTime
+try {
+  [TrabajoTransMiVoz]::Meter($ollamaProc.Handle)
+} catch {
+  "$(Get-Date -Format s) No se pudo meter a Ollama en un objeto de trabajo; al detener la tarea, Ollama seguirá vivo: $_" |
+    Add-Content -LiteralPath $logFile
+}
 Set-Content -LiteralPath $pidFile -Value $ollamaProc.Id, $inicio.Ticks -Encoding ascii
 Wait-Process -Id $ollamaProc.Id
 Stop-OllamaConHijos $ollamaProc.Id $inicio (Get-Date) *>> $logFile
