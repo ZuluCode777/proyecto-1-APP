@@ -192,9 +192,19 @@ Stop-ScheduledTask -TaskName "TransMiVoz Ollama"
 
 La tarea vuelve a arrancar a Ollama al iniciar sesión, o con
 `Start-ScheduledTask -TaskName "TransMiVoz Ollama"`. Los avisos de la tarea
-quedan en `.ollama-transmivoz.log`. Si ahí dice que Ollama no entró en el
-objeto de trabajo, detener la tarea no lo detiene. En ese caso, detén a Ollama
-por el PID de la primera línea de `.ollama-transmivoz.pid`.
+quedan en `.ollama-transmivoz.log`.
+
+Si el registro dice que Ollama no entró en el objeto de trabajo, detener la
+tarea no lo detiene. Antes de volver a arrancar la tarea, que reemplazaría el
+archivo del PID, detén a Ollama y a sus procesos con el PID y la hora de
+inicio guardados. Si ese PID ya es de otro proceso, no se detiene nada:
+
+```powershell
+cd D:\visionaria
+. .\scripts\detener-ollama.ps1
+$guardado = Get-Content .ollama-transmivoz.pid
+Stop-OllamaConHijos ([int]$guardado[0]) ([datetime]::new([long]$guardado[1]))
+```
 
 `tailscale serve --bg` ya persiste entre reinicios, no necesita su propia
 tarea.

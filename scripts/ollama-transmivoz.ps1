@@ -96,7 +96,7 @@ try {
   Add-Type -TypeDefinition $trabajoCs -ErrorAction Stop
   [TrabajoTransMiVoz]::Meter($ollamaProc.Handle)
 } catch {
-  "$(Get-Date -Format s) No se pudo meter a Ollama en un objeto de trabajo; al detener la tarea, Ollama seguirá vivo: $_" |
+  "$(Get-Date -Format s) No se pudo meter a Ollama (PID $($ollamaProc.Id)) en un objeto de trabajo; al detener la tarea, Ollama seguirá vivo: $_" |
     Add-Content -LiteralPath $logFile
 }
 Set-Content -LiteralPath $pidFile -Value $ollamaProc.Id, $inicio.Ticks -Encoding ascii
