@@ -49,6 +49,16 @@ function Wait-Url($url, [switch]$aceptar401) {
   return $false
 }
 
+# Cualquier respuesta HTTP, aunque sea un error, significa que algo escucha.
+function Test-PuertoOcupado($url) {
+  try {
+    Invoke-WebRequest $url -UseBasicParsing -TimeoutSec 2 | Out-Null
+    return $true
+  } catch {
+    return [bool]$_.Exception.Response
+  }
+}
+
 . (Join-Path $PSScriptRoot 'detener-ollama.ps1')
 
 # Detiene el Ollama que arrancó esta misma tarea antes, y sus hijos, por su PID
@@ -75,15 +85,8 @@ $ollamaScript = Join-Path $PSScriptRoot 'ollama-transmivoz.ps1'
 Stop-ScheduledTask -TaskName 'TransMiVoz Ollama' -ErrorAction SilentlyContinue
 Stop-TransMiVozOllama
 # Si algo sigue escuchando en el 11435, el Ollama nuevo no podría usar el
-# puerto y la espera de abajo daría por bueno a ese otro proceso. Cualquier
-# respuesta HTTP, aunque sea un error, significa que el puerto está ocupado.
-$puertoOcupado = $true
-try {
-  Invoke-WebRequest 'http://127.0.0.1:11435/api/version' -UseBasicParsing -TimeoutSec 2 | Out-Null
-} catch {
-  $puertoOcupado = [bool]$_.Exception.Response
-}
-if ($puertoOcupado) {
+# puerto y la espera de abajo daría por bueno a ese otro proceso.
+if (Test-PuertoOcupado 'http://127.0.0.1:11435/api/version') {
   'Algo sigue escuchando en 127.0.0.1:11435 después de detener el Ollama de TransMiVoz. Detén ese proceso por su PID y vuelve a correr el instalador.'
   exit 1
 }

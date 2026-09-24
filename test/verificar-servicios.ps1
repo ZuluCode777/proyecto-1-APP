@@ -3,7 +3,7 @@
 $ErrorActionPreference = 'Stop'
 $archivo = Join-Path $PSScriptRoot '../scripts/instalar-servicios-transmivoz.ps1'
 $arbol = [System.Management.Automation.Language.Parser]::ParseFile($archivo, [ref]$null, [ref]$null)
-foreach ($nombre in 'Wait-Url', 'Stop-TransMiVozOllama') {
+foreach ($nombre in 'Wait-Url', 'Test-PuertoOcupado', 'Stop-TransMiVozOllama') {
   $funcion = $arbol.Find({ param($nodo)
     $nodo -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $nodo.Name -eq $nombre
   }, $true)
@@ -28,8 +28,12 @@ foreach ($script:estado in @(200, 401, 500, 0)) {
       throw "Espera incorrecta: estado=$script:estado, aceptar401=$aceptar"
     }
   }
+  # Cualquier respuesta, aunque sea un error, ocupa el puerto; sin respuesta, no.
+  if ((Test-PuertoOcupado 'http://localhost/') -ne ($script:estado -ne 0)) {
+    throw "Puerto mal evaluado: estado=$script:estado"
+  }
 }
-'Correcto: 200, 401, 500 y fallo de conexion, con y sin clave.'
+'Correcto: espera y puerto con 200, 401, 500 y fallo de conexion, con y sin clave.'
 
 # Stop-OllamaConHijos y Stop-TransMiVozOllama: detienen el Ollama de TransMiVoz
 # y sus hijos, y nada mas, tampoco si Windows dio el PID a otro proceso. Los
@@ -89,6 +93,7 @@ try {
     @{ Contenido = @('100'); Esperados = '' }
     @{ Contenido = @('basura', 'x'); Esperados = '' }
     @{ Contenido = @('100', '-5'); Esperados = '' }
+    @{ Contenido = @('100', [long]::MaxValue); Esperados = '' }
   )
   foreach ($caso in $archivos) {
     $script:vivos = @{ 100 = (Proceso 0) }
