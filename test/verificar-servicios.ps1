@@ -1,5 +1,6 @@
-# Prueba la espera del instalador y como se detiene el Ollama de TransMiVoz,
-# sin modificar tareas ni detener procesos de verdad.
+# Prueba la espera del instalador, su control del puerto de Ollama y como se
+# detiene el Ollama de TransMiVoz, sin modificar tareas ni detener procesos de
+# verdad.
 $ErrorActionPreference = 'Stop'
 $archivo = Join-Path $PSScriptRoot '../scripts/instalar-servicios-transmivoz.ps1'
 $arbol = [System.Management.Automation.Language.Parser]::ParseFile($archivo, [ref]$null, [ref]$null)
@@ -33,7 +34,7 @@ foreach ($script:estado in @(200, 401, 500, 0)) {
     throw "Puerto mal evaluado: estado=$script:estado"
   }
 }
-'Correcto: espera y puerto con 200, 401, 500 y fallo de conexion, con y sin clave.'
+'Correcto: espera con y sin clave, y control del puerto, con 200, 401, 500 y fallo de conexion.'
 
 # Stop-OllamaConHijos y Stop-TransMiVozOllama: detienen el Ollama de TransMiVoz
 # y sus hijos, y nada mas, tampoco si Windows dio el PID a otro proceso. Los

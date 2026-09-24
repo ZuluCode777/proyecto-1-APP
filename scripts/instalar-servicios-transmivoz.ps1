@@ -50,6 +50,7 @@ function Wait-Url($url, [switch]$aceptar401) {
 }
 
 # Cualquier respuesta HTTP, aunque sea un error, significa que algo escucha.
+# Solo detecta servidores HTTP, como Ollama.
 function Test-PuertoOcupado($url) {
   try {
     Invoke-WebRequest $url -UseBasicParsing -TimeoutSec 2 | Out-Null
