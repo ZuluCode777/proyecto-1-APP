@@ -78,14 +78,15 @@
   --sos: #ff6b5a;
   --sos-foreground: #000000;
   --sos-border: #000000;
-  /* Estados correcto y fallido: al menos 7:1 sobre blanco. */
+  /* Estados correcto y fallido: 7:1 sobre blanco; sobre lima solo van en íconos y bordes (al menos 3:1). */
   --ok: oklch(0.42 0.12 150);
   --fail: oklch(0.46 0.19 27);
   --background: #ffffff;
   --foreground: #000000;
   --brand: #ff6eff;
   --brand-foreground: #000000;
-  --brand-soft: var(--bar);
+  /* Chips de íconos: blancos, para que se vean sobre las tarjetas lima. */
+  --brand-soft: #ffffff;
   /* Íconos y texto de acento sobre blanco o lima: negro. */
   --brand-ink: #000000;
   /* Tarjetas en lima: la letra nunca va directamente sobre el blanco. */
@@ -98,7 +99,7 @@
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: #f2f2f2;
-  --muted-foreground: #333333;
+  --muted-foreground: #000000;
   --accent: #f2f2f2;
   --accent-foreground: #000000;
   --destructive: oklch(0.577 0.245 27.325);
@@ -120,8 +121,6 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 }
-
-
 
 /* Modo de altísimo contraste para baja visión: negro con neón */
 .fluor {
@@ -170,4 +169,13 @@
   [role='button'] {
     -webkit-tap-highlight-color: transparent;
   }
+}
+
+/* Botones de zoom del mapa (Leaflet) con el mismo contorno que el resto. */
+.leaflet-bar {
+  border: 3px solid var(--border) !important;
+}
+.leaflet-bar a {
+  color: var(--foreground);
+  background-color: var(--card);
 }

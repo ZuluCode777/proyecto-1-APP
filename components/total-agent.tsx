@@ -161,7 +161,7 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
         type="button"
         onClick={handleTap}
         aria-label="Asistente de voz. Toca para hablar y pedir rutas, horarios o tu ubicación."
-        className="relative flex min-h-[55%] shrink-0 flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-brand-soft via-background to-background px-6 py-8 text-center"
+        className="relative flex min-h-[55%] shrink-0 flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-bar via-background to-background px-6 py-8 text-center"
       >
         <span className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden="true">
           {active &&

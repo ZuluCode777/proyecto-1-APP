@@ -238,7 +238,7 @@ export function AuditoryGps({ data, onBack }: AuditoryGpsProps) {
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-lg font-bold">{station.name}</p>
-                      <p className="text-base text-muted-foreground">
+                      <p className={isTarget ? "text-base" : "text-base text-muted-foreground"}>
                         A {spokenDistance(station.distance)}
                         {position
                           ? ` ${cardinal(bearingDegrees(position, { lat: station.lat, lng: station.lng }))}`
@@ -251,7 +251,11 @@ export function AuditoryGps({ data, onBack }: AuditoryGpsProps) {
                     <button
                       type="button"
                       onClick={() => guideTo(station)}
-                      className="flex items-center justify-center gap-2 rounded-xl border-3 border-border bg-brand px-4 py-3 text-base font-bold text-brand-foreground shadow-sm transition active:scale-[0.98]"
+                      className={[
+                        "flex items-center justify-center gap-2 rounded-xl border-3 border-border px-4 py-3 text-base font-bold shadow-sm transition active:scale-[0.98]",
+                        // En la fila elegida (ya rellena de acento) el botón va en tarjeta para no fundirse.
+                        isTarget ? "bg-card text-card-foreground" : "bg-brand text-brand-foreground",
+                      ].join(" ")}
                     >
                       <Navigation className="size-5" aria-hidden="true" />
                       Guíame por voz

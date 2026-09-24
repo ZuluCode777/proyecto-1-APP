@@ -24,7 +24,7 @@ export function PartialHome({ fluor, onToggleFluor, onAgent, onRoutes, onVision,
     { key: "gps", label: "Mapa y GPS", hint: "Estaciones cercanas", icon: Map, onClick: onGps, fill: "bg-fill-map", emergency: false },
     { key: "vision", label: "Lupa", hint: "Ampliar letreros", icon: ScanText, onClick: onVision, fill: "bg-fill-lens", emergency: false },
     // Emergencia va siempre al final, con el contorno más grueso.
-    { key: "asistencia", label: "Emergencia", hint: "Llamar al 123", icon: PhoneCall, onClick: onAssistance, fill: "bg-sos text-sos-foreground", emergency: true },
+    { key: "asistencia", label: "Emergencia", hint: "Llamar al 123", icon: PhoneCall, onClick: onAssistance, fill: "bg-sos", emergency: true },
   ]
 
   return (
@@ -57,7 +57,7 @@ export function PartialHome({ fluor, onToggleFluor, onAgent, onRoutes, onVision,
             onClick={action.onClick}
             className={[
               "flex min-h-[4.5rem] shrink-0 items-center gap-4 rounded-2xl px-4 text-left",
-              action.emergency ? "border-5 border-sos-border" : "border-3 border-border",
+              action.emergency ? "border-5 border-sos-border text-sos-foreground" : "border-3 border-border",
               action.fill,
             ].join(" ")}
           >

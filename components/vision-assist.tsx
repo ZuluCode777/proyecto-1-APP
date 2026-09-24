@@ -109,7 +109,7 @@ export function VisionAssist({ onBack }: VisionAssistProps) {
 
   return (
     <section className="flex min-h-0 flex-1 flex-col p-4" aria-label="Lupa">
-      <div className="mb-3 flex shrink-0 items-center gap-3">
+      <div className="mb-3 flex shrink-0 items-center gap-3 rounded-2xl border-3 border-border bg-bar p-2">
         <button
           type="button"
           onClick={onBack}

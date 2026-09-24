@@ -78,7 +78,7 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
           "flex size-40 items-center justify-center rounded-full transition-colors",
           listening
             ? "animate-pulse border-3 border-border bg-brand text-brand-foreground"
-            : "bg-brand-soft text-brand-ink",
+            : "border-3 border-border bg-brand-soft text-brand-ink",
         ].join(" ")}
       >
         <Mic className="size-16" aria-hidden="true" />
