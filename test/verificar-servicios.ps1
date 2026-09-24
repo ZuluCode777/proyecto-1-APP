@@ -59,6 +59,6 @@ try {
     if (Test-Path -LiteralPath $pidFile) { throw 'No borro el archivo del PID.' }
   }
 } finally {
-  if (Test-Path -LiteralPath $pidFile) { Remove-Item -LiteralPath $pidFile }
+  if (Test-Path -LiteralPath $pidFile) { Remove-Item -LiteralPath $pidFile -Force }
 }
 'Correcto: detiene el Ollama guardado y sus hijos, con el padre vivo o muerto.'

@@ -73,7 +73,7 @@ function Stop-TransMiVozOllama {
     Stop-Process -Id $hijo.ProcessId -ErrorAction SilentlyContinue
   }
   if ($running -or $hijos) { Start-Sleep -Seconds 2 }
-  Remove-Item -LiteralPath $pidFile
+  Remove-Item -LiteralPath $pidFile -Force
 }
 
 $ollamaScript = Join-Path $PSScriptRoot 'ollama-transmivoz.ps1'
