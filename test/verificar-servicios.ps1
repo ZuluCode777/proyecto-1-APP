@@ -113,7 +113,7 @@ try {
 'Correcto: detiene el Ollama de TransMiVoz y sus hijos, y ningun otro proceso.'
 
 # El mensaje de puerto ocupado dice el PID y el nombre de lo que escucha.
-function Get-NetTCPConnection { param($LocalPort, $State, $ErrorAction) if ($State -eq 'Listen') { $script:conexiones } }
+function Get-NetTCPConnection { param($LocalPort, $State, $ErrorAction) if ($LocalPort -eq 11435 -and $State -eq 'Listen') { $script:conexiones } }
 $script:vivos = @{ 4242 = [pscustomobject]@{ ProcessName = 'ollama' } }
 $script:conexiones = @([pscustomobject]@{ OwningProcess = 4242 }, [pscustomobject]@{ OwningProcess = 4242 })
 if ((Format-OcupantesPuerto 11435) -ne 'PID 4242 (ollama)') { throw "Ocupantes mal descritos: $(Format-OcupantesPuerto 11435)" }

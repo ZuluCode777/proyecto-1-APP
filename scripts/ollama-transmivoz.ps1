@@ -19,10 +19,10 @@
 # por ejemplo, no se pudo meter a Ollama en el trabajo.
 #
 # Si Ollama termina mientras este script espera (una falla, o alguien lo
-# detuvo a mano), el script termina y el trabajo detiene a los procesos que
-# cargaban sus modelos. Si Ollama no quedó en el trabajo, el script los detiene
-# con Stop-OllamaConHijos. Los avisos y errores quedan en
-# .ollama-transmivoz.log, porque la tarea no tiene ventana.
+# detuvo a mano), el script detiene los procesos que cargaban sus modelos con
+# Stop-OllamaConHijos y, al terminar, el trabajo detiene lo que quede. Así se
+# limpian también si Ollama no entró en el trabajo. Los avisos y errores quedan
+# en .ollama-transmivoz.log, porque la tarea no tiene ventana.
 
 . (Join-Path $PSScriptRoot 'detener-ollama.ps1')
 
