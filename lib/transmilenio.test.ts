@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { distanceToPath } from "./geo"
-import { normalizeTransmilenio } from "./transmilenio"
+import { distanceToPath, pathBetween } from "./geo"
+import { fullStationName, normalizeTransmilenio } from "./transmilenio"
 
 // Respuesta mínima con la misma forma que devuelve el servicio ArcGIS.
 const stationsRaw = {
@@ -51,4 +51,34 @@ test("mide la distancia de un punto a una línea", () => {
   // 0,001° de longitud en Bogotá son unos 111 m.
   const beside = distanceToPath({ lat: 4.65, lng: -74.099 }, line)
   assert.ok(beside.distance > 100 && beside.distance < 120)
+})
+
+test("completa el origen y el destino que el servicio entrega cortados", () => {
+  const stations = [
+    { id: "1", name: "Portal El Dorado – C.C. Nuestro Bogotá", lat: 0, lng: 0 },
+    { id: "2", name: "Alcalá – Colegio S. Tomás Dominicos", lat: 0, lng: 0 },
+    { id: "3", name: "Calle 100 - Marketmedios", lat: 0, lng: 0 },
+    { id: "4", name: "Calle 106", lat: 0, lng: 0 },
+    { id: "5", name: "Portal 20 de Julio", lat: 0, lng: 0 },
+  ]
+  assert.equal(fullStationName("Portal ElDorado – C.C.", stations, []), "Portal El Dorado – C.C. Nuestro Bogotá")
+  assert.equal(fullStationName("Alcalá – Colegio S. To", stations, []), "Alcalá – Colegio S. Tomás Dominicos", "cortado a mitad de palabra")
+  assert.equal(fullStationName("Portal 20 De Julio", stations, []), "Portal 20 de Julio", "solo cambian las mayúsculas")
+  assert.equal(fullStationName("Calle 100", stations, []), "Calle 100 - Marketmedios")
+  assert.equal(fullStationName("Calle 10", stations, []), "Calle 10", "un nombre corto no se completa a mitad de palabra")
+  assert.equal(fullStationName("Calle 22", stations, []), "Calle 22", "sin coincidencia queda igual")
+})
+
+test("recorta la línea al tramo entre dos estaciones", () => {
+  const path: [number, number][] = [
+    [4.6, -74.1],
+    [4.62, -74.1],
+    [4.64, -74.1],
+    [4.66, -74.1],
+    [4.68, -74.1],
+  ]
+  const board = { lat: 4.63, lng: -74.1 }
+  const alight = { lat: 4.655, lng: -74.1 }
+  assert.deepEqual(pathBetween(path, board, alight), path.slice(1, 4))
+  assert.deepEqual(pathBetween(path, alight, board), path.slice(1, 4), "igual en el otro sentido")
 })
