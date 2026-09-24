@@ -61,7 +61,7 @@ function Stop-TransMiVozOllama {
   $pidFile = Join-Path $repoDir '.ollama-transmivoz.pid'
   if (-not (Test-Path -LiteralPath $pidFile -PathType Leaf)) { return }
   $savedId = [int](Get-Content -LiteralPath $pidFile -Raw)
-  $guardado = (Get-Item -LiteralPath $pidFile).LastWriteTime
+  $guardado = (Get-Item -LiteralPath $pidFile -Force).LastWriteTime
   $hijos = @(Get-CimInstance Win32_Process | Where-Object {
     $_.ParentProcessId -eq $savedId -and $_.Name -like '*llama*' -and $_.CreationDate -ge $guardado
   })

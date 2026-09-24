@@ -42,7 +42,7 @@ function Stop-Process { param($Id, $ErrorAction) $script:detenidos += $Id }
 try {
   foreach ($script:padreVivo in @($true, $false)) {
     Set-Content -LiteralPath $pidFile -Value 100
-    $antes = (Get-Item -LiteralPath $pidFile).LastWriteTime.AddMinutes(-1)
+    $antes = (Get-Item -LiteralPath $pidFile -Force).LastWriteTime.AddMinutes(-1)
     $despues = $antes.AddMinutes(2)
     $script:procesos = @(
       [pscustomobject]@{ ProcessId = 201; ParentProcessId = 100; Name = 'llama-server.exe'; CreationDate = $despues }
