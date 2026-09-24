@@ -116,5 +116,10 @@ export function useVoiceRecognition({ onResult, onError }: VoiceRecognitionOptio
     recognitionRef.current?.stop()
   }, [])
 
-  return { listening, supported, start, stop }
+  /** Deja de escuchar y descarta lo que ya oyó: no llega ningún resultado. */
+  const abort = useCallback(() => {
+    recognitionRef.current?.abort()
+  }, [])
+
+  return { listening, supported, start, stop, abort }
 }

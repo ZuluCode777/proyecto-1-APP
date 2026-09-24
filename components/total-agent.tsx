@@ -103,7 +103,7 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
 
   const handleError = useCallback(
     (error: string) => {
-      // Detener el micrófono para responder a lo escrito no es un error.
+      // Cancelar la escucha (abort) no es un error.
       if (busyRef.current || error === "aborted") return
       setStatus("error")
       const message =
@@ -118,7 +118,7 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
     [speak],
   )
 
-  const { listening, supported, start, stop } = useVoiceRecognition({ onResult: handleResult, onError: handleError })
+  const { listening, supported, start, stop, abort } = useVoiceRecognition({ onResult: handleResult, onError: handleError })
 
   useEffect(() => {
     speak("Asistente de voz. Toca la pantalla y dime a dónde quieres ir.", { queue: true })
@@ -128,11 +128,14 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
     }
   }, [speak, stop])
 
-  /** Deja de escuchar, incluso si el micrófono aún no había arrancado. */
+  /**
+   * Deja de escuchar, incluso si el micrófono aún no había arrancado, y
+   * descarta lo que ya oyó para que no llegue una respuesta tardía.
+   */
   const stopListening = useCallback(() => {
     window.clearTimeout(startTimerRef.current)
-    stop()
-  }, [stop])
+    abort()
+  }, [abort])
 
   // Si el micrófono se apaga sin oír nada, vuelve a esperar un toque.
   const wasListeningRef = useRef(false)

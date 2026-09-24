@@ -67,6 +67,12 @@ test("completa el origen y el destino que el servicio entrega cortados", () => {
   assert.equal(fullStationName("Calle 100", stations, []), "Calle 100 - Marketmedios")
   assert.equal(fullStationName("Calle 10", stations, []), "Calle 10", "un nombre corto no se completa a mitad de palabra")
   assert.equal(fullStationName("Calle 22", stations, []), "Calle 22", "sin coincidencia queda igual")
+
+  const bibliotecas = [
+    { id: "6", name: "Biblioteca", lat: 0, lng: 0 },
+    { id: "7", name: "Biblioteca Tintal", lat: 0, lng: 0 },
+  ]
+  assert.equal(fullStationName("Biblioteca", bibliotecas, ["Biblioteca Tintal"]), "Biblioteca", "gana el nombre exacto")
 })
 
 test("recorta la línea al tramo entre dos estaciones", () => {
@@ -81,4 +87,5 @@ test("recorta la línea al tramo entre dos estaciones", () => {
   const alight = { lat: 4.655, lng: -74.1 }
   assert.deepEqual(pathBetween(path, board, alight), path.slice(1, 4))
   assert.deepEqual(pathBetween(path, alight, board), path.slice(1, 4), "igual en el otro sentido")
+  assert.deepEqual(pathBetween(path, board, { lat: 4.635, lng: -74.1 }), path.slice(1, 3), "en el mismo tramo")
 })

@@ -115,5 +115,6 @@ export function pathBetween(path: [number, number][], from: LatLng, to: LatLng):
   const b = distanceToPath(to, line).along
   const start = Math.floor(Math.min(a, b))
   const end = Math.ceil(Math.max(a, b))
-  return end > start ? path.slice(start, end + 1) : path
+  // Las dos en el mismo tramo de la línea: al menos ese tramo.
+  return path.slice(start, Math.max(end, start + 1) + 1)
 }

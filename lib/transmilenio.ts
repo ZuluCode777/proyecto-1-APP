@@ -91,7 +91,8 @@ const CUT_NAME_MIN_LENGTH = 20
  * El servicio corta el origen y el destino de las rutas a unos 24 caracteres
  * y cambia las mayúsculas ("Portal Sur - Jfk Coop. F"). Devuelve el nombre
  * completo de la estación que empieza igual, o el original si no hay una
- * sola. Si varias coinciden, prefiere la que está en el recorrido.
+ * sola. Si varias coinciden, gana la que se llama exactamente igual y luego
+ * la que está en el recorrido.
  */
 export function fullStationName(raw: string, stations: Station[], stops: string[]): string {
   const key = normalize(raw)
@@ -104,6 +105,8 @@ export function fullStationName(raw: string, stations: Station[], stops: string[
     // Cortado a mitad de palabra: "Colegio S. To" → "Colegio S. Tomás…".
     return cut && name.replace(/ /g, "").startsWith(compact)
   })
+  const exact = matches.filter((s) => normalize(s.name) === key)
+  if (exact.length === 1) return exact[0].name
   const onRoute = matches.filter((s) => stops.includes(s.name))
   const pick = onRoute.length === 1 ? onRoute : matches
   return pick.length === 1 ? pick[0].name : raw
