@@ -41,7 +41,7 @@ export function PartialRoutes({
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder="Buscar estación o ruta"
           aria-label="Buscar estación o ruta"
-          className="w-full rounded-2xl border-3 border-border bg-card py-5 pl-12 pr-28 text-lg shadow-sm placeholder:text-muted-foreground"
+          className="w-full rounded-2xl border-3 border-border bg-card py-5 pl-12 pr-28 text-lg shadow-sm placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:appearance-none"
         />
         {query && (
           <button

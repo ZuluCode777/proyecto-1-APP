@@ -63,8 +63,10 @@ orden:
 2. **Asistente** → "cómo llego de Portal Norte a Portal Usme". No hay ruta
    directa: propone un transbordo y dibuja los dos buses.
 3. **Asistente** → "¿a qué hora pasa la H54?". Lee el horario real.
-4. **Rutas** → busca "B23" → abre el detalle: recorrido en el mapa, 32
+4. **Rutas** → busca "A52" → abre el detalle: recorrido en el mapa, 25
    estaciones y horarios. Toca **Guardar** y muéstrala en **Rutas frecuentes**.
+   No uses la B23, la H54 ni la M83: ya vienen guardadas, y tocar el botón
+   las quitaría.
 5. **Mapa y GPS** → activa la ubicación → estaciones más cercanas en el mapa →
    **Guíame por voz**.
 6. **Lupa** → cámara con zoom y filtros de contraste.

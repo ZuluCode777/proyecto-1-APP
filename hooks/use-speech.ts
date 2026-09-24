@@ -100,6 +100,8 @@ export function useVoiceRecognition({ onResult, onError }: VoiceRecognitionOptio
       recognition.onstart = null
       recognition.abort()
       recognitionRef.current = null
+      // onend ya no llega: sin esto, "escuchando" quedaría encendido para siempre.
+      setListening(false)
     }
   }, [onResult, onError])
 
@@ -116,5 +118,10 @@ export function useVoiceRecognition({ onResult, onError }: VoiceRecognitionOptio
     recognitionRef.current?.stop()
   }, [])
 
-  return { listening, supported, start, stop }
+  /** Deja de escuchar y descarta lo que ya oyó: no llega ningún resultado. */
+  const abort = useCallback(() => {
+    recognitionRef.current?.abort()
+  }, [])
+
+  return { listening, supported, start, stop, abort }
 }

@@ -5,6 +5,7 @@ import { ArrowRight, Route as RouteIcon } from "lucide-react"
 import { ScreenHeader } from "@/components/screen-header"
 import { TransitMap, type MapLine, type MapMarker } from "@/components/transit-map"
 import type { TripLegSummary } from "@/lib/local-agent"
+import { pathBetween } from "@/lib/geo"
 import type { TransmilenioData } from "@/lib/routes"
 
 type TripViewProps = {
@@ -18,11 +19,16 @@ type TripViewProps = {
 export function TripView({ legs, data, onOpenRoute, onBack }: TripViewProps) {
   const station = (name: string) => data.stations.find((s) => s.name === name)
 
+  // Solo el tramo que se recorre, de la estación donde se sube a la de bajada.
   const lines = useMemo<MapLine[]>(
     () =>
       legs.flatMap((leg, i) => {
         const route = data.routes.find((r) => r.code === leg.routeCode)
-        return route ? [{ path: route.path, secondary: i > 0 }] : []
+        if (!route) return []
+        const board = data.stations.find((s) => s.name === leg.board)
+        const alight = data.stations.find((s) => s.name === leg.alight)
+        const path = board && alight ? pathBetween(route.path, board, alight) : route.path
+        return [{ path, secondary: i > 0 }]
       }),
     [legs, data],
   )

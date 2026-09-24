@@ -102,3 +102,19 @@ export function distanceToPath(point: LatLng, path: LatLng[]): { distance: numbe
   }
   return best
 }
+
+/**
+ * Tramo de una línea entre dos puntos cercanos a ella, por ejemplo entre la
+ * estación donde se sube y la estación donde se baja. La línea va como
+ * [lat, lng], igual que en los datos de las rutas.
+ */
+export function pathBetween(path: [number, number][], from: LatLng, to: LatLng): [number, number][] {
+  // ponytail: toma el punto de la línea más cercano a cada estación; en una ruta que pasa dos veces por la misma estación podría elegir la otra pasada.
+  const line = path.map(([lat, lng]) => ({ lat, lng }))
+  const a = distanceToPath(from, line).along
+  const b = distanceToPath(to, line).along
+  const start = Math.floor(Math.min(a, b))
+  const end = Math.ceil(Math.max(a, b))
+  // Las dos en el mismo tramo de la línea: al menos ese tramo.
+  return path.slice(start, Math.max(end, start + 1) + 1)
+}
