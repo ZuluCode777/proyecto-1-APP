@@ -181,6 +181,11 @@ Termina diciendo que las dos escuchan. Las tareas se reinician solas si se
 caen, y el instalador se puede volver a correr: reemplaza las tareas y las
 reinicia. Necesita que la app ya esté compilada.
 
+Cuando el Ollama propio se detiene, el instalador o su tarea detienen también
+los procesos que cargan sus modelos (`llama-server.exe`). Si no, quedan vivos
+ocupando la memoria de la GPU. Solo se tocan los de ese Ollama, nunca los del
+Ollama de uso personal.
+
 `tailscale serve --bg` ya persiste entre reinicios, no necesita su propia
 tarea.
 
