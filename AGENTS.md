@@ -12,9 +12,11 @@ ssh -o BatchMode=yes -o IdentityAgent=none sb-windows
 `sb-windows` es un alias de `~/.ssh/config` en el portátil; la dirección, el
 usuario y la llave están ahí, no en este repositorio.
 
-La app vive en `D:\visionaria`. Su Ollama propio escucha en `127.0.0.1:11435`
-(tarea programada **TransMiVoz Ollama**); el de uso personal, en el 11434, no
-se toca.
+La app vive en `D:\visionaria` y corre como la tarea programada
+**TransMiVoz App** en `127.0.0.1:3000`. Su Ollama propio es la tarea
+**TransMiVoz Ollama** en `127.0.0.1:11435`; el Ollama de uso personal, en el
+11434, no se toca. Para reiniciar las dos después de compilar:
+`scripts\instalar-servicios-transmivoz.ps1`.
 
 Es el computador real de Nicolás, no un entorno de pruebas, y lo usan otros
 agentes al mismo tiempo. Reglas:

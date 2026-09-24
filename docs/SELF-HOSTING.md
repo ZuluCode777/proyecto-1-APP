@@ -67,27 +67,17 @@ veces.
 ```powershell
 cd D:\visionaria
 ollama pull qwen2.5:3b
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\instalar-ollama-transmivoz.ps1
 ```
 
-`instalar-ollama-transmivoz.ps1` crea la tarea programada **TransMiVoz Ollama**,
-que arranca `scripts\ollama-transmivoz.ps1` al iniciar sesión, y la arranca en
-ese momento. No necesita permisos de administrador. Termina diciendo
-"Ollama de TransMiVoz escuchando en 127.0.0.1:11435".
-
-Después, en `D:\visionaria\.env.local`:
+En `D:\visionaria\.env.local`:
 
 ```
 OLLAMA_MODEL=qwen2.5:3b
 OLLAMA_BASE_URL=http://127.0.0.1:11435
 ```
 
-y vuelve a compilar y arrancar:
-
-```powershell
-pnpm build
-pnpm start
-```
+Después vuelve a compilar (`pnpm build`). La instancia en el 11435 la arranca
+la tarea programada de la sección [Que siga corriendo](#que-siga-corriendo).
 
 `/diagnostico` muestra "Motor: Ollama (qwen2.5:3b)" cuando el modelo contestó
 de verdad. Si Ollama está configurado pero no respondió, lo dice.
@@ -99,12 +89,6 @@ la persona nunca se queda esperando.
 
 Las dos instancias escuchan solo en `127.0.0.1`. Como la app corre en la misma
 máquina, no hace falta abrir esos puertos a la red.
-
-Para quitar la instancia propia:
-
-```powershell
-Unregister-ScheduledTask -TaskName "TransMiVoz Ollama" -Confirm:$false
-```
 
 ## Abrir la app desde otro dispositivo
 
@@ -118,10 +102,8 @@ Usa Tailscale. Sirve la app por HTTPS con un certificado válido en un nombre
 `ts.net`, que sí es un contexto seguro:
 
 ```powershell
-# la app solo en loopback, para no exponerla en la red local
-pnpm exec next start -H 127.0.0.1 -p 3000
-
-# en otra terminal, publicarla en la tailnet por HTTPS
+# la tarea TransMiVoz App ya sirve la app solo en loopback (127.0.0.1:3000),
+# así que no queda expuesta en la red local; esto la publica en la tailnet
 tailscale serve --bg 3000
 tailscale serve status
 ```
@@ -145,23 +127,32 @@ Hazlo solo para una demostración y apágalo después con
 
 ## Que siga corriendo
 
-`pnpm start` se detiene al cerrar la terminal. Para que sobreviva al cierre de
-sesión y a los reinicios, usa el Programador de tareas, sin instalar nada:
+`pnpm start` se detiene al cerrar la terminal. Para que la app y su Ollama
+arranquen solos al iniciar sesión, hay un instalador que crea dos tareas
+programadas, sin permisos de administrador:
 
-1. Programador de tareas → **Crear tarea** (no "tarea básica").
-2. General → **Ejecutar tanto si el usuario inició sesión como si no**.
-3. Desencadenadores → Nuevo → **Al iniciar el sistema**.
-4. Acciones → Nueva → Iniciar un programa:
-   - Programa: `C:\Program Files\nodejs\node.exe`
-   - Argumentos: `node_modules\next\dist\bin\next start -H 127.0.0.1 -p 3000`
-   - Iniciar en: `D:\visionaria`
-5. Configuración → desmarca **Detener la tarea si se ejecuta durante más de**.
+```powershell
+cd D:\visionaria
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\instalar-servicios-transmivoz.ps1
+```
 
-Apunta la tarea directamente a `node.exe` y no a pnpm, para que no haya un
-intérprete de comandos entre el programador y el servidor.
+- **TransMiVoz Ollama**: el Ollama propio en `127.0.0.1:11435`
+  (`scripts\ollama-transmivoz.ps1`).
+- **TransMiVoz App**: `next start` en `127.0.0.1:3000`, desde `D:\visionaria`.
+
+Termina diciendo que las dos escuchan. Las tareas se reinician solas si se
+caen, y el instalador se puede volver a correr: reemplaza las tareas y las
+reinicia. Necesita que la app ya esté compilada.
 
 `tailscale serve --bg` ya persiste entre reinicios, no necesita su propia
 tarea.
+
+Para quitar las tareas:
+
+```powershell
+Unregister-ScheduledTask -TaskName "TransMiVoz App" -Confirm:$false
+Unregister-ScheduledTask -TaskName "TransMiVoz Ollama" -Confirm:$false
+```
 
 ## Después de traer cambios
 
@@ -170,8 +161,8 @@ cd D:\visionaria
 git pull
 pnpm install
 pnpm build
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\instalar-servicios-transmivoz.ps1
 ```
 
-Luego reinicia la tarea (Programador de tareas → clic derecho → Finalizar, y
-luego Ejecutar). El servidor sigue sirviendo la versión anterior hasta que se
-reinicia.
+El instalador reinicia las dos tareas, así que la app sirve la versión nueva.
+Sin eso, el servidor sigue sirviendo la compilación anterior.
