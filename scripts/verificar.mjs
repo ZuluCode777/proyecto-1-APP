@@ -158,7 +158,7 @@ async function main() {
   const ok = rows.filter((r) => r.state === "ok").length
   console.log(`\n${ok} de ${rows.length} pruebas correctas.`)
   ws.close()
-  return ok === rows.length && rows.length > 0
+  return ok === rows.length && rows.length === 9
 }
 
 main()

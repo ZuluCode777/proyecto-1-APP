@@ -29,6 +29,10 @@ jobs:
       - name: Pruebas
         run: pnpm test
 
+      - name: Prueba del instalador de servicios
+        shell: pwsh
+        run: ./test/verificar-servicios.ps1
+
       - name: Compilación
         run: pnpm build
 

@@ -35,12 +35,16 @@ function Register-TransMiVozTask($taskName, $description, $action) {
   Start-ScheduledTask -TaskName $taskName
 }
 
-function Wait-Url($url) {
+function Wait-Url($url, [switch]$aceptar401) {
   for ($i = 0; $i -lt 60; $i++) {
     try {
       Invoke-WebRequest $url -UseBasicParsing -TimeoutSec 2 | Out-Null
       return $true
-    } catch { Start-Sleep -Seconds 1 }
+    } catch {
+      # La app protegida ya escucha cuando pide la clave. Ollama exige 200.
+      if ($aceptar401 -and $_.Exception.Response.StatusCode -eq 401) { return $true }
+      Start-Sleep -Seconds 1
+    }
   }
   return $false
 }
@@ -72,5 +76,5 @@ $nodeExe = (Get-Command node -ErrorAction Stop).Source
 Register-TransMiVozTask 'TransMiVoz App' 'App TransMiVoz en 127.0.0.1:3000' `
   (New-ScheduledTaskAction -Execute $nodeExe -WorkingDirectory $repoDir `
     -Argument 'node_modules\next\dist\bin\next start -H 127.0.0.1 -p 3000')
-if (Wait-Url 'http://127.0.0.1:3000/') { 'App TransMiVoz escuchando en 127.0.0.1:3000.' }
+if (Wait-Url 'http://127.0.0.1:3000/' -aceptar401) { 'App TransMiVoz escuchando en 127.0.0.1:3000.' }
 else { 'La tarea de la app se creó, pero no respondió en 127.0.0.1:3000.'; exit 1 }
