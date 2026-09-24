@@ -10,6 +10,10 @@
  *   pnpm verificar                          # contra http://localhost:3000
  *   pnpm verificar https://mi-maquina.ts.net
  *   CHROME_PATH=/ruta/a/chrome pnpm verificar
+ *   APP_PASSWORD=la-clave pnpm verificar https://mi-maquina.ts.net
+ *
+ * Con `APP_PASSWORD`, responde a la petición de clave de la app. La clave solo
+ * se envía al origen que se verifica, no a los mapas ni a otros dominios.
  */
 import { spawn } from "node:child_process"
 import { existsSync, mkdtempSync, rmSync } from "node:fs"
@@ -21,6 +25,7 @@ const PORT = 9333
 /** Espera máxima a que Chrome abra el puerto de depuración y liste la pestaña. */
 const CHROME_WAIT_MS = 30_000
 const RICAURTE = { latitude: 4.6124, longitude: -74.0935, accuracy: 20 }
+const PASSWORD = process.env.APP_PASSWORD
 
 const CANDIDATES = [
   process.env.CHROME_PATH,
@@ -85,6 +90,16 @@ async function main() {
       waiting.get(msg.id)(msg)
       waiting.delete(msg.id)
     }
+    // Con Fetch activo, Chrome detiene cada petición al origen hasta que se
+    // continúa, y pregunta qué hacer cuando la app pide la clave.
+    const requestId = msg.params?.requestId
+    if (msg.method === "Fetch.requestPaused") send("Fetch.continueRequest", { requestId }).catch(() => undefined)
+    if (msg.method === "Fetch.authRequired") {
+      send("Fetch.continueWithAuth", {
+        requestId,
+        authChallengeResponse: { response: "ProvideCredentials", username: "verificar", password: PASSWORD },
+      }).catch(() => undefined)
+    }
   }
   const send = (method, params = {}) =>
     new Promise((resolve, reject) => {
@@ -95,6 +110,9 @@ async function main() {
   const evaluate = async (expression) =>
     (await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true })).result.value
 
+  if (PASSWORD) {
+    await send("Fetch.enable", { handleAuthRequests: true, patterns: [{ urlPattern: `${new URL(BASE).origin}/*` }] })
+  }
   await send("Browser.grantPermissions", {
     origin: new URL(BASE).origin,
     permissions: ["geolocation", "audioCapture", "videoCapture"],

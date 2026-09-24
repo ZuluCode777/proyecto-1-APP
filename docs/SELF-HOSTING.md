@@ -115,15 +115,42 @@ funcionando.
 Hace falta tener **MagicDNS** y **HTTPS Certificates** activados en la consola
 de administración de Tailscale, en DNS. Sin eso no hay certificado.
 
-Para publicarla en internet y no solo en la tailnet, cambia `serve` por
-`funnel`:
+### Publicarla en internet con Funnel
+
+Para que la abra alguien que no está en la tailnet, por ejemplo el resto del
+grupo, se usa Funnel. **Antes, pon una clave**: sin ella, cualquiera con el
+enlace abre la app y usa la GPU de la máquina con el asistente.
+
+En `D:\visionaria\.env.local`:
+
+```
+APP_PASSWORD=una-clave-larga-y-aleatoria
+```
+
+Con la clave, la app la pide en toda petición (páginas, API y archivos) con el
+diálogo de usuario y contraseña del navegador. El usuario puede ser cualquiera;
+solo cuenta la clave. El navegador la recuerda hasta que se cierra.
+
+La clave se lee al arrancar, así que después de cambiarla reinicia las tareas
+con el instalador de [Que siga corriendo](#que-siga-corriendo). Luego:
 
 ```powershell
 tailscale funnel --bg 3000
+tailscale funnel status
 ```
 
-Hazlo solo para una demostración y apágalo después con
-`tailscale funnel --https=443 off`. La app no tiene autenticación.
+La dirección es la misma, `https://<máquina>.<tailnet>.ts.net`, ahora abierta a
+internet. Funnel tiene que estar permitido en la política de la tailnet
+(atributo `funnel`); si no, el comando da el enlace para activarlo. Para
+comprobar desde fuera:
+
+```powershell
+$env:APP_PASSWORD = "la-clave"
+pnpm verificar https://<máquina>.<tailnet>.ts.net
+```
+
+Para volver a dejarla solo en la tailnet: `tailscale funnel --https=443 off` y
+de nuevo `tailscale serve --bg 3000`.
 
 ## Que siga corriendo
 
