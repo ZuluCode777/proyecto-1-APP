@@ -5,7 +5,7 @@
 # La app lo usa con OLLAMA_BASE_URL=http://127.0.0.1:11435 en .env.local.
 #
 # Se arranca solo al iniciar sesión con la tarea programada que crea
-# scripts/instalar-ollama-transmivoz.ps1.
+# scripts/instalar-servicios-transmivoz.ps1.
 
 $ollamaExe = Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama.exe'
 if (-not (Test-Path -LiteralPath $ollamaExe)) {

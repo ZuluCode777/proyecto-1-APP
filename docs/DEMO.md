@@ -22,26 +22,23 @@ Tailnet: `taila37867.ts.net`
 2. La máquina con Windows no se suspende. Configuración → Sistema →
    Energía → suspender **Nunca** mientras esté enchufada.
 3. El respaldo en el portátil está compilado y probado (ver abajo).
-4. La tarea **TransMiVoz Ollama** existe en la máquina con Windows (Programador
-   de tareas), para que el modelo esté disponible en el puerto 11435.
+4. Las tareas **TransMiVoz App** y **TransMiVoz Ollama** existen en la máquina
+   con Windows (Programador de tareas).
 5. `pnpm sync:transmilenio` corrido hace poco, para que la copia de los datos
    esté al día si el servicio de TransMilenio falla ese día.
 
 ## El día de la presentación
 
-En la máquina con Windows, primera terminal:
+En la máquina con Windows, la app y su Ollama ya arrancan solos al iniciar
+sesión (tareas **TransMiVoz App** y **TransMiVoz Ollama**). Solo hace falta
+traer la última versión y reiniciarlas:
 
 ```powershell
 cd D:\visionaria
 git pull
 pnpm install
 pnpm build
-pnpm exec next start -H 127.0.0.1 -p 3000
-```
-
-Segunda terminal:
-
-```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\instalar-servicios-transmivoz.ps1
 tailscale serve --bg 3000
 tailscale serve status
 ```
