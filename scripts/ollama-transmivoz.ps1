@@ -19,9 +19,10 @@
 # por ejemplo, no se pudo meter a Ollama en el trabajo.
 #
 # Si Ollama termina mientras este script espera (una falla, o alguien lo
-# detuvo a mano), el script detiene los procesos que cargaban sus modelos. Los
-# avisos y errores quedan en .ollama-transmivoz.log, porque la tarea no tiene
-# ventana.
+# detuvo a mano), el script termina y el trabajo detiene a los procesos que
+# cargaban sus modelos. Si Ollama no quedó en el trabajo, el script los detiene
+# con Stop-OllamaConHijos. Los avisos y errores quedan en
+# .ollama-transmivoz.log, porque la tarea no tiene ventana.
 
 . (Join-Path $PSScriptRoot 'detener-ollama.ps1')
 
@@ -35,7 +36,7 @@ $logFile = Join-Path $repoDir '.ollama-transmivoz.log'
 
 $env:OLLAMA_HOST = '127.0.0.1:11435'
 $env:OLLAMA_KEEP_ALIVE = '1h'
-Add-Type -TypeDefinition @'
+$trabajoCs = @'
 using System;
 using System.Runtime.InteropServices;
 
@@ -66,14 +67,19 @@ public static class TrabajoTransMiVoz {
   [DllImport("kernel32.dll", SetLastError = true)]
   static extern bool AssignProcessToJobObject(IntPtr trabajo, IntPtr proceso);
 
+  const int JobObjectExtendedLimitInformation = 9;
+  const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000;
+
   // Crea un trabajo que detiene todos sus procesos cuando se cierra y mete en
-  // él al proceso. El trabajo se cierra cuando termina el proceso que lo creó.
+  // él al proceso. El identificador del trabajo nunca se cierra a propósito:
+  // Windows lo cierra cuando termina este script, y cerrarlo antes detendría a
+  // Ollama.
   public static void Meter(IntPtr proceso) {
     IntPtr trabajo = CreateJobObject(IntPtr.Zero, null);
     if (trabajo == IntPtr.Zero) throw new System.ComponentModel.Win32Exception();
     LimitesExtendidos info = new LimitesExtendidos();
-    info.Basicos.LimitFlags = 0x2000; // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-    if (!SetInformationJobObject(trabajo, 9, ref info, (uint)Marshal.SizeOf(info)))
+    info.Basicos.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (!SetInformationJobObject(trabajo, JobObjectExtendedLimitInformation, ref info, (uint)Marshal.SizeOf(info)))
       throw new System.ComponentModel.Win32Exception();
     if (!AssignProcessToJobObject(trabajo, proceso))
       throw new System.ComponentModel.Win32Exception();
@@ -83,7 +89,11 @@ public static class TrabajoTransMiVoz {
 
 $ollamaProc = Start-Process -FilePath $ollamaExe -ArgumentList 'serve' -PassThru -WindowStyle Hidden
 $inicio = $ollamaProc.StartTime
+# Ollama entra al trabajo unos milisegundos después de arrancar. Los modelos
+# se cargan después, cuando la app los pide, así que sus procesos ya nacen
+# dentro del trabajo.
 try {
+  Add-Type -TypeDefinition $trabajoCs -ErrorAction Stop
   [TrabajoTransMiVoz]::Meter($ollamaProc.Handle)
 } catch {
   "$(Get-Date -Format s) No se pudo meter a Ollama en un objeto de trabajo; al detener la tarea, Ollama seguirá vivo: $_" |

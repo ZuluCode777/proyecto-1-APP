@@ -60,13 +60,16 @@ function Test-PuertoOcupado($url) {
   }
 }
 
-# Describe los procesos que escuchan en un puerto local, para el mensaje de
-# error: el PID y el nombre de cada uno.
-function Get-OcupantesPuerto($puerto) {
+# Devuelve un texto con el PID y el nombre de cada proceso que escucha en un
+# puerto local, para el mensaje de error.
+function Format-OcupantesPuerto($puerto) {
   $ids = @(Get-NetTCPConnection -LocalPort $puerto -State Listen -ErrorAction SilentlyContinue |
     Select-Object -ExpandProperty OwningProcess -Unique)
   if (-not $ids) { return 'un proceso que no se pudo identificar' }
-  ($ids | ForEach-Object { "PID $_ ($((Get-Process -Id $_ -ErrorAction SilentlyContinue).ProcessName))" }) -join ', '
+  ($ids | ForEach-Object {
+    $nombre = (Get-Process -Id $_ -ErrorAction SilentlyContinue).ProcessName
+    "PID $_ ($(if ($nombre) { $nombre } else { 'ya terminó' }))"
+  }) -join ', '
 }
 
 . (Join-Path $PSScriptRoot 'detener-ollama.ps1')
@@ -97,7 +100,7 @@ Stop-TransMiVozOllama
 # Si algo sigue escuchando en el 11435, el Ollama nuevo no podría usar el
 # puerto y la espera de abajo daría por bueno a ese otro proceso.
 if (Test-PuertoOcupado 'http://127.0.0.1:11435/api/version') {
-  "Algo sigue escuchando en 127.0.0.1:11435 después de detener el Ollama de TransMiVoz: $(Get-OcupantesPuerto 11435). Detén ese proceso por su PID y vuelve a correr el instalador."
+  "Algo sigue escuchando en 127.0.0.1:11435 después de detener el Ollama de TransMiVoz: $(Format-OcupantesPuerto 11435). Detén ese proceso por su PID y vuelve a correr el instalador."
   exit 1
 }
 Register-TransMiVozTask 'TransMiVoz Ollama' 'Ollama de TransMiVoz en 127.0.0.1:11435' `

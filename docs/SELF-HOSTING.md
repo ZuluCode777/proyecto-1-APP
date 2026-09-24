@@ -190,9 +190,11 @@ propio y a esos procesos. Para apagar el modelo sin quitar la tarea:
 Stop-ScheduledTask -TaskName "TransMiVoz Ollama"
 ```
 
-Vuelve a arrancar al iniciar sesión, o con
+La tarea vuelve a arrancar a Ollama al iniciar sesión, o con
 `Start-ScheduledTask -TaskName "TransMiVoz Ollama"`. Los avisos de la tarea
-quedan en `.ollama-transmivoz.log`.
+quedan en `.ollama-transmivoz.log`. Si ahí dice que Ollama no entró en el
+objeto de trabajo, detener la tarea no lo detiene: hay que volver a correr el
+instalador, que lo detiene por su PID.
 
 `tailscale serve --bg` ya persiste entre reinicios, no necesita su propia
 tarea.

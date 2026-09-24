@@ -4,7 +4,7 @@
 $ErrorActionPreference = 'Stop'
 $archivo = Join-Path $PSScriptRoot '../scripts/instalar-servicios-transmivoz.ps1'
 $arbol = [System.Management.Automation.Language.Parser]::ParseFile($archivo, [ref]$null, [ref]$null)
-foreach ($nombre in 'Wait-Url', 'Test-PuertoOcupado', 'Get-OcupantesPuerto', 'Stop-TransMiVozOllama') {
+foreach ($nombre in 'Wait-Url', 'Test-PuertoOcupado', 'Format-OcupantesPuerto', 'Stop-TransMiVozOllama') {
   $funcion = $arbol.Find({ param($nodo)
     $nodo -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $nodo.Name -eq $nombre
   }, $true)
@@ -113,10 +113,12 @@ try {
 'Correcto: detiene el Ollama de TransMiVoz y sus hijos, y ningun otro proceso.'
 
 # El mensaje de puerto ocupado dice el PID y el nombre de lo que escucha.
-function Get-NetTCPConnection { param($LocalPort, $State, $ErrorAction) $script:conexiones }
+function Get-NetTCPConnection { param($LocalPort, $State, $ErrorAction) if ($State -eq 'Listen') { $script:conexiones } }
 $script:vivos = @{ 4242 = [pscustomobject]@{ ProcessName = 'ollama' } }
 $script:conexiones = @([pscustomobject]@{ OwningProcess = 4242 }, [pscustomobject]@{ OwningProcess = 4242 })
-if ((Get-OcupantesPuerto 11435) -ne 'PID 4242 (ollama)') { throw "Ocupantes mal descritos: $(Get-OcupantesPuerto 11435)" }
+if ((Format-OcupantesPuerto 11435) -ne 'PID 4242 (ollama)') { throw "Ocupantes mal descritos: $(Format-OcupantesPuerto 11435)" }
+$script:conexiones = @([pscustomobject]@{ OwningProcess = 4343 })
+if ((Format-OcupantesPuerto 11435) -notmatch '^PID 4343 \(ya termin') { throw "Proceso terminado mal descrito: $(Format-OcupantesPuerto 11435)" }
 $script:conexiones = @()
-if ((Get-OcupantesPuerto 11435) -ne 'un proceso que no se pudo identificar') { throw 'Sin conexiones debia decir que no se pudo identificar.' }
+if ((Format-OcupantesPuerto 11435) -ne 'un proceso que no se pudo identificar') { throw 'Sin conexiones debia decir que no se pudo identificar.' }
 'Correcto: el mensaje de puerto ocupado dice que proceso lo ocupa.'
