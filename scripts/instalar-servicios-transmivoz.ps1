@@ -51,16 +51,29 @@ function Wait-Url($url, [switch]$aceptar401) {
 
 # Detiene el Ollama que arrancó esta misma tarea antes, por su PID exacto.
 # No toca el Ollama de uso personal ni ningún otro proceso llamado ollama.
+#
+# Ollama carga cada modelo en un proceso hijo (llama-server.exe). Windows no
+# detiene los hijos junto con el padre, y el hijo huérfano sigue ocupando la
+# memoria de la GPU, así que también se detienen los hijos de ese PID, aunque
+# el padre ya no exista. Solo cuentan los creados después de guardar el PID:
+# así no se toca a los hijos de otro proceso que haya reutilizado ese número.
 function Stop-TransMiVozOllama {
   $pidFile = Join-Path $repoDir '.ollama-transmivoz.pid'
   if (-not (Test-Path -LiteralPath $pidFile -PathType Leaf)) { return }
   $savedId = [int](Get-Content -LiteralPath $pidFile -Raw)
+  $guardado = (Get-Item -LiteralPath $pidFile -Force).LastWriteTime
+  $hijos = @(Get-CimInstance Win32_Process | Where-Object {
+    $_.ParentProcessId -eq $savedId -and $_.Name -like '*llama*' -and $_.CreationDate -ge $guardado
+  })
   $running = Get-Process -Id $savedId -ErrorAction SilentlyContinue
   if ($running -and $running.ProcessName -eq 'ollama') {
     Stop-Process -Id $savedId
-    Start-Sleep -Seconds 2
   }
-  Remove-Item -LiteralPath $pidFile
+  foreach ($hijo in $hijos) {
+    Stop-Process -Id $hijo.ProcessId -ErrorAction SilentlyContinue
+  }
+  if ($running -or $hijos) { Start-Sleep -Seconds 2 }
+  Remove-Item -LiteralPath $pidFile -Force
 }
 
 $ollamaScript = Join-Path $PSScriptRoot 'ollama-transmivoz.ps1'
