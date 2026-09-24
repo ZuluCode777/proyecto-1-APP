@@ -58,7 +58,7 @@ export function TripView({ legs, data, onOpenRoute, onBack }: TripViewProps) {
               onClick={() => onOpenRoute(leg.routeCode)}
               className="flex w-full items-center gap-4 rounded-2xl border-2 border-border bg-card p-4 text-left"
             >
-              <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-brand text-xl font-bold text-brand-foreground">
+              <span className="flex size-14 shrink-0 items-center justify-center rounded-xl border-[3px] border-border bg-brand text-xl font-bold text-brand-foreground">
                 {leg.routeCode}
               </span>
               <span className="flex min-w-0 flex-1 flex-col text-lg">

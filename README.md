@@ -17,8 +17,10 @@ Windows y [docs/DEMO.md](docs/DEMO.md) para la presentación.
 
 Se eligen desde el menú y se guardan en el navegador.
 
-- **Baja visión**: cinco opciones grandes, contraste de al menos 7:1 en todos
-  los temas, un tema de alto contraste negro con neón y sin texto pequeño.
+- **Baja visión**: cinco opciones grandes y sin texto pequeño. El tema claro
+  es el esquema "cabecera lima": pantalla blanca, cabecera lima, un neón
+  distinto por botón, letra negra (al menos 7:1) y contornos negros gruesos.
+  El único tema oscuro es "Alto contraste", negro con neón.
 - **Ceguera total**: no hace falta ver la pantalla. Toda la pantalla es un
   botón que escucha, responde en voz alta y abre el resultado.
 

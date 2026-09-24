@@ -41,7 +41,7 @@ export function PartialRoutes({
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder="Buscar estación o ruta"
           aria-label="Buscar estación o ruta"
-          className="w-full rounded-2xl border-2 border-border bg-card py-5 pl-12 pr-28 text-lg shadow-sm outline-none placeholder:text-muted-foreground focus-visible:border-brand"
+          className="w-full rounded-2xl border-2 border-border bg-card py-5 pl-12 pr-28 text-lg shadow-sm outline-none placeholder:text-muted-foreground focus-visible:border-[3px]"
         />
         {query && (
           <button
@@ -57,7 +57,7 @@ export function PartialRoutes({
           type="button"
           onClick={onVoice}
           aria-label="Buscar con la voz"
-          className="absolute right-1.5 top-1/2 flex size-12 -translate-y-1/2 items-center justify-center rounded-xl bg-brand text-brand-foreground"
+          className="absolute right-1.5 top-1/2 flex size-12 -translate-y-1/2 items-center justify-center rounded-xl border-[3px] border-border bg-brand text-brand-foreground"
         >
           <Mic className="size-5" aria-hidden="true" />
         </button>
@@ -66,7 +66,7 @@ export function PartialRoutes({
       <button
         type="button"
         onClick={onVoice}
-        className="flex shrink-0 items-center justify-center gap-3 rounded-2xl border border-brand bg-brand py-4 text-lg font-bold text-brand-foreground shadow-sm transition active:scale-[0.99]"
+        className="flex shrink-0 items-center justify-center gap-3 rounded-2xl border-[3px] border-border bg-brand py-4 text-lg font-bold text-brand-foreground shadow-sm transition active:scale-[0.99]"
       >
         <Mic className="size-6" aria-hidden="true" />
         Buscar hablando
@@ -77,7 +77,7 @@ export function PartialRoutes({
         onClick={onFrequent}
         className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm transition active:scale-[0.99]"
       >
-        <span className="flex size-16 items-center justify-center rounded-2xl bg-brand-soft text-brand">
+        <span className="flex size-16 items-center justify-center rounded-2xl bg-brand-soft text-brand-ink">
           <Heart className="size-8" aria-hidden="true" />
         </span>
         <span className="text-xl font-bold">Rutas frecuentes</span>

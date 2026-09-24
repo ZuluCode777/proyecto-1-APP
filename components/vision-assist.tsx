@@ -119,7 +119,7 @@ export function VisionAssist({ onBack }: VisionAssistProps) {
           <ArrowLeft className="size-5" aria-hidden="true" />
         </button>
         <span className="flex items-center gap-2 text-xl font-bold tracking-tight">
-          <ScanText className="size-6 text-brand" aria-hidden="true" />
+          <ScanText className="size-6 text-brand-ink" aria-hidden="true" />
           Lupa
         </span>
       </div>
@@ -135,7 +135,7 @@ export function VisionAssist({ onBack }: VisionAssistProps) {
         />
 
         {status === "active" && frozen && (
-          <span className="absolute left-3 top-3 rounded-full bg-brand px-3 py-1 text-lg font-bold text-brand-foreground shadow-sm">
+          <span className="absolute left-3 top-3 rounded-full border-[3px] border-border bg-brand px-3 py-1 text-lg font-bold text-brand-foreground shadow-sm">
             Congelada
           </span>
         )}
@@ -163,7 +163,7 @@ export function VisionAssist({ onBack }: VisionAssistProps) {
                 className={[
                   "rounded-xl border py-2.5 text-base font-bold shadow-sm transition active:scale-[0.97]",
                   active
-                    ? "border-brand bg-brand text-brand-foreground"
+                    ? "border-border bg-brand text-brand-foreground"
                     : "border-border bg-card",
                 ].join(" ")}
               >
@@ -174,7 +174,7 @@ export function VisionAssist({ onBack }: VisionAssistProps) {
         </div>
 
         <label className="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm">
-          <ZoomIn className="size-5 shrink-0 text-brand" aria-hidden="true" />
+          <ZoomIn className="size-5 shrink-0 text-brand-ink" aria-hidden="true" />
           <span className="sr-only">Nivel de acercamiento</span>
           <input
             type="range"

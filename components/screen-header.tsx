@@ -23,12 +23,12 @@ export function ScreenHeader({ title, subtitle, icon: Icon, onBack }: ScreenHead
 
       <div className="flex items-center gap-3">
         {Icon && (
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-brand-soft text-brand shadow-sm">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-brand-soft text-brand-ink shadow-sm">
             <Icon className="size-6" aria-hidden="true" />
           </span>
         )}
         <div className="flex flex-col">
-          <h2 className="text-2xl font-bold leading-tight tracking-tight">{title}</h2>
+          <h2 className="text-2xl font-extrabold leading-tight tracking-tight">{title}</h2>
           {subtitle && <p className="mt-0.5 text-base text-muted-foreground">{subtitle}</p>}
         </div>
       </div>

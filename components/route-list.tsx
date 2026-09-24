@@ -41,9 +41,9 @@ export function RouteList({ title, routes, emptyMessage, fetchedAt, onOpen, onBa
                 type="button"
                 onFocus={() => speak(`Ruta ${route.code}, de ${route.from} hacia ${route.to}.`)}
                 onClick={() => onOpen(route)}
-                className="flex min-h-20 w-full items-center gap-4 rounded-2xl border-2 border-border bg-card p-4 text-left"
+                className="flex min-h-20 w-full items-center gap-4 rounded-2xl border-[3px] border-border bg-bar p-4 text-left"
               >
-                <span className="flex min-w-16 shrink-0 items-center justify-center rounded-xl bg-brand px-2 py-3 text-xl font-bold text-brand-foreground">
+                <span className="flex min-w-16 shrink-0 items-center justify-center rounded-xl border-[3px] border-border bg-brand px-2 py-3 text-xl font-bold text-brand-foreground">
                   {route.code}
                 </span>
                 <span className="min-w-0 flex-1">

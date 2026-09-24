@@ -179,7 +179,7 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
             ))}
         </span>
 
-        <span className="relative z-10 flex size-40 items-center justify-center rounded-full bg-brand text-brand-foreground shadow-lg">
+        <span className="relative z-10 flex size-40 items-center justify-center rounded-full border-[3px] border-border bg-brand text-brand-foreground shadow-lg">
           {thinking ? (
             <Loader2 className="size-16 animate-spin" aria-hidden="true" />
           ) : active ? (
@@ -211,7 +211,7 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
             <ol className="mt-2 flex flex-col gap-2">
               {steps.map((step, i) => (
                 <li key={i} className="flex items-start gap-2 text-lg">
-                  <CheckCircle2 className="mt-1 size-5 shrink-0 text-brand" aria-hidden="true" />
+                  <CheckCircle2 className="mt-1 size-5 shrink-0 text-brand-ink" aria-hidden="true" />
                   <span>
                     {step.label}
                     {step.detail && <span className="block text-base text-muted-foreground">{step.detail}</span>}
@@ -236,7 +236,7 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
           <button
             type="submit"
             aria-label="Enviar pregunta"
-            className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-brand text-brand-foreground"
+            className="flex size-14 shrink-0 items-center justify-center rounded-2xl border-[3px] border-border bg-brand text-brand-foreground"
           >
             <Send className="size-6" aria-hidden="true" />
           </button>

@@ -192,7 +192,7 @@ export function Diagnostics() {
         <button
           type="button"
           onClick={runAll}
-          className="min-h-14 rounded-2xl bg-brand px-6 text-xl font-bold text-brand-foreground"
+          className="min-h-14 rounded-2xl border-[3px] border-border bg-brand px-6 text-xl font-bold text-brand-foreground"
         >
           Probar todo
         </button>

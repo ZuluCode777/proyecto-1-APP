@@ -77,8 +77,8 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
         className={[
           "flex size-40 items-center justify-center rounded-full transition-colors",
           listening
-            ? "animate-pulse bg-brand text-brand-foreground shadow-lg shadow-brand/40"
-            : "bg-brand-soft text-brand",
+            ? "animate-pulse border-[3px] border-border bg-brand text-brand-foreground"
+            : "bg-brand-soft text-brand-ink",
         ].join(" ")}
       >
         <Mic className="size-16" aria-hidden="true" />
@@ -92,7 +92,7 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
         <p className="max-w-sm text-center text-lg text-muted-foreground">“{transcript}”</p>
       )}
       {errorMessage && (
-        <p className="max-w-sm text-center text-lg text-brand" role="alert">
+        <p className="max-w-sm text-center text-lg text-brand-ink" role="alert">
           {errorMessage}
         </p>
       )}

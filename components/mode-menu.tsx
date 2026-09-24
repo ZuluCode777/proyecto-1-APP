@@ -53,13 +53,13 @@ export function ModeMenu({ open, mode, onClose, onSelect }: ModeMenuProps) {
               aria-pressed={active}
               className={[
                 "flex items-start gap-4 rounded-2xl border-2 p-4 text-left",
-                active ? "border-brand bg-brand-soft" : "border-border bg-card",
+                active ? "border-border bg-brand-soft" : "border-border bg-card",
               ].join(" ")}
             >
               <span
                 className={[
                   "flex size-12 shrink-0 items-center justify-center rounded-2xl",
-                  active ? "bg-brand text-brand-foreground" : "bg-brand-soft text-brand",
+                  active ? "bg-brand text-brand-foreground" : "bg-brand-soft text-brand-ink",
                 ].join(" ")}
               >
                 <Icon className="size-6" aria-hidden="true" />
@@ -67,7 +67,7 @@ export function ModeMenu({ open, mode, onClose, onSelect }: ModeMenuProps) {
               <span className="flex-1">
                 <span className="flex items-center gap-2 text-2xl font-bold">
                   {option.title}
-                  {active && <Check className="size-5 text-brand" aria-hidden="true" />}
+                  {active && <Check className="size-5 text-brand-ink" aria-hidden="true" />}
                 </span>
                 <span className="mt-1 block text-lg">
                   {option.description}

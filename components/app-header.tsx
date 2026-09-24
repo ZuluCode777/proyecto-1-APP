@@ -9,12 +9,12 @@ type AppHeaderProps = {
 
 export function AppHeader({ onMenu, onNotifications }: AppHeaderProps) {
   return (
-    <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-gradient-to-b from-brand-soft/40 to-transparent px-4 pb-3 pt-5">
+    <header className="flex shrink-0 items-center justify-between gap-3 border-b-[3px] border-border bg-bar px-4 pb-3 pt-5">
       <button
         type="button"
         onClick={onMenu}
         aria-label="Abrir menú de accesibilidad"
-        className="flex size-12 items-center justify-center rounded-2xl border border-border bg-card shadow-sm transition active:scale-95"
+        className="flex size-12 items-center justify-center rounded-2xl border-[3px] border-border bg-bar transition active:scale-95"
       >
         <Menu className="size-6" aria-hidden="true" />
       </button>
@@ -22,18 +22,18 @@ export function AppHeader({ onMenu, onNotifications }: AppHeaderProps) {
       <div className="flex items-center gap-2.5">
         <span
           aria-hidden="true"
-          className="flex size-9 items-center justify-center rounded-xl bg-brand text-brand-foreground shadow-sm"
+          className="flex size-9 items-center justify-center rounded-xl border-[3px] border-border bg-bar"
         >
           <Bus className="size-5" />
         </span>
-        <h1 className="text-2xl font-bold tracking-tight">TransMiVoz</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight">TransMiVoz</h1>
       </div>
 
       <button
         type="button"
         onClick={onNotifications}
         aria-label="Notificaciones"
-        className="flex size-12 items-center justify-center rounded-2xl border border-border bg-card shadow-sm transition active:scale-95"
+        className="flex size-12 items-center justify-center rounded-2xl border-[3px] border-border bg-bar transition active:scale-95"
       >
         <Bell className="size-6" aria-hidden="true" />
       </button>
