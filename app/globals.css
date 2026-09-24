@@ -175,7 +175,8 @@
 .leaflet-bar {
   border: 3px solid var(--border) !important;
 }
+/* leaflet.css carga después y ganaría sin !important. */
 .leaflet-bar a {
-  color: var(--foreground);
-  background-color: var(--card);
+  color: var(--foreground) !important;
+  background-color: var(--card) !important;
 }
