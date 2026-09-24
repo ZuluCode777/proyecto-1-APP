@@ -89,7 +89,9 @@ pnpm verificar           # prueba de extremo a extremo en Chrome, contra localho
 pnpm sync:transmilenio   # actualiza la copia de los datos
 ```
 
-Para usar Ollama, copia `.env.example` a `.env.local` y pon el modelo.
+Para usar Ollama, copia `.env.example` a `.env.local` y pon el modelo. En la
+máquina con Windows la app usa su propia instancia de Ollama en el puerto
+11435; ver [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md).
 
 `http://localhost` es un contexto seguro, así que el micrófono, la cámara y la
 ubicación funcionan en local. **No** funcionan por HTTP simple desde otro
@@ -101,9 +103,9 @@ funcionan ahí.
 
 ## Cómo se comprueba
 
-- `pnpm test`: 21 pruebas del parser de ArcGIS, las búsquedas, la
-  planificación de viajes, una tabla de frases del asistente y el límite de
-  peticiones.
+- `pnpm test`: pruebas unitarias del parser de ArcGIS, las búsquedas, la
+  planificación de viajes, una tabla de frases del asistente, la validación de
+  lo que devuelve Ollama y el límite de peticiones.
 - `/diagnostico`: nueve pruebas en vivo en el navegador, con botón "Probar
   todo".
 - `pnpm verificar`: corre `/diagnostico` en Chrome sin ventana, con cámara,

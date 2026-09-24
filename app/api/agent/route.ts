@@ -1,4 +1,5 @@
-import { interpretCommand, parseIntent, runIntent, type AgentContext } from "@/lib/local-agent"
+import { z } from "zod"
+import { parseIntent, plainReply, runIntent, type AgentContext } from "@/lib/local-agent"
 import { OLLAMA_MODEL, ollamaConfigured, ollamaStatus, parseIntentWithOllama } from "@/lib/ollama"
 import { createRateLimiter } from "@/lib/rate-limit"
 import { getTransmilenioData } from "@/lib/transmilenio-data"
@@ -29,17 +30,19 @@ function clientKey(req: Request): string {
   return req.headers.get("x-real-ip") ?? "local"
 }
 
-/** Acepta una ubicación solo si son coordenadas válidas. */
-function parsePosition(value: unknown): AgentContext["position"] {
-  if (!value || typeof value !== "object") return undefined
-  const { lat, lng } = value as { lat?: unknown; lng?: unknown }
-  if (typeof lat !== "number" || typeof lng !== "number") return undefined
-  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return undefined
-  return { lat, lng }
-}
+/**
+ * Cuerpo de la petición. Una ubicación inválida se descarta sin rechazar la
+ * pregunta: la persona igual recibe respuesta, solo que sin usar su posición.
+ */
+const BodySchema = z.object({
+  message: z.string().catch(""),
+  position: z
+    .object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) })
+    .optional()
+    .catch(undefined),
+})
 
-const answer = (reply: string, status = 200, headers?: HeadersInit) =>
-  Response.json({ reply, action: "none", query: "", steps: [], engine: "reglas" }, { status, headers })
+const answer = (reply: string, status = 200, headers?: HeadersInit) => Response.json(plainReply(reply), { status, headers })
 
 /** Qué motor interpreta las frases, para la pantalla de diagnóstico. */
 export async function GET() {
@@ -58,14 +61,16 @@ export async function POST(req: Request) {
 
   let message = ""
   let position: AgentContext["position"]
+  const raw = await req.text()
+  if (raw.length > MAX_BODY_CHARS) return answer("Ese mensaje es demasiado largo. Dilo en una frase corta.", 413)
   try {
-    const raw = await req.text()
-    if (raw.length > MAX_BODY_CHARS) return answer("Ese mensaje es demasiado largo. Dilo en una frase corta.", 413)
-    const body = JSON.parse(raw) as { message?: unknown; position?: unknown }
-    if (typeof body.message === "string") message = body.message.slice(0, MAX_MESSAGE_CHARS)
-    position = parsePosition(body.position)
+    const body = BodySchema.safeParse(JSON.parse(raw))
+    if (body.success) {
+      message = body.data.message.slice(0, MAX_MESSAGE_CHARS)
+      position = body.data.position
+    }
   } catch {
-    // Cuerpo inválido: se maneja como mensaje vacío más abajo.
+    // JSON inválido: se maneja como mensaje vacío más abajo.
   }
 
   if (!message.trim()) return answer("No te escuché bien. Toca la pantalla e inténtalo de nuevo.")
@@ -76,12 +81,11 @@ export async function POST(req: Request) {
   if (ollamaConfigured()) {
     try {
       const intent = await parseIntentWithOllama(message, data)
-      if (intent) return Response.json(runIntent(intent, data, context, "ollama"))
+      if (intent) return Response.json(runIntent(intent, { data, context, engine: "ollama" }))
     } catch (error) {
       console.warn("[agente] Ollama no respondió, uso las reglas:", error)
     }
-    return Response.json(runIntent(parseIntent(message, data), data, context, "reglas"))
   }
 
-  return Response.json(interpretCommand(message, data, context))
+  return Response.json(runIntent(parseIntent(message, data), { data, context }))
 }

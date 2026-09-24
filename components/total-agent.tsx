@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { CheckCircle2, Ear, Loader2, Mic, Send } from "lucide-react"
 import { useSpeech, useVoiceRecognition } from "@/hooks/use-speech"
 import type { LatLng } from "@/lib/geo"
-import { interpretCommand, type AgentReply, type AgentStep } from "@/lib/local-agent"
+import { AgentReplySchema, interpretCommand, plainReply, type AgentReply, type AgentStep } from "@/lib/local-agent"
 import type { TransmilenioData } from "@/lib/routes"
 
 type TotalAgentProps = {
@@ -61,11 +61,11 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
           body: JSON.stringify({ message, position: positionRef.current }),
         })
         if (!res.ok && res.status !== 429 && res.status !== 413) throw new Error(`HTTP ${res.status}`)
-        reply = (await res.json()) as AgentReply
+        reply = AgentReplySchema.parse(await res.json())
       } catch {
         // Sin servidor: el mismo intérprete corre en el navegador con los datos ya cargados.
         if (!data) {
-          reply = { reply: "No tengo conexión con el servidor. Inténtalo de nuevo.", action: "none", query: "", steps: [], engine: "reglas" }
+          reply = plainReply("No tengo conexión con el servidor. Inténtalo de nuevo.")
         } else {
           reply = interpretCommand(message, data, { position: positionRef.current })
         }
@@ -203,7 +203,7 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
             <h3 className="flex items-center justify-between text-lg font-bold">
               Lo que hice
               {engine && (
-                <span className="rounded-full bg-muted px-3 py-1 text-base font-semibold">
+                <span className="rounded-full border-2 border-border px-3 py-1 text-base font-semibold">
                   Motor: {engine === "ollama" ? "Ollama" : "reglas"}
                 </span>
               )}

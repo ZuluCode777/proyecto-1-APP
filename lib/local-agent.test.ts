@@ -2,9 +2,9 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import snapshot from "../data/transmilenio.json" with { type: "json" }
 import { interpretCommand, parseIntent } from "./local-agent"
-import type { TransmilenioData } from "./transmilenio"
+import { TransmilenioDataSchema } from "./transmilenio"
 
-const data = snapshot as TransmilenioData
+const data = TransmilenioDataSchema.parse(snapshot)
 
 test("entiende frases habituales", () => {
   const cases: [string, string][] = [
@@ -41,16 +41,16 @@ test("toma origen y destino en el orden en que se dicen", () => {
 
 test("planea un viaje directo con datos reales y deja los pasos", () => {
   const reply = interpretCommand("cómo llego de Portal Usme a Molinos", data)
-  assert.equal(reply.action, "trip")
-  assert.equal(reply.trip?.length, 1)
+  assert.ok(reply.action === "trip")
+  assert.equal(reply.trip.length, 1)
   assert.match(reply.reply, /^Toma la \S+ en Portal Usme y bájate en Molinos/)
   assert.ok(reply.steps.length >= 3, "debe registrar los pasos")
 })
 
 test("sin origen ni ubicación, lista las rutas que pasan por el destino", () => {
   const reply = interpretCommand("quiero ir a Ricaurte", data)
-  assert.equal(reply.action, "search")
-  assert.equal(reply.query, "Ricaurte")
+  assert.ok(reply.action === "search")
+  assert.equal(reply.station, "Ricaurte")
   assert.match(reply.reply, /rutas pasan por Ricaurte/)
 })
 
@@ -91,4 +91,24 @@ test("si solo dice de dónde sale, pregunta a dónde va", () => {
   const reply = interpretCommand("salgo desde Ricaurte", data)
   assert.equal(reply.action, "none")
   assert.match(reply.reply, /sales de Ricaurte/)
+})
+
+test("«la estación de X» no convierte a X en el origen", () => {
+  assert.deepEqual(parseIntent("quiero ir a la estación de Ricaurte", data), { type: "trip", destination: "Ricaurte" })
+  assert.equal(parseIntent("llévame al portal de Suba", data).type, "trip")
+})
+
+test("«desde» gana aunque el destino se diga primero con «de»", () => {
+  assert.deepEqual(parseIntent("cómo llego a la estación de Calle 72 desde Ricaurte", data), {
+    type: "trip",
+    origin: "Ricaurte",
+    destination: "Calle 72",
+  })
+})
+
+test("con la ubicación en el destino, dice que ya llegó en vez de dar una vuelta", () => {
+  const ricaurte = data.stations.find((s) => s.name === "Ricaurte - CL 13")!
+  const reply = interpretCommand("quiero ir a Ricaurte", data, { position: { lat: ricaurte.lat, lng: ricaurte.lng } })
+  assert.equal(reply.action, "none")
+  assert.match(reply.reply, /^Ya estás en Ricaurte/)
 })

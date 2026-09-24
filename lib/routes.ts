@@ -18,13 +18,15 @@ export type Place = {
 
 type Index = {
   keys: { key: string; place: Place }[]
+  /** Lugar agrupado por nombre corto: "ricaurte" → las dos estaciones Ricaurte. */
+  groups: Map<string, Place>
   byCode: Map<string, BusRoute>
 }
 
 const indexes = new WeakMap<TransmilenioData, Index>()
 
 /** Nombre corto de una estación: lo que va antes del guion, sin "Temporal". */
-function shortName(name: string): string {
+export function shortName(name: string): string {
   return name.split(/\s[-–]\s/)[0].replace(/^Temporal\s+/i, "").trim()
 }
 
@@ -49,7 +51,7 @@ function buildIndex(data: TransmilenioData): Index {
   }
 
   const byCode = new Map(data.routes.map((r) => [normalize(r.code).replace(/\s/g, ""), r]))
-  return { keys: [...keys].map(([key, place]) => ({ key, place })), byCode }
+  return { keys: [...keys].map(([key, place]) => ({ key, place })), groups: places, byCode }
 }
 
 function getIndex(data: TransmilenioData): Index {
@@ -158,7 +160,11 @@ export type TripPlan = TripLeg[]
  * combinaciones), que es instantáneo con los datos troncales. Si algún día se
  * suman las 567 rutas zonales, conviene un índice por estación.
  */
-export function planTrip(origin: Place, destination: Place, data: TransmilenioData, limit = 3): TripPlan[] {
+export function planTrip(
+  { origin, destination }: { origin: Place; destination: Place },
+  data: TransmilenioData,
+  limit = 3,
+): TripPlan[] {
   const direct: TripPlan[] = []
   for (const route of data.routes) {
     const board = stopsAt(route, origin)
@@ -211,9 +217,17 @@ export function nearestStations(from: LatLng, data: TransmilenioData, limit = 4)
     .slice(0, limit)
 }
 
-/** Lugar que contiene una estación dada. */
+/**
+ * Lugar al que pertenece una estación, agrupado por nombre corto: la estación
+ * "Ricaurte - CL 13" pertenece al lugar "Ricaurte", igual que "Ricaurte - NQS".
+ */
 export function placeOf(station: Station, data: TransmilenioData): Place {
-  return findPlaces(station.name, data)[0] ?? { name: shortName(station.name), stations: [station] }
+  return getIndex(data).groups.get(normalize(shortName(station.name))) ?? { name: station.name, stations: [station] }
+}
+
+/** Dos lugares son el mismo si comparten alguna estación. */
+export function samePlace(a: Place, b: Place): boolean {
+  return a.stations.some((s) => b.stations.includes(s))
 }
 
 /** Rutas sugeridas mientras la persona no ha guardado ninguna. */

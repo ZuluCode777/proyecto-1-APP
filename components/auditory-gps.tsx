@@ -194,7 +194,7 @@ export function AuditoryGps({ data, onBack }: AuditoryGpsProps) {
 
       {error && (
         <p
-          className="rounded-2xl border border-destructive bg-destructive/10 p-4 text-base font-bold text-destructive"
+          className="rounded-2xl border-2 border-fail bg-card p-4 text-lg font-bold"
           role="alert"
         >
           {error}

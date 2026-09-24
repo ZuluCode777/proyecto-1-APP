@@ -1,3 +1,4 @@
+import { z } from "zod"
 import { spokenDistance, type LatLng } from "@/lib/geo"
 import {
   findPlaceMentions,
@@ -7,6 +8,7 @@ import {
   placeOf,
   planTrip,
   routesThrough,
+  samePlace,
   type Place,
   type TransmilenioData,
   type TripPlan,
@@ -38,38 +40,55 @@ export type Intent =
   | { type: "unsupported"; topic: "tarifas" | "tiempo_real" }
   | { type: "unknown" }
 
-export type AgentAction = "search" | "frequent" | "gps" | "route" | "trip" | "none"
-
-export type AgentStep = {
-  label: string
-  detail?: string
-}
+const AgentStepSchema = z.object({
+  label: z.string(),
+  detail: z.string().optional(),
+})
+export type AgentStep = z.infer<typeof AgentStepSchema>
 
 /** Tramo de un viaje, en forma serializable para enviarlo al navegador. */
-export type TripLegSummary = {
-  routeCode: string
-  board: string
-  alight: string
-  stationsRidden: number
-}
+const TripLegSummarySchema = z.object({
+  routeCode: z.string(),
+  board: z.string(),
+  alight: z.string(),
+  stationsRidden: z.number(),
+})
+export type TripLegSummary = z.infer<typeof TripLegSummarySchema>
 
-export type AgentReply = {
-  reply: string
-  action: AgentAction
-  /** Búsqueda (nombre de estación) o código de ruta, según la acción. */
-  query: string
-  steps: AgentStep[]
-  /** Solo cuando `action` es "trip". */
-  trip?: TripLegSummary[]
-  engine: "reglas" | "ollama"
-}
+const ReplyBaseSchema = z.object({
+  reply: z.string(),
+  steps: z.array(AgentStepSchema),
+  engine: z.enum(["reglas", "ollama"]),
+})
+
+/**
+ * Respuesta del asistente. Cada acción trae solo los datos que necesita la
+ * pantalla que abre: una búsqueda trae la estación, una ruta su código y un
+ * viaje sus tramos. El navegador la valida con este mismo esquema.
+ */
+export const AgentReplySchema = z.discriminatedUnion("action", [
+  ReplyBaseSchema.extend({ action: z.enum(["none", "frequent", "gps"]) }),
+  ReplyBaseSchema.extend({ action: z.literal("search"), station: z.string() }),
+  ReplyBaseSchema.extend({ action: z.literal("route"), routeCode: z.string() }),
+  ReplyBaseSchema.extend({ action: z.literal("trip"), trip: z.array(TripLegSummarySchema) }),
+])
+export type AgentReply = z.infer<typeof AgentReplySchema>
+export type AgentEngine = AgentReply["engine"]
+
+export type AgentAction = AgentReply["action"]
 
 export type AgentContext = {
   /** Ubicación de la persona, si dio permiso. */
   position?: LatLng
 }
 
-const has = (text: string, words: string[]) => words.some((w) => ` ${text} `.includes(` ${w} `))
+/** Respuesta sin acción ni pasos, para avisos como "no te escuché". */
+export function plainReply(reply: string, engine: AgentEngine = "reglas"): AgentReply {
+  return { reply, action: "none", steps: [], engine }
+}
+
+/** La frase contiene alguna de estas expresiones como palabras completas. */
+const hasPhrase = (text: string, phrases: string[]) => phrases.some((p) => ` ${text} `.includes(` ${p} `))
 
 const CANCEL = ["cancela", "cancelar", "olvidalo", "detente", "no gracias", "dejalo"]
 const HELP = ["ayuda", "que puedes hacer", "como funciona", "que sabes hacer", "que haces"]
@@ -80,47 +99,68 @@ const FREQUENT = ["frecuente", "frecuentes", "de siempre", "favorita", "favorita
 const GPS = ["gps", "ubicacion", "donde estoy", "cerca", "cercana", "cercanas", "caminar", "caminando", "a pie"]
 const GREETING = ["hola", "buenos dias", "buenas tardes", "buenas noches", "buenas", "gracias", "muchas gracias"]
 
-/** Palabras que, justo antes de una estación, la marcan como origen o destino. */
-const ORIGIN_MARKER = /(?:^|\s)(desde|de|del|saliendo de|salgo de|estoy en)$/
-const DESTINATION_MARKER = /(?:^|\s)(a|al|hacia|hasta|para|llegar a|ir a|voy a)$/
+/**
+ * Qué papel le da a una estación lo que se dijo justo antes de nombrarla.
+ *
+ * "desde X" siempre es el origen. "de X" también lo es, pero solo en la forma
+ * "de X a Y": "la estación de X" no dice nada del papel de X. Por eso primero
+ * se quitan del final los artículos y "estación", "parada" o "portal", con su
+ * "de", y después se mira la palabra que queda.
+ */
+type Role = "origin" | "weak-origin" | "destination" | "none"
+
+const TRAILING_FILLER = /\s(?:la|el|los|las|estacion|estaciones|parada|portal)(?:\s(?:de|del))?$/
+const STRONG_ORIGIN = /(?:^|\s)(?:desde|saliendo de|salgo de|parto de|estoy en)$/
+const WEAK_ORIGIN = /(?:^|\s)(?:de|del)$/
+const DESTINATION = /(?:^|\s)(?:a|al|hacia|hasta|para|llegar a|ir a|voy a|voy para)$/
+
+function roleOf(before: string): Role {
+  let rest = ` ${before}`
+  while (TRAILING_FILLER.test(rest)) rest = rest.replace(TRAILING_FILLER, "")
+  if (STRONG_ORIGIN.test(rest)) return "origin"
+  if (DESTINATION.test(rest)) return "destination"
+  if (WEAK_ORIGIN.test(rest)) return "weak-origin"
+  return "none"
+}
 
 /** Interpreta una frase por reglas. */
 export function parseIntent(text: string, data: TransmilenioData): Intent {
   const t = normalize(text)
   if (!t) return { type: "unknown" }
 
-  if (has(t, CANCEL)) return { type: "cancel" }
-  if (has(t, HELP)) return { type: "help" }
-  if (has(t, FARE)) return { type: "unsupported", topic: "tarifas" }
+  if (hasPhrase(t, CANCEL)) return { type: "cancel" }
+  if (hasPhrase(t, HELP)) return { type: "help" }
+  if (hasPhrase(t, FARE)) return { type: "unsupported", topic: "tarifas" }
 
   const route = findRouteByCode(text, data)
   if (route) {
-    if (has(t, REALTIME)) return { type: "unsupported", topic: "tiempo_real" }
-    return has(t, SCHEDULE) ? { type: "schedule", routeCode: route.code } : { type: "route_info", routeCode: route.code }
+    if (hasPhrase(t, REALTIME)) return { type: "unsupported", topic: "tiempo_real" }
+    return hasPhrase(t, SCHEDULE) ? { type: "schedule", routeCode: route.code } : { type: "route_info", routeCode: route.code }
   }
-  if (has(t, REALTIME)) return { type: "unsupported", topic: "tiempo_real" }
+  if (hasPhrase(t, REALTIME)) return { type: "unsupported", topic: "tiempo_real" }
 
-  if (has(t, FREQUENT)) return { type: "frequent" }
+  if (hasPhrase(t, FREQUENT)) return { type: "frequent" }
 
-  const mentions = findPlaceMentions(text, data)
+  const mentions = findPlaceMentions(text, data).map((m) => ({ name: m.place.name, role: roleOf(m.before) }))
   if (mentions.length >= 2) {
-    // "desde X" marca el origen aunque se diga al final: "llegar a Y saliendo desde X".
-    const origin = mentions.find((m) => ORIGIN_MARKER.test(m.before)) ?? mentions[0]
-    const destination = mentions.find((m) => m !== origin && DESTINATION_MARKER.test(m.before)) ??
-      mentions.find((m) => m !== origin)!
-    return { type: "trip", origin: origin.place.name, destination: destination.place.name }
+    const hasDestination = mentions.some((m) => m.role === "destination")
+    const origin =
+      mentions.find((m) => m.role === "origin") ??
+      (hasDestination ? mentions.find((m) => m.role !== "destination") : undefined) ??
+      mentions[0]
+    const others = mentions.filter((m) => m !== origin)
+    const destination = others.find((m) => m.role === "destination") ?? others[others.length - 1]
+    return { type: "trip", origin: origin.name, destination: destination.name }
   }
   if (mentions.length === 1) {
     const [only] = mentions
-    // "desde Ricaurte" sin destino: se entiende como origen, falta el destino.
-    if (ORIGIN_MARKER.test(only.before) && !DESTINATION_MARKER.test(only.before)) {
-      return { type: "trip_missing_destination", origin: only.place.name }
-    }
-    return { type: "trip", destination: only.place.name }
+    // "salgo desde Ricaurte" sin destino: se entiende el origen, falta el destino.
+    if (only.role === "origin") return { type: "trip_missing_destination", origin: only.name }
+    return { type: "trip", destination: only.name }
   }
 
-  if (has(t, GPS)) return { type: "gps" }
-  if (has(t, GREETING)) return { type: "greeting" }
+  if (hasPhrase(t, GPS)) return { type: "gps" }
+  if (hasPhrase(t, GREETING)) return { type: "greeting" }
   return { type: "unknown" }
 }
 
@@ -152,34 +192,26 @@ const resolvePlace = (name: string, data: TransmilenioData): Place | undefined =
 /** Resuelve una intención con los datos reales y devuelve la respuesta hablada. */
 export function runIntent(
   intent: Intent,
-  data: TransmilenioData,
-  context: AgentContext = {},
-  engine: AgentReply["engine"] = "reglas",
+  { data, context = {}, engine = "reglas" }: { data: TransmilenioData; context?: AgentContext; engine?: AgentEngine },
 ): AgentReply {
   const steps: AgentStep[] = []
-  const done = (reply: string, action: AgentAction = "none", query = "", trip?: TripLegSummary[]): AgentReply => ({
-    reply,
-    action,
-    query,
-    steps,
-    trip,
-    engine,
-  })
+  /** Respuesta que no abre ninguna pantalla con datos. */
+  const say = (reply: string, action: "none" | "frequent" | "gps" = "none"): AgentReply => ({ reply, action, steps, engine })
 
   switch (intent.type) {
     case "greeting":
-      return done("¡Hola! Soy el asistente de TransMiVoz. Pídeme cómo llegar a una estación, información de una ruta como la B23, o dónde estás.")
+      return say("¡Hola! Soy el asistente de TransMiVoz. Pídeme cómo llegar a una estación, información de una ruta como la B23, o dónde estás.")
 
     case "help":
-      return done(
+      return say(
         "Puedo decirte cómo llegar de una estación a otra, qué rutas pasan por una estación, el recorrido y el horario de una ruta, y la estación más cercana a ti. Por ejemplo: cómo llego de Ricaurte a Calle 72.",
       )
 
     case "cancel":
-      return done("Listo, cancelado.")
+      return say("Listo, cancelado.")
 
     case "unsupported":
-      return done(
+      return say(
         intent.topic === "tarifas"
           ? "Todavía no tengo información de tarifas. Puedo ayudarte con rutas, estaciones y horarios."
           : "Todavía no tengo la ubicación de los buses en tiempo real. Puedo decirte el horario de la ruta y por dónde pasa.",
@@ -187,44 +219,46 @@ export function runIntent(
 
     case "frequent":
       steps.push({ label: "Abrí tus rutas frecuentes" })
-      return done("Estas son tus rutas frecuentes.", "frequent")
+      return say("Estas son tus rutas frecuentes.", "frequent")
 
     case "gps": {
       if (context.position) {
         const [nearest] = nearestStations(context.position, data, 1)
         steps.push({ label: "Usé tu ubicación", detail: `La estación más cercana es ${nearest.name}` })
-        return done(
+        return say(
           `La estación más cercana es ${nearest.name}, a ${spokenDistance(nearest.distance)}. Abro el GPS auditivo para guiarte.`,
           "gps",
         )
       }
-      return done("Voy a abrir el GPS auditivo para guiarte a la estación más cercana.", "gps")
+      return say("Voy a abrir el GPS auditivo para guiarte a la estación más cercana.", "gps")
     }
 
     case "route_info":
     case "schedule": {
       const route = data.routes.find((r) => r.code === intent.routeCode)
-      if (!route) return done(`No encontré la ruta ${intent.routeCode}.`)
+      if (!route) return say(`No encontré la ruta ${intent.routeCode}.`)
       steps.push({ label: `Busqué la ruta ${route.code}`, detail: route.label })
 
       const weekday = bare(route.schedule.weekday) || "sin horario publicado"
       if (intent.type === "schedule") {
         const saturday = route.schedule.saturday ? ` Sábados: ${bare(route.schedule.saturday)}.` : ""
         const holiday = route.schedule.holiday ? ` Festivos: ${bare(route.schedule.holiday)}.` : ""
-        return done(`La ${route.code} opera entre semana de ${weekday}.${saturday}${holiday}`, "route", route.code)
+        return { reply: `La ${route.code} opera entre semana de ${weekday}.${saturday}${holiday}`, action: "route", routeCode: route.code, steps, engine }
       }
       steps.push({ label: "Revisé su recorrido", detail: `${route.stops.length} estaciones` })
       const sample = route.stops.slice(1, 4).join(", ")
-      return done(
-        `La ${route.code} va de ${route.from} hacia ${route.to}. Pasa por ${route.stops.length} estaciones, entre ellas ${sample}. Entre semana opera de ${weekday}.`,
-        "route",
-        route.code,
-      )
+      return {
+        reply: `La ${route.code} va de ${route.from} hacia ${route.to}. Pasa por ${route.stops.length} estaciones, entre ellas ${sample}. Entre semana opera de ${weekday}.`,
+        action: "route",
+        routeCode: route.code,
+        steps,
+        engine,
+      }
     }
 
     case "trip": {
       const destination = resolvePlace(intent.destination, data)
-      if (!destination) return done(`No encontré la estación ${intent.destination}. Prueba con otro nombre, por ejemplo Ricaurte o Calle 72.`)
+      if (!destination) return say(`No encontré la estación ${intent.destination}. Prueba con otro nombre, por ejemplo Ricaurte o Calle 72.`)
       steps.push({ label: `Busqué la estación de destino`, detail: destination.name })
 
       let origin = intent.origin ? resolvePlace(intent.origin, data) : undefined
@@ -239,17 +273,19 @@ export function runIntent(
       if (!origin) {
         const routes = routesThrough(destination, data)
         steps.push({ label: "Busqué las rutas que pasan por ahí", detail: `${routes.length} rutas` })
-        if (routes.length === 0) return done(`Ninguna ruta troncal pasa por ${destination.name}.`)
-        return done(
-          `${routes.length} ${routes.length === 1 ? "ruta pasa" : "rutas pasan"} por ${destination.name}: ${listCodes(routes.map((r) => r.code))}. Si me dices desde dónde sales, o activas tu ubicación, te digo cuál tomar.`,
-          "search",
-          destination.name,
-        )
+        if (routes.length === 0) return say(`Ninguna ruta troncal pasa por ${destination.name}.`)
+        return {
+          reply: `${routes.length} ${routes.length === 1 ? "ruta pasa" : "rutas pasan"} por ${destination.name}: ${listCodes(routes.map((r) => r.code))}. Si me dices desde dónde sales, o activas tu ubicación, te digo cuál tomar.`,
+          action: "search",
+          station: destination.name,
+          steps,
+          engine,
+        }
       }
 
-      if (origin === destination) return done(`Ya estás en ${destination.name}.`)
+      if (samePlace(origin, destination)) return say(`Ya estás en ${destination.name}.`)
 
-      const plans = planTrip(origin, destination, data)
+      const plans = planTrip({ origin, destination }, data)
       steps.push({
         label: `Revisé las ${data.routes.length} rutas troncales`,
         detail:
@@ -260,27 +296,24 @@ export function runIntent(
               : "Con un transbordo",
       })
       if (plans.length === 0) {
-        return done(`No encontré cómo ir de ${origin.name} a ${destination.name} con uno o dos buses troncales.`)
+        return say(`No encontré cómo ir de ${origin.name} a ${destination.name} con uno o dos buses troncales.`)
       }
       const [best, ...others] = plans
       steps.push({ label: "Elegí la opción con menos estaciones", detail: best.map((l) => l.route.code).join(" + ") })
       const alternatives =
         best.length === 1 && others.length > 0 ? ` También te sirven ${listCodes(others.map((p) => p[0].route.code))}.` : ""
-      return done(`${describePlan(best)}${alternatives}`, "trip", `${origin.name} → ${destination.name}`, summarize(best))
+      return { reply: `${describePlan(best)}${alternatives}`, action: "trip", trip: summarize(best), steps, engine }
     }
 
     case "trip_missing_destination":
-      return done(`Entendí que sales de ${intent.origin}. ¿A qué estación quieres ir?`)
+      return say(`Entendí que sales de ${intent.origin}. ¿A qué estación quieres ir?`)
 
     case "unknown":
-      return done("No te entendí. Puedes decir, por ejemplo: cómo llego a Ricaurte, o información de la ruta B23.")
+      return say("No te entendí. Puedes decir, por ejemplo: cómo llego a Ricaurte, o información de la ruta B23.")
   }
 }
 
 /** Interpreta y resuelve una frase por reglas, sin red ni modelo. */
 export function interpretCommand(text: string, data: TransmilenioData, context: AgentContext = {}): AgentReply {
-  if (!text.trim()) {
-    return runIntent({ type: "unknown" }, data, context)
-  }
-  return runIntent(parseIntent(text, data), data, context)
+  return runIntent(parseIntent(text, data), { data, context })
 }

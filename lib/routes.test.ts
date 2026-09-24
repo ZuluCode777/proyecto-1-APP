@@ -2,9 +2,9 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import snapshot from "../data/transmilenio.json" with { type: "json" }
 import { findPlaces, findRouteByCode, planTrip, searchRoutes } from "./routes"
-import type { TransmilenioData } from "./transmilenio"
+import { TransmilenioDataSchema } from "./transmilenio"
 
-const data = snapshot as TransmilenioData
+const data = TransmilenioDataSchema.parse(snapshot)
 
 test("los datos reales traen estaciones y rutas", () => {
   assert.ok(data.stations.length >= 100)
@@ -41,7 +41,7 @@ test("buscar una estación ya no devuelve todas las rutas", () => {
 test("un viaje directo respeta el sentido de la ruta", () => {
   const [usme] = findPlaces("Portal Usme", data)
   const [molinos] = findPlaces("Molinos", data)
-  const ida = planTrip(usme, molinos, data)
+  const ida = planTrip({ origin: usme, destination: molinos }, data)
   assert.ok(ida.length > 0)
   for (const plan of ida) {
     const leg = plan[0]
@@ -52,7 +52,7 @@ test("un viaje directo respeta el sentido de la ruta", () => {
 test("encuentra un transbordo cuando no hay ruta directa", () => {
   const [origin] = findPlaces("Portal Usme", data)
   const [destination] = findPlaces("Portal Suba", data)
-  const plans = planTrip(origin, destination, data)
+  const plans = planTrip({ origin, destination }, data)
   assert.ok(plans.length > 0)
   const legs = plans[0]
   if (legs.length === 2) assert.equal(legs[0].alight, legs[1].board)

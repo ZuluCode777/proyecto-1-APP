@@ -40,6 +40,8 @@
   --color-brand-foreground: var(--brand-foreground);
   --color-brand-soft: var(--brand-soft);
   --color-emergency: var(--emergency);
+  --color-ok: var(--ok);
+  --color-fail: var(--fail);
   --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, -apple-system, sans-serif;
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -54,6 +56,9 @@
   color-scheme: light;
   /* Rojo de emergencia fijo en todos los temas: 7,2:1 con texto blanco. */
   --emergency: oklch(0.48 0.2 27);
+  /* Estados correcto y fallido: al menos 7:1 sobre el fondo y las tarjetas de cada tema. */
+  --ok: oklch(0.42 0.12 150);
+  --fail: oklch(0.46 0.19 27);
   --background: oklch(0.99 0.012 75);
   --foreground: oklch(0.2 0.025 55);
   --brand: oklch(0.42 0.15 43);
@@ -96,6 +101,8 @@
   --background: oklch(0.17 0.016 55);
   --foreground: oklch(0.97 0.012 85);
   --brand: oklch(0.76 0.16 60);
+  --ok: oklch(0.82 0.15 150);
+  --fail: oklch(0.75 0.16 25);
     --brand-foreground: oklch(0.16 0.02 50);
     --brand-soft: oklch(0.25 0.05 52);
     --card: oklch(0.22 0.018 55);
@@ -135,6 +142,10 @@
     --background: oklch(0.17 0.016 55);
     --foreground: oklch(0.97 0.012 85);
     --brand: oklch(0.76 0.16 60);
+    --ok: oklch(0.82 0.15 150);
+    --fail: oklch(0.75 0.16 25);
+  --ok: oklch(0.82 0.15 150);
+  --fail: oklch(0.75 0.16 25);
     --brand-foreground: oklch(0.16 0.02 50);
     --brand-soft: oklch(0.25 0.05 52);
     --card: oklch(0.22 0.018 55);
@@ -179,6 +190,8 @@
   --muted: oklch(0.1 0 0);
   --muted-foreground: oklch(0.87 0.2 118);
   --brand: oklch(0.85 0.25 145);
+  --ok: oklch(0.85 0.25 145);
+  --fail: oklch(0.75 0.2 25);
   --brand-foreground: oklch(0 0 0);
   --brand-soft: oklch(0.16 0.09 145);
   --border: oklch(0.94 0.22 108);

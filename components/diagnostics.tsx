@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { CheckCircle2, CircleDashed, Loader2, XCircle } from "lucide-react"
+import { z } from "zod"
+import { AgentReplySchema } from "@/lib/local-agent"
+import { TransmilenioDataSchema } from "@/lib/transmilenio"
 
 type Result = { state: "idle" | "running" | "ok" | "fail"; detail: string }
 
@@ -12,6 +15,14 @@ type Check = {
   proves: string
   run: () => Promise<string>
 }
+
+/** Respuesta de `GET /api/agent`: qué motor está configurado. */
+const AgentInfoSchema = z.object({
+  engine: z.enum(["reglas", "ollama"]),
+  model: z.string().optional(),
+  reachable: z.boolean().optional(),
+  hasModel: z.boolean().optional(),
+})
 
 const withTimeout = <T,>(promise: Promise<T>, ms: number, message: string) =>
   Promise.race([promise, new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms))])
@@ -33,7 +44,7 @@ const CHECKS: Check[] = [
     run: async () => {
       const res = await fetch("/api/transmilenio")
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = (await res.json()) as { stations: unknown[]; routes: unknown[]; source: string; fetchedAt: string }
+      const data = TransmilenioDataSchema.parse(await res.json())
       const origin = data.source === "live" ? "en vivo" : "copia guardada"
       return `${data.stations.length} estaciones y ${data.routes.length} rutas troncales (${origin}, ${new Date(data.fetchedAt).toLocaleString("es-CO")})`
     },
@@ -43,21 +54,24 @@ const CHECKS: Check[] = [
     title: "Asistente",
     proves: "El asistente entiende una pregunta y planea un viaje con los datos reales.",
     run: async () => {
-      const [info, res] = await Promise.all([
-        fetch("/api/agent").then((r) => r.json() as Promise<{ engine: string; model?: string; reachable?: boolean; hasModel?: boolean }>),
-        fetch("/api/agent", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: "cómo llego de Portal Usme a Molinos" }),
-        }),
-      ])
-      const reply = (await res.json()) as { reply: string; action: string; steps: unknown[]; engine: string }
+      // Primero la configuración: si hay Ollama, esta llamada además precarga el modelo.
+      const info = AgentInfoSchema.parse(await (await fetch("/api/agent")).json())
+      const res = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "cómo llego de Portal Usme a Molinos" }),
+      })
+      const reply = AgentReplySchema.parse(await res.json())
       if (reply.action !== "trip") throw new Error(`Respondió "${reply.reply}"`)
-      const engine =
-        info.engine === "ollama"
-          ? `Ollama (${info.model}${info.reachable ? "" : ", sin conexión: usa reglas"})`
-          : "reglas locales"
-      return `Motor: ${engine}. ${reply.steps.length} pasos. «${reply.reply}»`
+      // El motor sale de la respuesta, no de la configuración: así se ve si el modelo contestó de verdad.
+      const engine = reply.engine === "ollama" ? `Ollama (${info.model ?? "modelo local"})` : "reglas locales"
+      const warning =
+        info.engine === "ollama" && reply.engine !== "ollama"
+          ? info.reachable && info.hasModel
+            ? " Ollama está configurado pero no respondió a tiempo; contestaron las reglas."
+            : " Ollama está configurado pero no está disponible o le falta el modelo; contestaron las reglas."
+          : ""
+      return `Motor: ${engine}. ${reply.steps.length} pasos. «${reply.reply}»${warning}`
     },
   },
   {
@@ -100,8 +114,7 @@ const CHECKS: Check[] = [
     title: "Reconocimiento de voz",
     proves: "El navegador puede entender lo que dices.",
     run: async () => {
-      const w = window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }
-      if (!w.SpeechRecognition && !w.webkitSpeechRecognition) throw new Error("No disponible. Usa Chrome.")
+      if (!window.SpeechRecognition && !window.webkitSpeechRecognition) throw new Error("No disponible. Usa Chrome.")
       return "Disponible"
     },
   },
@@ -196,15 +209,19 @@ export function Diagnostics() {
           const result = results[check.id] ?? { state: "idle", detail: "" }
           const Icon =
             result.state === "ok" ? CheckCircle2 : result.state === "fail" ? XCircle : result.state === "running" ? Loader2 : CircleDashed
-          const color = result.state === "ok" ? "text-green-700 dark:text-green-400" : result.state === "fail" ? "text-emergency dark:text-red-400" : ""
+          const iconColor = result.state === "ok" ? "text-ok" : result.state === "fail" ? "text-fail" : ""
           return (
-            <li key={check.id} className="flex items-start gap-3 rounded-2xl border-2 border-border bg-card p-4">
-              <Icon className={`mt-1 size-7 shrink-0 ${color} ${result.state === "running" ? "animate-spin" : ""}`} aria-hidden="true" />
+            <li
+              key={check.id}
+              data-state={result.state}
+              className={`flex items-start gap-3 rounded-2xl border-2 bg-card p-4 ${result.state === "fail" ? "border-fail" : "border-border"}`}
+            >
+              <Icon className={`mt-1 size-7 shrink-0 ${iconColor} ${result.state === "running" ? "animate-spin" : ""}`} aria-hidden="true" />
               <div className="min-w-0 flex-1">
                 <h2 className="text-xl font-bold">{check.title}</h2>
                 <p className="text-base text-muted-foreground">{check.proves}</p>
                 {result.detail && (
-                  <p className={`mt-1 break-words text-lg ${color}`}>
+                  <p className="mt-1 break-words text-lg font-semibold">
                     <span className="sr-only">{result.state === "ok" ? "Correcto: " : "Falló: "}</span>
                     {result.detail}
                   </p>

@@ -41,14 +41,14 @@ export function PartialRoutes({
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder="Buscar estación o ruta"
           aria-label="Buscar estación o ruta"
-          className="w-full rounded-2xl border border-border bg-card py-4 pl-12 pr-24 text-lg shadow-sm outline-none placeholder:text-muted-foreground focus-visible:border-brand"
+          className="w-full rounded-2xl border-2 border-border bg-card py-5 pl-12 pr-28 text-lg shadow-sm outline-none placeholder:text-muted-foreground focus-visible:border-brand"
         />
         {query && (
           <button
             type="button"
             onClick={() => onQueryChange("")}
             aria-label="Borrar búsqueda"
-            className="absolute right-14 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground"
+            className="absolute right-14 top-1/2 flex size-12 -translate-y-1/2 items-center justify-center rounded-xl"
           >
             <X className="size-5" aria-hidden="true" />
           </button>
@@ -57,7 +57,7 @@ export function PartialRoutes({
           type="button"
           onClick={onVoice}
           aria-label="Buscar con la voz"
-          className="absolute right-2 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-brand text-brand-foreground shadow-sm transition active:scale-95"
+          className="absolute right-1.5 top-1/2 flex size-12 -translate-y-1/2 items-center justify-center rounded-xl bg-brand text-brand-foreground"
         >
           <Mic className="size-5" aria-hidden="true" />
         </button>
