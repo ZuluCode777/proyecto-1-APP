@@ -63,18 +63,18 @@ La validación de prioridad iPhone queda **pendiente**. Propuesta para EA-02/EA-
 
 ## Entrega anterior, rúbrica y enunciado final
 
-Se leyeron los dos PDF locales mediante conversión a Markdown el 3/11. No se incorporan al repositorio público los archivos originales ni documentos privados del equipo.
+El 3/11 se leyeron los PDF locales y los cuatro adjuntos aportados por Nicolás mediante conversión a Markdown. La entrega previa también se revisó visualmente, incluidos sus mapas, wireframes, backlog y capturas. **Enunciado ExpoAndes, entrega previa y evaluaciones ya están recuperados y reconciliados** en [la lectura académica actualizada](lectura-rubrica.md). Los originales, identidades y calificaciones no se incorporan al repositorio público.
 
 | Fuente | Qué permite registrar | Pendiente |
 | --- | --- | --- |
-| `EnunciadoProyectoInicial-202610.pdf`, en la carpeta superior. Universidad de los Andes, Introducción a la Ingeniería de Sistemas y Computación; sin autor individual ni fecha editorial identificados. | Design Thinking, Scrum, MVP, validación, informe, presentación de máximo cinco minutos y Post Mortem. | Confirmar vigencia de estas instrucciones para la entrega final; el límite de cinco minutos procede del enunciado inicial. |
-| `Rubrica de calificacion Entrega Documento Final.pdf`, en la carpeta superior. Exportación de Bloque Neón con sello de impresión 21/10/2026, sin fecha de entrega verificable. | Doce criterios y 110 puntos: contexto, problema, requisitos, solución/restricciones, justificaciones, diseño, ejecución, Feria, Post Mortem, CANVAS y calidad. | Puntos detallados del enunciado al que remiten Feria y Post Mortem. La rúbrica no exige iOS, radar, Render ni IA. |
-| Entrega previa y retroalimentación docente. | No recuperadas. El enlace Outlook requirió sesión Microsoft en la revisión previa. | Propietario debe facilitar ruta o enlace accesible; registrar compromisos, comentarios y cambios necesarios. |
-| Enunciado final. | No identificado entre los archivos locales revisados. | Obtener versión vigente, fecha/hora de entrega, formato, extensión/plantilla y puntos de Feria/Post Mortem. |
+| `EnunciadoProyectoInicial-202610.pdf`, en la carpeta superior. | Antecedente de Design Thinking, Scrum, MVP y Post Mortem. | Sus cinco minutos de presentación no se trasladan al formato de stand del enunciado ExpoAndes. |
+| `Rubrica de calificacion Entrega Documento Final.pdf`, en la carpeta superior. | Doce criterios y 110 puntos, incluidos Feria, Post Mortem y CANVAS. | Fecha y formato no constan; no exige iOS, radar, Render ni IA. |
+| `proyecto 1 grupo 6.pdf` y evaluaciones de Documento/MVP Proyecto 1, adjuntos. | Base reutilizable: investigación, mapas, wireframes, backlog, capturas y reflexión previa. Comentarios reconciliados con tareas y evidencia en la lectura académica. | Ejecutar correcciones de citas, comparación de apps, problema, alternativas, viabilidad y validación; actualizar integrantes y alcance. |
+| `EnunciadoExpoandes-202610.pdf`, adjunto. | Informe, MVP, afiche/stand/demostración, explicación de todos los integrantes y Post Mortem. | Confirmar fecha/hora y formato del informe; lineamientos audiovisuales de clase y cualquier instrucción adicional del taller no aparecen desarrollados. |
 
-La búsqueda entre servicios conectados no se ejecutó: el conector consultado exige acceso Notion Business. Esto no prueba ausencia de documentos en Outlook/OneDrive. No se inició suscripción ni sesión del propietario.
+Los adjuntos resuelven la falta de acceso a documentos: no hace falta recuperar Outlook para esta reconciliación. La búsqueda anterior entre servicios conectados no se ejecutó por restricción del conector; no se contrató acceso.
 
-Mantener [lectura de la rúbrica](lectura-rubrica.md) como matriz académica. EA-23/#49 debe enlazar cada criterio con evidencia de contexto, requisitos, decisiones, diseño, ejecución, experiencia real de feria, CANVAS y reflexión posterior. Por cada comentario docente recuperado, registrar requisito afectado, cambio acordado y tarea/evidencia; no cerrar esta reconciliación antes de leer la entrega y sus comentarios.
+La [matriz de correcciones](lectura-rubrica.md#qué-conservar-y-qué-actualizar) enlaza comentarios con EA-23/#49 y tareas de producto/pruebas; no equivale a correcciones ya ejecutadas. EA-22/#48 prepara afiche y exposición por todos los integrantes; EA-23/#49 integra fuentes, comparación de apps, problema breve, alternativas, viabilidad, resultados, CANVAS y hechos posteriores de feria/Post Mortem.
 
 ## Kiro, acceso y comprobaciones
 
@@ -95,7 +95,8 @@ Antes de encargar una tarea, el operador comprueba bloqueadores y trabajo ya abi
 - [ ] Reparto interno de hardware, roles de coordinación y horas cuantificadas registrados; capacidad contrastada y corte de feria acordado.
 - [ ] Modelo/iOS/Xcode, experiencia Swift y vía de firma registrados; pruebas de primera sesión enlazadas a EA-09, sin atribuirlas a esta acta.
 - [ ] Inventario actualizado y presupuesto distribuido entre referencias, alimentación y entrega; tres metas físicas conservadas con sus límites.
-- [ ] Entrega previa, comentarios y enunciado final recuperados y reconciliados, o falta de acceso y responsable de recuperación registrados explícitamente.
+- [x] Entrega previa, comentarios y enunciado ExpoAndes recuperados; correcciones y criterios trazados a tareas y evidencia.
+- [ ] Fecha/hora y formato de entrega del informe confirmados; lineamientos de clase disponibles para afiche y cierre.
 - [ ] Requisitos trazados a necesidades; validación de prioridad iPhone realizada o pendiente con responsable y plan explícitos.
 - [ ] Permisos de Kiro, comprobaciones y protección de rama revisados con Jacobo; pendientes declarados, sin activación durante planificación.
 
