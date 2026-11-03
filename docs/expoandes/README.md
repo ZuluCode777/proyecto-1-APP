@@ -6,6 +6,7 @@ Comenzar por [plan de ejecución](plan-ejecucion.md), que identifica prioridades
 
 | Documento | Qué aporta |
 | --- | --- |
+| [Acta de alcance y capacidad — EA-01](acta-alcance-capacidad.md) | Registro de inicio del 3/11: confirmaciones, responsables y horas pendientes, requisitos trazables y condiciones para cerrar #27. |
 | [Auditoría de código](auditoria-codigo.md) | Inventario de funciones, flujos, APIs, mapas, 16 hallazgos y reproducciones. |
 | [Metro de Bogotá](investigacion-metro.md) | Estado de líneas, 16 estaciones de Línea 1, nombres/alias, fuentes, CRS y separación del servicio operativo. |
 | [Render e IA](investigacion-render-ia.md) | Capacidad/costo/operación de Render, asistente determinista, modelos, avisos, privacidad y Kiro. |
