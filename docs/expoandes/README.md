@@ -6,6 +6,7 @@ Comenzar por [plan de ejecución](plan-ejecucion.md), que identifica prioridades
 
 | Documento | Qué aporta |
 | --- | --- |
+| [Acta de alcance y capacidad — EA-01](acta-alcance-capacidad.md) | Registro del 3/11: integrantes, compras y Kiro asignados, presupuesto de COP 150.000–200.000, dedicación sin cuantificar, requisitos y pendientes de #27. |
 | [Auditoría de código](auditoria-codigo.md) | Inventario de funciones, flujos, APIs, mapas, 16 hallazgos y reproducciones. |
 | [Metro de Bogotá](investigacion-metro.md) | Estado de líneas, 16 estaciones de Línea 1, nombres/alias, fuentes, CRS y separación del servicio operativo. |
 | [Render e IA](investigacion-render-ia.md) | Capacidad/costo/operación de Render, asistente determinista, modelos, avisos, privacidad y Kiro. |
@@ -13,9 +14,9 @@ Comenzar por [plan de ejecución](plan-ejecucion.md), que identifica prioridades
 | [Compra en Bogotá](compras-bogota.md) | Candidatos comerciales, precios observados y comprobaciones previas; ninguna reserva o compra. |
 | [Arquitectura y experimentos](arquitectura-y-experimentos.md) | Comparación SwiftUI/Capacitor y núcleo local propuesto, propiedad, contratos y experimentos aún pendientes. |
 | [Puertas de hardware](puertas-hardware.md) | Criterios propuestos para estáticos, móviles e interior; medidas de audio/enlace y ruta crítica. |
-| [Rúbrica académica](lectura-rubrica.md) | Doce criterios, 110 puntos, interpretación revisada y límites de fuentes académicas. |
+| [Enunciado, rúbrica y correcciones](lectura-rubrica.md) | Doce criterios, enunciado ExpoAndes y reconciliación del 3/11: trabajo reutilizable, comentarios de evaluación, afiche/stand, CANVAS y pendientes. |
 | [Corroboración](corroboracion.md) | Pruebas observadas, fuentes contrastadas, datos confirmados y lo que permanece pendiente. |
 
 Las fuentes primarias y sus fechas están junto a las afirmaciones en los informes. Las recomendaciones posteriores de arquitectura ajustan las propuestas iniciales al calendario: SwiftUI **mínimo** condicionado a prueba, conservando backend Next y web; paridad completa permanece como trabajo posterior. Las cifras de ensayo son metas propuestas, no desempeño medido.
 
-No se publica entrega previa de Outlook, que requirió sesión Microsoft, ni archivos de entrevistas, formularios o datos identificables. Recuperar esa entrega y el enunciado final sigue siendo primera tarea documental.
+Actualización del 3/11: el equipo aportó enunciado ExpoAndes, entrega previa y evaluaciones de documento/MVP. Se leyeron y reconciliaron en la lectura académica; fecha y formato del informe siguen sin especificarse en esos PDF. No se publican originales, calificaciones, formularios ni datos identificables de participantes.

@@ -4,7 +4,7 @@ Estado: **revisión e investigación terminadas; trabajo de producto planificado
 
 ## Decisiones y restricciones confirmadas
 
-El equipo tiene cinco personas: **A1/A2 en aplicación, H1/H2/H3 en hardware**. Mac/Xcode y último modelo de iPhone están disponibles. No hay ESP32 ni radar comprados; suministro debe resolverse en Bogotá. El 17 de noviembre es fecha de feria, no fecha inferida del documento académico. Nombres reales de responsables, iPhone/iOS/Xcode, experiencia Swift, horas diarias, presupuesto y acceso de distribución se registran en EA-01; no se asumen jornadas completas ni dispositivos adicionales.
+El equipo tiene cinco personas: **A1/A2 en aplicación, H1/H2/H3 en hardware**. Mac/Xcode disponibles; iPhone indicado entre 16 y 18, modelo y versiones por confirmar. Nicolás y Jacobo llevan aplicación; María Paula, Antonia y Esteban, hardware. Nicolás realiza compras con presupuesto informado de COP 150.000–200.000 y Jacobo opera Kiro. El reparto de especialidades y la dedicación sin horas cuantificadas constan en [acta de EA-01](acta-alcance-capacidad.md). No hay ESP32 ni radar comprados según la última confirmación; suministro debe resolverse en Bogotá. El 17 de noviembre es fecha de feria, no fecha inferida del documento académico. Experiencia Swift y acceso de distribución siguen pendientes; no se asumen jornadas completas ni dispositivos adicionales.
 
 Las metas físicas son **G1: obstáculos estáticos, G2: objetivos móviles y G3: zonas interiores**. Enlace BLE, estados, validez de datos y audio por auriculares del iPhone son condiciones compartidas. Dirección/posición métrica solo se prometen cuando hardware y ensayos concretos las acrediten. «Sin detección» nunca significa «camino libre».
 
@@ -93,6 +93,6 @@ No reemplazar resultados con «compila»: para cambios Next, tipos, unitarias, b
 
 ## Cierre de entrega y evidencia
 
-La revisión termina al publicar investigación y un backlog comprobado en GitHub. Implementación, compras, despliegue, pruebas con usuarios y firma siguen siendo tareas futuras, no acciones realizadas por esta revisión. Outlook permanece sin leer por requerir sesión Microsoft; EA-01 lo recupera y reconcilia con comentarios docentes. Esa limitación no impide publicar trabajo independiente ya autorizado.
+La revisión inicial terminó al publicar investigación y un backlog comprobado en GitHub. Implementación, compras, despliegue, pruebas con usuarios y firma siguen siendo tareas futuras, no acciones realizadas por esta revisión. El 3/11 el equipo aportó enunciado ExpoAndes, entrega previa y evaluaciones: EA-01 ya los leyó y reconcilió en [la matriz académica](lectura-rubrica.md). No hace falta acceso a Outlook para esa tarea.
 
-Rúbrica local: doce criterios, 110 puntos; preparar evidencias desde inicio, no solo producto. Feria/Post Mortem requieren hechos posteriores y enunciado final aún pendiente. [Lectura revisada de rúbrica](lectura-rubrica.md). No se publica material personal de entrevistas.
+Rúbrica local: doce criterios, 110 puntos. Reutilizar mapas, entrevistas, wireframes, backlog y reflexión previa; corregir citas, comparación de apps, problema, alternativas y viabilidad según evaluación. EA-22 incluye afiche, stand y preparación oral de todos los integrantes; EA-23 añade resultados actuales, CANVAS y experiencia/reflexión de feria después de ocurrir. Fecha/hora y formato del informe no constan en los PDF y siguen pendientes de confirmar. [Lectura académica actualizada](lectura-rubrica.md). No se publican originales, calificaciones ni material personal de entrevistas.
