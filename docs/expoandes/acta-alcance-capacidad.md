@@ -9,28 +9,30 @@ Fecha: **3 de noviembre de 2026**. Seguimiento: [issue #27](https://github.com/Z
 | Tema | Base confirmada | Falta registrar o comprobar |
 | --- | --- | --- |
 | Feria | 17 de noviembre de 2026. | Fecha y condiciones de entrega del documento, distintas de la feria. |
-| Equipo | Cinco integrantes: dos de aplicación y tres de hardware. | Nombres, roles de coordinación y horas reales hasta el 16 de noviembre. |
-| Herramientas Apple | Mac/Xcode y un iPhone reciente disponibles. | Modelo exacto, iOS, versión de Xcode, experiencia Swift y firma/instalación; disponibilidad no equivale a prueba aprobada. |
-| Hardware | Compra prevista en Bogotá; sin componentes comprados según la última confirmación documentada. | Actualizar inventario, presupuesto en COP, responsable de compra, referencias y entrega efectiva. |
+| Equipo | Aplicación: Nicolás y Jacobo. Hardware: María Paula, Antonia y Esteban. Compromiso declarado: dedicar el tiempo necesario para terminar antes de la entrega. | Roles de coordinación, reparto interno de hardware y horas cuantificadas hasta el 16 de noviembre. |
+| Herramientas Apple | Mac/Xcode disponibles. El equipo indica iPhone entre 16 y 18, modelo por confirmar, e iOS «más reciente». | Confirmar modelo e iOS exactos en el equipo real, versión de Xcode, experiencia Swift y firma/instalación; disponibilidad no equivale a prueba aprobada. |
+| Hardware | Presupuesto informado: **COP 150.000–200.000**. **Nicolás realiza las compras** en Bogotá. Sin componentes comprados según la última confirmación documentada. | Actualizar inventario, distribución del presupuesto, referencias, costo total con entrega y recepción efectiva. |
 | Metas físicas | Obstáculos estáticos, objetivos móviles y zona interior conocida; enlace y avisos por iPhone/auriculares como condiciones compartidas. | Ensayos y veredictos independientes; ninguna capacidad física está validada por esta acta. |
 
 Base: [plan de ejecución](plan-ejecucion.md) y [confirmaciones y límites](corroboracion.md), sección «Documentos previos y privacidad». No se volvió a preguntar por disponibilidad de Mac/Xcode.
 
+Actualización del 3/11: Nicolás confirmó en conversación los integrantes, compromiso de dedicación, rango presupuestal, responsable de compra y operador de Kiro. Las versiones de Apple siguen sin comprobarse.
+
 ## Responsables y capacidad
 
-Los identificadores conservan los carriles del plan; no representan asignaciones a cuentas de GitHub. Cada integrante debe informar horas disponibles por fecha del 3 al 16, descontando clases y otros compromisos.
+Los identificadores conservan los carriles del plan; no representan asignaciones a cuentas de GitHub. A1/A2 siguen el orden indicado por Nicolás. H1/H2/H3 se proponen en el orden facilitado; el reparto de especialidades de hardware sigue por confirmar. El compromiso de dedicar «el tiempo necesario» no cuantifica horas por fecha del 3 al 16.
 
 | Carril | Trabajo previsto | Nombre | Horas disponibles por fecha / total |
 | --- | --- | --- | --- |
-| A1 | Backend, catálogo, reglas y coordinación de integración. | Pendiente | Pendiente |
-| A2 | iPhone, interfaz accesible, firma y audio. | Pendiente | Pendiente |
-| H1 | Suministro, referencias interiores y registro de evidencia. | Pendiente | Pendiente |
-| H2 | Lectura de radar y ensayos estáticos/móviles. | Pendiente | Pendiente |
-| H3 | Contrato BLE, firmware y enlace con iPhone. | Pendiente | Pendiente |
+| A1 | Backend, catálogo, reglas y coordinación de integración; compras. | Nicolás | Dedicación según necesidad; sin cuantificar. |
+| A2 | iPhone, interfaz accesible, firma y audio; operación de Kiro. | Jacobo | Dedicación según necesidad; sin cuantificar. |
+| H1 | Coordinación de suministro con Nicolás, referencias interiores y evidencia. | María Paula; reparto propuesto. | Dedicación según necesidad; sin cuantificar. |
+| H2 | Lectura de radar y ensayos estáticos/móviles. | Antonia; reparto propuesto. | Dedicación según necesidad; sin cuantificar. |
+| H3 | Contrato BLE, firmware y enlace con iPhone. | Esteban; reparto propuesto. | Dedicación según necesidad; sin cuantificar. |
 
-También faltan responsables de coordinación Scrum, prioridad de producto, compra, operación de Kiro y custodia de evidencia; pueden ser los mismos integrantes. El presupuesto debe expresar un techo total en COP y qué incluye: radar, placas, referencias interiores, cables, alimentación y entrega. Esta acta no autoriza gastos.
+**Compras: Nicolás. Operación de Kiro: Jacobo.** Faltan responsables de coordinación Scrum, prioridad de producto y custodia de evidencia; pueden ser los mismos integrantes. Dentro del rango de **COP 150.000–200.000**, falta distribuir radar, placas, referencias interiores, cables, alimentación y entrega. Este registro no ejecuta compras.
 
-La capacidad sigue **sin calcular**: no se multiplican cinco personas por jornadas supuestas ni se cuentan agentes como disponibilidad humana. Al recibir horas, sumar por carril, reservar integración del 13 al 15 y ensayo del 16, y contrastar con las estimaciones del plan. Si no cabe, reducir pantallas y paridad; conservar validación, cancelación, accesibilidad y ensayos. Presupuesto y responsable de compra: **pendientes**.
+La capacidad sigue **sin calcular**: el compromiso de terminar no demuestra disponibilidad ilimitada. No se multiplican cinco personas por jornadas supuestas ni se cuentan agentes como disponibilidad humana. Cuando existan horas concretas, sumar por carril, reservar integración del 13 al 15 y ensayo del 16, y contrastar con las estimaciones del plan. Si no cabe, reducir pantallas y paridad; conservar validación, cancelación, accesibilidad y ensayos. La fecha de entrega del documento sigue pendiente; la feria confirmada es el 17 de noviembre.
 
 ## Corte de feria propuesto
 
@@ -76,23 +78,25 @@ Mantener [lectura de la rúbrica](lectura-rubrica.md) como matriz académica. EA
 
 ## Kiro, acceso y comprobaciones
 
-Comprobaciones de lectura del 3/11:
+Comprobaciones de lectura del 3/11, antes de abrir el PR de esta acta:
 
 - Repositorio e issue accesibles desde esta sesión. No se encontraron PR abiertos al consultar GitHub; no se inició otra ejecución.
 - [CI del commit documental `aaf0987`](https://github.com/ZuluCode777/proyecto-1-APP/actions/runs/41563870195/job/125680578961): `verificar`, completado correctamente. No son pruebas nuevas de esta acta.
 - El [workflow existente](../../.github/workflows/ci.yml) exige Node 24, tipos, unitarias, prueba PowerShell del instalador, compilación y diagnóstico en Chrome. [AGENTS.md](../../AGENTS.md) exige comprobaciones en verde antes de fusionar.
 - GitHub informó `main` sin protección y sin reglas efectivas en `GET /repos/ZuluCode777/proyecto-1-APP/rules/branches/main`. Existe un ruleset activo, pero esa respuesta no acredita protección de `main`. No se modificaron ajustes; falta acordar protección y revisión antes de delegar escrituras.
-- Instalación efectiva de Kiro, repositorio habilitado, acceso de cada integrante, plan ya existente y operador único: **pendientes de comprobar con el titular**. La etiqueta `ready-for-agent` no acredita instalación ni ejecución.
+- **Jacobo opera la instalación existente de Kiro**, según confirmó Nicolás. Repositorio habilitado, permisos efectivos de la instalación y de cada integrante, y plan ya existente: **pendientes de comprobar con Jacobo**. La etiqueta `ready-for-agent` no acredita instalación ni ejecución.
 
 Antes de encargar una tarea, el operador comprueba bloqueadores y trabajo ya abierto, reclama la tarea y registra quién la ejecuta. Se conserva [el procedimiento existente](plan-ejecucion.md#cómo-usar-issues-con-kiro): sin reinstalaciones ni contratación, sin disparadores durante esta planificación y sin secretos o acceso al Windows de producción. Esta acta no cambia workflows ni activa Kiro.
 
 ## Cierre de #27
 
-- [ ] Nombres, roles de coordinación y horas por fecha registrados; capacidad contrastada y corte de feria acordado.
+- [x] Integrantes de aplicación y hardware registrados; Nicolás responsable de compras y Jacobo operador de Kiro.
+- [x] Rango presupuestal registrado: COP 150.000–200.000.
+- [ ] Reparto interno de hardware, roles de coordinación y horas cuantificadas registrados; capacidad contrastada y corte de feria acordado.
 - [ ] Modelo/iOS/Xcode, experiencia Swift y vía de firma registrados; pruebas de primera sesión enlazadas a EA-09, sin atribuirlas a esta acta.
-- [ ] Inventario actualizado, presupuesto y responsable de compra acordados; tres metas físicas conservadas con sus límites.
+- [ ] Inventario actualizado y presupuesto distribuido entre referencias, alimentación y entrega; tres metas físicas conservadas con sus límites.
 - [ ] Entrega previa, comentarios y enunciado final recuperados y reconciliados, o falta de acceso y responsable de recuperación registrados explícitamente.
 - [ ] Requisitos trazados a necesidades; validación de prioridad iPhone realizada o pendiente con responsable y plan explícitos.
-- [ ] Kiro, permisos, comprobaciones, protección de rama y operador único revisados; pendientes declarados, sin activación durante planificación.
+- [ ] Permisos de Kiro, comprobaciones y protección de rama revisados con Jacobo; pendientes declarados, sin activación durante planificación.
 
 Se actualizará el estado al recibir las respuestas del equipo. Ninguna casilla pendiente se marca por el solo hecho de crear esta acta.
