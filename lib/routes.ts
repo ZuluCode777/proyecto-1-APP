@@ -286,11 +286,13 @@ function verifiedTransfer(
   secondAlight: ServedStop,
   now: Date,
   conOperacion: boolean,
+  estaciones: Station[],
 ): { firstAlight: ServedStop; secondBoard: ServedStop } | undefined {
   for (const stop of first.servedStops) {
     if (!descendible(stop, now) || stop.order <= firstBoard.order) continue
     const match = second.servedStops.find(
-      (s) => abordable(second, s, now, conOperacion) && mismaEstacion(s, stop) && s.order < secondAlight.order,
+      (s) => abordable(second, s, now, conOperacion) && mismaEstacion(s, stop) && s.order < secondAlight.order &&
+        estaciones.some((e) => paradaCoincideConEstacion(stop, e) && paradaCoincideConEstacion(s, e)),
     )
     if (match) return { firstAlight: stop, secondBoard: match }
   }
@@ -323,7 +325,7 @@ function buscarPlanes(
   for (const first of fromOrigin) {
     for (const second of toDestination) {
       if (first.route === second.route) continue
-      const transfer = verifiedTransfer(first.route, first.board, second.route, second.alight, now, conOperacion)
+      const transfer = verifiedTransfer(first.route, first.board, second.route, second.alight, now, conOperacion, data.stations)
       if (!transfer) continue
       transfers.push([tramo(first.route, first.board, transfer.firstAlight), tramo(second.route, transfer.secondBoard, second.alight)])
     }

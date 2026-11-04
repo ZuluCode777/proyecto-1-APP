@@ -146,6 +146,21 @@ test("si el trazado ya no coincide con el sentido GTFS, no se aplica la evidenci
   assert.equal(g.directionEvidence.verified, false)
 })
 
+test("un trazado invertido invalida la evidencia que ya traía la copia", () => {
+  const data = TransmilenioDataSchema.parse(snapshot)
+  const g = data.routes.find((r) => r.code === "8 G")!
+  assert.equal(g.directionEvidence.verified, true)
+  assert.ok(g.servedStops.length > 0)
+  g.stops.reverse()
+  g.path.reverse()
+  const geometria = structuredClone({ path: g.path, stops: g.stops })
+  aplicarEvidenciaGtfs(data.routes, data.stations)
+  assert.equal(g.directionEvidence.verified, false)
+  assert.deepEqual(g.servedStops, [])
+  assert.equal(g.verifiedCalendar, undefined)
+  assert.deepEqual({ path: g.path, stops: g.stops }, geometria)
+})
+
 test("una copia anterior sin la evidencia se corrige al cargarla y es idempotente", () => {
   const actual = TransmilenioDataSchema.parse(snapshot)
   const legado = TransmilenioDataSchema.parse({

@@ -27,7 +27,8 @@ import type { DirectionEvidence, ServedStop, Station, VerifiedCalendar } from "@
  *   Calle 53 (`parent_station` 90012) no existe en la capa de estaciones del
  *   catálogo y queda fuera: no se inventa una estación.
  * - 8 T tiene variantes que omiten Calle 187 (7 viajes) y otras salen de
- *   mitad de ruta; por eso su `conteoExacto` es falso. 8 G solo tiene una
+ *   mitad de ruta; por eso su `conteoExacto` es falso y Calle 187 queda sin
+ *   verificar para prescribir hasta distinguir el patrón de cada viaje. 8 G solo tiene una
  *   variante que es un tramo contiguo del patrón completo (2 viajes).
  *
  * Límite honesto: son horarios PROGRAMADOS del 2026-11-03. No hay tiempo real,
@@ -198,7 +199,10 @@ export const CORRECCIONES_GTFS: Record<string, CorreccionServicio> = {
       verified: true,
       note: "GTFS route_id 13308: patrón completo Guatoque - Veraguas (nodo 7201) → Terminal (nodo 2502). GIS tenía orig/dest invertidos; corregidos. Geometría preservada.",
     },
-    servedStops: paradasServidas(PARADAS_8T, false),
+    // shortcut: sin selección de patrón no se prescribe la parada que algunos viajes omiten.
+    servedStops: paradasServidas(PARADAS_8T, false).map((p) => p.nodeId === "2001"
+      ? { ...p, canBoard: false, canAlight: false, status: "sin-verificar" }
+      : p),
     verifiedCalendar: CALENDARIO_GTFS,
   },
 }
@@ -254,7 +258,13 @@ export function aplicarEvidenciaGtfs<T extends RutaCorregible>(routes: T[], esta
     }
     const correccion = CORRECCIONES_GTFS[route.code]
     if (!correccion) continue
-    if (route.stops[0] !== correccion.from || route.stops[route.stops.length - 1] !== correccion.to) continue
+    if (route.stops[0] !== correccion.from || route.stops[route.stops.length - 1] !== correccion.to) {
+      // Una copia ya verificada tampoco conserva permisos si cambió el trazado.
+      route.directionEvidence = { agreement: "indeterminado", verified: false, note: "El trazado no coincide con el sentido GTFS corroborado." }
+      route.servedStops = []
+      route.verifiedCalendar = undefined
+      continue
+    }
     route.from = correccion.from
     route.to = correccion.to
     route.label = correccion.label

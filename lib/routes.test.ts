@@ -106,6 +106,35 @@ test("8 T Guatoque → Terminal se planea pero no garantiza el número de estaci
   assert.equal(leg!.conteoVerificado, false)
 })
 
+test("8 T no prescribe Calle 187 sin distinguir los viajes que la omiten", () => {
+  const t = data.routes.find((r) => r.code === "8 T")!
+  const soloT = { ...data, routes: [t] }
+  const [guatoque] = findPlaces("Guatoque", soloT)
+  const [c187] = findPlaces("Calle 187", soloT)
+  const [terminal] = findPlaces("Terminal", soloT)
+  // El siguiente viaje desde Guatoque (10:07:30) omite Calle 187 en el GTFS.
+  for (const places of [{ origin: guatoque, destination: c187 }, { origin: c187, destination: terminal }]) {
+    assert.deepEqual(planTrip(places, soloT, 3, AHORA), [])
+    assert.deepEqual(planTripCandidato(places, soloT, 3, AHORA), [])
+  }
+  assert.equal(tripSummaryStillValid([{ routeCode: "8 T", board: "Guatoque - Veraguas", alight: "Calle 187" }], soloT, AHORA), false)
+  const g = data.routes.find((r) => r.code === "8 G")!
+  assert.ok(planTrip({ origin: terminal, destination: c187 }, { ...data, routes: [g] }, 3, AHORA).length)
+})
+
+test("un transbordo exige una estación del catálogo que coincida con ambos nodos", () => {
+  const ausente = datosTransbordoVerificado()
+  ausente.stations = ausente.stations.filter((s) => !["Charlie", "Delta"].includes(s.name))
+  const lugares = { origin: findPlaces("Alfa", ausente)[0], destination: findPlaces("Eco", ausente)[0] }
+  assert.deepEqual(planTrip(lugares, ausente, 3, AHORA), [])
+
+  const nodoInvalido = datosTransbordoVerificado()
+  for (const route of nodoInvalido.routes) {
+    for (const stop of route.servedStops.filter((s) => ["Charlie", "Delta"].includes(s.name))) stop.nodeId = "9999"
+  }
+  assert.deepEqual(planTrip(lugares, nodoInvalido, 3, AHORA), [])
+})
+
 test("fuera de franja, sin calendario vigente o fuera de la vigencia no se prescribe 8 G", () => {
   const [terminal] = findPlaces("Terminal", data)
   const [guatoque] = findPlaces("Guatoque", data)
