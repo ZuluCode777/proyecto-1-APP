@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { CheckCircle2, CircleDashed, Loader2, XCircle } from "lucide-react"
 import { z } from "zod"
-import { AgentReplySchema, respuestaPrescriptivaValida, type AgentReply } from "@/lib/local-agent"
+import { AgentReplySchema, respuestaSeguraParaMostrar, type AgentReply } from "@/lib/local-agent"
 import { TransmilenioDataSchema, type TransmilenioData } from "@/lib/transmilenio"
 
 type Result = { state: "idle" | "running" | "ok" | "fail"; detail: string }
@@ -61,7 +61,6 @@ const CHECKS: Check[] = [
       const dataRes = await fetch("/api/transmilenio")
       if (!dataRes.ok) throw new Error(`No pude leer el catálogo: HTTP ${dataRes.status}`)
       const data: TransmilenioData = TransmilenioDataSchema.parse(await dataRes.json())
-      const ahora = new Date()
       const ask = async (message: string) => {
         const res = await fetch("/api/agent", {
           method: "POST",
@@ -71,45 +70,62 @@ const CHECKS: Check[] = [
         return AgentReplySchema.parse(await res.json())
       }
 
+      // Valida el CONTENIDO real de la respuesta (acción, texto y pasos) con el
+      // catálogo y el reloj del momento de validar, no solo `action`. Una
+      // abstención con «Toma la H72 en Calle 127…» en texto o pasos es insegura
+      // aunque la acción sea `search`; un viaje debe coincidir con la
+      // reconstrucción segura. Si falla, el diagnóstico debe detectarlo.
+      const validarContenido = (reply: AgentReply, etiqueta: string) => {
+        if (!respuestaSeguraParaMostrar(reply, data, new Date())) {
+          throw new Error(`Respuesta insegura en «${etiqueta}»: acción ${reply.action}, texto «${reply.reply}»`)
+        }
+      }
+
       // Caso sin paradas verificadas: debe ofrecer recorrido con incertidumbre,
-      // NO una orden de abordaje inferida por geometría (lo que corrige #31).
+      // NO una orden de abordaje (lo que corrige #31), ni en texto ni en pasos.
       const incierto = await ask("cómo llego de Portal Usme a Molinos")
       if (incierto.action !== "search") {
         throw new Error(`Sin paradas verificadas debería ofrecer recorrido, no "${incierto.action}": «${incierto.reply}»`)
       }
-      if (/\b(sube en|toma la .* en|bájate en)\b/i.test(incierto.reply)) {
-        throw new Error(`No debe instruir abordaje sin evidencia: «${incierto.reply}»`)
-      }
+      validarContenido(incierto, "Portal Usme → Molinos")
 
       // Caso con evidencia GTFS corroborada (8 G): si abre un viaje, su resumen
-      // debe PASAR la validación contra el catálogo real y el reloj actual, no
-      // solo tener el texto correcto. Fuera de franja o con evidencia vencida,
-      // abstenerse (action search) es una respuesta honesta y válida.
+      // debe validar Y su texto/pasos coincidir con la reconstrucción segura.
+      // Fuera de franja o con evidencia vencida, abstenerse es honesto, pero su
+      // texto y pasos tampoco pueden contener imperativos de abordaje.
       const verificado = await ask("cómo llego de Terminal a Guatoque - Veraguas")
-      let detalleVerificado: string
-      if (verificado.action === "trip") {
-        if (!respuestaPrescriptivaValida(verificado, data, ahora)) {
-          throw new Error("Abrió un viaje cuyo resumen NO valida contra el catálogo actual.")
-        }
-        detalleVerificado = `plan verificado ${verificado.trip.map((l) => l.routeCode).join(" + ")}`
-      } else if (verificado.action === "search") {
-        detalleVerificado = "abstención honesta (fuera de franja o sin confirmar ahora)"
-      } else {
+      if (verificado.action !== "trip" && verificado.action !== "search") {
         throw new Error(`Respuesta inesperada a un viaje verificable: "${verificado.action}"`)
       }
+      validarContenido(verificado, "Terminal → Guatoque")
+      const detalleVerificado =
+        verificado.action === "trip"
+          ? `plan verificado ${verificado.trip.map((l) => l.routeCode).join(" + ")}`
+          : "abstención honesta, sin órdenes de abordaje"
 
-      // Payload FORJADO que imita un viaje inseguro (abordar en Calle 127 en la
-      // H72, que no la atiende): la guardia debe rechazarlo. Si lo aceptara, la
-      // versión insegura original pasaría el diagnóstico.
-      const forjado = {
+      // Payload FORJADO inseguro: un `search` cuyo TEXTO y PASOS dan órdenes de
+      // abordar la H72 en Calle 127 (que no la atiende). La guardia de contenido
+      // debe rechazarlo; si lo aceptara, una respuesta real insegura pasaría.
+      const forjadoSearch: AgentReply = {
         reply: "Toma la H72 en Calle 127 y bájate en Portal Usme.",
-        action: "trip" as const,
-        engine: "reglas" as const,
+        action: "search",
+        station: "Portal Usme",
+        engine: "reglas",
+        steps: [{ label: "Sube en Calle 127", detail: "Bájate en Portal Usme" }],
+      }
+      if (respuestaSeguraParaMostrar(forjadoSearch, data, new Date())) {
+        throw new Error("La guardia de contenido aceptó una abstención con órdenes de abordaje. Debe rechazarla.")
+      }
+      // Payload FORJADO como viaje con resumen imposible (H72 no atiende Calle 127).
+      const forjadoTrip: AgentReply = {
+        reply: "Toma la H72 en Calle 127 y bájate en Portal Usme.",
+        action: "trip",
+        engine: "reglas",
         steps: [],
         trip: [{ routeCode: "H72", board: "Calle 127", alight: "Portal Usme", stationsRidden: 10, conteoVerificado: true }],
       }
-      if (respuestaPrescriptivaValida(forjado as AgentReply, data, ahora)) {
-        throw new Error("La guardia aceptó un abordaje forjado en Calle 127 (H72). Debe rechazarlo.")
+      if (respuestaSeguraParaMostrar(forjadoTrip, data, new Date())) {
+        throw new Error("La guardia aceptó un viaje forjado con paradas no verificadas (H72/Calle 127).")
       }
 
       const engine = incierto.engine === "ollama" ? `Ollama (${info.model ?? "modelo local"})` : "reglas locales"

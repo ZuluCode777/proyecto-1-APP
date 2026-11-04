@@ -126,7 +126,8 @@ abordar en Calle 127. Evidencia independiente del aviso de 2018.
 ## Comandos ejecutados
 
 - `pnpm exec tsc --noEmit` → sin errores.
-- `pnpm test` → 91 pruebas, 0 fallos (incluye reloj fijo 2026 y 2027).
+- `pnpm test` → 98 pruebas, 0 fallos (incluye reloj fijo 2026 y 2027, el borde
+  de franja, el contenido inseguro de una abstención y los payloads forjados).
 - `pnpm build` → compilación de producción correcta.
 - `pnpm verificar`: **no se ejecutó en este entorno.** El arnés usa Chrome
   headless y Chrome-for-Testing no inicializa en este contenedor (crashpad/
@@ -136,15 +137,19 @@ abordar en Calle 127. Evidencia independiente del aviso de 2018.
 ## Límites
 
 - No hay tiempo real: estar en franja es horario programado, no garantía de que
-  pase un bus. La evidencia caduca (`MAX_EVIDENCIA_DIAS`) y debe regenerarse del
-  GTFS vigente; en 2027 el calendario y las paradas quedan `sin-verificar` y la
-  app se abstiene, sin afirmar que no haya servicio.
+  pase un bus. La evidencia del GTFS es del 3 de noviembre de 2026; por su fecha
+  civil es utilizable mientras su antigüedad no supere `MAX_EVIDENCIA_DIAS` (31
+  días), es decir hasta el 4 de diciembre inclusive, y desde el 5 de diciembre
+  la app se abstiene por antigüedad. Debe regenerarse del GTFS vigente. Una
+  evidencia vencida o fuera de la ventana de vigencia del calendario queda
+  `sin-verificar`: la app se abstiene, nunca afirma que no haya servicio.
 - Solo 8 G y 8 T tienen evidencia GTFS integrada; ampliar a más servicios es
   aditivo sobre `servedStops`.
 - Calle 53 queda fuera del patrón mapeado por no estar en la capa de estaciones.
-- Riesgo señalado por revisión (en observación, sin resolver aún): 8 T tiene
-  viajes que omiten Calle 187; quitar el conteo puede no bastar para ordenar
-  bajar allí sin seleccionar patrón. Se conservan los datos del núcleo mientras
-  llega el hallazgo corroborado.
+- Calle 187 en 8 T conserva evidencia informativa (aparece en el patrón con más
+  viajes) pero NO es prescriptible: su `status` es `sin-verificar` con
+  `canBoard`/`canAlight` en falso hasta distinguir el patrón, porque hay viajes
+  de 8 T que la omiten. Por eso el planificador no ordena subir ni bajar allí en
+  8 T, y el conteo del servicio no es exacto.
 - No se tocaron GPS, foco ni otros issues (32/33/34), ni workflows, secretos,
   infraestructura o Windows.

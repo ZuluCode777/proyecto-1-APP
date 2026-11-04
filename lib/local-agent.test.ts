@@ -3,12 +3,15 @@ import test from "node:test"
 import snapshot from "../data/transmilenio.json" with { type: "json" }
 import { datosExpreso, datosTransbordoVerificado, datosVerificadosDirecto } from "./fixtures-sinteticas"
 import {
+  contieneImperativoDeViaje,
   interpretCommand,
   parseIntent,
   plainReply,
   respuestaPrescriptivaValida,
+  respuestaSeguraParaMostrar,
   runIntent,
   textoViajeDesdeResumen,
+  type AgentReply,
   type TripLegSummary,
 } from "./local-agent"
 import { TransmilenioDataSchema } from "./transmilenio"
@@ -153,6 +156,82 @@ test("8 T: el resumen reconstruido no dice un número de estaciones (conteo no g
   const salida = textoViajeDesdeResumen(resumen, data, NOW)
   assert.ok(salida, "8 T es un viaje válido a las 10:00")
   assert.doesNotMatch(salida!.reply, /\d+ estaci/, "aunque el resumen traiga 26, no se dice el número")
+})
+
+test("regresión total-agent: un viaje válido al llegar deja de serlo tras la espera de animación", () => {
+  // Reproduce el fallo: válido en T0, inválido en T0+450 ms al cruzar el borde
+  // de franja. La reconstrucción debe hacerse con el reloj DEL MOMENTO de
+  // mostrar, no con el de la llegada, para no hablar «Toma la V1…» ya vencido.
+  const fx = datosVerificadosDirecto() // franja L-V 05:00–23:00
+  const resumen: TripLegSummary[] = [{ routeCode: "V1", board: "Alfa", alight: "Eco", stationsRidden: 4, conteoVerificado: true }]
+  const t0 = new Date("2026-11-04T22:59:59.800-05:00")
+  const t1 = new Date("2026-11-04T23:00:01.250-05:00")
+  assert.ok(textoViajeDesdeResumen(resumen, fx, t0), "a las 22:59:59.8 el viaje es prescriptible")
+  assert.equal(textoViajeDesdeResumen(resumen, fx, t1), null, "a las 23:00:01.25 ya no lo es")
+  // Lo que importa: validar con el reloj tardío no produce texto imperativo.
+  assert.equal(respuestaSeguraParaMostrar({ reply: "x", action: "trip", engine: "reglas", steps: [], trip: resumen }, fx, t1), false)
+})
+
+test("contieneImperativoDeViaje distingue órdenes de frases de incertidumbre", () => {
+  assert.equal(contieneImperativoDeViaje("Toma la H72 en Calle 127 y bájate en Portal Usme."), true)
+  assert.equal(contieneImperativoDeViaje("Sube en Calle 127"), true)
+  assert.equal(contieneImperativoDeViaje("Bájate en Portal Usme"), true)
+  assert.equal(contieneImperativoDeViaje("cambia a la Q1 hasta Eco"), true)
+  // Frases seguras que mencionan subir/bajar/abordaje sin ordenar nada.
+  assert.equal(contieneImperativoDeViaje("no puedo decirte con certeza dónde subir o bajar"), false)
+  assert.equal(contieneImperativoDeViaje("no te doy indicaciones de abordaje"), false)
+  assert.equal(contieneImperativoDeViaje("las rutas B72 y H72 pasan cerca de los dos lugares"), false)
+})
+
+test("regresión diagnóstico: una abstención con órdenes en texto o pasos es insegura", () => {
+  const fx = datosVerificadosDirecto()
+  // action search pero con texto imperativo: debe ser rechazada.
+  const searchInseguroTexto: AgentReply = {
+    reply: "Toma la H72 en Calle 127 y bájate en Portal Usme.",
+    action: "search",
+    station: "Portal Usme",
+    engine: "reglas",
+    steps: [],
+  }
+  assert.equal(respuestaSeguraParaMostrar(searchInseguroTexto, fx, NOW), false)
+  // action search con pasos imperativos aunque el texto sea neutro.
+  const searchInseguroPasos: AgentReply = {
+    reply: "Esto es solo recorrido.",
+    action: "search",
+    station: "Portal Usme",
+    engine: "reglas",
+    steps: [{ label: "Sube en Calle 127", detail: "Bájate en Portal Usme" }],
+  }
+  assert.equal(respuestaSeguraParaMostrar(searchInseguroPasos, fx, NOW), false)
+  // Una abstención realmente segura sí pasa.
+  const searchSeguro: AgentReply = {
+    reply: "No puedo decirte con certeza dónde subir o bajar; confirma con TransMilenio.",
+    action: "search",
+    station: "Portal Usme",
+    engine: "reglas",
+    steps: [{ label: "Busqué recorridos que conectan ambos lugares" }],
+  }
+  assert.equal(respuestaSeguraParaMostrar(searchSeguro, fx, NOW), true)
+})
+
+test("regresión diagnóstico: un viaje real seguro pasa; un viaje forjado o con texto ajeno falla", () => {
+  const fx = datosVerificadosDirecto()
+  const reply = resolver("cómo llego de Alfa a Eco", fx)
+  assert.ok(reply.action === "trip")
+  // La respuesta real del asistente, con resumen prescriptible, es segura; el
+  // texto mostrado lo reconstruye TotalAgent desde ese resumen.
+  assert.equal(respuestaSeguraParaMostrar(reply, fx, NOW), true)
+  // Fuera de franja el mismo viaje deja de ser seguro.
+  assert.equal(respuestaSeguraParaMostrar(reply, fx, new Date("2026-11-04T23:30:00-05:00")), false)
+  // Viaje forjado con paradas que no se atienden: falla por resumen.
+  const forjado: AgentReply = {
+    reply: "Toma la V1 en Alfa y bájate en Narnia.",
+    action: "trip",
+    engine: "reglas",
+    steps: [],
+    trip: [{ routeCode: "V1", board: "Alfa", alight: "Narnia", stationsRidden: 1, conteoVerificado: false }],
+  }
+  assert.equal(respuestaSeguraParaMostrar(forjado, fx, NOW), false)
 })
 
 test("respuestaPrescriptivaValida revalida una respuesta de viaje antes de hablarla", () => {

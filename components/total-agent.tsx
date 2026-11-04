@@ -6,6 +6,7 @@ import { useSpeech, useVoiceRecognition } from "@/hooks/use-speech"
 import type { LatLng } from "@/lib/geo"
 import {
   AgentReplySchema,
+  contieneImperativoDeViaje,
   interpretCommand,
   plainReply,
   textoViajeDesdeResumen,
@@ -42,11 +43,22 @@ const VIAJE_NO_CONFIRMABLE =
  * catálogo), se degrada a un aviso seguro sin instrucciones.
  */
 function sanear(reply: AgentReply, data: TransmilenioData | null): AgentReply {
-  if (reply.action !== "trip") return reply
-  if (!data) return plainReply(VIAJE_NO_CONFIRMABLE, reply.engine)
-  const reconstruido = textoViajeDesdeResumen(reply.trip, data, new Date())
-  if (!reconstruido) return plainReply(VIAJE_NO_CONFIRMABLE, reply.engine)
-  return { ...reply, reply: reconstruido.reply, steps: reconstruido.steps }
+  if (reply.action === "trip") {
+    if (!data) return plainReply(VIAJE_NO_CONFIRMABLE, reply.engine)
+    const reconstruido = textoViajeDesdeResumen(reply.trip, data, new Date())
+    if (!reconstruido) return plainReply(VIAJE_NO_CONFIRMABLE, reply.engine)
+    return { ...reply, reply: reconstruido.reply, steps: reconstruido.steps }
+  }
+  // Una acción que no es de viaje tampoco puede traer órdenes de abordaje en su
+  // texto o en sus pasos (p. ej. un `search` con «Toma la H72 en Calle 127…»):
+  // si las trae, se descarta por seguro y se conserva la acción sin instrucciones.
+  const pasoInseguro = reply.steps.some(
+    (s) => contieneImperativoDeViaje(s.label) || (s.detail ? contieneImperativoDeViaje(s.detail) : false),
+  )
+  if (contieneImperativoDeViaje(reply.reply) || pasoInseguro) {
+    return { ...reply, reply: VIAJE_NO_CONFIRMABLE, steps: [] }
+  }
+  return reply
 }
 
 /**
@@ -116,19 +128,26 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
         }
       }
 
-      // Guardia ANTES de pasos, subtítulo y voz: una respuesta de viaje se
-      // revalida contra el catálogo MÁS RECIENTE y el reloj actual, y su texto y
-      // pasos se reconstruyen desde el resumen validado (no se confía en la
-      // prosa que vino, que puede traer un conteo o un sentido viejos). Si no es
-      // prescriptible ahora, se degrada a una respuesta segura sin órdenes.
-      const seguro = sanear(reply, dataRef.current)
-
-      for (let i = 0; i < seguro.steps.length; i++) {
+      // Cuántos pasos mostrará la respuesta, para animar la espera. El texto de
+      // los pasos NO se fija aquí: una respuesta de viaje puede dejar de ser
+      // prescriptible durante la animación, así que los pasos reales se
+      // reconstruyen al final, tras revalidar. Durante la espera solo avanza un
+      // marcador neutro, sin instrucciones que puedan quedar viejas.
+      const pasosPrevios = sanear(reply, dataRef.current).steps.length
+      for (let i = 0; i < pasosPrevios; i++) {
         await new Promise((r) => setTimeout(r, STEP_DELAY_MS))
         if (ask !== lastAskRef.current) return
-        setSteps(seguro.steps.slice(0, i + 1))
       }
 
+      // Guardia JUSTO antes de subtítulo, voz y pasos, DESPUÉS de todas las
+      // esperas: se revalida la respuesta ORIGINAL contra el catálogo más
+      // reciente y el reloj actual. Un viaje que era válido al llegar puede
+      // haber salido de su franja durante la animación; en ese caso aquí se
+      // degrada a un aviso seguro, y nunca se habla ni se muestran instrucciones
+      // viejas.
+      if (ask !== lastAskRef.current) return
+      const seguro = sanear(reply, dataRef.current)
+      setSteps(seguro.steps)
       setEngine(seguro.engine)
       setCaption(seguro.reply)
       speak(seguro.reply)
@@ -141,9 +160,11 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
       if (ask !== lastAskRef.current) return
       // Revalida otra vez justo antes de navegar contra el catálogo actual: el
       // tiempo o los datos pudieron cambiar durante la pausa.
-      const navegable = sanear(seguro, dataRef.current)
+      const navegable = sanear(reply, dataRef.current)
       if (seguro.action === "trip" && navegable.action !== "trip") {
-        // El viaje dejó de ser prescriptible en la pausa: no se abre; se avisa.
+        // El viaje dejó de ser prescriptible en la pausa: no se abre; se avisa,
+        // reemplazando también los pasos viejos.
+        setSteps(navegable.steps)
         setCaption(navegable.reply)
         speak(navegable.reply)
         return

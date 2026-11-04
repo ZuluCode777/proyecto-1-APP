@@ -94,6 +94,41 @@ export function respuestaPrescriptivaValida(reply: AgentReply, data: Transmileni
   return reply.action !== "trip" || tripSummaryStillValid(reply.trip, data, now)
 }
 
+/**
+ * ¿Un texto contiene una ORDEN de abordaje/descenso/transbordo? Detecta las
+ * formas imperativas que solo deben aparecer en un plan verificado («Toma la X
+ * en Y», «sube en», «bájate en», «cambia a/en»). No marca frases de
+ * incertidumbre como «no puedo decirte dónde subir o bajar» ni «no te doy
+ * indicaciones de abordaje», que mencionan esas palabras sin ordenar nada.
+ */
+export function contieneImperativoDeViaje(texto: string): boolean {
+  const t = normalize(texto)
+  return /\btoma la\b[^.]*\ben\b/.test(t) || /\bsube en\b/.test(t) || /\bbajate en\b/.test(t) || /\bcambia (a|en)\b/.test(t)
+}
+
+/** ¿Algún paso contiene una orden de abordaje en su etiqueta o detalle? */
+const pasosConImperativo = (steps: AgentStep[]): boolean =>
+  steps.some((s) => contieneImperativoDeViaje(s.label) || (s.detail ? contieneImperativoDeViaje(s.detail) : false))
+
+/**
+ * Guardia de CONTENIDO que debe cumplir una respuesta REAL del asistente antes
+ * de mostrarse, hablarse o navegar. Frontera común con `TotalAgent` (que luego
+ * reconstruye el texto de un viaje desde el resumen validado):
+ *
+ * - Un viaje (`trip`) es seguro solo si su resumen revalida contra el catálogo
+ *   y el reloj actuales (paradas, sentido y franja). El texto mostrado se
+ *   reconstruye, así que lo que importa es que el resumen sea prescriptible.
+ * - Cualquier otra acción es insegura si su TEXTO o sus PASOS contienen órdenes
+ *   de abordaje: una abstención con «Toma la H72 en Calle 127…» —en el texto o
+ *   en un paso— es insegura aunque `action` sea `search`.
+ *
+ * Detecta tanto un viaje forjado/vencido como una abstención con instrucciones.
+ */
+export function respuestaSeguraParaMostrar(reply: AgentReply, data: TransmilenioData, now: Date = new Date()): boolean {
+  if (reply.action === "trip") return tripSummaryStillValid(reply.trip, data, now)
+  return !contieneImperativoDeViaje(reply.reply) && !pasosConImperativo(reply.steps)
+}
+
 export type AgentContext = {
   /** Ubicación de la persona, si dio permiso. */
   position?: LatLng
