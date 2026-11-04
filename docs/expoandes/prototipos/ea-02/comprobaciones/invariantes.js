@@ -238,8 +238,10 @@ async (page) => {
   }
   await prueba('El aviso simulado de iOS no se descarta con Escape repetido', async () => {
     await ev(() => window.prototipo.preparar('sistema-ubicacion', { variante: 'A' }))
-    await page.keyboard.press('Escape'); await page.keyboard.press('Escape'); await esperar(100)
-    const abierto = await ev(() => document.querySelector('#sistema').open)
+    await page.keyboard.press('Escape'); await page.keyboard.press('Escape')
+    // El navegador puede cerrarlo y el prototipo lo reabre en el cuadro siguiente: se espera hasta 1,5 s.
+    let abierto = false
+    for (let i = 0; i < 15 && !abierto; i++) { await esperar(100); abierto = await ev(() => document.querySelector('#sistema').open) }
     await clic('sistema-no')
     return abierto ? true : 'se cerró sin respuesta'
   })
@@ -255,6 +257,22 @@ async (page) => {
     await ev(() => window.prototipo.irArea('gps')); await clic('gps-principal'); await esperar(1500)
     const r = await ev(() => [window.prototipo.E.viaje.origen, window.prototipo.E.gps.fase])
     return r[0] === '' && r[1] === 'listo' ? true : JSON.stringify(r)
+  })
+  await prueba('Cancelar «Actualizar ubicación» durante la orientación la detiene y lo dice', async () => {
+    const r = await ev(async () => {
+      const P = window.prototipo
+      P.preparar('gps-guiando', { variante: 'A' })
+      document.querySelector('[data-id="gps-actualizar"]').click()
+      document.querySelector('[data-id="cancelar-gps"]').click()
+      return [P.E.gps.guiando, P.E.voz.texto]
+    })
+    return r[0] === false && /Orientación detenida/.test(r[1]) ? true : JSON.stringify(r)
+  })
+  await prueba('Salir de Rutas con consulta y búsqueda de ubicación en curso: un solo anuncio con ambas', async () => {
+    await ev(() => { const P = window.prototipo; P.E.variante = 'A'; P.aplicarEscenario('libre'); P.E.permisos.ubicacion = 'concedido'; P.irArea('viaje'); Object.assign(P.E.viaje, { origen: 'Terminal', destino: 'Calle 72' }) })
+    await clic('consultar-viaje'); await clic('origen-gps'); await esperar(200); await ev(() => window.prototipo.irArea('inicio'))
+    const voz = await ev(() => window.prototipo.E.voz.texto)
+    return /consulta del viaje/.test(voz) && /búsqueda de ubicación/.test(voz) ? true : voz
   })
   await prueba('«Calle 1» no se confunde con «Calle 187»; «Calle 72» sigue encontrándose', async () => {
     const r = await ev(() => { const P = window.prototipo; P.preparar('viaje-vacio', { variante: 'A' }); const a = P.planear('Terminal', 'Calle 1').tipo; const b = P.planear('Terminal', 'Calle 72').tipo; return [a, b] })

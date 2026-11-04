@@ -9,7 +9,7 @@ Vocabulario según [CONTEXT.md](../../../../CONTEXT.md) y la [arquitectura](../.
 | Regla | Prototipo | SwiftUI (a confirmar) |
 | --- | --- | --- |
 | Cada pantalla tiene un único título, marcado como encabezado. | `h1` | `.accessibilityAddTraits(.isHeader)` |
-| Al entrar en una pantalla, el foco va al título. | `render({ enfocar: 'h1' })` | `@AccessibilityFocusState` y `.accessibilityFocused` |
+| Al entrar en una pantalla, el foco va al título. | `repintar({ enfocar: 'h1' })` | `@AccessibilityFocusState` y `.accessibilityFocused` |
 | Al volver, el foco regresa al control que abrió la pantalla. | `desde` en la pila | Guardar el identificador de origen y reenfocarlo |
 | Un resultado asíncrono (viaje, respuesta) mueve el foco a su encabezado y se anuncia una vez. | `resultado-titulo`, `respuesta-titulo` | Foco más `AccessibilityNotification.Announcement` (iOS 17) |
 | Un cambio de estado sin navegación se anuncia y **no** mueve el foco. | Regiones vivas ocultas | Anuncio; nunca reconstruir la vista bajo el foco |
@@ -28,7 +28,7 @@ Orden de lectura de cada pantalla:
 - El texto de cuerpo es 17 pt en el tamaño por omisión y llega a unos 53 pt en AX5 (310 %). El prototipo simula 100, 135, 200 y 310 %.
 - Nada se trunca ni se superpone. Las filas pasan a una columna; los botones crecen en alto.
 - Los títulos crecen menos que el cuerpo, como los estilos de iOS.
-- Desde 200 %, las franjas que estaban fijas se desplazan con el contenido: la de actividad en A, y la de actividad y «La app dijo» en B. Si quedaran fijas, con texto al 310 % taparían hasta el 65 % (A) o más del 100 % (B) de la pantalla.
+- Desde 200 %, las franjas que estaban fijas se desplazan con el contenido: la de actividad en A, y la de actividad y «La app dijo» en B. Si quedaran fijas, con texto al 310 % taparían más de la mitad de la pantalla en A y más que la pantalla entera en B, según una medición manual en Chromium.
 - Si se usa barra de pestañas, no crece con el texto: se usa el visor de contenido grande del sistema (`.accessibilityShowsLargeContentViewer()`; `TabView` lo trae).
 - En SwiftUI: estilos de texto (`.body`, `.headline`), `@ScaledMetric` para espacios, `ViewThatFits` o `dynamicTypeSize.isAccessibilitySize` para cambiar de fila a columna. Nada de alturas fijas.
 - Al 310 % algunas palabras largas se parten. Revisar en iPhone si conviene acortar textos.
@@ -64,7 +64,8 @@ Orden de lectura de cada pantalla:
 ## 7. Cancelación siempre disponible
 
 - Toda actividad en curso (escucha, consulta, búsqueda de ubicación, orientación hacia la estación, sesión de proximidad) aparece en la franja «Actividad en curso» con su propio botón: «Cancelar escucha», «Cancelar consulta», «Cancelar búsqueda», «Detener orientación», «Detener sesión».
-- Tras cancelar desde la franja, el foco pasa a «Repetir», junto a lo que la app acaba de decir.
+- Tras cancelar, el foco va al control que inicia esa actividad («Consultar viaje», «Hablar», el botón de ubicación o de sesión). Si ese control no está en la pantalla actual, va a «Repetir», junto a lo que la app acaba de decir. Nunca queda sin foco.
+- Cancelar una búsqueda de ubicación también detiene la orientación, que se quedaría sin ubicación actual.
 - La franja está en el mismo lugar en todas las pantallas.
 - El gesto de escape de VoiceOver (dos dedos en «Z») cancela lo transitorio; si no hay nada que cancelar, vuelve atrás. En el prototipo, la tecla Escape. En SwiftUI: `.accessibilityAction(.escape)`.
 - Salir de una pantalla cancela su consulta o escucha.

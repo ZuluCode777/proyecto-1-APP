@@ -591,10 +591,15 @@ function indicacionGps() {
   return `${ESTACION_CERCANA} está a ${metrosHablados(g.distancia)} ${direccion(g)}, ${ref}. Es distancia en línea recta, no un camino peatonal.`
 }
 // Cada búsqueda tiene su turno: una búsqueda cancelada o abandonada nunca completa otra posterior.
+// Devuelve lo que hay que decir; sin búsqueda, la orientación se detiene porque no queda ubicación.
 function cancelarBusquedaGps({ silencioso = false } = {}) {
   E.gps.turno++
   E.gps.fase = 'inactivo'
-  if (!silencioso) { decir('Búsqueda de ubicación cancelada.'); repintar({ respaldo: ['gps-principal', 'origen-gps'] }) }
+  const orientaba = E.gps.guiando
+  E.gps.guiando = false
+  const texto = 'Búsqueda de ubicación cancelada.' + (orientaba ? ' Orientación detenida: no hay ubicación actual.' : '')
+  if (!silencioso) { decir(texto); repintar({ respaldo: ['gps-principal', 'origen-gps'] }) }
+  return texto
 }
 function activarUbicacion({ luego } = {}) {
   pedirPermiso('ubicacion', {
@@ -812,12 +817,21 @@ function actividades() {
 // A: estrella desde Inicio, con «Volver». B: cinco pestañas; cada una tiene su propia pila.
 const RAICES_B = ['inicio', 'viaje', 'asistente', 'avisos', 'mas']
 const TITULOS = { inicio: 'Inicio', viaje: 'Rutas y viaje', metro: 'Metro (escenario futuro)', 'metro-estacion': 'Estación futura', gps: 'Ubicación y orientación', asistente: 'Asistente', avisos: 'Avisos', accesorio: 'Accesorio', ajustes: 'Ajustes y ayuda', lupa: 'Lupa', mas: 'Más' }
+// Al salir se cancela lo transitorio de la pantalla y se dice todo en un solo anuncio.
 function salirDe(actual, siguiente) {
   if (actual === siguiente) return
-  if (actual === 'viaje' && E.viaje.fase === 'consultando') { cancelarViaje({ silencioso: true }); decir('Saliste de Rutas y viaje: cancelé la consulta.') }
-  if (actual === 'asistente' && ['escuchando', 'pensando'].includes(E.asis.fase)) { cancelarAsistente({ silencioso: true }); decir('Saliste del asistente: cancelé la pregunta.') }
+  const cancelado = []
+  if (actual === 'viaje' && E.viaje.fase === 'consultando') { cancelarViaje({ silencioso: true }); cancelado.push('la consulta del viaje') }
+  if (actual === 'asistente' && ['escuchando', 'pensando'].includes(E.asis.fase)) { cancelarAsistente({ silencioso: true }); cancelado.push('la pregunta al asistente') }
   if (actual === 'lupa' && E.lupa.abierta) { E.lupa.abierta = false; E.lupa.congelada = false }
-  if (E.gps.fase === 'buscando' && E.gps.desde === actual) { cancelarBusquedaGps({ silencioso: true }); decir('Saliste de la pantalla: cancelé la búsqueda de ubicación.') }
+  let extra = ''
+  if (E.gps.fase === 'buscando' && E.gps.desde === actual) {
+    const orientaba = E.gps.guiando
+    cancelarBusquedaGps({ silencioso: true })
+    cancelado.push('la búsqueda de ubicación')
+    if (orientaba) extra = ' Orientación detenida: no hay ubicación actual.'
+  }
+  if (cancelado.length) decir(`Saliste de ${TITULOS[actual]}: cancelé ${cancelado.join(' y ')}.${extra}`)
 }
 function irArea(destino, { enfocar = 'h1' } = {}) {
   const actual = pantalla()
@@ -1638,15 +1652,21 @@ function preparar(nombre, { variante = E.variante, texto = E.ajustes.texto, baja
 
 // ---------- Arranque: ?variante=A|B&escenario=T1&panel=0&texto=200&bajavision=1 ----------
 const parametros = new URLSearchParams(location.search)
+// El escenario va primero; los parámetros de texto y baja visión de la dirección mandan sobre él.
+const escenario = parametros.get('escenario')
+if (escenario && ESCENARIOS[escenario]) { ESCENARIOS[escenario][1](); $('#panel-escenario').value = escenario }
 if (['A', 'B'].includes(parametros.get('variante'))) E.variante = parametros.get('variante')
 if ([100, 135, 200, 310].includes(Number(parametros.get('texto')))) E.ajustes.texto = Number(parametros.get('texto'))
 if (parametros.get('bajavision') === '1') E.ajustes.bajaVision = true
 if (parametros.get('panel') === '0') $('#panel').hidden = true
-const escenario = parametros.get('escenario')
-if (escenario && ESCENARIOS[escenario]) { ESCENARIOS[escenario][1](); $('#panel-escenario').value = escenario }
 // ?desconectar=20 desconecta el accesorio a los 20 s, para T9 sin el panel visible.
 const segundos = Number(parametros.get('desconectar'))
-if (segundos > 0 && segundos <= 600) despues(segundos * 1000, desconectarAccesorio)
+if (segundos > 0 && segundos <= 600) {
+  despues(segundos * 1000, () => {
+    const salida = desconectarAccesorio()
+    $('#panel-salida').textContent = sesionActiva() && E.acc.estado === 'sinDatos' ? 'T9: accesorio desconectado.' : `T9: no se desconectó (${salida})`
+  })
+}
 repintar()
 window.prototipo = { version: VERSION, E, repintar, irArea, volver, cambiarVariante, aplicarEscenario, reiniciar, preparar, PREPARADOS, comprobar, paradasLectura, planear, responderAsistente, ACCIONES_PANEL, CAMPOS_PANEL }
 })()

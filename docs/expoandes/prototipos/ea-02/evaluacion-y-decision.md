@@ -29,7 +29,7 @@ Todo se ejecutó en Chromium sin interfaz, con ventana de 390×844 CSS px (tama�
    - un único título y el foco en él (en las 335 combinaciones sin diálogo abierto).
 
    También cuenta palabras partidas y mide las franjas fijas.
-2. **Invariantes** (`invariantes.js`). 43 pruebas de comportamiento con temporizadores reales: cancelaciones y respuestas tardías, foco, vencimiento de datos, ubicación sin llegada ni distancia falsa, abordaje solo verificado, Metro, paridad de frases de seguridad entre A y B, permisos, Escape y teclado.
+2. **Invariantes** (`invariantes.js`). 45 pruebas de comportamiento con temporizadores reales: cancelaciones y respuestas tardías, foco, vencimiento de datos, ubicación sin llegada ni distancia falsa, abordaje solo verificado, Metro, paridad de frases de seguridad entre A y B, permisos, Escape y teclado.
 3. **Teclado.** Una prueba completa T2 solo con Tab, Enter y escritura en cada variante, y comprueba que no hay `tabindex` positivos.
 4. **Recorrido de tareas** (`tareas.js`). Diez tareas en ambas variantes. Cuenta los deslizamientos de VoiceOver necesarios para llegar a cada objetivo desde el foco actual, y las activaciones (toque doble). Si el texto buscado aparece en dos lugares, por ejemplo en el resultado y en «La app dijo», se toma el más cercano. Es una aproximación lineal: VoiceOver real agrupa algunos elementos de otra forma, y el rotor de encabezados o el toque con cuatro dedos acortan los recorridos.
 5. **Revisión experta** de las capturas en [capturas/](capturas/) y del árbol de accesibilidad. Además hubo una revisión independiente del código y los documentos; sus hallazgos se corrigieron (ver «Cambios»).
@@ -44,7 +44,7 @@ Todo se ejecutó en Chromium sin interfaz, con ventana de 390×844 CSS px (tama�
 | Desborde horizontal | Ninguno, también al 310 %. |
 | Estado comunicado solo por color | Ninguno. Todo estado con color lleva palabra («Urgente:», «Importante:»…) e ícono. |
 | Foco en el título al entrar en pantalla | 335/335 combinaciones sin diálogo. Con diálogo, el foco va a su título. |
-| Invariantes de comportamiento | **43/43.** |
+| Invariantes de comportamiento | **45/45.** |
 | Teclado | T2 completa con 5 pulsaciones de Tab en A y 11 en B. No hay `tabindex` positivos. |
 | Red, guardado, errores | Cero peticiones de red y cero errores de JavaScript. El código no usa almacenamiento, cookies ni red. |
 | Palabras partidas | Ninguna al 100 y al 200 %. Al 310 %: 28 palabras en 23 de 35 pantallas (A) y 27 en 23 de 36 (B), por ejemplo «programación» o «TransMilenio». Pasa con palabras más anchas que la línea; iOS también las corta en AX5. |
@@ -99,9 +99,9 @@ Las filas de B probablemente se leen en VoiceOver como dos paradas (nombre y val
 | Palabras más largas que la línea desbordaban al 310 %. | Se cortan solo cuando no caben; los `fieldset` no tienen ancho mínimo. |
 | B perdía frases que A daba en el resumen, por ejemplo «No puedo saber si llegaste». | Cada fila de B lleva la misma información en su nota. Prueba de paridad de frases de seguridad añadida. |
 | El botón Iniciar/Detener cambiaba de identificador y se perdía el foco. | Identificador estable en botones que cambian de texto. |
-| El foco caía en la página al pulsar un control que desaparece: cancelar desde la franja, «Entendido, enviar», «Elegir», «Reintentar». | Cada acción tiene un destino de respaldo; al cancelar desde la franja, el foco pasa a «Repetir». Prueba añadida. |
+| El foco caía en la página al pulsar un control que desaparece: cancelar desde la franja, «Entendido, enviar», «Elegir», «Reintentar». | El foco va al control que inicia la actividad; si no está en pantalla, a «Repetir». Prueba añadida. |
 | Con ubicación imprecisa o antigua se mostraba distancia y se ofrecía orientar. | Sin distancia ni dirección con ubicación no fiable; la acción principal es «Actualizar ubicación». Si la ubicación empeora durante la orientación, se detiene y se avisa. |
-| Una búsqueda de ubicación cancelada podía completar otra posterior, o rellenar el origen tras salir de Rutas. | Cada búsqueda tiene turno; salir de la pantalla la cancela. |
+| Una búsqueda de ubicación cancelada podía completar otra posterior, rellenar el origen tras salir de Rutas o dejar la orientación activa sin ubicación. | Cada búsqueda tiene turno; salir de la pantalla la cancela; cancelarla detiene la orientación. Al salir, todo lo cancelado se dice en un solo anuncio. |
 | El paso de vuelta a «sin detección» se decía sin «no significa que el camino esté libre». | La voz incluye la advertencia, y la prueba revisa también la voz. |
 | Dos anuncios seguidos se pisaban, por ejemplo al olvidar el accesorio con la sesión activa. | Un solo anuncio con ambas cosas. |
 | Con catálogo viejo, el asistente daba el horario como verificado. | Lo da como horario publicado. |
