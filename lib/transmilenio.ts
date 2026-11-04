@@ -50,6 +50,20 @@ export type Station = z.infer<typeof StationSchema>
  * `operativa` solo cuando la fuente confirma que hoy se puede usar; los demás
  * estados obligan a comunicar incertidumbre en vez de instruir el abordaje.
  */
+/**
+ * Franja horaria PROGRAMADA de una parada para un servicio del calendario
+ * (GTFS `stop_times`): primera y última salida en esa parada, en horas GTFS
+ * `HH:MM:SS` (pueden pasar de las 24:00 en servicios que cruzan la medianoche).
+ * Es horario programado, no tiempo real ni garantía de que pase un bus.
+ */
+export const FranjaServicioSchema = z.object({
+  /** `service_id` del calendario al que pertenece la franja. */
+  serviceId: z.string(),
+  primera: z.string(),
+  ultima: z.string(),
+})
+export type FranjaServicio = z.infer<typeof FranjaServicioSchema>
+
 export const ServedStopStatusSchema = z.enum(["operativa", "suspendida", "sin-verificar"])
 export type ServedStopStatus = z.infer<typeof ServedStopStatusSchema>
 
@@ -84,25 +98,52 @@ export const ServedStopSchema = z.object({
    * confundir dos registros con el mismo nombre. No se rellena por proximidad.
    */
   nodeId: z.string().optional(),
+  /**
+   * Franjas programadas de la parada por `serviceId`. Sin la franja del
+   * servicio que opera hoy no se afirma operación ahora (ver
+   * `estadoOperacionEnParada` en `lib/evidencia.ts`).
+   */
+  franjas: z.array(FranjaServicioSchema).default([]),
+  /**
+   * `true` solo si la diferencia de `order` entre dos paradas del servicio es
+   * el número exacto de paradas en TODOS los viajes programados que las unen.
+   * Con variantes de patrón que omiten paradas es `false` y no debe decirse un
+   * número exacto de estaciones.
+   */
+  conteoExacto: z.boolean().default(false),
 })
 export type ServedStop = z.infer<typeof ServedStopSchema>
+
+/**
+ * Servicio de un calendario GTFS (`calendar.txt` + `calendar_dates.txt`): días
+ * de la semana base y excepciones. Un mismo servicio de transporte puede usar
+ * varios (entre semana, sábado, domingo/festivo).
+ */
+export const ServicioCalendarioSchema = z.object({
+  serviceId: z.string(),
+  /** Días de la semana que opera, 0 = domingo … 6 = sábado. */
+  weekdays: z.array(z.number().int().min(0).max(6)).default([]),
+  /** Fechas AAAA-MM-DD que agregan servicio (excepción tipo 1). */
+  addedDates: z.array(z.string()).default([]),
+  /** Fechas AAAA-MM-DD que retiran servicio (excepción tipo 2). */
+  removedDates: z.array(z.string()).default([]),
+})
+export type ServicioCalendario = z.infer<typeof ServicioCalendarioSchema>
 
 /**
  * Calendario VERIFICADO de un servicio, tomado de una fuente con vigencia
  * (GTFS `calendar` / `calendar_dates`). Sin esto, no se puede afirmar salida
  * inmediata ni disponibilidad actual; el horario textual no lo reemplaza.
+ * Una copia anterior (con `weekdays` en la raíz) se lee con `servicios`
+ * vacío: no habilita nada hasta regenerarla.
  */
 export const VerifiedCalendarSchema = z.object({
-  /** Días de la semana que opera, 0 = domingo … 6 = sábado. */
-  weekdays: z.array(z.number().int().min(0).max(6)),
+  /** Servicios del calendario y sus excepciones. */
+  servicios: z.array(ServicioCalendarioSchema).default([]),
   /** Inicio de vigencia, AAAA-MM-DD (GTFS `start_date`). */
   startDate: z.string(),
   /** Fin de vigencia, AAAA-MM-DD (GTFS `end_date`). */
   endDate: z.string(),
-  /** Fechas AAAA-MM-DD que agregan servicio (excepción tipo 1). */
-  addedDates: z.array(z.string()).default([]),
-  /** Fechas AAAA-MM-DD que retiran servicio (excepción tipo 2). */
-  removedDates: z.array(z.string()).default([]),
   /** Zona horaria de la agencia (GTFS `agency_timezone`). */
   timezone: z.string(),
   /** Fuente del calendario. */
@@ -346,8 +387,7 @@ export function normalizeTransmilenio(
   // Aplica la evidencia GTFS corroborada (8 G/8 T: sentido, paradas y
   // calendario) tanto a la consulta en vivo como a la copia, para que la
   // corrección no dependa de qué origen de datos respondió.
-  const nombresEstacion = new Set(stations.map((s) => s.name))
-  aplicarEvidenciaGtfs(routes, nombresEstacion)
+  aplicarEvidenciaGtfs(routes, stations)
 
   return { stations, routes, fetchedAt, source }
 }

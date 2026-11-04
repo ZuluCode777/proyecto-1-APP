@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { spokenDistance, type LatLng } from "@/lib/geo"
-import { calendarioOperaEnFecha, estadoOperativo } from "@/lib/evidencia"
+import { estadoCalendarioEnFecha } from "@/lib/evidencia"
 import {
   findPlaceMentions,
   findPlaces,
@@ -8,6 +8,8 @@ import {
   nearestStations,
   placeOf,
   planTrip,
+  planTripCandidato,
+  tripSummaryStillValid,
   routesAlongBoth,
   routesThrough,
   samePlace,
@@ -55,6 +57,8 @@ const TripLegSummarySchema = z.object({
   board: z.string(),
   alight: z.string(),
   stationsRidden: z.number(),
+  /** Solo si es `true` puede decirse el número exacto de estaciones. */
+  conteoVerificado: z.boolean().default(false),
 })
 export type TripLegSummary = z.infer<typeof TripLegSummarySchema>
 
@@ -79,6 +83,16 @@ export type AgentReply = z.infer<typeof AgentReplySchema>
 export type AgentEngine = AgentReply["engine"]
 
 export type AgentAction = AgentReply["action"]
+
+/**
+ * Guardia que debe pasar una respuesta ANTES de hablarla, subtitularla o abrir
+ * una pantalla: una respuesta de viaje se revalida contra el catálogo y la
+ * evidencia actuales (mismas reglas que `planTrip`); las demás acciones no dan
+ * órdenes de abordaje. Si devuelve `false`, no se prescribe nada.
+ */
+export function respuestaPrescriptivaValida(reply: AgentReply, data: TransmilenioData, now: Date = new Date()): boolean {
+  return reply.action !== "trip" || tripSummaryStillValid(reply.trip, data, now)
+}
 
 export type AgentContext = {
   /** Ubicación de la persona, si dio permiso. */
@@ -181,49 +195,78 @@ function listCodes(codes: string[], max = 3): string {
 const bare = (value: string) => value.replace(/\.\s*$/, "")
 
 /**
- * Frase sobre la operación de un servicio HOY. Solo afirma operación cuando
- * hay calendario verificado que lo confirma; si no, advierte que no está
- * verificado. Nunca afirma salida inmediata.
+ * Frase sobre la operación de un servicio HOY. Solo afirma servicio o falta de
+ * servicio cuando el calendario verificado y vigente lo dice; si no, advierte
+ * que no está verificado (desconocido no es "sin servicio"). Es del día, no de
+ * la hora, y nunca afirma salida inmediata.
  */
 function operacionHoy(route: BusRoute, now: Date = new Date()): string {
-  if (!route.verifiedCalendar) {
-    return "No tengo calendario verificado para confirmar si opera ahora."
+  switch (estadoCalendarioEnFecha(route.verifiedCalendar, now)) {
+    case "opera":
+      return "Según su calendario verificado, hoy tiene servicio programado; no es tiempo real, confirma el horario antes de salir."
+    case "no-opera":
+      return "Según su calendario verificado, hoy no tiene servicio programado."
+    case "sin-verificar":
+      return "No tengo un calendario vigente verificado para confirmar si opera hoy."
   }
-  return calendarioOperaEnFecha(route.verifiedCalendar, now)
-    ? "Según su calendario verificado, hoy opera; aun así confirma el horario antes de salir."
-    : "Según su calendario verificado, hoy no tiene servicio programado."
 }
 
-/**
- * Advertencia de operación para un plan completo: si algún tramo no tiene
- * calendario verificado, no se afirma operación; si todos operan hoy, se dice
- * con cautela; si alguno no opera hoy, se avisa.
- */
-function avisoOperacionPlan(plan: TripPlan, now: Date): string {
-  const estados = plan.map((leg) => estadoOperativo(leg.route, now))
-  if (estados.some((e) => !e.tieneCalendario)) {
-    return " No tengo calendario verificado de todos los servicios; confirma los horarios antes de salir."
-  }
-  if (estados.every((e) => e.operaHoy)) {
-    return " Según su calendario verificado, hoy operan; confirma el horario antes de salir."
-  }
-  return " Según su calendario verificado, hoy alguno no tiene servicio programado; confírmalo antes de salir."
-}
+const AVISO_PLAN =
+  " Según el calendario y las franjas programadas que tengo verificadas, ahora hay servicio programado; no es tiempo real, confirma el horario antes de salir."
 
-function describePlan(plan: TripPlan, now: Date = new Date()): string {
-  const aviso = avisoOperacionPlan(plan, now)
+function describePlan(plan: TripPlan): string {
   if (plan.length === 1) {
     const [leg] = plan
-    return `Toma la ${leg.route.code} en ${leg.board} y bájate en ${leg.alight}, después de ${leg.stationsRidden} ${leg.stationsRidden === 1 ? "estación" : "estaciones"}.${aviso}`
+    // Sin conteo garantizado por la fuente no se dice cuántas estaciones son.
+    const conteo = leg.conteoVerificado
+      ? `, después de ${leg.stationsRidden} ${leg.stationsRidden === 1 ? "estación" : "estaciones"}`
+      : ""
+    return `Toma la ${leg.route.code} en ${leg.board} y bájate en ${leg.alight}${conteo}.${AVISO_PLAN}`
   }
   const [first, second] = plan
-  return `No hay una ruta directa. Toma la ${first.route.code} en ${first.board} hasta ${first.alight}, y ahí cambia a la ${second.route.code} hasta ${second.alight}.${aviso}`
+  return `No hay una ruta directa. Toma la ${first.route.code} en ${first.board} hasta ${first.alight}, y ahí cambia a la ${second.route.code} hasta ${second.alight}.${AVISO_PLAN}`
 }
 
 const summarize = (plan: TripPlan): TripLegSummary[] =>
-  plan.map((leg) => ({ routeCode: leg.route.code, board: leg.board, alight: leg.alight, stationsRidden: leg.stationsRidden }))
+  plan.map((leg) => ({
+    routeCode: leg.route.code,
+    board: leg.board,
+    alight: leg.alight,
+    stationsRidden: leg.stationsRidden,
+    conteoVerificado: leg.conteoVerificado,
+  }))
 
 const resolvePlace = (name: string, data: TransmilenioData): Place | undefined => findPlaces(name, data)[0]
+
+/**
+ * Respuesta cuando las paradas y el sentido están verificados pero la operación
+ * actual no se puede confirmar (fuera de franja, hoy sin servicio, calendario
+ * vencido o ausente). Presenta el servicio como candidato, sin instruir subir,
+ * bajar ni transbordar, y sin afirmar que no exista servicio.
+ */
+function tripCandidatoReply({
+  plan,
+  origin,
+  destination,
+  steps,
+  engine,
+}: {
+  plan: TripPlan
+  origin: Place
+  destination: Place
+  steps: AgentStep[]
+  engine: AgentEngine
+}): AgentReply {
+  const codes = plan.map((leg) => leg.route.code)
+  steps.push({ label: "Encontré un servicio candidato", detail: `${codes.join(" + ")}, sin operación confirmada ahora` })
+  return {
+    reply: `Según la programación que tengo verificada, ${codes.length === 1 ? "la ruta" : "las rutas"} ${listCodes(codes)} ${codes.length === 1 ? "conecta" : "conectan"} ${origin.name} con ${destination.name}, pero ahora no puedo confirmar que ${codes.length === 1 ? "esté" : "estén"} en servicio, así que no te doy indicaciones de abordaje. Confirma el horario con TransMilenio.`,
+    action: "search",
+    station: destination.name,
+    steps,
+    engine,
+  }
+}
 
 /**
  * Respuesta cuando no hay paradas verificadas para armar un viaje operativo.
@@ -386,21 +429,24 @@ export function runIntent(
         label: `Revisé las ${data.routes.length} rutas troncales`,
         detail:
           plans.length === 0
-            ? "Sin paradas verificadas para armar un viaje"
+            ? "Sin viaje operativo confirmado ahora"
             : plans[0].length === 1
               ? `${plans.length} ${plans.length === 1 ? "ruta directa" : "rutas directas"}`
               : "Con un transbordo verificado",
       })
       if (plans.length === 0) {
-        // Sin paradas verificadas no se instruye subir/bajar; se ofrece el
-        // recorrido con incertidumbre, sin afirmar que no exista servicio.
+        // Sin plan operativo no se instruye subir/bajar. Con paradas verificadas
+        // pero operación sin confirmar se informa un candidato; si no, el
+        // recorrido con incertidumbre. Nunca se afirma que no exista servicio.
+        const [candidato] = planTripCandidato({ origin, destination }, data, 1, now)
+        if (candidato) return tripCandidatoReply({ plan: candidato, origin, destination, steps, engine })
         return tripUncertainReply({ origin, destination, data, steps, engine })
       }
       const [best, ...others] = plans
       steps.push({ label: "Elegí la opción con menos estaciones", detail: best.map((l) => l.route.code).join(" + ") })
       const alternatives =
         best.length === 1 && others.length > 0 ? ` También te sirven ${listCodes(others.map((p) => p[0].route.code))}.` : ""
-      return { reply: `${describePlan(best, now)}${alternatives}`, action: "trip", trip: summarize(best), steps, engine }
+      return { reply: `${describePlan(best)}${alternatives}`, action: "trip", trip: summarize(best), steps, engine }
     }
 
     case "trip_missing_destination":

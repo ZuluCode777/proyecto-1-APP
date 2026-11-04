@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import snapshot from "../data/transmilenio.json" with { type: "json" }
-import { datosConCalendario, datosExpreso, datosTransbordoVerificado, datosVerificadosDirecto } from "./fixtures-sinteticas"
-import { interpretCommand, parseIntent, runIntent } from "./local-agent"
+import { datosExpreso, datosTransbordoVerificado, datosVerificadosDirecto } from "./fixtures-sinteticas"
+import { interpretCommand, parseIntent, plainReply, respuestaPrescriptivaValida, runIntent } from "./local-agent"
 import { TransmilenioDataSchema } from "./transmilenio"
 
 const data = TransmilenioDataSchema.parse(snapshot)
@@ -43,33 +43,87 @@ test("toma origen y destino en el orden en que se dicen", () => {
 const NOW = new Date("2026-11-04T10:00:00-05:00")
 const resolver = (text: string, d = data, ctx = {}) => runIntent(parseIntent(text, d), { data: d, context: { now: NOW, ...ctx } })
 
-test("con paradas verificadas, planea un viaje directo y deja los pasos", () => {
+test("con paradas verificadas y en franja, planea un viaje directo y deja los pasos", () => {
   const fx = datosVerificadosDirecto()
   const reply = resolver("cómo llego de Alfa a Eco", fx)
   assert.ok(reply.action === "trip")
   assert.equal(reply.trip.length, 1)
-  assert.match(reply.reply, /^Toma la V1 en Alfa y bájate en Eco/)
-  // Sin calendario verificado no afirma operación ni salida inmediata.
-  assert.match(reply.reply, /No tengo calendario verificado/)
+  assert.match(reply.reply, /^Toma la V1 en Alfa y bájate en Eco, después de 4 estaciones\./)
+  assert.match(reply.reply, /ahora hay servicio programado; no es tiempo real/)
   assert.ok(reply.steps.length >= 3, "debe registrar los pasos")
+  assert.equal(respuestaPrescriptivaValida(reply, fx, NOW), true)
 })
 
-test("con calendario verificado que opera hoy, lo dice con cautela", () => {
-  const fx = datosConCalendario()
+test("sin conteo garantizado por la fuente no dice cuántas estaciones son", () => {
+  const fx = datosVerificadosDirecto()
+  fx.routes[0].servedStops.forEach((s) => (s.conteoExacto = false))
   const reply = resolver("cómo llego de Alfa a Eco", fx)
   assert.ok(reply.action === "trip")
-  assert.match(reply.reply, /hoy operan; confirma el horario antes de salir/)
+  assert.equal(reply.trip[0].conteoVerificado, false)
+  assert.match(reply.reply, /^Toma la V1 en Alfa y bájate en Eco\./)
+  assert.doesNotMatch(reply.reply, /estaciones|estación/)
 })
 
-test("con calendario verificado que hoy no opera, lo advierte", () => {
-  const fx = datosConCalendario()
-  // 2026-11-02 está en removedDates del calendario sintético.
-  const reply = runIntent(parseIntent("cómo llego de Alfa a Eco", fx), {
-    data: fx,
-    context: { now: new Date("2026-11-02T10:00:00-05:00") },
-  })
+test("8 G a las 10:00 da la indicación con el conteo garantizado y 8 T sin conteo", () => {
+  const g = resolver("cómo llego de Terminal a Guatoque")
+  assert.ok(g.action === "trip")
+  assert.match(g.reply, /^Toma la 8 G en Terminal y bájate en Guatoque - Veraguas, después de 26 estaciones\./)
+  const t = resolver("cómo llego de Guatoque a Terminal")
+  assert.ok(t.action === "trip")
+  assert.match(t.reply, /^Toma la 8 T en Guatoque - Veraguas y bájate en Terminal\./)
+  assert.doesNotMatch(t.reply, /\d+ estaciones/)
+})
+
+test("fuera de franja presenta un candidato sin indicaciones de abordaje", () => {
+  // 2026-11-04 02:00 en Bogotá: la primera salida de Terminal es a las 04:30.
+  const reply = resolver("cómo llego de Terminal a Guatoque", data, { now: new Date("2026-11-04T02:00:00-05:00") })
+  assert.equal(reply.action, "search", "no abre un plan de viaje")
+  assert.match(reply.reply, /8 G conecta Terminal con Guatoque/)
+  assert.match(reply.reply, /no puedo confirmar que esté en servicio/)
+  assert.doesNotMatch(reply.reply, /Toma|bájate|sube|hoy opera|tiene servicio programado/i)
+})
+
+test("con la evidencia vencida o el calendario fuera de vigencia se abstiene sin afirmar que no hay servicio", () => {
+  const reply = resolver("cómo llego de Terminal a Guatoque", data, { now: new Date("2027-01-05T10:00:00-05:00") })
+  assert.notEqual(reply.action, "trip")
+  assert.match(reply.reply, /no puedo decirte con certeza dónde subir o bajar/)
+  assert.doesNotMatch(reply.reply, /Toma|bájate|no hay servicio|no opera/i)
+})
+
+test("sin sentido confirmado no hay viaje aunque las paradas existan", () => {
+  const fx = datosVerificadosDirecto()
+  fx.routes[0].directionEvidence = { agreement: "contradictorio", verified: false, note: "x" }
+  const reply = resolver("cómo llego de Alfa a Eco", fx)
+  assert.notEqual(reply.action, "trip")
+  assert.doesNotMatch(reply.reply, /Toma|bájate/)
+})
+
+test("respuestaPrescriptivaValida revalida una respuesta de viaje antes de hablarla", () => {
+  const fx = datosVerificadosDirecto()
+  const reply = resolver("cómo llego de Alfa a Eco", fx)
   assert.ok(reply.action === "trip")
-  assert.match(reply.reply, /hoy alguno no tiene servicio programado/)
+  assert.equal(respuestaPrescriptivaValida(reply, fx, NOW), true)
+  // Un viaje inventado, de otra acción o ya fuera de franja no pasa.
+  const falso = { ...reply, trip: [{ routeCode: "V1", board: "Alfa", alight: "Narnia", stationsRidden: 1, conteoVerificado: false }] }
+  assert.equal(respuestaPrescriptivaValida(falso, fx, NOW), false)
+  assert.equal(respuestaPrescriptivaValida(reply, fx, new Date("2026-11-04T03:00:00-05:00")), false)
+  assert.equal(respuestaPrescriptivaValida(plainReply("hola"), fx, NOW), true, "una respuesta sin viaje no prescribe abordaje")
+})
+
+test("el horario de la 8 G usa el calendario real: opera, no opera o sin verificar", () => {
+  const en = (iso: string) => resolver("¿a qué hora pasa la 8 G?", data, { now: new Date(iso) })
+  assert.match(en("2026-11-07T10:00:00-05:00").reply, /hoy tiene servicio programado; no es tiempo real/)
+  assert.match(en("2027-01-05T10:00:00-05:00").reply, /No tengo un calendario vigente verificado/)
+  assert.doesNotMatch(en("2027-01-05T10:00:00-05:00").reply, /no tiene servicio programado/, "vencido no es «sin servicio»")
+})
+
+test("un transbordo verificado sí abre un plan de dos tramos", () => {
+  const fx = datosTransbordoVerificado()
+  const reply = resolver("cómo llego de Alfa a Eco", fx)
+  assert.ok(reply.action === "trip")
+  assert.equal(reply.trip.length, 2)
+  assert.equal(reply.trip[0].alight, reply.trip[1].board)
+  assert.equal(respuestaPrescriptivaValida(reply, fx, NOW), true)
 })
 
 test("el horario de una ruta sin calendario no se afirma como operación", () => {
@@ -94,17 +148,9 @@ test("con datos reales sin paradas verificadas, no instruye abordar y ofrece rec
 
 test("un expreso no recomienda abordar donde solo pasa, pero ofrece el recorrido", () => {
   const fx = datosExpreso()
-  const reply = interpretCommand("cómo llego de Bravo a Delta", fx)
+  const reply = interpretCommand("cómo llego de Bravo a Delta", fx, { now: NOW })
   assert.notEqual(reply.action, "trip", "Bravo y Delta no son paradas del expreso")
   assert.match(reply.reply, /dónde subir o bajar/)
-})
-
-test("un transbordo verificado sí abre un plan de dos tramos", () => {
-  const fx = datosTransbordoVerificado()
-  const reply = interpretCommand("cómo llego de Alfa a Eco", fx)
-  assert.ok(reply.action === "trip")
-  assert.equal(reply.trip.length, 2)
-  assert.equal(reply.trip[0].alight, reply.trip[1].board)
 })
 
 test("sin origen ni ubicación, informa el recorrido del destino con incertidumbre", () => {

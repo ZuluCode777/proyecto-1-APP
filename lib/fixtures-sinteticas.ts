@@ -1,4 +1,4 @@
-import type { BusRoute, Station, TransmilenioData } from "@/lib/transmilenio"
+import type { BusRoute, ServedStop, Station, TransmilenioData, VerifiedCalendar } from "@/lib/transmilenio"
 
 /**
  * FIXTURES SINTÉTICAS para pruebas de regresión del issue #31.
@@ -12,7 +12,8 @@ import type { BusRoute, Station, TransmilenioData } from "@/lib/transmilenio"
  * El nombre de la fuente deja claro su carácter: `fuente-de-prueba`.
  */
 export const FUENTE_PRUEBA = "fuente-de-prueba (fixture sintética, no oficial)"
-const FECHA_PRUEBA = "2026-11-04"
+/** Fecha de la evidencia sintética: vigente en todas las fechas de prueba desde el 2026-11-01. */
+const FECHA_PRUEBA = "2026-11-01"
 
 const estacion = (id: string, name: string, lat: number, lng: number): Station => ({ id, name, lat, lng })
 
@@ -27,6 +28,46 @@ export const ESTACIONES_SINTETICAS: Station[] = [
 
 const PATH: [number, number][] = ESTACIONES_SINTETICAS.map((s) => [s.lat, s.lng])
 
+/**
+ * Calendario sintético completo: servicio L (lunes a viernes), S (sábado) y D
+ * (domingo y festivos). 2026-11-02 y 2026-11-16 son festivos: L se retira y D
+ * se agrega, como en un GTFS real.
+ */
+export function calendarioSintetico(): VerifiedCalendar {
+  return {
+    servicios: [
+      { serviceId: "L", weekdays: [1, 2, 3, 4, 5], addedDates: [], removedDates: ["2026-11-02", "2026-11-16"] },
+      { serviceId: "S", weekdays: [6], addedDates: [], removedDates: [] },
+      { serviceId: "D", weekdays: [0], addedDates: ["2026-11-02", "2026-11-16"], removedDates: [] },
+    ],
+    startDate: "2026-01-01",
+    endDate: "2026-12-31",
+    timezone: "America/Bogota",
+    source: FUENTE_PRUEBA,
+    date: FECHA_PRUEBA,
+  }
+}
+
+/** Franjas programadas sintéticas de una parada: L 05:00–23:00, S 06:00–22:00, D 06:00–20:00. */
+const franjasSinteticas = () => [
+  { serviceId: "L", primera: "05:00:00", ultima: "23:00:00" },
+  { serviceId: "S", primera: "06:00:00", ultima: "22:00:00" },
+  { serviceId: "D", primera: "06:00:00", ultima: "20:00:00" },
+]
+
+/** Parada sintética completamente verificada: operativa, con franjas y conteo exacto. */
+const paradaVerificada = (name: string, order: number): ServedStop => ({
+  name,
+  order,
+  canBoard: true,
+  canAlight: true,
+  source: FUENTE_PRUEBA,
+  date: FECHA_PRUEBA,
+  status: "operativa",
+  franjas: franjasSinteticas(),
+  conteoExacto: true,
+})
+
 const HORARIO = { weekday: "5:00 a. m. - 11:00 p. m.", saturday: "6:00 a. m. - 10:00 p. m.", holiday: "" }
 
 /**
@@ -40,16 +81,9 @@ const SERVICIO_VERIFICADO: BusRoute = {
   from: "Alfa",
   to: "Eco",
   stops: ["Alfa", "Bravo", "Charlie", "Delta", "Eco"],
-  servedStops: ["Alfa", "Bravo", "Charlie", "Delta", "Eco"].map((name, order) => ({
-    name,
-    order,
-    canBoard: true,
-    canAlight: true,
-    source: FUENTE_PRUEBA,
-    date: FECHA_PRUEBA,
-    status: "operativa" as const,
-  })),
+  servedStops: ["Alfa", "Bravo", "Charlie", "Delta", "Eco"].map(paradaVerificada),
   directionEvidence: { agreement: "consistente", verified: true, note: "Sentido confirmado por fixture de prueba." },
+  verifiedCalendar: calendarioSintetico(),
   path: PATH,
   schedule: HORARIO,
 }
@@ -66,12 +100,9 @@ const SERVICIO_EXPRESO: BusRoute = {
   from: "Alfa",
   to: "Eco",
   stops: ["Alfa", "Bravo", "Charlie", "Delta", "Eco"],
-  servedStops: [
-    { name: "Alfa", order: 0, canBoard: true, canAlight: true, source: FUENTE_PRUEBA, date: FECHA_PRUEBA, status: "operativa" as const },
-    { name: "Charlie", order: 1, canBoard: true, canAlight: true, source: FUENTE_PRUEBA, date: FECHA_PRUEBA, status: "operativa" as const },
-    { name: "Eco", order: 2, canBoard: true, canAlight: true, source: FUENTE_PRUEBA, date: FECHA_PRUEBA, status: "operativa" as const },
-  ],
+  servedStops: [paradaVerificada("Alfa", 0), paradaVerificada("Charlie", 1), paradaVerificada("Eco", 2)],
   directionEvidence: { agreement: "consistente", verified: true, note: "Expreso de prueba." },
+  verifiedCalendar: calendarioSintetico(),
   path: PATH,
   schedule: HORARIO,
 }
@@ -102,30 +133,6 @@ export function datosVerificadosDirecto(): TransmilenioData {
     fetchedAt: FECHA_PRUEBA + "T00:00:00Z",
     source: "snapshot",
   }
-}
-
-/** Calendario sintético verificado que opera lunes a viernes todo 2026. */
-export const CALENDARIO_SINTETICO = {
-  weekdays: [1, 2, 3, 4, 5],
-  startDate: "2026-01-01",
-  endDate: "2026-12-31",
-  addedDates: [] as string[],
-  removedDates: ["2026-11-02"],
-  timezone: "America/Bogota",
-  source: FUENTE_PRUEBA,
-  date: FECHA_PRUEBA,
-}
-
-/**
- * Datos sintéticos verificados con calendario verificado adjunto. La evidencia
- * de paradas se fecha el 2026-11-01 para que sea vigente tanto el 2026-11-02
- * (día retirado del calendario) como el 2026-11-04 (día operativo).
- */
-export function datosConCalendario(): TransmilenioData {
-  const fx = datosVerificadosDirecto()
-  fx.routes[0].servedStops = fx.routes[0].servedStops.map((s) => ({ ...s, date: "2026-11-01" }))
-  fx.routes[0].verifiedCalendar = { ...CALENDARIO_SINTETICO, date: "2026-11-01" }
-  return fx
 }
 
 /** Datos sintéticos con el expreso que pasa sin parar por Bravo y Delta. */
@@ -161,13 +168,9 @@ export function datosTransbordoVerificado(): TransmilenioData {
     from: "Alfa",
     to: "Delta",
     stops: ["Alfa", "Bravo", "Charlie", "Delta"],
-    servedStops: [
-      { name: "Alfa", order: 0, canBoard: true, canAlight: true, source: FUENTE_PRUEBA, date: FECHA_PRUEBA, status: "operativa" as const },
-      { name: "Bravo", order: 1, canBoard: true, canAlight: true, source: FUENTE_PRUEBA, date: FECHA_PRUEBA, status: "operativa" as const },
-      { name: "Charlie", order: 2, canBoard: true, canAlight: true, source: FUENTE_PRUEBA, date: FECHA_PRUEBA, status: "operativa" as const },
-      { name: "Delta", order: 3, canBoard: true, canAlight: true, source: FUENTE_PRUEBA, date: FECHA_PRUEBA, status: "operativa" as const },
-    ],
+    servedStops: ["Alfa", "Bravo", "Charlie", "Delta"].map(paradaVerificada),
     directionEvidence: { agreement: "consistente", verified: true, note: "Ramal P de prueba." },
+    verifiedCalendar: calendarioSintetico(),
     path: PATH.slice(0, 4),
     schedule: HORARIO,
   }
@@ -178,12 +181,9 @@ export function datosTransbordoVerificado(): TransmilenioData {
     from: "Charlie",
     to: "Eco",
     stops: ["Charlie", "Delta", "Eco"],
-    servedStops: [
-      { name: "Charlie", order: 0, canBoard: true, canAlight: true, source: FUENTE_PRUEBA, date: FECHA_PRUEBA, status: "operativa" as const },
-      { name: "Delta", order: 1, canBoard: true, canAlight: true, source: FUENTE_PRUEBA, date: FECHA_PRUEBA, status: "operativa" as const },
-      { name: "Eco", order: 2, canBoard: true, canAlight: true, source: FUENTE_PRUEBA, date: FECHA_PRUEBA, status: "operativa" as const },
-    ],
+    servedStops: ["Charlie", "Delta", "Eco"].map(paradaVerificada),
     directionEvidence: { agreement: "consistente", verified: true, note: "Ramal Q de prueba." },
+    verifiedCalendar: calendarioSintetico(),
     path: PATH.slice(2),
     schedule: HORARIO,
   }

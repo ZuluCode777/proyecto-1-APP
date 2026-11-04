@@ -6,75 +6,35 @@
  * estaciones cercanas al trazado (`reconcileDirection`). No invierte geometría
  * ni inventa sentidos.
  *
- * Paso 2 (corrección con evidencia GTFS, solo servicios corroborados): para
- * 8 G y 8 T corrige `from`/`to`/`label` desde el GTFS oficial (GIS los traía
- * invertidos), fija `directionEvidence.verified = true`, agrega las paradas
- * atendidas verificadas (extremos del patrón dominante) y el calendario
- * verificado. Para H72 solo se deja constancia de que no para en Calle 127
- * (nodo 2202): no se agregan paradas positivas, así el planificador se abstiene.
- * Se PRESERVA la geometría (`path`) y la lista `stops` de todos.
+ * Paso 2 (evidencia GTFS, solo servicios corroborados): `aplicarEvidenciaGtfs`
+ * corrige `from`/`to`/`label` de 8 G y 8 T (GIS los traía invertidos), fija el
+ * sentido verificado, las paradas atendidas del patrón completo con sus
+ * franjas y el calendario por servicio. Deja a H72 sin Calle 127 (nodo 2202).
+ * Solo se aplica si la geometría coincide con el sentido GTFS. Es la misma
+ * función que usa la consulta en vivo.
  *
- * No modifica estaciones, códigos de ruta, recorridos (`path`), horarios ni la
- * fecha de la copia.
+ * Se PRESERVA la geometría (`path`), `stops`, estaciones, códigos, horarios y
+ * la fecha de la copia. Es idempotente.
  *
  * Uso: pnpm migrar:paradas-sentido
  */
 import { readFileSync, writeFileSync } from "node:fs"
-import { CORRECCIONES_GTFS, H72_NO_PARA_EN } from "@/lib/evidencia-gtfs"
-import { reconcileDirection } from "@/lib/transmilenio"
+import { aplicarEvidenciaGtfs, CORRECCIONES_GTFS } from "@/lib/evidencia-gtfs"
+import { reconcileDirection, TransmilenioDataSchema } from "@/lib/transmilenio"
 
 const url = new URL("../data/transmilenio.json", import.meta.url)
-const snapshot = JSON.parse(readFileSync(url, "utf8")) as {
-  stations: { name: string }[]
-  routes: {
-    code: string
-    from: string
-    to: string
-    label: string
-    stops: string[]
-    servedStops?: unknown
-    directionEvidence?: unknown
-    verifiedCalendar?: unknown
-  }[]
+const snapshot = JSON.parse(readFileSync(url, "utf8"))
+
+// Con el esquema vigente: lo anterior queda en su forma actual (p. ej. un
+// calendario viejo sin `servicios`) y la evidencia GTFS se vuelve a escribir.
+const data = TransmilenioDataSchema.parse(snapshot)
+for (const route of data.routes) route.directionEvidence = reconcileDirection(route.from, route.to, route.stops)
+aplicarEvidenciaGtfs(data.routes, data.stations)
+
+const corregidos = data.routes.filter((r) => CORRECCIONES_GTFS[r.code] && r.verifiedCalendar).map((r) => r.code)
+if (corregidos.length !== Object.keys(CORRECCIONES_GTFS).length) {
+  throw new Error(`La evidencia GTFS no se aplicó a todos los servicios: ${corregidos.join(", ") || "ninguno"}.`)
 }
 
-const nombresEstacion = new Set(snapshot.stations.map((s) => s.name))
-
-let aditivos = 0
-let corregidos = 0
-for (const route of snapshot.routes) {
-  // Paso 1: aditivo para todos.
-  if (!Array.isArray(route.servedStops)) route.servedStops = []
-  route.directionEvidence = reconcileDirection(route.from, route.to, route.stops)
-  aditivos++
-
-  // Paso 2: corrección con evidencia GTFS corroborada.
-  const correccion = CORRECCIONES_GTFS[route.code]
-  if (correccion) {
-    // Las paradas verificadas deben referirse a estaciones reales del catálogo.
-    for (const parada of correccion.servedStops) {
-      if (!nombresEstacion.has(parada.name)) {
-        throw new Error(`Corrección ${route.code}: la parada "${parada.name}" no existe en el catálogo.`)
-      }
-    }
-    route.from = correccion.from
-    route.to = correccion.to
-    route.label = correccion.label
-    route.directionEvidence = correccion.directionEvidence
-    route.servedStops = correccion.servedStops
-    route.verifiedCalendar = correccion.verifiedCalendar
-    corregidos++
-  }
-}
-
-// Verificación de H72: su recorrido pasa por Calle 127, pero no la atiende.
-const h72 = snapshot.routes.find((r) => r.code === H72_NO_PARA_EN.code)
-if (h72) {
-  if (Array.isArray(h72.servedStops) && (h72.servedStops as unknown[]).length > 0) {
-    throw new Error("H72 no debe tener paradas verificadas: no se transcribió su secuencia completa.")
-  }
-  console.log(`H72: ${H72_NO_PARA_EN.nota}`)
-}
-
-writeFileSync(url, JSON.stringify(snapshot) + "\n")
-console.log(`Campos aditivos en ${aditivos} servicios; corregidos con evidencia GTFS: ${corregidos} (8 G, 8 T).`)
+writeFileSync(url, JSON.stringify(data) + "\n")
+console.log(`Servicios: ${data.routes.length}; con evidencia GTFS: ${corregidos.join(", ")}.`)

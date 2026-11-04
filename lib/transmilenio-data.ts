@@ -26,7 +26,7 @@ export async function getTransmilenioData(): Promise<TransmilenioData> {
       console.warn("[transmilenio] servicio no disponible, uso la copia guardada:", error)
       const data = TransmilenioDataSchema.parse(snapshot)
       // Asegura la evidencia GTFS corroborada también si la copia no se migró.
-      aplicarEvidenciaGtfs(data.routes, new Set(data.stations.map((s) => s.name)))
+      aplicarEvidenciaGtfs(data.routes, data.stations)
       cache = { data, expires: Date.now() + RETRY_MS }
       return data
     })

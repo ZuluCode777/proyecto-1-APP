@@ -1,8 +1,10 @@
 import {
+  estadoOperacionEnParada,
   paradaCoincideConEstacion,
   paradaPrescriptible,
   rutaConParadasVerificadas,
   secuenciaAtendidaValida,
+  sentidoConfirmado,
 } from "@/lib/evidencia"
 import { distanceMeters, type LatLng } from "@/lib/geo"
 import { contentWords, normalize } from "@/lib/text"
@@ -153,33 +155,54 @@ export function passesThrough(route: BusRoute, place: Place): boolean {
 }
 
 /**
- * Parada ATENDIDA prescriptible del lugar en la ruta, o `undefined` si la
- * fuente no confirma que el servicio pare allí con evidencia vigente. Devuelve
- * el REGISTRO que realmente coincidió (no se busca por `order`, que podría
- * estar duplicado o ser ambiguo). Solo cuenta cuando la secuencia es coherente
- * y la parada es prescriptible ahora (fuente, estado y fecha válidos).
+ * Servicio que puede sustentar un plan: secuencia de paradas coherente y sentido
+ * confirmado. Sin sentido confirmado el orden de las paradas no dice hacia
+ * dónde va el bus, así que no se planea.
+ */
+const rutaPlaneable = (route: BusRoute): boolean => secuenciaAtendidaValida(route.servedStops) && sentidoConfirmado(route)
+
+/**
+ * ¿Se puede abordar aquí? Parada prescriptible que permite abordar y, si
+ * `conOperacion`, con la hora actual dentro de su franja programada. Sin
+ * `conOperacion` solo se comprueba la evidencia de la parada (candidatos que
+ * todavía no se pueden presentar como operativos).
+ */
+const abordable = (route: BusRoute, stop: ServedStop, now: Date, conOperacion: boolean): boolean =>
+  stop.canBoard &&
+  paradaPrescriptible(stop, now) &&
+  (!conOperacion || estadoOperacionEnParada(route.verifiedCalendar, stop, now) === "en-franja")
+
+const descendible = (stop: ServedStop, now: Date): boolean => stop.canAlight && paradaPrescriptible(stop, now)
+
+/** Dos registros de parada son la misma estación: mismo nombre y, si ambos traen nodo, el mismo. */
+const mismaEstacion = (a: ServedStop, b: ServedStop): boolean =>
+  a.name === b.name && (a.nodeId === undefined || b.nodeId === undefined || Number(a.nodeId) === Number(b.nodeId))
+
+/**
+ * Parada ATENDIDA del lugar en la ruta, o `undefined` si la fuente no confirma
+ * que el servicio pare allí. Devuelve el REGISTRO que realmente coincidió (no se
+ * busca por `order`, que podría estar duplicado o ser ambiguo).
  */
 const matchServedStop = (
   route: BusRoute,
   place: Place,
   need: "board" | "alight",
   now: Date,
+  conOperacion: boolean,
 ): ServedStop | undefined => {
-  if (!secuenciaAtendidaValida(route.servedStops)) return undefined
+  if (!rutaPlaneable(route)) return undefined
   for (const stop of route.servedStops) {
-    if (!paradaPrescriptible(stop, now)) continue
-    if (need === "board" && !stop.canBoard) continue
-    if (need === "alight" && !stop.canAlight) continue
-    const station = place.stations.find((s) => paradaCoincideConEstacion(stop, s))
-    if (station) return stop
+    if (need === "board" ? !abordable(route, stop, now, conOperacion) : !descendible(stop, now)) continue
+    if (place.stations.some((s) => paradaCoincideConEstacion(stop, s))) return stop
   }
   return undefined
 }
 
 /**
  * ¿El servicio tiene paradas atendidas verificadas, utilizables ahora? Delega
- * en el validador compartido: secuencia coherente y al menos una parada
- * prescriptible (fuente, estado y fecha válidos). No basta con `status`.
+ * en el validador compartido: sentido confirmado, secuencia coherente y al
+ * menos una parada prescriptible. Para marcar paradas una por una usar
+ * `paradasPrescriptibles`.
  */
 export function hasVerifiedServedStops(route: BusRoute, now: Date = new Date()): boolean {
   return rutaConParadasVerificadas(route, now)
@@ -226,11 +249,28 @@ export type TripLeg = {
   route: BusRoute
   board: string
   alight: string
-  /** Estaciones recorridas entre subir y bajar, sin contar la de subida. */
+  /**
+   * Diferencia de posición entre subir y bajar. Campo heredado: solo es un
+   * número de estaciones real cuando `conteoVerificado` es `true`.
+   */
   stationsRidden: number
+  /**
+   * `true` solo si la fuente garantiza ese número en todos los viajes
+   * programados que unen ambas paradas. Si es `false`, voz y pantalla deben
+   * omitir la cantidad exacta de estaciones.
+   */
+  conteoVerificado: boolean
 }
 
 export type TripPlan = TripLeg[]
+
+const tramo = (route: BusRoute, board: ServedStop, alight: ServedStop): TripLeg => ({
+  route,
+  board: board.name,
+  alight: alight.name,
+  stationsRidden: alight.order - board.order,
+  conteoVerificado: board.conteoExacto === true && alight.conteoExacto === true,
+})
 
 /**
  * Transbordo verificado: una estación donde `first` permite descender y
@@ -245,107 +285,129 @@ function verifiedTransfer(
   second: BusRoute,
   secondAlight: ServedStop,
   now: Date,
+  conOperacion: boolean,
 ): { firstAlight: ServedStop; secondBoard: ServedStop } | undefined {
   for (const stop of first.servedStops) {
-    if (!paradaPrescriptible(stop, now) || !stop.canAlight || stop.order <= firstBoard.order) continue
+    if (!descendible(stop, now) || stop.order <= firstBoard.order) continue
     const match = second.servedStops.find(
-      (s) => paradaPrescriptible(s, now) && s.canBoard && s.name === stop.name && s.order < secondAlight.order,
+      (s) => abordable(second, s, now, conOperacion) && mismaEstacion(s, stop) && s.order < secondAlight.order,
     )
     if (match) return { firstAlight: stop, secondBoard: match }
   }
   return undefined
 }
 
-/**
- * Planea un VIAJE OPERATIVO de un lugar a otro usando solo PARADAS ATENDIDAS
- * verificadas y vigentes: primero rutas directas, y si no hay, combinaciones
- * con un transbordo verificado. Devuelve los planes ordenados de menos a más
- * estaciones recorridas.
- *
- * Nunca convierte una estación cercana al trazado en abordaje: si ningún
- * servicio tiene paradas verificadas, devuelve `[]` y el asistente ofrece
- * información de recorrido con incertidumbre en vez de instruir subir o bajar
- * (ver `lib/local-agent.ts`). La validación de fuente, fecha, estado y
- * secuencia vive en `lib/evidencia.ts` para que todos los consumidores decidan
- * igual. `now` permite evaluar la vigencia de la evidencia.
- *
- * ponytail: prueba todos los pares de rutas para el transbordo (124² ≈ 15 000
- * combinaciones), que es instantáneo con los datos troncales. Si algún día se
- * suman las 567 rutas zonales, conviene un índice por estación.
- */
-export function planTrip(
+function buscarPlanes(
   { origin, destination }: { origin: Place; destination: Place },
   data: TransmilenioData,
-  limit = 3,
-  now: Date = new Date(),
+  limit: number,
+  now: Date,
+  conOperacion: boolean,
 ): TripPlan[] {
   const direct: TripPlan[] = []
   for (const route of data.routes) {
-    const board = matchServedStop(route, origin, "board", now)
-    const alight = matchServedStop(route, destination, "alight", now)
-    if (board && alight && alight.order > board.order) {
-      direct.push([{ route, board: board.name, alight: alight.name, stationsRidden: alight.order - board.order }])
-    }
+    const board = matchServedStop(route, origin, "board", now, conOperacion)
+    const alight = matchServedStop(route, destination, "alight", now, conOperacion)
+    if (board && alight && alight.order > board.order) direct.push([tramo(route, board, alight)])
   }
   if (direct.length > 0) return rank(direct).slice(0, limit)
 
   const transfers: TripPlan[] = []
   const fromOrigin = data.routes
-    .map((route) => ({ route, board: matchServedStop(route, origin, "board", now) }))
+    .map((route) => ({ route, board: matchServedStop(route, origin, "board", now, conOperacion) }))
     .filter((r): r is { route: BusRoute; board: ServedStop } => r.board !== undefined)
   const toDestination = data.routes
-    .map((route) => ({ route, alight: matchServedStop(route, destination, "alight", now) }))
+    .map((route) => ({ route, alight: matchServedStop(route, destination, "alight", now, conOperacion) }))
     .filter((r): r is { route: BusRoute; alight: ServedStop } => r.alight !== undefined)
 
   for (const first of fromOrigin) {
     for (const second of toDestination) {
       if (first.route === second.route) continue
-      const transfer = verifiedTransfer(first.route, first.board, second.route, second.alight, now)
+      const transfer = verifiedTransfer(first.route, first.board, second.route, second.alight, now, conOperacion)
       if (!transfer) continue
-      transfers.push([
-        {
-          route: first.route,
-          board: first.board.name,
-          alight: transfer.firstAlight.name,
-          stationsRidden: transfer.firstAlight.order - first.board.order,
-        },
-        {
-          route: second.route,
-          board: transfer.secondBoard.name,
-          alight: second.alight.name,
-          stationsRidden: second.alight.order - transfer.secondBoard.order,
-        },
-      ])
+      transfers.push([tramo(first.route, first.board, transfer.firstAlight), tramo(second.route, transfer.secondBoard, second.alight)])
     }
   }
   return rank(transfers).slice(0, limit)
 }
 
 /**
- * Revalida un resumen de viaje (tramos ya serializados) contra el catálogo y
- * la evidencia ACTUAL, antes de que una pantalla dé órdenes de subir/bajar.
- * Comprueba que cada tramo use una ruta existente, con paradas de abordaje y
- * descenso prescriptibles en el sentido correcto. Devuelve `false` si el
- * resumen viene de un esquema viejo, de otro origen de datos o sin evidencia.
+ * Planea un VIAJE OPERATIVO de un lugar a otro usando solo PARADAS ATENDIDAS
+ * verificadas y vigentes, con sentido confirmado y con la hora actual dentro de
+ * la franja programada de la parada de abordaje (calendario de Bogotá,
+ * excepciones y madrugada incluidas): primero rutas directas, y si no hay,
+ * combinaciones con un transbordo verificado. Devuelve los planes ordenados de
+ * menos a más estaciones recorridas.
+ *
+ * Es la única puerta para dar órdenes de subir/bajar. Nunca convierte una
+ * estación cercana al trazado en abordaje: si ningún servicio cumple, devuelve
+ * `[]` y el asistente ofrece información con incertidumbre (ver
+ * `planTripCandidato` y `lib/local-agent.ts`). La validación vive en
+ * `lib/evidencia.ts` para que todos los consumidores decidan igual. No hay
+ * tiempo real: estar en franja no implica que salga un bus ya.
+ *
+ * ponytail: prueba todos los pares de rutas para el transbordo (124² ≈ 15 000
+ * combinaciones), que es instantáneo con los datos troncales. Si algún día se
+ * suman las 567 rutas zonales, conviene un índice por estación.
  */
-export function tripSummaryStillValid(
-  legs: { routeCode: string; board: string; alight: string }[],
+export function planTrip(
+  places: { origin: Place; destination: Place },
   data: TransmilenioData,
+  limit = 3,
   now: Date = new Date(),
-): boolean {
-  if (legs.length === 0) return false
+): TripPlan[] {
+  return buscarPlanes(places, data, limit, now, true)
+}
+
+/**
+ * Como `planTrip` pero sin exigir que el servicio esté en franja ahora: viajes
+ * con paradas y sentido verificados cuya operación actual NO está confirmada
+ * (fuera de franja, hoy sin servicio o calendario sin verificar). Sirven para
+ * informar un CANDIDATO, nunca para dar órdenes de subir o bajar.
+ */
+export function planTripCandidato(
+  places: { origin: Place; destination: Place },
+  data: TransmilenioData,
+  limit = 3,
+  now: Date = new Date(),
+): TripPlan[] {
+  return buscarPlanes(places, data, limit, now, false)
+}
+
+/** Tramo serializado de un resumen de viaje, como llega a una pantalla. */
+export type TripLegRef = { routeCode: string; board: string; alight: string; stationsRidden?: number; conteoVerificado?: boolean }
+
+/**
+ * Revalida un resumen de viaje (tramos ya serializados) contra el catálogo y
+ * la evidencia ACTUAL, antes de que una pantalla —o la voz— dé órdenes de
+ * subir/bajar. Aplica las mismas reglas que `planTrip`: máximo un transbordo,
+ * cada tramo con ruta existente, sentido confirmado, paradas prescriptibles
+ * del catálogo en el orden correcto y abordaje dentro de la franja programada;
+ * si hay transbordo, la misma estación de bajada y de subida en rutas
+ * distintas. Un conteo declarado debe ser el que la fuente garantiza. Devuelve
+ * `false` ante un esquema viejo, otro origen de datos o falta de evidencia.
+ */
+export function tripSummaryStillValid(legs: TripLegRef[], data: TransmilenioData, now: Date = new Date()): boolean {
+  if (!Array.isArray(legs) || legs.length < 1 || legs.length > 2) return false
+  const paradas: { board: ServedStop; alight: ServedStop }[] = []
   for (const leg of legs) {
     const route = data.routes.find((r) => r.code === leg.routeCode)
-    if (!route) return false
-    if (!secuenciaAtendidaValida(route.servedStops)) return false
+    if (!route || !rutaPlaneable(route)) return false
     const board = route.servedStops.find(
-      (s) => s.name === leg.board && s.canBoard && paradaPrescriptible(s, now),
+      (s) => s.name === leg.board && abordable(route, s, now, true) && data.stations.some((e) => paradaCoincideConEstacion(s, e)),
     )
     const alight = route.servedStops.find(
-      (s) => s.name === leg.alight && s.canAlight && paradaPrescriptible(s, now),
+      (s) => s.name === leg.alight && descendible(s, now) && data.stations.some((e) => paradaCoincideConEstacion(s, e)),
     )
-    if (!board || !alight) return false
-    if (alight.order <= board.order) return false
+    if (!board || !alight || alight.order <= board.order) return false
+    const real = tramo(route, board, alight)
+    if (leg.stationsRidden !== undefined && leg.stationsRidden !== real.stationsRidden) return false
+    if (leg.conteoVerificado === true && !real.conteoVerificado) return false
+    paradas.push({ board, alight })
+  }
+  if (legs.length === 2) {
+    if (legs[0].routeCode === legs[1].routeCode) return false
+    if (!mismaEstacion(paradas[0].alight, paradas[1].board)) return false
   }
   return true
 }
