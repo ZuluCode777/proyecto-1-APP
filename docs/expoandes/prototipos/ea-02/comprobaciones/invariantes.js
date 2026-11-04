@@ -34,7 +34,7 @@ async (page) => {
       return r[0] === 'cancelado' && !r[1] ? true : r.join(' / ')
     })
     await prueba(`${v} la medición vence a los 3 s y no se repite la distancia`, async () => {
-      await ev((v) => { window.prototipo.E.variante = v; window.prototipo.aplicarEscenario('T1') }, v)
+      await ev((v) => { const P = window.prototipo; P.E.variante = v; P.aplicarEscenario('T1'); P.E.permisos.bluetooth = 'concedido' }, v)
       await clic(v === 'A' ? 'sesion-principal' : 'fila-sesion'); await esperar(1700)
       await ev(() => window.prototipo.ACCIONES_PANEL['medicion-frente']())
       const durante = await texto(); await esperar(3300); const despues = await texto()
@@ -42,7 +42,7 @@ async (page) => {
       return /1,2 m/.test(durante) && !/1,2 m/.test(despues) && r[0] === 'sinDatos' && r[1] ? true : `estado=${r[0]} aviso=${r[1]} durante=${/1,2 m/.test(durante)} después=${/1,2 m/.test(despues)}`
     })
     await prueba(`${v} un aviso de proximidad corta la escucha y no la reanuda`, async () => {
-      await ev((v) => { const P = window.prototipo; P.E.variante = v; P.aplicarEscenario('T6'); Object.assign(P.E.acc, { elegido: 'TMV-01', estado: 'sinDeteccion' }); P.E.permisos.bluetooth = 'concedido'; P.irArea('asistente') }, v)
+      await ev((v) => { const P = window.prototipo; P.E.variante = v; P.aplicarEscenario('T6'); Object.assign(P.E.permisos, { microfono: 'concedido', voz: 'concedido' }); Object.assign(P.E.acc, { elegido: 'TMV-01', estado: 'sinDeteccion' }); P.E.permisos.bluetooth = 'concedido'; P.irArea('asistente') }, v)
       await clic('hablar'); await esperar(400); await ev(() => window.prototipo.ACCIONES_PANEL['medicion-frente']()); await esperar(3000)
       const r = await ev(() => [window.prototipo.E.asis.fase, !!document.querySelector('#respuesta-h2')])
       return r[0] === 'interrumpido' && !r[1] ? true : r.join(' / ')
@@ -84,7 +84,7 @@ async (page) => {
       await ev(() => { const E = window.prototipo.E; E.viaje.origen = 'Terminal'; E.viaje.destino = 'Calle 72' })
       await clic('consultar-viaje'); await esperar(200); await clic('cancelar-viaje'); await enCuerpo('cancelar-viaje (franja)')
       await clic('consultar-viaje'); await esperar(200); await clic('cancelar-viaje-local'); await enCuerpo('cancelar-viaje-local')
-      await ev((v) => { const P = window.prototipo; P.E.variante = v; P.aplicarEscenario('T6'); P.irArea('asistente') }, v)
+      await ev((v) => { const P = window.prototipo; P.E.variante = v; P.aplicarEscenario('T6'); Object.assign(P.E.permisos, { microfono: 'concedido', voz: 'concedido' }); P.irArea('asistente') }, v)
       await clic('hablar'); await esperar(300); await clic('cancelar-escucha'); await enCuerpo('cancelar-escucha')
       await ev((v) => { const P = window.prototipo; P.preparar('asistente-aviso-envio', { variante: v }) }, v)
       await clic('envio-aceptar'); await enCuerpo('envio-aceptar'); await esperar(1700)
@@ -141,7 +141,7 @@ async (page) => {
     return r[0] === r[1] && r[1] === r[2] && r[0].length > 20 ? true : JSON.stringify(r)
   })
   await prueba('Ubicación denegada: «Usar mi ubicación» explica y lleva el foco al campo Origen', async () => {
-    await ev(() => { window.prototipo.E.variante = 'A'; window.prototipo.aplicarEscenario('T4') })
+    await ev(() => { const P = window.prototipo; P.E.variante = 'A'; P.aplicarEscenario('T4'); P.E.permisos.ubicacion = 'denegado' })
     await clic('nav-viaje'); await clic('origen-gps')
     const r = await ev(() => [document.activeElement.dataset.id, document.querySelector('#error-origen') ? document.querySelector('#error-origen').innerText : '', document.querySelector('#campo-origen').getAttribute('aria-invalid')])
     return r[0] === 'origen' && /permiso/.test(r[1]) && r[2] === 'true' ? true : JSON.stringify(r)
@@ -259,6 +259,40 @@ async (page) => {
       return { titulo: ps.findIndex((x) => x.id === 'titulo'), detener: ps.findIndex((x) => x.id === 'cancelar-sesion') }
     })
     return r.titulo - r.detener === 3 ? true : JSON.stringify(r)
+  })
+  for (const v of ['A', 'B']) {
+    await prueba(`${v}: T1, T4 y T6 ensayan la explicación previa y el aviso simulado de iOS`, async () => {
+      const malos = []
+      const abierto = (id) => ev((id) => document.querySelector('#' + id).open, id)
+      await ev((v) => { window.prototipo.E.variante = v; window.prototipo.aplicarEscenario('T1') }, v)
+      await clic(v === 'A' ? 'sesion-principal' : 'fila-sesion')
+      if (!(await abierto('hoja'))) malos.push('T1 sin hoja previa')
+      await clic('hoja-seguir'); if (!(await abierto('sistema'))) malos.push('T1 sin aviso de iOS')
+      await clic('sistema-si'); await esperar(1700)
+      if ((await ev(() => window.prototipo.E.acc.estado)) !== 'sinDeteccion') malos.push('T1 no inició la sesión')
+      await ev((v) => { window.prototipo.E.variante = v; window.prototipo.aplicarEscenario('T4') }, v)
+      await clic(v === 'A' ? 'nav-viaje' : 'tab-viaje'); await clic('origen-gps'); await clic('hoja-seguir'); await clic('sistema-no')
+      const t4 = await ev(() => [window.prototipo.E.permisos.ubicacion, document.activeElement.dataset.id])
+      if (t4[0] !== 'denegado' || t4[1] !== 'origen') malos.push('T4: ' + t4.join(' / '))
+      await ev((v) => { window.prototipo.E.variante = v; window.prototipo.aplicarEscenario('T6') }, v)
+      await clic(v === 'A' ? 'nav-asistente' : 'tab-asistente'); await clic('hablar'); await clic('hoja-seguir'); await clic('sistema-si'); await clic('sistema-si')
+      if ((await ev(() => window.prototipo.E.asis.fase)) !== 'escuchando') malos.push('T6 no escucha')
+      await clic('cancelar-escucha')
+      return malos.length ? malos.join(', ') : true
+    })
+  }
+  await prueba('T5: preguntar al asistente si llegó nunca confirma la llegada con ubicación imprecisa', async () => {
+    const r = await ev(() => { const P = window.prototipo; P.E.variante = 'A'; P.aplicarEscenario('T5'); return P.responderAsistente('ya llegué a la estación?').texto })
+    return /no puedo saber si llegaste/.test(r) && !/has llegado/i.test(r) ? true : r
+  })
+  await prueba('Mantener pulsado el aviso de arriba muestra el panel y aplicar una tarea lo vuelve a ocultar', async () => {
+    await ev(() => { document.querySelector('#panel').hidden = true; document.querySelector('.aviso-prototipo').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })) })
+    await esperar(1700)
+    const visible = await ev(() => !document.querySelector('#panel').hidden)
+    await ev(() => { document.querySelector('.aviso-prototipo').dispatchEvent(new PointerEvent('pointerup', { bubbles: true })); document.querySelector('#panel-escenario').value = 'T2'; document.querySelector('[data-panel="aplicar-escenario"]').click() })
+    const oculto = await ev(() => [document.querySelector('#panel').hidden, document.title])
+    await ev(() => { document.querySelector('#panel').hidden = false })
+    return visible && oculto[0] && /Inicio$/.test(oculto[1]) ? true : JSON.stringify({ visible, oculto })
   })
   await prueba('Paridad: las frases de seguridad aparecen igual en A y en B', async () => {
     const casos = [

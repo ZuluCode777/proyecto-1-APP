@@ -166,6 +166,7 @@ dialog .sim-etiqueta{margin:.2em 0 .4em;font-size:.85em;font-weight:800}
       <button type="button" data-panel="medicion-sin-angulo">Objeto a 0,8 m sin dirección</button>
       <button type="button" data-panel="sin-deteccion">Sin detección</button>
       <button type="button" data-panel="desconectar">Desconectar</button>
+      <button type="button" data-panel="desconectar-20">Desconectar en 20 s</button>
       <button type="button" data-panel="incompatible">Versión incompatible</button>
       <button type="button" data-panel="bluetooth-apagado">Apagar Bluetooth</button>
     </fieldset>
@@ -390,6 +391,7 @@ function abrirDialogo(dialogo, contenido) {
   if (!dialogo.open) dialogo.showModal()
   const titulo = dialogo.querySelector('h2')
   titulo.setAttribute('tabindex', '-1')
+  titulo.dataset.id = dialogo.id + '-titulo'
   titulo.focus()
 }
 function cerrarDialogo(dialogo) { if (dialogo.open) dialogo.close() }
@@ -403,7 +405,8 @@ $('#hoja').addEventListener('cancel', (evento) => { evento.preventDefault(); con
 let sistemaPendiente = false
 $('#sistema').addEventListener('cancel', (evento) => evento.preventDefault())
 // Un segundo Escape puede cerrarlo igual en algunos navegadores: se reabre hasta que haya respuesta.
-$('#sistema').addEventListener('close', () => { if (sistemaPendiente) $('#sistema').showModal() })
+// El evento «close» llega después: si ya se abrió el aviso siguiente (micrófono → voz), no se toca.
+$('#sistema').addEventListener('close', () => { if (sistemaPendiente && !$('#sistema').open) $('#sistema').showModal() })
 
 function pedirPermiso(tipo, { siguiente, alternativa }) {
   const estado = E.permisos[tipo]
@@ -547,6 +550,12 @@ function desconectarAccesorio() {
   decir(texto, { urgente: true })
   repintar()
   return 'Accesorio desconectado.'
+}
+function programarDesconexion(segundos) {
+  despues(segundos * 1000, () => {
+    const salida = desconectarAccesorio()
+    $('#panel-salida').textContent = E.acc.estado === 'sinDatos' && E.acc.motivo.startsWith('se perdió') ? 'T9: accesorio desconectado.' : `T9: no se desconectó (${salida})`
+  })
 }
 function reconectar() {
   E.acc.estado = 'desactivada'
@@ -751,6 +760,7 @@ function interpretar(texto) {
   const n = normalizar(texto)
   if (/\b(cancela|cancelar|olvidalo|detente|dejalo|no gracias)\b/.test(n)) return { tipo: 'cancelar' }
   if (/\bmetro\b/.test(n)) return { tipo: 'metro' }
+  if (/\b(llegue|llegamos|he llegado|ya estoy en la estacion)\b/.test(n)) return { tipo: 'llegada' }
   if (/\b(horario|hora|horas)\b/.test(n)) return { tipo: 'horario', ruta: /\b8 ?t\b/.test(n) ? '8 T' : '8 G' }
   const viaje = n.match(/\b(?:de|desde) (.+?) (?:a|hasta|hacia) (.+)$/)
   if (viaje) return { tipo: 'viaje', origen: viaje[1], destino: viaje[2] }
@@ -764,6 +774,12 @@ function responderAsistente(texto) {
   const fecha = E.catalogo === 'copia' ? 'copia guardada del 24/9/2026' : 'datos de ejemplo consultados hoy'
   switch (i.tipo) {
     case 'cancelar': return { texto: 'Listo, cancelado.', pasos: [] }
+    case 'llegada': {
+      // Misma regla que la pantalla de ubicación: con ubicación no fiable nunca se confirma la llegada.
+      if (E.permisos.ubicacion !== 'concedido' || E.gps.fase !== 'listo') return { texto: 'No tengo tu ubicación, así que no puedo saber si llegaste. Puedes activarla en Ubicación y orientación.', pasos: [{ l: 'Entendí', d: 'pregunta si llegaste' }, { l: 'Consulté', d: 'ubicación: no disponible' }], accion: 'gps' }
+      const g = gpsActual()
+      return { texto: indicacionGps(), pasos: [{ l: 'Entendí', d: 'pregunta si llegaste' }, { l: 'Consulté', d: `ubicación: ±${metros(g.precision)}, ${antiguedad(g.edad)}` }], accion: 'gps' }
+    }
     case 'metro': return { texto: 'El Metro de Bogotá todavía no tiene servicio comercial: la Línea 1 está en construcción. Puedo mostrarte sus 16 estaciones futuras como escenario, no como viaje.', pasos: [{ l: 'Entendí', d: 'pregunta sobre el Metro' }, { l: 'Resultado', d: 'escenario futuro, sin viaje' }], accion: 'metro' }
     case 'horario': return { texto: `La ${i.ruta} tiene horario publicado entre semana de 4:30 a. m. a 11:00 p. m. ` + conProcedencia(E.evidencia === 'vigente' ? 'Según el calendario verificado, hoy tiene servicio programado. No es tiempo real.' : 'Es el horario publicado, no un calendario verificado; confírmalo con TransMilenio.'), pasos: [{ l: 'Entendí', d: `horario de la ${i.ruta}` }, { l: 'Consulté', d: fecha }] }
     case 'viaje': {
@@ -1140,6 +1156,7 @@ function cuerpoAsistente() {
         boton('repetir-respuesta', 'Repetir respuesta', () => decir(r.texto), { atributos: { 'aria-label': 'Repetir respuesta del asistente' } }),
         r.error ? boton('reintentar-pregunta', 'Reintentar', () => enviarPregunta(a.oido)) : null,
         r.accion === 'metro' ? boton('respuesta-metro', 'Ver Metro (escenario futuro)', () => irArea('metro')) : null,
+        r.accion === 'gps' ? boton('respuesta-gps', 'Ver Ubicación y orientación', () => irArea('gps')) : null,
         r.viaje && r.viaje.o && r.viaje.d ? boton('respuesta-viaje', 'Abrir en Rutas y viaje', () => { Object.assign(E.viaje, { origen: r.viaje.o, destino: r.viaje.d, origenGps: false, fase: 'resultado', resultado: r.viaje }); irArea('viaje', { enfocar: 'resultado-titulo' }) }) : null)))
   }
   return h('div', {}, partes)
@@ -1467,12 +1484,13 @@ function reiniciar({ conservar = true } = {}) {
 }
 const ESCENARIOS = {
   libre: ['Libre: estado inicial', () => {}],
-  T1: ['T1 Iniciar sesión y reconocer «sin detección»', () => { E.permisos.bluetooth = 'concedido'; E.acc.elegido = 'TMV-01' }],
+  // T1, T4 y T6 empiezan con su permiso sin preguntar, para ensayar la explicación previa y el aviso de iOS.
+  T1: ['T1 Iniciar sesión (permiso de Bluetooth) y reconocer «sin detección»', () => { E.acc.elegido = 'TMV-01' }],
   T2: ['T2 Viaje con paradas verificadas', () => {}],
   T3: ['T3 Viaje con paradas sin confirmar', () => {}],
-  T4: ['T4 Viaje sin permiso de ubicación', () => { E.permisos.ubicacion = 'denegado' }],
+  T4: ['T4 Viaje: rechazar el permiso de ubicación y escribir el origen', () => {}],
   T5: ['T5 Ubicación imprecisa: no confirmar llegada', () => { Object.assign(E.permisos, { ubicacion: 'concedido' }); Object.assign(E.gps, { fase: 'listo', escenario: 'imprecisa' }); avisar('gps', { severidad: 'importante', texto: 'Ubicación imprecisa, ±200 m. No confirmo llegadas.', fuente: 'Ubicación (simulada)' }) }],
-  T6: ['T6 Preguntar por voz y cancelar', () => { Object.assign(E.permisos, { microfono: 'concedido', voz: 'concedido' }); E.asis.envioAceptado = true }],
+  T6: ['T6 Preguntar por voz (permisos de micrófono y voz) y cancelar', () => {}],
   T7: ['T7 Distinguir aviso local, anuncio y Metro', () => { E.operador = 'ejemplo'; avisar('audio', { severidad: 'importante', texto: 'Audio: sin salida confirmada. Se desconectaron los auriculares. No reproduzco avisos por el altavoz automáticamente.', fuente: 'Audio del iPhone (simulado)' }); E.audio = 'sin-salida' }],
   T8: ['T8 Estación futura del Metro', () => {}],
   T9: ['T9 Accesorio desconectado y reconexión', () => { E.permisos.bluetooth = 'concedido'; E.acc.elegido = 'TMV-01'; E.acc.estado = 'sinDeteccion' }],
@@ -1503,7 +1521,11 @@ function sincronizarPanel() {
 const ACCIONES_PANEL = {
   'variante-anterior': () => cambiarVariante(E.variante === 'A' ? 'B' : 'A'),
   'variante-siguiente': () => cambiarVariante(E.variante === 'A' ? 'B' : 'A'),
-  'aplicar-escenario': () => aplicarEscenario($('#panel-escenario').value),
+  'aplicar-escenario': () => {
+    aplicarEscenario($('#panel-escenario').value)
+    if (panelTemporal) { $('#panel').hidden = true; panelTemporal = false; window.scrollTo(0, 0) }
+  },
+  'desconectar-20': () => { programarDesconexion(20); return 'El accesorio se desconectará en 20 s si la sesión sigue activa.' },
   reiniciar: () => { reiniciar(); repintar({ enfocar: 'h1' }); return 'Estado reiniciado.' },
   'medicion-frente': () => inyectarMedicion(1200, 'al frente'),
   'medicion-sin-angulo': () => inyectarMedicion(800, null),
@@ -1560,6 +1582,20 @@ $('#panel').addEventListener('change', (evento) => {
   repintar()
 })
 $('#panel-escenario').append(...Object.entries(ESCENARIOS).map(([k, [n]]) => h('option', { value: k }, n)))
+// Quien facilita muestra u oculta el panel manteniendo pulsado el aviso negro de arriba 1,5 s
+// (con VoiceOver: toque doble y mantener). Al aplicar una tarea desde ahí, el panel se vuelve a ocultar.
+let pulsacion = null, panelTemporal = false
+const banda = $('.aviso-prototipo')
+banda.addEventListener('pointerdown', () => {
+  clearTimeout(pulsacion)
+  pulsacion = setTimeout(() => {
+    const panel = $('#panel')
+    panel.hidden = !panel.hidden
+    panelTemporal = !panel.hidden
+    if (!panel.hidden) panel.scrollIntoView()
+  }, 1500)
+})
+for (const tipo of ['pointerup', 'pointerleave', 'pointercancel']) banda.addEventListener(tipo, () => clearTimeout(pulsacion))
 // Escape imita el gesto de escape de VoiceOver (dos dedos en «Z»): cancela lo transitorio o vuelve.
 document.addEventListener('keydown', (evento) => {
   if (evento.key !== 'Escape' || document.querySelector('dialog[open]') || !$('#disenio').contains(document.activeElement)) return
@@ -1762,12 +1798,7 @@ if (parametros.get('bajavision') === '1') E.ajustes.bajaVision = true
 if (parametros.get('panel') === '0') $('#panel').hidden = true
 // ?desconectar=20 desconecta el accesorio a los 20 s, para T9 sin el panel visible.
 const segundos = Number(parametros.get('desconectar'))
-if (segundos > 0 && segundos <= 600) {
-  despues(segundos * 1000, () => {
-    const salida = desconectarAccesorio()
-    $('#panel-salida').textContent = sesionActiva() && E.acc.estado === 'sinDatos' ? 'T9: accesorio desconectado.' : `T9: no se desconectó (${salida})`
-  })
-}
+if (segundos > 0 && segundos <= 600) programarDesconexion(segundos)
 repintar()
 window.prototipo = { version: VERSION, E, repintar, irArea, volver, cambiarVariante, aplicarEscenario, reiniciar, preparar, PREPARADOS, comprobar, paradasLectura, planear, responderAsistente, ACCIONES_PANEL, CAMPOS_PANEL }
 })()

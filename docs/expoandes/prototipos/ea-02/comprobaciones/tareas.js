@@ -35,17 +35,18 @@ async (page) => {
     return { deslizamientos, activacion: p.ir ? 1 : 0, texto: p.escribir ? 1 : 0 }
   }, p)
   const TAREAS = {
-    T1: { A: [{ ir: 'sesion-principal' }, { esperar: 1700 }, { leer: 'sin detección' }, { ir: ['sesion-principal', 'cancelar-sesion'] }],
-      B: [{ ir: 'fila-sesion' }, { esperar: 1700 }, { leer: 'sin detección' }, { ir: ['fila-sesion', 'cancelar-sesion'] }] },
+    // T1, T4 y T6 incluyen la explicación previa y el aviso simulado de iOS: sus permisos empiezan sin preguntar.
+    T1: { A: [{ ir: 'sesion-principal' }, { ir: 'hoja-seguir' }, { ir: 'sistema-si' }, { esperar: 1700 }, { leer: 'sin detección' }, { ir: ['sesion-principal', 'cancelar-sesion'] }],
+      B: [{ ir: 'fila-sesion' }, { ir: 'hoja-seguir' }, { ir: 'sistema-si' }, { esperar: 1700 }, { leer: 'sin detección' }, { ir: ['fila-sesion', 'cancelar-sesion'] }] },
     T2: { A: [{ ir: 'nav-viaje' }, { escribir: 'origen', valor: 'Terminal' }, { escribir: 'destino', valor: 'Calle 72' }, { ir: 'consultar-viaje' }, { esperar: 1800 }, { leer: 'Sube a la' }, { leer: 'Bájate en' }],
       B: [{ ir: 'tab-viaje' }, { escribir: 'origen', valor: 'Terminal' }, { escribir: 'destino', valor: 'Calle 72' }, { ir: 'consultar-viaje' }, { esperar: 1800 }, { leer: 'Sube a la' }, { leer: 'Bájate en' }] },
     T3: { A: [{ ir: 'nav-viaje' }, { escribir: 'origen', valor: 'Portal Usme' }, { escribir: 'destino', valor: 'Molinos' }, { ir: 'consultar-viaje' }, { esperar: 1800 }, { leer: 'no te indico dónde subir' }],
       B: [{ ir: 'tab-viaje' }, { escribir: 'origen', valor: 'Portal Usme' }, { escribir: 'destino', valor: 'Molinos' }, { ir: 'consultar-viaje' }, { esperar: 1800 }, { leer: 'no te indico dónde subir' }] },
-    T4: { A: [{ ir: 'nav-viaje' }, { ir: 'origen-gps' }, { escribir: 'origen', valor: 'Terminal' }, { escribir: 'destino', valor: 'Calle 72' }, { ir: 'consultar-viaje' }, { esperar: 1800 }, { leer: 'Sube a la' }],
-      B: [{ ir: 'tab-viaje' }, { ir: 'origen-gps' }, { escribir: 'origen', valor: 'Terminal' }, { escribir: 'destino', valor: 'Calle 72' }, { ir: 'consultar-viaje' }, { esperar: 1800 }, { leer: 'Sube a la' }] },
+    T4: { A: [{ ir: 'nav-viaje' }, { ir: 'origen-gps' }, { ir: 'hoja-seguir' }, { ir: 'sistema-no' }, { escribir: 'origen', valor: 'Terminal' }, { escribir: 'destino', valor: 'Calle 72' }, { ir: 'consultar-viaje' }, { esperar: 1800 }, { leer: 'Sube a la' }],
+      B: [{ ir: 'tab-viaje' }, { ir: 'origen-gps' }, { ir: 'hoja-seguir' }, { ir: 'sistema-no' }, { escribir: 'origen', valor: 'Terminal' }, { escribir: 'destino', valor: 'Calle 72' }, { ir: 'consultar-viaje' }, { esperar: 1800 }, { leer: 'Sube a la' }] },
     T5: { A: [{ ir: 'nav-gps' }, { leer: 'no puedo saber si llegaste' }], B: [{ ir: 'fila-gps' }, { leer: 'no puedo saber si llegaste' }] },
-    T6: { A: [{ ir: 'nav-asistente' }, { ir: 'hablar' }, { esperar: 400 }, { ir: ['cancelar-escucha', 'hablar'] }, { esperar: 3000 }, { leer: 'No envié nada' }],
-      B: [{ ir: 'tab-asistente' }, { ir: 'hablar' }, { esperar: 400 }, { ir: ['cancelar-escucha', 'hablar'] }, { esperar: 3000 }, { leer: 'No envié nada' }] },
+    T6: { A: [{ ir: 'nav-asistente' }, { ir: 'hablar' }, { ir: 'hoja-seguir' }, { ir: 'sistema-si' }, { ir: 'sistema-si' }, { esperar: 400 }, { ir: ['cancelar-escucha', 'hablar'] }, { esperar: 3000 }, { leer: 'No envié nada' }],
+      B: [{ ir: 'tab-asistente' }, { ir: 'hablar' }, { ir: 'hoja-seguir' }, { ir: 'sistema-si' }, { ir: 'sistema-si' }, { esperar: 400 }, { ir: ['cancelar-escucha', 'hablar'] }, { esperar: 3000 }, { leer: 'No envié nada' }] },
     T7: { A: [{ ir: 'nav-avisos' }, { leer: 'Origen: Audio' }, { leer: 'EJEMPLO FICTICIO' }, { leer: 'no hay anuncios suyos' }],
       B: [{ ir: 'tab-avisos' }, { leer: 'Origen: Audio' }, { leer: 'EJEMPLO FICTICIO' }, { leer: 'no hay anuncios suyos' }] },
     T8: { A: [{ ir: 'nav-metro' }, { ir: 'metro-E12' }, { leer: 'no se puede viajar hoy' }],
