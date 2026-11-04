@@ -45,7 +45,16 @@ async (page) => {
     }
     for (const r of Object.values(resumen)) { r.ejemplos = [...r.ejemplos].slice(0, 8); r.paradasMedia = +(r.paradasMedia / r.pantallas).toFixed(1); r.interactivosMedia = +(r.interactivosMedia / r.pantallas).toFixed(1) }
     const porPantalla = filas.filter((f) => f.texto === 100 && !f.bajaVision).map((f) => `${f.variante} ${f.nombre}: ${f.paradas} paradas, ${f.interactivos} controles`)
-    return { combinaciones: filas.length, contrasteMinimoGlobal: minimo, fallos: fallos.slice(0, 60), totalFallos: fallos.length, resumen, porPantalla }
+    // Alto que ocupan las franjas fijas en Inicio con una sesión activa.
+    const franjasFijas = []
+    for (const variante of ['A', 'B']) for (const texto of [100, 200, 310]) {
+      P.preparar('inicio-activa', { variante, texto, bajaVision: false })
+      const fijas = [...document.querySelectorAll('#app *')].filter((el) => getComputedStyle(el).position === 'sticky')
+      const alto = Math.round(fijas.reduce((s, el) => s + el.getBoundingClientRect().height, 0))
+      franjasFijas.push(`${variante} ${texto} %: ${alto} px (${Math.round((100 * alto) / innerHeight)} %)`)
+    }
+    const sinFoco = filas.length - filas.filter((f) => ['hoja-ubicacion', 'sistema-ubicacion'].includes(f.nombre)).length
+    return { combinaciones: filas.length, combinacionesConFocoComprobado: sinFoco, contrasteMinimoGlobal: minimo, fallos: fallos.slice(0, 60), totalFallos: fallos.length, resumen, porPantalla, franjasFijas }
   })
   return { ...resultado, errores, peticiones }
 }

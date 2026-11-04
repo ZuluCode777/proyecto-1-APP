@@ -32,10 +32,11 @@
 | `panel` | `0` | Oculta el panel del facilitador para sesiones con participantes. |
 | `texto` | `100`, `135`, `200`, `310` | Tamaño de texto simulado. |
 | `bajavision` | `1` | Activa el modo de baja visión. |
+| `desconectar` | segundos, hasta 600 | Desconecta el accesorio pasado ese tiempo, para la tarea T9 sin panel. |
 
 ## Panel del facilitador
 
-Debajo del iPhone simulado, con estilo distinto para no confundirlo con el diseño. Permite cambiar de variante y de tarea, simular servidor caído, 401, 429 o catálogo viejo, evidencia vencida, hora fuera de horario, anuncio de ejemplo, calidad de la ubicación, permisos, mediciones y desconexión del accesorio, y la salida de audio. «Comprobar accesibilidad de la pantalla» mide la pantalla actual: tamaño de controles, nombres, contraste, desbordes, palabras partidas y estados sin palabra.
+Debajo del iPhone simulado, con estilo distinto para no confundirlo con el diseño. Permite cambiar de variante y de tarea, simular servidor caído, 401, 429 o catálogo viejo, evidencia vencida, hora fuera de horario, anuncio de ejemplo, calidad y permiso de la ubicación, mediciones y desconexión del accesorio, y la salida de audio. «Comprobar accesibilidad de la pantalla» mide la pantalla actual: tamaño de controles, nombres, contraste, desbordes, palabras partidas y estados sin palabra.
 
 ## Áreas
 
@@ -45,4 +46,5 @@ Inicio, Rutas y viaje, Metro (escenario futuro), Ubicación y orientación, Asis
 
 - Las capturas y el árbol de Chromium no prueban VoiceOver. El prototipo tampoco es la app terminada.
 - El orden de lectura de Safari para iOS puede diferir del de SwiftUI.
+- Safari no aplica el tamaño de texto del iPhone al prototipo: se elige con `texto=`.
 - Al decidir, la variante ganadora se reescribe en SwiftUI en #43; el HTML no pasa a producción.

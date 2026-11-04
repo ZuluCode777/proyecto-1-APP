@@ -2,7 +2,7 @@
 
 Reglas que deben cumplir las vistas de [#43](https://github.com/ZuluCode777/proyecto-1-APP/issues/43), [#45](https://github.com/ZuluCode777/proyecto-1-APP/issues/45), [#46](https://github.com/ZuluCode777/proyecto-1-APP/issues/46) y [#51](https://github.com/ZuluCode777/proyecto-1-APP/issues/51), sea cual sea la variante elegida. El [prototipo](prototipo.html) las aplica en web y las [comprobaciones](comprobaciones/) las verifican en Chromium. **Ninguna se ha comprobado todavía con VoiceOver ni en iPhone.** Las APIs de SwiftUI citadas son puntos de partida para #43 y deben confirmarse en Xcode.
 
-Vocabulario según [CONTEXT.md](../../../../CONTEXT.md): «sin detección», nunca «camino libre»; «orientación hacia estación», nunca «ruta peatonal»; «escenario Metro», nunca «viaje».
+Vocabulario según [CONTEXT.md](../../../../CONTEXT.md) y la [arquitectura](../../arquitectura-y-experimentos.md): «sin detección», nunca «camino libre»; «orientación hacia estación», nunca «ruta peatonal» ni «guía»; «escenario Metro», nunca «viaje»; «sesión de proximidad» para la sesión con el accesorio.
 
 ## 1. Lectura y foco
 
@@ -13,22 +13,22 @@ Vocabulario según [CONTEXT.md](../../../../CONTEXT.md): «sin detección», nun
 | Al volver, el foco regresa al control que abrió la pantalla. | `desde` en la pila | Guardar el identificador de origen y reenfocarlo |
 | Un resultado asíncrono (viaje, respuesta) mueve el foco a su encabezado y se anuncia una vez. | `resultado-titulo`, `respuesta-titulo` | Foco más `AccessibilityNotification.Announcement` (iOS 17) |
 | Un cambio de estado sin navegación se anuncia y **no** mueve el foco. | Regiones vivas ocultas | Anuncio; nunca reconstruir la vista bajo el foco |
-| Un repintado conserva el foco en el mismo control. | `data-id` estable | Identidad estable (`id`) en `ForEach` y botones |
+| Un repintado conserva el foco en el mismo control. Si ese control desaparece, el foco va a un destino definido, nunca a la nada. | `data-id` estable y `respaldo` | Identidad estable (`id`) en `ForEach` y botones; foco explícito tras quitar un control |
 | Un botón que cambia de texto (Iniciar/Detener) conserva su identidad. | `sesion-principal`, `acc-principal`, `gps-principal` | Mismo botón con etiqueta variable |
 | Los íconos son decorativos. | `aria-hidden` | `.accessibilityHidden(true)` |
 | Una fila de estado se lee como una unidad: severidad, nombre, valor, nota. | Bloque de texto único | `.accessibilityElement(children: .combine)` |
 
 Orden de lectura de cada pantalla:
 
-- **A:** título, aviso fijo (si hay), frase de estado, acción principal, contenido, más acciones, detalles plegados.
-- **B:** título, aviso fijo, filas de estado con su acción, contenido, acciones, y al final la franja de actividad, «La app dijo» y las pestañas.
+- **A:** «Volver» (o el nombre de la app en Inicio), franja de actividad (si hay), «La app dijo» con «Repetir», título, aviso fijo (si hay), frase de estado, acción principal, contenido, más acciones y detalles plegados. Al entrar, el foco va al título: la cancelación queda un deslizamiento hacia atrás.
+- **B:** «Volver» (si hay), título, aviso fijo, filas de estado con su acción, contenido, acciones, y al final la franja de actividad, «La app dijo» y las pestañas.
 
 ## 2. Dynamic Type
 
 - El texto de cuerpo es 17 pt en el tamaño por omisión y llega a unos 53 pt en AX5 (310 %). El prototipo simula 100, 135, 200 y 310 %.
 - Nada se trunca ni se superpone. Las filas pasan a una columna; los botones crecen en alto.
 - Los títulos crecen menos que el cuerpo, como los estilos de iOS.
-- Desde 200 %, las franjas de actividad y «La app dijo» dejan de estar fijas y se desplazan con el contenido. Si quedaran fijas, taparían hasta el 65 % (A) o más del 100 % (B) de la pantalla.
+- Desde 200 %, las franjas que estaban fijas se desplazan con el contenido: la de actividad en A, y la de actividad y «La app dijo» en B. Si quedaran fijas, con texto al 310 % taparían hasta el 65 % (A) o más del 100 % (B) de la pantalla.
 - Si se usa barra de pestañas, no crece con el texto: se usa el visor de contenido grande del sistema (`.accessibilityShowsLargeContentViewer()`; `TabView` lo trae).
 - En SwiftUI: estilos de texto (`.body`, `.headline`), `@ScaledMetric` para espacios, `ViewThatFits` o `dynamicTypeSize.isAccessibilitySize` para cambiar de fila a columna. Nada de alturas fijas.
 - Al 310 % algunas palabras largas se parten. Revisar en iPhone si conviene acortar textos.
@@ -43,13 +43,13 @@ Orden de lectura de cada pantalla:
 
 - Objetivo de **7:1** para todo texto, en tema normal y en baja visión. Medido: mínimo 17,31:1.
 - Bordes y foco: al menos 3:1 contra el fondo (negro sobre blanco, amarillo sobre negro).
-- El color **nunca** comunica un estado solo. Cada estado lleva palabra («Urgente:», «Importante:», «Información:», «Verificado:», «Simulación:»), ícono y estilo de borde (doble, discontinuo, punteado).
+- El color **nunca** comunica un estado solo. Cada estado lleva palabra («Urgente:», «Importante:», «Información:», «Verificado:», «Simulación:») e ícono. Urgente, Importante y Simulación además tienen borde propio: doble, discontinuo y punteado.
 - Respetar Aumentar contraste (`colorSchemeContrast == .increased`) y Diferenciar sin color (`accessibilityDifferentiateWithoutColor`).
 
 ## 5. Texto equivalente al audio
 
 - Todo lo que la app dice aparece también en «La app dijo», con botón «Repetir».
-- El texto en pantalla y la locución salen de la misma función (`textoResultado`), para que no diverjan.
+- El texto en pantalla y la locución salen de las mismas funciones (`textoResultado`, `pasosViaje`), para que no diverjan.
 - Con VoiceOver activo, el anuncio lo lee VoiceOver; la voz propia de la app empieza apagada para no hablar dos veces. Debe decidirse en el experimento X2 (`UIAccessibility.isVoiceOverRunning`, `AVSpeechUtterance.prefersAssistiveTechnologySettings`).
 - Los avisos urgentes (proximidad, pérdida del accesorio) usan anuncio prioritario. Los avisos de rutina usan anuncio cortés.
 - Sin salida de audio confirmada (auriculares desconectados), los avisos no se reproducen por el altavoz automáticamente; quedan en pantalla y en Avisos.
@@ -63,7 +63,8 @@ Orden de lectura de cada pantalla:
 
 ## 7. Cancelación siempre disponible
 
-- Toda actividad en curso (escucha, consulta, búsqueda de ubicación, guía, sesión del accesorio) aparece en la franja «Actividad en curso» con su propio botón: «Cancelar escucha», «Cancelar consulta», «Detener guía», «Detener sesión».
+- Toda actividad en curso (escucha, consulta, búsqueda de ubicación, orientación hacia la estación, sesión de proximidad) aparece en la franja «Actividad en curso» con su propio botón: «Cancelar escucha», «Cancelar consulta», «Cancelar búsqueda», «Detener orientación», «Detener sesión».
+- Tras cancelar desde la franja, el foco pasa a «Repetir», junto a lo que la app acaba de decir.
 - La franja está en el mismo lugar en todas las pantallas.
 - El gesto de escape de VoiceOver (dos dedos en «Z») cancela lo transitorio; si no hay nada que cancelar, vuelve atrás. En el prototipo, la tecla Escape. En SwiftUI: `.accessibilityAction(.escape)`.
 - Salir de una pantalla cancela su consulta o escucha.
@@ -79,7 +80,7 @@ Cada permiso se explica en una hoja propia justo antes del aviso del sistema, co
 | --- | --- | --- | --- |
 | Ubicación | Al tocar «Activar ubicación» o «Usar mi ubicación como origen». | Escribir el origen. | `NSLocationWhenInUseUsageDescription` |
 | Micrófono y reconocimiento de voz | Al tocar «Hablar». Se advierte que el audio puede ir a Apple si no hay reconocimiento en el dispositivo. | Escribir la pregunta. | `NSMicrophoneUsageDescription`, `NSSpeechRecognitionUsageDescription` |
-| Bluetooth | Al iniciar la sesión con accesorio. | El resto de la app funciona. | `NSBluetoothAlwaysUsageDescription` |
+| Bluetooth | Al iniciar la sesión de proximidad. | El resto de la app funciona. | `NSBluetoothAlwaysUsageDescription` |
 | Cámara | Al abrir la lupa. | Ninguna; la lupa no está disponible. | `NSCameraUsageDescription` |
 
 - Con «Ubicación exacta» desactivada, iOS da una posición aproximada (kilómetros). La app no orienta con ella y lo dice.
@@ -88,7 +89,9 @@ Cada permiso se explica en una hoja propia justo antes del aviso del sistema, co
 ## 9. Ubicación
 
 - Siempre se muestran precisión y antigüedad.
-- Con precisión peor que la distancia, ubicación antigua o aproximada, **nunca** se anuncia llegada.
+- Con ubicación imprecisa, antigua o aproximada, **nunca** se anuncia llegada, no se muestra distancia ni dirección y no se ofrece orientar: la acción es actualizar la ubicación o escribir el origen.
+- Si la ubicación empeora durante la orientación, esta se detiene y se dice por qué.
+- Una búsqueda de ubicación cancelada, o de una pantalla que se dejó, no completa nada después.
 - Cerca de la estación se dice «Esto no confirma que estés en un acceso».
 - Sin brújula fiable, solo punto cardinal y «no sé hacia dónde miras».
 
@@ -113,11 +116,11 @@ En Metro, un aviso fijo dice que es escenario educativo. Ningún texto da indica
 
 | Regla | Comprobación automática | Pendiente en iPhone |
 | --- | --- | --- |
-| 1 Lectura y foco | Título único, foco al entrar, volver y repintar | Orden real de VoiceOver en Safari y SwiftUI |
+| 1 Lectura y foco | Título único, foco al entrar, volver, repintar y al desaparecer un control; recorrido con teclado | Orden real de VoiceOver en Safari y SwiftUI |
 | 2 Dynamic Type | Sin desborde a 100/200/310 %; palabras partidas contadas | Tamaños reales del sistema |
 | 3 Controles | ≥ 44×44 y nombre accesible | Uso con una mano |
 | 4 Contraste y color | ≥ 7:1; estado con palabra | Percepción con baja visión |
 | 5 Audio | Texto visible igual a la región viva | VoiceOver y voz propia a la vez (X2) |
 | 7 Cancelación | Escape, cancelar y salir; descarte de respuestas tardías | Gesto de escape y Magic Tap |
 | 8 Permisos | Hoja previa, Escape, denegación y alternativa | Avisos reales del sistema |
-| 9–11 | Llegada, abordaje y Metro | Datos reales del backend |
+| 9–11 | Llegada, distancia, abordaje, Metro y paridad entre variantes | Datos reales del backend |

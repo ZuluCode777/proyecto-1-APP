@@ -47,22 +47,53 @@ async (page) => {
       const r = await ev(() => [window.prototipo.E.asis.fase, !!document.querySelector('#respuesta-h2')])
       return r[0] === 'interrumpido' && !r[1] ? true : r.join(' / ')
     })
-    await prueba(`${v} ubicación imprecisa, antigua o aproximada nunca anuncia llegada`, async () => {
+    await prueba(`${v} ubicación imprecisa, antigua o aproximada: sin llegada, sin distancia y sin orientar`, async () => {
       const malos = []
-      for (const nombre of ['gps-imprecisa', 'gps-aproximada']) {
-        await ev(({ v, nombre }) => { window.prototipo.preparar(nombre, { variante: v }); window.prototipo.E.gps.guiando = true; window.prototipo.render() }, { v, nombre })
-        const t = (await texto()) + (await ev(() => window.prototipo.E.voz.texto))
-        if (/has llegado|ya llegaste|llegaste a /i.test(t)) malos.push(nombre)
+      for (const nombre of ['gps-imprecisa', 'gps-vieja', 'gps-aproximada']) {
+        await ev(({ v, nombre }) => window.prototipo.preparar(nombre, { variante: v }), { v, nombre })
+        const principal = await ev(() => document.querySelector('[data-id="gps-principal"]').textContent)
+        await clic('gps-principal')
+        const t = (await texto()) + ' ' + (await ev(() => window.prototipo.E.voz.texto))
+        if (/has llegado|ya llegaste|llegaste a /i.test(t)) malos.push(`${nombre}: llegada`)
+        if (/\ba \d+ (m|metros)\b/.test(t)) malos.push(`${nombre}: distancia`)
+        if (/orientarme/i.test(principal) || (await ev(() => window.prototipo.E.gps.guiando))) malos.push(`${nombre}: orienta`)
       }
       return malos.length ? malos.join(', ') : true
     })
-    await prueba(`${v} «sin detección» siempre dice que no es camino libre`, async () => {
+    await prueba(`${v} si la ubicación empeora durante la orientación, se detiene y se avisa`, async () => {
+      await ev((v) => { window.prototipo.preparar('gps-guiando', { variante: v }); window.prototipo.CAMPOS_PANEL.gps('imprecisa'); window.prototipo.repintar() }, v)
+      const r = await ev(() => [window.prototipo.E.gps.guiando, window.prototipo.E.voz.texto])
+      return r[0] === false && /Orientación detenida/.test(r[1]) ? true : JSON.stringify(r)
+    })
+    await prueba(`${v} «sin detección» siempre dice que no es camino libre, en pantalla y en voz`, async () => {
       const malos = []
       for (const destino of ['inicio', 'accesorio']) {
         await ev(({ v, destino }) => { const P = window.prototipo; P.preparar('inicio', { variante: v }); Object.assign(P.E.acc, { elegido: 'TMV-01', estado: 'sinDeteccion' }); P.irArea(destino) }, { v, destino })
         const t = await texto()
         if (/sin detección/i.test(t) && !/no significa que el camino esté libre/i.test(t)) malos.push(destino)
       }
+      await ev((v) => { const P = window.prototipo; P.preparar('accesorio-medicion', { variante: v }); P.ACCIONES_PANEL['sin-deteccion']() }, v)
+      const voz = await ev(() => window.prototipo.E.voz.texto)
+      if (!/no significa que el camino esté libre/i.test(voz)) malos.push('voz: ' + voz)
+      return malos.length ? malos.join(', ') : true
+    })
+    await prueba(`${v} el foco nunca queda en la página tras cancelar o cuando desaparece el botón pulsado`, async () => {
+      const malos = []
+      const enCuerpo = async (caso) => { const f = await ev(() => document.activeElement === document.body || !document.querySelector('#disenio').contains(document.activeElement)); if (f) malos.push(caso) }
+      await libre(); await clic(v === 'A' ? 'nav-viaje' : 'tab-viaje')
+      await ev(() => { const E = window.prototipo.E; E.viaje.origen = 'Terminal'; E.viaje.destino = 'Calle 72' })
+      await clic('consultar-viaje'); await esperar(200); await clic('cancelar-viaje'); await enCuerpo('cancelar-viaje (franja)')
+      await clic('consultar-viaje'); await esperar(200); await clic('cancelar-viaje-local'); await enCuerpo('cancelar-viaje-local')
+      await ev((v) => { const P = window.prototipo; P.E.variante = v; P.aplicarEscenario('T6'); P.irArea('asistente') }, v)
+      await clic('hablar'); await esperar(300); await clic('cancelar-escucha'); await enCuerpo('cancelar-escucha')
+      await ev((v) => { const P = window.prototipo; P.preparar('asistente-aviso-envio', { variante: v }) }, v)
+      await clic('envio-aceptar'); await enCuerpo('envio-aceptar'); await esperar(1700)
+      await ev((v) => { window.prototipo.E.variante = v; window.prototipo.aplicarEscenario('T9') }, v)
+      await clic('cancelar-sesion'); await enCuerpo('cancelar-sesion (franja)')
+      await ev((v) => window.prototipo.preparar('accesorio-buscando', { variante: v }), v)
+      await clic('elegir-tmv01'); await enCuerpo('elegir-tmv01'); await esperar(1700)
+      await ev((v) => window.prototipo.preparar('viaje-sin-red', { variante: v }), v)
+      await ev(() => { window.prototipo.E.red = 'ok' }); await clic('reintentar-viaje'); await enCuerpo('reintentar-viaje'); await esperar(1800)
       return malos.length ? malos.join(', ') : true
     })
     await prueba(`${v} solo el viaje verificado dice dónde subir y bajar`, async () => {
@@ -168,6 +199,84 @@ async (page) => {
       return out
     })
     return r.A && r.B && r.B310 ? true : JSON.stringify(r)
+  })
+  await prueba('Paridad: las frases de seguridad aparecen igual en A y en B', async () => {
+    const casos = [
+      ['gps-imprecisa', /no puedo saber si llegaste/i], ['gps-aproximada', /ubicación exacta/i], ['gps-vieja', /actualiza/i],
+      ['accesorio-desconectado', /no hay avisos de proximidad/i], ['accesorio-medicion', /relativa al sensor/i],
+      ['metro', /sin servicio comercial|no tiene servicio comercial/i], ['metro-estacion', /no se puede viajar hoy/i],
+      ['viaje-incierto', /no te indico dónde subir/i], ['viaje-catalogo-viejo', /copia guardada/i], ['lupa-cerrada', /no lee letreros/i],
+    ]
+    const malos = []
+    for (const [nombre, frase] of casos) for (const v of ['A', 'B']) {
+      await ev(({ v, nombre }) => window.prototipo.preparar(nombre, { variante: v }), { v, nombre })
+      if (!frase.test(await texto())) malos.push(`${v} ${nombre}`)
+    }
+    await ev(() => { const P = window.prototipo; P.preparar('inicio', { variante: 'B' }); Object.assign(P.E.acc, { elegido: 'TMV-01', estado: 'sinDeteccion' }); P.repintar() })
+    if (!/no significa que el camino esté libre/i.test(await texto())) malos.push('B inicio sin detección')
+    return malos.length ? malos.join(', ') : true
+  })
+  for (const v of ['A', 'B']) {
+    await prueba(`${v} teclado: T2 se completa solo con Tab, Enter y escritura`, async () => {
+      await ev((v) => { window.prototipo.E.variante = v; window.prototipo.aplicarEscenario('T2') }, v)
+      let tabs = 0
+      const hasta = async (id) => {
+        for (let i = 0; i < 80; i++) { if ((await activo()) === id) return true; await page.keyboard.press('Tab'); tabs++ }
+        return false
+      }
+      if (!(await hasta(v === 'A' ? 'nav-viaje' : 'tab-viaje'))) return 'no llegué a Rutas'
+      await page.keyboard.press('Enter')
+      if (!(await hasta('origen'))) return 'no llegué a Origen'
+      await page.keyboard.type('Terminal')
+      if (!(await hasta('destino'))) return 'no llegué a Destino'
+      await page.keyboard.type('Calle 72'); await page.keyboard.press('Enter'); await esperar(1800)
+      const t = await texto()
+      const positivos = await ev(() => document.querySelectorAll('[tabindex]:not([tabindex="-1"]):not([tabindex="0"])').length)
+      resultados.push({ nombre: `${v} teclado: pulsaciones de Tab en T2`, ok: true, detalle: String(tabs) })
+      return /Sube a la 8 G en Terminal/.test(t) && positivos === 0 ? true : `resultado=${/Sube a la/.test(t)} tabindex>0=${positivos}`
+    })
+  }
+  await prueba('El aviso simulado de iOS no se descarta con Escape repetido', async () => {
+    await ev(() => window.prototipo.preparar('sistema-ubicacion', { variante: 'A' }))
+    await page.keyboard.press('Escape'); await page.keyboard.press('Escape'); await esperar(100)
+    const abierto = await ev(() => document.querySelector('#sistema').open)
+    await clic('sistema-no')
+    return abierto ? true : 'se cerró sin respuesta'
+  })
+  await prueba('Búsqueda de ubicación: salir de Rutas la cancela y no rellena el origen después', async () => {
+    await ev(() => { const P = window.prototipo; P.E.variante = 'A'; P.aplicarEscenario('libre'); P.E.permisos.ubicacion = 'concedido'; P.irArea('viaje') })
+    await clic('origen-gps'); await esperar(300); await ev(() => window.prototipo.irArea('ajustes')); await esperar(1400)
+    const r = await ev(() => [window.prototipo.E.viaje.origen, window.prototipo.E.gps.fase, document.activeElement.dataset.id || document.activeElement.tagName])
+    return r[0] === '' && r[1] === 'inactivo' ? true : JSON.stringify(r)
+  })
+  await prueba('Búsqueda cancelada no completa una búsqueda posterior', async () => {
+    await ev(() => { const P = window.prototipo; P.E.variante = 'A'; P.aplicarEscenario('libre'); P.E.permisos.ubicacion = 'concedido'; P.irArea('viaje') })
+    await clic('origen-gps'); await esperar(300); await clic('cancelar-gps')
+    await ev(() => window.prototipo.irArea('gps')); await clic('gps-principal'); await esperar(1500)
+    const r = await ev(() => [window.prototipo.E.viaje.origen, window.prototipo.E.gps.fase])
+    return r[0] === '' && r[1] === 'listo' ? true : JSON.stringify(r)
+  })
+  await prueba('«Calle 1» no se confunde con «Calle 187»; «Calle 72» sigue encontrándose', async () => {
+    const r = await ev(() => { const P = window.prototipo; P.preparar('viaje-vacio', { variante: 'A' }); const a = P.planear('Terminal', 'Calle 1').tipo; const b = P.planear('Terminal', 'Calle 72').tipo; return [a, b] })
+    return r[0] === 'desconocida' && r[1] === 'verificado' ? true : r.join(' / ')
+  })
+  await prueba('Con catálogo viejo, el horario del asistente no se presenta como verificado', async () => {
+    const r = await ev(() => { const P = window.prototipo; P.preparar('asistente-inicial', { variante: 'A' }); P.E.red = 'catalogo-viejo'; return P.responderAsistente('horario 8 G').texto })
+    return !/Según el calendario verificado/.test(r) && /no un calendario verificado/.test(r) ? true : r
+  })
+  await prueba('Encender Bluetooth retira el aviso urgente que dejó al apagarlo', async () => {
+    const r = await ev(() => {
+      const P = window.prototipo, b = document.createElement('button')
+      P.preparar('inicio-activa', { variante: 'A' }); P.ACCIONES_PANEL['bluetooth-apagado'](b); const antes = !!P.E.voz.urgente
+      P.ACCIONES_PANEL['bluetooth-apagado'](b); return [antes, !!P.E.voz.urgente, P.E.avisos.some((a) => a.clave === 'accesorio-desconectado')]
+    })
+    return r[0] && !r[1] && !r[2] ? true : JSON.stringify(r)
+  })
+  await prueba('Olvidar el accesorio con sesión activa dice ambas cosas en un solo anuncio', async () => {
+    await ev(() => window.prototipo.preparar('accesorio-medicion', { variante: 'A' }))
+    await clic('olvidar-accesorio')
+    const voz = await ev(() => window.prototipo.E.voz.texto)
+    return /Sesión detenida/.test(voz) && /olvidado/.test(voz) ? true : voz
   })
   await prueba('Escape sin actividad transitoria vuelve a la pantalla anterior', async () => {
     await ev(() => { window.prototipo.E.variante = 'A'; window.prototipo.aplicarEscenario('libre') })

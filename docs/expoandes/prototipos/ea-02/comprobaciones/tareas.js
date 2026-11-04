@@ -16,7 +16,11 @@ async (page) => {
     if (ids.length) {
       const candidatos = ids.map((id) => ps.findIndex((x) => x.id === id)).filter((i) => i >= 0)
       objetivo = candidatos.sort((x, y) => Math.abs(x - actual) - Math.abs(y - actual))[0] ?? -1
-    } else if (p.leer) objetivo = ps.findIndex((x) => x.texto.toLowerCase().includes(p.leer.toLowerCase()))
+    } else if (p.leer) {
+      // Si el texto aparece en varios lugares (por ejemplo, también en «La app dijo»), se toma el más cercano al foco.
+      const coincidencias = ps.map((x, i) => (x.texto.toLowerCase().includes(p.leer.toLowerCase()) ? i : -1)).filter((i) => i >= 0)
+      objetivo = coincidencias.sort((x, y) => Math.abs(x - actual) - Math.abs(y - actual))[0] ?? -1
+    }
     if (objetivo < 0) return { error: `no encontré ${JSON.stringify(p)} en ${ps.length} paradas: ` + ps.map((x) => x.id || x.texto.slice(0, 25)).join(' / ') }
     const deslizamientos = Math.abs(objetivo - actual)
     if (p.ir) {

@@ -120,7 +120,7 @@ dialog .sim-etiqueta{margin:.2em 0 .4em;font-size:.85em;font-weight:800}
   <div id="disenio" class="disenio">
     <div id="app"></div>
     <dialog id="hoja" aria-labelledby="hoja-titulo"></dialog>
-    <dialog id="sistema" class="sistema" role="alertdialog" aria-labelledby="sistema-titulo" aria-describedby="sistema-texto"></dialog>
+    <dialog id="sistema" class="sistema" role="alertdialog" aria-labelledby="sistema-titulo" aria-describedby="sistema-sim sistema-texto"></dialog>
   </div>
 </div>
 <aside id="panel" class="panel" aria-label="Controles del prototipo, no forman parte del diseño">
@@ -195,7 +195,7 @@ const OTRAS_ESTACIONES = ['Portal Usme', 'Molinos', 'Ricaurte - CL 13', 'Ricaurt
   'Portal El Dorado – C.C. Nuestro Bogotá']
 const ESTACIONES = [...PARADAS_8G, ...OTRAS_ESTACIONES]
 const FRECUENTES = [{ origen: 'Terminal', destino: 'Calle 72 - Areandina' }, { origen: 'Portal Usme', destino: 'Molinos' }]
-const ESTACION_CERCANA = 'Calle 72 - Areandina'
+const ESTACION_CERCANA = 'Héroes - Colmena Seguros'
 const METRO_AVISO = 'Escenario Metro, no es un viaje: la Línea 1 está en construcción y no tiene servicio comercial. ' +
   'Su operación se anunció para marzo de 2028, sin garantía. No se usa para planear viajes.'
 const METRO = [
@@ -235,7 +235,7 @@ function estadoInicial() {
     ajustes: { texto: 100, bajaVision: false, vozApp: false },
     permisos: { ubicacion: 'sin-preguntar', exacta: true, microfono: 'sin-preguntar', voz: 'sin-preguntar', bluetooth: 'sin-preguntar', camara: 'sin-preguntar' },
     red: 'ok', evidencia: 'vigente', franja: 'en-franja', operador: 'sin-fuente', audio: 'auriculares',
-    gps: { fase: 'inactivo', escenario: 'precisa', guiando: false },
+    gps: { fase: 'inactivo', escenario: 'precisa', guiando: false, turno: 0, desde: null },
     acc: { elegido: null, buscando: false, estado: 'desactivada', motivo: '', mm: 0, sector: null, bluetooth: 'encendido', incompatible: false, turno: 0, medida: 0 },
     asis: { fase: 'inactivo', texto: '', oido: '', respuesta: null, envioAceptado: false, pendiente: null, turno: 0, nota: '' },
     viaje: { origen: '', destino: '', origenGps: false, fase: 'vacio', resultado: null, error: null, turno: 0 },
@@ -392,7 +392,10 @@ function restaurarFoco() {
 }
 // Escape en la hoja propia equivale a «Ahora no»; el aviso del sistema exige una respuesta, como en iOS.
 $('#hoja').addEventListener('cancel', (evento) => { evento.preventDefault(); const b = $('#hoja [data-id="hoja-alternativa"]'); if (b) b.click() })
+let sistemaPendiente = false
 $('#sistema').addEventListener('cancel', (evento) => evento.preventDefault())
+// Un segundo Escape puede cerrarlo igual en algunos navegadores: se reabre hasta que haya respuesta.
+$('#sistema').addEventListener('close', () => { if (sistemaPendiente) $('#sistema').showModal() })
 
 function pedirPermiso(tipo, { siguiente, alternativa }) {
   const estado = E.permisos[tipo]
@@ -421,12 +424,14 @@ function avisoSistema(tipo, siguiente, alternativa) {
     }, { atributos: { role: 'switch', 'aria-checked': String(E.permisos.exacta) } }))
   }
   const responder = (valor) => {
+    sistemaPendiente = false
     cerrarDialogo(dialogo)
     E.permisos[tipo] = valor === 'no' ? 'denegado' : 'concedido'
     if (valor === 'no') { restaurarFoco(); alternativa('denegado') } else siguiente()
   }
+  sistemaPendiente = true
   abrirDialogo(dialogo, [
-    h('p', { clase: 'sim-etiqueta' }, 'Simulación del aviso de iOS'),
+    h('p', { clase: 'sim-etiqueta', id: 'sistema-sim' }, 'Simulación del aviso de iOS'),
     h('h2', { id: 'sistema-titulo' }, s.titulo),
     h('p', { id: 'sistema-texto' }, s.texto),
     extra,
@@ -434,21 +439,21 @@ function avisoSistema(tipo, siguiente, alternativa) {
   ])
 }
 
-// ---------- Sesión de orientación con accesorio simulado ----------
+// ---------- Sesión de proximidad con accesorio simulado ----------
 const ESTADOS_ACTIVOS = ['conectando', 'sinDeteccion', 'medicion', 'sinDatos', 'incompatible']
 function sesionActiva() { return ESTADOS_ACTIVOS.includes(E.acc.estado) }
 function textoSesion() {
   const a = E.acc
   switch (a.estado) {
     // «corto» + «nota» (filas de B) dicen lo mismo que «largo» (frase de A).
-    case 'sinPermiso': return { tono: 'importante', corto: 'Sin permiso de Bluetooth', nota: 'El resto de la app funciona', largo: 'No puedo usar el accesorio: falta el permiso de Bluetooth. El resto de la app funciona.' }
+    case 'sinPermiso': return { tono: 'importante', corto: 'Sin permiso de Bluetooth', nota: 'Actívalo en Ajustes de iOS; el resto de la app funciona', largo: 'No puedo usar el accesorio: falta el permiso de Bluetooth. Puedes activarlo en Ajustes de iOS. El resto de la app funciona.' }
     case 'bluetoothApagado': return { tono: 'importante', corto: 'Bluetooth apagado', nota: 'Enciéndelo para usar el accesorio', largo: 'Bluetooth está apagado. Enciéndelo para usar el accesorio.' }
     case 'conectando': return { tono: 'info', corto: 'Conectando', nota: null, largo: `Conectando con ${a.elegido}.` }
     case 'incompatible': return { tono: 'importante', corto: 'Accesorio incompatible', nota: 'No muestro mediciones', largo: 'El accesorio envía una versión de datos que esta app no entiende. No muestro mediciones.' }
     case 'sinDatos': return { tono: a.motivo === 'dato vencido' ? 'importante' : 'urgente', corto: `Sin datos: ${a.motivo}`, nota: 'No hay avisos de proximidad', largo: `Sin datos del sensor: ${a.motivo}. No hay avisos de proximidad.` }
     case 'sinDeteccion': return { tono: 'info', corto: 'Activa, sin detección', nota: 'Esto no significa que el camino esté libre', largo: 'Sensor activo, sin detección. Esto no significa que el camino esté libre.' }
     case 'medicion': return { tono: 'urgente', corto: `Objeto a ${distanciaSensor(a.mm)} m`, nota: `${a.sector ? a.sector[0].toUpperCase() + a.sector.slice(1) : 'Sin dirección'}; medición relativa al sensor`, largo: `Objeto detectado a ${distanciaSensor(a.mm)} m${a.sector ? ', ' + a.sector : ', sin dirección'}. Medición relativa al sensor.` }
-    default: return { tono: 'neutro', corto: 'Detenida', nota: null, largo: 'La sesión de orientación está detenida.' }
+    default: return { tono: 'neutro', corto: 'Detenida', nota: null, largo: 'La sesión de proximidad está detenida.' }
   }
 }
 function iniciarSesion() {
@@ -457,41 +462,41 @@ function iniciarSesion() {
       siguiente: iniciarSesion,
       alternativa: (motivo) => {
         if (motivo === 'denegado') { E.acc.estado = 'sinPermiso'; decir(textoSesion().largo) }
-        render()
+        repintar()
       },
     })
   }
-  if (E.acc.bluetooth === 'apagado') { E.acc.estado = 'bluetoothApagado'; decir(textoSesion().largo); return render() }
+  if (E.acc.bluetooth === 'apagado') { E.acc.estado = 'bluetoothApagado'; decir(textoSesion().largo); return repintar() }
   if (!E.acc.elegido) {
     E.acc.buscando = true
     decir('Elige tu accesorio para iniciar la sesión.')
-    return pantalla() === 'accesorio' ? render({ enfocar: 'h1' }) : irArea('accesorio')
+    return pantalla() === 'accesorio' ? repintar({ enfocar: 'h1' }) : irArea('accesorio')
   }
   const turno = ++E.acc.turno
   E.acc.estado = 'conectando'
-  decir(`Conectando con ${E.acc.elegido}.`)
-  render()
+  decir(`Conectando con ${E.acc.elegido}, simulado.`)
+  repintar()
   despues(1500, () => {
     if (E.acc.turno !== turno || E.acc.estado !== 'conectando') return
     E.acc.estado = E.acc.incompatible ? 'incompatible' : 'sinDeteccion'
     resolverAviso('accesorio-desconectado')
     decir(E.acc.estado === 'incompatible' ? textoSesion().largo : 'Sesión iniciada. Sensor activo, sin detección. Esto no significa que el camino esté libre.')
-    render()
+    repintar()
   })
 }
-function detenerSesion() {
+function detenerSesion({ texto = 'Sesión detenida. No recibirás avisos de proximidad.' } = {}) {
   E.acc.turno++
   E.acc.estado = 'desactivada'
   resolverAviso('accesorio-desconectado')
   resolverAviso('dato-vencido')
-  decir('Sesión detenida. No recibirás avisos de proximidad.')
-  render()
+  decir(texto)
+  repintar({ respaldo: ['sesion-principal', 'acc-principal', 'fila-sesion'] })
 }
 function elegirAccesorio() {
   E.acc.elegido = 'TMV-01'
   E.acc.buscando = false
-  decir('Elegiste el accesorio TMV-01, simulado.')
   iniciarSesion()
+  repintar({ enfocar: 'acc-principal' })
 }
 // Una medición vence a los 3 s sin dato nuevo: se informa el fallo, nunca la distancia anterior.
 function inyectarMedicion(mm, sector) {
@@ -499,18 +504,19 @@ function inyectarMedicion(mm, sector) {
   const medida = ++E.acc.medida
   Object.assign(E.acc, { estado: 'medicion', mm, sector })
   resolverAviso('dato-vencido')
-  if (E.asis.fase === 'escuchando') {
+  const cortaEscucha = E.asis.fase === 'escuchando'
+  if (cortaEscucha) {
     E.asis.turno++
     E.asis.fase = 'interrumpido'
   }
-  decir(`Objeto a ${distanciaSensor(mm)} metros${sector ? ', ' + sector : ''}.`, { urgente: true })
-  render()
+  decir(`Objeto a ${distanciaSensor(mm)} metros${sector ? ', ' + sector : ''}.${cortaEscucha ? ' La escucha se detuvo.' : ''}`, { urgente: true })
+  repintar()
   despues(3000, () => {
     if (E.acc.medida !== medida || E.acc.estado !== 'medicion') return
     Object.assign(E.acc, { estado: 'sinDatos', motivo: 'dato vencido' })
     avisar('dato-vencido', { severidad: 'importante', texto: 'El dato del sensor venció. No repito la distancia anterior.', fuente: 'Accesorio (simulado)' })
     decir('Dato del sensor vencido. No hay aviso de proximidad.')
-    render()
+    repintar()
   })
   return 'Medición enviada; vence en 3 s sin dato nuevo.'
 }
@@ -520,8 +526,8 @@ function volverSinDeteccion() {
   E.acc.estado = 'sinDeteccion'
   resolverAviso('dato-vencido')
   resolverAviso('accesorio-desconectado')
-  decir('Sensor activo, sin detección.')
-  render()
+  decir('Sensor activo, sin detección. Esto no significa que el camino esté libre.')
+  repintar()
   return 'Sin detección.'
 }
 function desconectarAccesorio() {
@@ -531,7 +537,7 @@ function desconectarAccesorio() {
   const texto = 'Se perdió la conexión con el accesorio. No hay avisos de proximidad.'
   avisar('accesorio-desconectado', { severidad: 'urgente', texto, fuente: 'Accesorio (simulado)' })
   decir(texto, { urgente: true })
-  render()
+  repintar()
   return 'Accesorio desconectado.'
 }
 function reconectar() {
@@ -554,7 +560,7 @@ function cambiarAudio(valor) {
     avisar('audio', { severidad: 'importante', texto: `Audio: ${textoAudio().corto.toLowerCase()}. ${textoAudio().nota}`, fuente: 'Audio del iPhone (simulado)' })
   } else resolverAviso('audio')
   decir(`Audio: ${textoAudio().corto}.`)
-  render()
+  repintar()
 }
 
 // ---------- Ubicación: siempre con precisión y antigüedad ----------
@@ -584,43 +590,61 @@ function indicacionGps() {
   const ref = g.brujula ? 'según la brújula del iPhone' : 'no sé hacia dónde miras'
   return `${ESTACION_CERCANA} está a ${metrosHablados(g.distancia)} ${direccion(g)}, ${ref}. Es distancia en línea recta, no un camino peatonal.`
 }
+// Cada búsqueda tiene su turno: una búsqueda cancelada o abandonada nunca completa otra posterior.
+function cancelarBusquedaGps({ silencioso = false } = {}) {
+  E.gps.turno++
+  E.gps.fase = 'inactivo'
+  if (!silencioso) { decir('Búsqueda de ubicación cancelada.'); repintar({ respaldo: ['gps-principal', 'origen-gps'] }) }
+}
 function activarUbicacion({ luego } = {}) {
   pedirPermiso('ubicacion', {
     siguiente: () => {
-      E.gps.fase = 'buscando'
+      const turno = ++E.gps.turno
+      Object.assign(E.gps, { fase: 'buscando', desde: pantalla() })
       decir('Buscando tu ubicación.')
-      render()
+      repintar({ respaldo: ['gps-principal', 'origen-gps'] })
       despues(1200, () => {
-        if (E.gps.fase !== 'buscando') return
+        if (E.gps.turno !== turno || E.gps.fase !== 'buscando') return
         E.gps.fase = 'listo'
         const g = gpsActual()
         if (!g.utilizable) avisar('gps', { severidad: 'importante', texto: textoGps().largo, fuente: 'Ubicación (simulada)' })
         else resolverAviso('gps')
         if (luego) return luego()
         decir(indicacionGps())
-        render()
+        repintar()
       })
     },
     alternativa: (motivo) => {
       if (luego && motivo !== 'omitido') return luego()
       if (motivo === 'denegado') decir('No tengo permiso de ubicación. Puedes escribir tu origen en Rutas y viaje.')
       if (motivo === 'omitido') return irArea('viaje', { enfocar: 'origen' })
-      render()
+      repintar()
     },
   })
 }
 function guiar(activar) {
+  if (activar && !gpsActual().utilizable) { decir(textoGps().largo); return repintar() }
   E.gps.guiando = activar
-  decir(activar ? `Guía activa. ${indicacionGps()}` : 'Guía detenida.')
-  render()
+  decir(activar ? `Orientación activa. ${indicacionGps()}` : 'Orientación detenida.')
+  repintar({ enfocar: 'gps-principal' })
+}
+// Si la ubicación empeora durante la orientación, se detiene y se dice por qué.
+function revisarOrientacion() {
+  if (E.gps.guiando && !gpsActual().utilizable) {
+    E.gps.guiando = false
+    decir(`Orientación detenida. ${textoGps().largo}`, { urgente: true })
+  }
 }
 
 // ---------- Viajes: solo se indica abordaje con paradas, sentido y horario verificados ----------
 function buscarEstacion(texto) {
   const q = normalizar(texto)
   if (!q) return null
-  return ESTACIONES.find((n) => normalizar(n) === q) || ESTACIONES.find((n) => normalizar(n).startsWith(q)) ||
-    ESTACIONES.find((n) => normalizar(n).includes(q)) || null
+  // Coincidencia por palabras completas: «Calle 1» no es «Calle 187».
+  const palabras = (n) => normalizar(n).split(' ')
+  const contiene = (n) => { const p = palabras(n), b = q.split(' '); return p.some((_, i) => b.every((x, j) => p[i + j] === x)) }
+  return ESTACIONES.find((n) => normalizar(n) === q) || ESTACIONES.find((n) => palabras(n).slice(0, q.split(' ').length).join(' ') === q) ||
+    ESTACIONES.find(contiene) || null
 }
 function planear(origenTexto, destinoTexto) {
   if (['sin-red', '401', '429'].includes(E.red)) return { tipo: 'error', codigo: E.red }
@@ -644,14 +668,16 @@ const MOTIVOS = {
   'evidencia-vencida': () => 'La evidencia de paradas tiene más de 31 días',
 }
 const ERRORES = {
-  'sin-red': 'No hay conexión con el servidor de TransMiVoz. Las consultas de transporte no están disponibles; la sesión de orientación sigue funcionando.',
+  'sin-red': 'No hay conexión con el servidor de TransMiVoz. Las consultas de transporte no están disponibles; la sesión de proximidad sigue funcionando.',
   401: 'El servidor pidió la clave de TransMiVoz. En la app real se escribe una vez y se guarda en el llavero del iPhone.',
   429: 'Hiciste muchas consultas seguidas. Espera un momento y vuelve a intentarlo.',
 }
-// Texto hablado y texto en pantalla salen de la misma función.
+// Texto hablado y texto en pantalla salen de las mismas funciones.
+const NOTA_VERIFICADO = 'Según el calendario verificado hay servicio programado ahora. No es tiempo real: confirma el horario antes de salir.'
+function pasosViaje(r) { return [`Sube a la ${r.ruta} en ${r.o}, sentido ${r.sentido}.`, `Bájate en ${r.d}.`] }
 function textoResultado(r) {
   switch (r.tipo) {
-    case 'verificado': return `Toma la ${r.ruta} en ${r.o}, sentido ${r.sentido}, y bájate en ${r.d}. Según el calendario verificado hay servicio programado ahora. No es tiempo real: confirma el horario antes de salir.`
+    case 'verificado': return `${pasosViaje(r).join(' ')} ${NOTA_VERIFICADO}`
     case 'candidato': return `Según la programación verificada, la ${r.ruta} conecta ${r.o} con ${r.d}, pero ahora no puedo confirmar que esté en servicio, así que no te doy indicaciones de abordaje. Confirma el horario con TransMilenio.`
     case 'incierto': return `${MOTIVOS[r.motivo](r)}, así que no te indico dónde subir ni bajar. Confirma las paradas con TransMilenio antes de viajar.`
     case 'desconocida': return `No encontré la estación «${r.texto}». Prueba con otro nombre, por ejemplo Terminal o Calle 72.`
@@ -661,26 +687,26 @@ function textoResultado(r) {
 }
 function consultarViaje() {
   const v = E.viaje
-  if (!v.destino.trim()) { v.error = { campo: 'destino', texto: 'Escribe el destino.' }; decir('Falta el destino.'); return render({ enfocar: 'destino' }) }
-  if (!v.origen.trim()) { v.error = { campo: 'origen', texto: 'Escribe el origen o usa tu ubicación.' }; decir('Falta el origen.'); return render({ enfocar: 'origen' }) }
+  if (!v.destino.trim()) { v.error = { campo: 'destino', texto: 'Escribe el destino.' }; decir('Falta el destino.'); return repintar({ enfocar: 'destino' }) }
+  if (!v.origen.trim()) { v.error = { campo: 'origen', texto: 'Escribe el origen o usa tu ubicación.' }; decir('Falta el origen.'); return repintar({ enfocar: 'origen' }) }
   v.error = null
   const turno = ++v.turno
   v.fase = 'consultando'
   v.resultado = null
   decir('Consultando el viaje.')
-  render()
+  repintar({ respaldo: 'consultar-viaje' })
   despues(1600, () => {
     if (v.turno !== turno || v.fase !== 'consultando') return
     v.resultado = planear(v.origen, v.destino)
     v.fase = 'resultado'
     decir(textoResultado(v.resultado))
-    render({ enfocar: 'resultado-titulo' })
+    repintar({ enfocar: 'resultado-titulo' })
   })
 }
 function cancelarViaje({ silencioso = false } = {}) {
   E.viaje.turno++
   E.viaje.fase = 'cancelado'
-  if (!silencioso) { decir('Consulta cancelada. No mostraré ningún resultado.'); render() }
+  if (!silencioso) { decir('Consulta cancelada. No mostraré ningún resultado.'); repintar({ respaldo: 'consultar-viaje' }) }
 }
 function usarUbicacionComoOrigen() {
   const aplicar = () => {
@@ -688,11 +714,11 @@ function usarUbicacionComoOrigen() {
     if (E.permisos.ubicacion !== 'concedido' || !g.utilizable) {
       E.viaje.error = { campo: 'origen', texto: E.permisos.ubicacion !== 'concedido' ? 'No tengo permiso de ubicación. Escribe el origen.' : `Tu ubicación no sirve como origen: ${textoGps().corto.toLowerCase()}. Escribe el origen.` }
       decir(E.viaje.error.texto)
-      return render({ enfocar: 'origen' })
+      return repintar({ enfocar: 'origen' })
     }
     Object.assign(E.viaje, { origen: ESTACION_CERCANA, origenGps: true, error: null })
     decir(`Usaré como origen la estación más cercana, ${ESTACION_CERCANA}, a ${metrosHablados(g.distancia)}.`)
-    render({ enfocar: 'destino' })
+    repintar({ enfocar: 'destino' })
   }
   if (E.gps.fase === 'listo') return aplicar()
   activarUbicacion({ luego: aplicar })
@@ -717,7 +743,7 @@ function responderAsistente(texto) {
   switch (i.tipo) {
     case 'cancelar': return { texto: 'Listo, cancelado.', pasos: [] }
     case 'metro': return { texto: 'El Metro de Bogotá todavía no tiene servicio comercial: la Línea 1 está en construcción. Puedo mostrarte sus 16 estaciones futuras como escenario, no como viaje.', pasos: [{ l: 'Entendí', d: 'pregunta sobre el Metro' }, { l: 'Resultado', d: 'escenario futuro, sin viaje' }], accion: 'metro' }
-    case 'horario': return { texto: `La ${i.ruta} tiene horario publicado entre semana de 4:30 a. m. a 11:00 p. m. ` + (E.evidencia === 'vigente' ? 'Según el calendario verificado, hoy tiene servicio programado. No es tiempo real.' : 'Es el horario publicado, no un calendario verificado; confírmalo con TransMilenio.'), pasos: [{ l: 'Entendí', d: `horario de la ${i.ruta}` }, { l: 'Consulté', d: fecha }] }
+    case 'horario': return { texto: `La ${i.ruta} tiene horario publicado entre semana de 4:30 a. m. a 11:00 p. m. ` + (E.evidencia === 'vigente' && E.red !== 'catalogo-viejo' ? 'Según el calendario verificado, hoy tiene servicio programado. No es tiempo real.' : 'Es el horario publicado, no un calendario verificado; confírmalo con TransMilenio.'), pasos: [{ l: 'Entendí', d: `horario de la ${i.ruta}` }, { l: 'Consulté', d: fecha }] }
     case 'viaje': {
       const r = planear(i.origen, i.destino)
       const nombres = { verificado: 'paradas verificadas', candidato: 'servicio sin confirmar a esta hora', incierto: 'paradas sin confirmar', desconocida: 'estación no encontrada', igual: 'mismo lugar' }
@@ -729,18 +755,18 @@ function responderAsistente(texto) {
 }
 function enviarPregunta(texto) {
   const a = E.asis
-  if (!texto.trim()) { a.nota = 'Escribe una pregunta.'; decir('Escribe una pregunta.'); return render({ enfocar: 'pregunta' }) }
-  if (!a.envioAceptado) { a.pendiente = texto; a.fase = 'aviso-envio'; decir('Antes de enviar: tu pregunta se envía al servidor de TransMiVoz.'); return render({ enfocar: 'envio-aceptar' }) }
+  if (!texto.trim()) { a.nota = 'Escribe una pregunta.'; decir('Escribe una pregunta.'); return repintar({ enfocar: 'pregunta' }) }
+  if (!a.envioAceptado) { a.pendiente = texto; a.fase = 'aviso-envio'; decir('Antes de enviar: tu pregunta se envía al servidor de TransMiVoz.'); return repintar({ enfocar: 'envio-aceptar' }) }
   const turno = ++a.turno
   Object.assign(a, { fase: 'pensando', oido: texto, respuesta: null, pendiente: null, nota: '' })
   decir('Consultando.')
-  render()
+  repintar({ respaldo: ['enviar-pregunta', 'pregunta'] })
   despues(1500, () => {
     if (a.turno !== turno || a.fase !== 'pensando') return
     a.respuesta = responderAsistente(texto)
     a.fase = a.respuesta.error ? 'error' : 'respuesta'
     decir(a.respuesta.texto)
-    render({ enfocar: 'respuesta-titulo' })
+    repintar({ enfocar: 'respuesta-titulo' })
   })
 }
 function hablar() {
@@ -748,7 +774,7 @@ function hablar() {
     const turno = ++E.asis.turno
     Object.assign(E.asis, { fase: 'escuchando', oido: '', respuesta: null, nota: '' })
     decir('Te escucho.')
-    render()
+    repintar()
     // Reconocimiento simulado: a los 2,5 s «oye» una frase fija.
     despues(2500, () => {
       if (E.asis.turno !== turno || E.asis.fase !== 'escuchando') return
@@ -757,8 +783,8 @@ function hablar() {
     })
   }
   const sinVoz = (motivo) => {
-    if (motivo === 'denegado') { E.asis.fase = 'sin-permiso'; decir('No tengo permiso de micrófono o de reconocimiento de voz. Escribe tu pregunta.') }
-    render({ enfocar: 'pregunta' })
+    if (motivo === 'denegado') { E.asis.fase = 'sin-permiso'; decir('No tengo permiso de micrófono o de reconocimiento de voz. Escribe tu pregunta, o actívalos en Ajustes de iOS.') }
+    repintar({ enfocar: 'pregunta' })
   }
   pedirPermiso('microfono', { siguiente: () => pedirPermiso('voz', { siguiente: seguir, alternativa: sinVoz }), alternativa: sinVoz })
 }
@@ -767,7 +793,7 @@ function cancelarAsistente({ silencioso = false } = {}) {
   E.asis.turno++
   E.asis.fase = 'cancelado'
   E.asis.nota = estaba === 'escuchando' ? 'Cancelado. No envié nada.' : 'Cancelado. Descarté la respuesta.'
-  if (!silencioso) { decir(E.asis.nota); render() }
+  if (!silencioso) { decir(E.asis.nota); repintar({ respaldo: ['hablar', 'pregunta'] }) }
 }
 
 // ---------- Actividades en curso: cada una con su cancelación en un lugar fijo ----------
@@ -776,9 +802,9 @@ function actividades() {
   if (E.asis.fase === 'escuchando') lista.push({ id: 'escucha', texto: 'Escuchando tu pregunta', cancelar: 'Cancelar escucha', fn: () => cancelarAsistente(), transitoria: true })
   if (E.asis.fase === 'pensando') lista.push({ id: 'asistente', texto: 'Consultando al asistente', cancelar: 'Cancelar consulta', fn: () => cancelarAsistente(), transitoria: true })
   if (E.viaje.fase === 'consultando') lista.push({ id: 'viaje', texto: 'Consultando el viaje', cancelar: 'Cancelar consulta', fn: () => cancelarViaje(), transitoria: true })
-  if (E.gps.fase === 'buscando') lista.push({ id: 'gps', texto: 'Buscando tu ubicación', cancelar: 'Cancelar búsqueda', fn: () => { E.gps.fase = 'inactivo'; decir('Búsqueda de ubicación cancelada.'); render() }, transitoria: true })
-  if (E.gps.guiando) lista.push({ id: 'guia', texto: `Guía hacia ${ESTACION_CERCANA}`, cancelar: 'Detener guía', fn: () => guiar(false) })
-  if (sesionActiva()) lista.push({ id: 'sesion', texto: `Sesión de orientación: ${textoSesion().corto.toLowerCase()}`, cancelar: 'Detener sesión', fn: detenerSesion })
+  if (E.gps.fase === 'buscando') lista.push({ id: 'gps', texto: 'Buscando tu ubicación', cancelar: 'Cancelar búsqueda', fn: () => cancelarBusquedaGps(), transitoria: true })
+  if (E.gps.guiando) lista.push({ id: 'guia', texto: `Orientación hacia ${ESTACION_CERCANA}`, cancelar: 'Detener orientación', fn: () => guiar(false) })
+  if (sesionActiva()) lista.push({ id: 'sesion', texto: `Sesión de proximidad: ${textoSesion().corto.toLowerCase()}`, cancelar: 'Detener sesión', fn: detenerSesion })
   return lista
 }
 
@@ -791,6 +817,7 @@ function salirDe(actual, siguiente) {
   if (actual === 'viaje' && E.viaje.fase === 'consultando') { cancelarViaje({ silencioso: true }); decir('Saliste de Rutas y viaje: cancelé la consulta.') }
   if (actual === 'asistente' && ['escuchando', 'pensando'].includes(E.asis.fase)) { cancelarAsistente({ silencioso: true }); decir('Saliste del asistente: cancelé la pregunta.') }
   if (actual === 'lupa' && E.lupa.abierta) { E.lupa.abierta = false; E.lupa.congelada = false }
+  if (E.gps.fase === 'buscando' && E.gps.desde === actual) { cancelarBusquedaGps({ silencioso: true }); decir('Saliste de la pantalla: cancelé la búsqueda de ubicación.') }
 }
 function irArea(destino, { enfocar = 'h1' } = {}) {
   const actual = pantalla()
@@ -807,13 +834,13 @@ function irArea(destino, { enfocar = 'h1' } = {}) {
     if (i >= 0) E.pila = E.pila.slice(0, i + 1)
     else E.pila.push({ p: destino, desde })
   }
-  render({ enfocar })
+  repintar({ enfocar })
 }
 function volver() {
   if (E.pila.length < 2) return
   const saliente = E.pila.pop()
   salirDe(saliente.p, pantalla())
-  render({ enfocar: saliente.desde || 'h1' })
+  repintar({ enfocar: saliente.desde || 'h1' })
 }
 function pestanaActual() { return E.pila[0].p }
 
@@ -844,15 +871,15 @@ AREAS.inicio = () => {
   const s = textoSesion(), n = avisosActivos().length, au = textoAudio(), g = textoGps(), c = textoCatalogo()
   // El botón conserva su data-id al cambiar de «Iniciar» a «Detener»: el foco no se pierde.
   const iniciar = sesionActiva()
-    ? { id: 'sesion-principal', texto: 'Detener sesión de orientación', fn: detenerSesion }
-    : { id: 'sesion-principal', texto: 'Iniciar sesión de orientación', fn: iniciarSesion }
+    ? { id: 'sesion-principal', texto: 'Detener sesión de proximidad', fn: detenerSesion }
+    : { id: 'sesion-principal', texto: 'Iniciar sesión de proximidad', fn: iniciarSesion }
   return {
     titulo: 'Inicio',
     resumen: { tono: s.tono, texto: s.largo + (n ? ` Tienes ${n} aviso${n > 1 ? 's' : ''} del teléfono.` : '') },
     principal: iniciar,
     principalEnEstados: true,
     estados: [
-      { etiqueta: 'Sesión de orientación', valor: s.corto, tono: s.tono, nota: s.nota, accion: { ...iniciar, id: 'fila-sesion', texto: sesionActiva() ? 'Detener sesión' : 'Iniciar sesión' } },
+      { etiqueta: 'Sesión de proximidad', valor: s.corto, tono: s.tono, nota: s.nota, accion: { ...iniciar, id: 'fila-sesion', texto: sesionActiva() ? 'Detener sesión' : 'Iniciar sesión' } },
       { etiqueta: 'Accesorio', valor: E.acc.elegido ? `${E.acc.elegido} (simulado)` : 'Ninguno elegido', accion: { id: 'fila-accesorio', texto: 'Ver accesorio', fn: () => irArea('accesorio') } },
       { etiqueta: 'Audio', valor: au.corto, tono: au.tono, nota: au.nota },
       { etiqueta: 'Ubicación', valor: g.corto, tono: g.tono, accion: { id: 'fila-gps', texto: 'Ver ubicación', fn: () => irArea('gps') } },
@@ -892,19 +919,19 @@ function bloqueResultadoViaje() {
   const partes = [h('h2', { id: 'resultado-h2', 'data-id': 'resultado-titulo', tabindex: '-1' }, titulos[r.tipo])]
   if (r.tipo === 'verificado') {
     partes.push(parrafoEstado({ tono: 'ok', texto: 'paradas, sentido y horario programado confirmados.' }),
-      h('ol', { clase: 'pasos' }, h('li', {}, `Sube a la ${r.ruta} en ${r.o}, sentido ${r.sentido}.`), h('li', {}, `Bájate en ${r.d}.`)),
-      h('p', {}, 'Según el calendario verificado hay servicio programado ahora. No es tiempo real: confirma el horario antes de salir.'),
+      h('ol', { clase: 'pasos' }, pasosViaje(r).map((paso) => h('li', {}, paso))),
+      h('p', {}, NOTA_VERIFICADO),
       h('p', { clase: 'fuente' }, 'Fuente: programación GTFS de TransMilenio publicada el 3/11/2026, válida hasta el 4/12/2026.'))
   } else if (r.tipo === 'error') {
     partes.push(parrafoEstado({ tono: 'importante', texto: ERRORES[r.codigo] }))
-    if (r.codigo === '401') partes.push(boton('escribir-clave', 'Escribir clave (simulado)', () => { E.red = 'ok'; sincronizarPanel(); decir('Clave aceptada, simulado. Vuelve a consultar.'); render({ enfocar: 'consultar-viaje' }) }))
+    if (r.codigo === '401') partes.push(boton('escribir-clave', 'Escribir clave (simulado)', () => { E.red = 'ok'; sincronizarPanel(); decir('Clave aceptada, simulado. Vuelve a consultar.'); repintar({ enfocar: 'consultar-viaje' }) }))
     else partes.push(boton('reintentar-viaje', 'Reintentar', consultarViaje))
   } else {
     partes.push(parrafoEstado({ tono: r.tipo === 'igual' ? 'info' : 'importante', texto: textoResultado(r) }))
   }
   partes.push(h('div', { clase: 'fila-botones' },
     boton('repetir-viaje', 'Repetir', () => decir(textoResultado(r))),
-    boton('nueva-consulta', 'Nueva consulta', () => { Object.assign(E.viaje, { origen: '', destino: '', origenGps: false, fase: 'vacio', resultado: null }); render({ enfocar: 'origen' }) })))
+    boton('nueva-consulta', 'Nueva consulta', () => { Object.assign(E.viaje, { origen: '', destino: '', origenGps: false, fase: 'vacio', resultado: null }); repintar({ enfocar: 'origen' }) })))
   return h('section', { 'aria-labelledby': 'resultado-h2' }, partes)
 }
 AREAS.viaje = () => {
@@ -952,7 +979,7 @@ AREAS.metro = () => ({
 })
 AREAS['metro-estacion'] = () => {
   const m = METRO[E.metro]
-  const mover = (paso) => { E.metro = (E.metro + paso + METRO.length) % METRO.length; render({ enfocar: 'h1' }) }
+  const mover = (paso) => { E.metro = (E.metro + paso + METRO.length) % METRO.length; repintar({ enfocar: 'h1' }) }
   return {
     titulo: `${m.id}, ${m.nombre}`,
     fijo: { tono: 'sim', texto: 'Estación futura. Sin servicio comercial: no se puede viajar hoy.' },
@@ -976,8 +1003,9 @@ AREAS.gps = () => {
   let principal
   if (E.permisos.ubicacion === 'denegado' || (listo && g.clave === 'aproximada')) principal = escribir
   else if (!listo) principal = { texto: E.gps.fase === 'buscando' ? 'Buscando…' : 'Activar ubicación', fn: () => { if (E.gps.fase !== 'buscando') activarUbicacion() } }
-  else if (g.clave === 'vieja') principal = actualizar
-  else principal = E.gps.guiando ? { texto: 'Detener guía', fn: () => guiar(false) } : { texto: 'Guíame hacia la estación', fn: () => guiar(true) }
+  // Con ubicación antigua o imprecisa no se ofrece orientar: primero hay que actualizarla.
+  else if (!g.utilizable) principal = actualizar
+  else principal = E.gps.guiando ? { texto: 'Detener orientación', fn: () => guiar(false) } : { texto: 'Orientarme hacia la estación', fn: () => guiar(true) }
   const secundarias = []
   if (listo && g.utilizable) secundarias.push({ id: 'gps-repetir', texto: 'Repetir indicación', fn: () => decir(indicacionGps()) })
   if (listo && principal !== actualizar) secundarias.push(actualizar)
@@ -987,23 +1015,25 @@ AREAS.gps = () => {
   return {
     titulo: 'Ubicación y orientación',
     fijo: { tono: 'info', texto: 'La distancia es en línea recta hacia la estación. No es un camino peatonal accesible ni confirma la entrada.' },
-    resumen: { tono: t.tono, texto: listo && g.utilizable && E.gps.guiando ? indicacionGps() : t.largo },
+    resumen: { tono: t.tono, texto: listo && g.utilizable ? indicacionGps() : t.largo },
     estados: [
+      // Sin ubicación fiable no se muestra distancia ni dirección: serían precisión falsa.
       { etiqueta: 'Estación más cercana', tono: listo && !g.utilizable ? 'importante' : null,
-        valor: !listo ? 'Sin medir' : g.clave === 'aproximada' ? 'No disponible con ubicación aproximada' : `${ESTACION_CERCANA}, a ${metros(g.distancia)} ${direccion(g)}`,
+        valor: !listo ? 'Sin medir' : g.clave === 'aproximada' ? 'No disponible con ubicación aproximada'
+          : !g.utilizable ? `Posiblemente ${ESTACION_CERCANA}; sin distancia fiable` : `${ESTACION_CERCANA}, a ${metros(g.distancia)} ${direccion(g)}`,
         nota: !listo ? null : g.clave === 'imprecisa' ? 'No puedo saber si llegaste' : g.clave === 'vieja' ? 'Medida antigua: actualízala' : g.clave === 'aproximada' ? 'Escribe tu origen o activa Ubicación exacta en Ajustes de iOS' : g.distancia <= 30 ? 'Esto no confirma que estés en un acceso' : null },
       { etiqueta: 'Permiso', valor: { 'sin-preguntar': 'Sin preguntar', concedido: E.permisos.exacta ? 'Concedido, ubicación exacta' : 'Concedido, ubicación aproximada', denegado: 'Denegado' }[E.permisos.ubicacion], nota: E.permisos.ubicacion === 'denegado' ? 'Puedes escribir tu origen' : null, tono: E.permisos.ubicacion === 'denegado' ? 'importante' : null },
       { etiqueta: 'Precisión', valor: listo ? `±${metros(g.precision)}` : 'Sin medir', tono: listo && !g.utilizable ? 'importante' : null },
       { etiqueta: 'Antigüedad', valor: listo ? antiguedad(g.edad) : 'Sin medir', tono: listo && g.clave === 'vieja' ? 'importante' : null },
       { etiqueta: 'Dirección', valor: listo ? (g.brujula ? 'Relativa, según la brújula' : 'Solo punto cardinal: no sé hacia dónde miras') : 'Sin medir' },
-      { etiqueta: 'Guía', valor: E.gps.guiando ? 'Activa' : 'Detenida' },
+      { etiqueta: 'Orientación', valor: E.gps.guiando ? 'Activa' : 'Detenida' },
     ],
     principal, secundarias,
   }
 }
 AREAS.asistente = () => {
   const a = E.asis
-  const estados = { inactivo: 'Puedes escribir o hablar.', 'aviso-envio': 'Esperando que confirmes el envío.', escuchando: 'Escuchando. Di tu pregunta.', pensando: 'Consultando.', respuesta: 'Respuesta lista.', cancelado: a.nota, error: 'No pude responder.', 'sin-permiso': 'Sin permiso de voz. Escribe tu pregunta.', interrumpido: 'La escucha se detuvo por un aviso de proximidad. Toca Hablar para volver a intentarlo.' }
+  const estados = { inactivo: 'Puedes escribir o hablar.', 'aviso-envio': 'Esperando que confirmes el envío.', escuchando: 'Escuchando. Di tu pregunta.', pensando: 'Consultando.', respuesta: 'Respuesta lista.', cancelado: a.nota, error: 'No pude responder.', 'sin-permiso': 'Sin permiso de voz. Escribe tu pregunta, o activa el micrófono y el reconocimiento de voz en Ajustes de iOS.', interrumpido: 'La escucha se detuvo por un aviso de proximidad. Toca Hablar para volver a intentarlo.' }
   const tonos = { 'sin-permiso': 'importante', interrumpido: 'importante', error: 'importante', escuchando: 'info', pensando: 'info' }
   const hablarAccion = a.fase === 'escuchando'
     ? { id: 'hablar', texto: 'Detener escucha', fn: () => cancelarAsistente() }
@@ -1033,7 +1063,7 @@ function cuerpoAsistente() {
       parrafoEstado({ tono: 'info', texto: 'Tu pregunta se envía al servidor de TransMiVoz para responderte. Tu ubicación solo se envía si la activas. No se guarda un historial.' }),
       listaBotones([
         { id: 'envio-aceptar', texto: 'Entendido, enviar', fn: () => { a.envioAceptado = true; enviarPregunta(a.pendiente) } },
-        { id: 'envio-cancelar', texto: 'No enviar', fn: () => { Object.assign(a, { fase: 'inactivo', pendiente: null }); decir('No envié nada.'); render({ enfocar: 'pregunta' }) } },
+        { id: 'envio-cancelar', texto: 'No enviar', fn: () => { Object.assign(a, { fase: 'inactivo', pendiente: null }); decir('No envié nada.'); repintar({ enfocar: 'pregunta' }) } },
       ])))
   }
   if (a.fase === 'pensando') partes.push(boton('cancelar-asistente-local', 'Cancelar consulta', () => cancelarAsistente()))
@@ -1070,7 +1100,7 @@ AREAS.avisos = () => {
         h('p', { clase: 'fuente' }, `Origen: ${a.fuente}. Hora: ${hora(a.hora)}${a.silenciado ? '. Silenciado.' : ''}`),
         h('div', { clase: 'fila-botones' },
           boton('repetir-' + a.clave, 'Repetir', () => decir(a.texto)),
-          a.severidad === 'urgente' ? null : boton('silenciar-' + a.clave, a.silenciado ? 'Volver a avisar' : 'Silenciar', () => { a.silenciado = !a.silenciado; decir(a.silenciado ? 'Aviso silenciado.' : 'Aviso activo.'); render() })))))
+          a.severidad === 'urgente' ? null : boton('silenciar-' + a.clave, a.silenciado ? 'Volver a avisar' : 'Silenciar', () => { a.silenciado = !a.silenciado; decir(a.silenciado ? 'Aviso silenciado.' : 'Aviso activo.'); repintar() })))))
         : h('p', {}, 'No hay avisos del teléfono ahora.'),
       locales.some((a) => a.severidad === 'urgente') ? h('p', { clase: 'desc' }, 'Los avisos urgentes no se pueden silenciar mientras sigan activos.') : null,
       h('h2', {}, 'Anuncios del operador'),
@@ -1086,10 +1116,10 @@ AREAS.avisos = () => {
 AREAS.accesorio = () => {
   const s = textoSesion(), au = textoAudio()
   let principal
-  if (!E.acc.elegido) principal = { texto: 'Buscar accesorio', fn: () => { if (E.permisos.bluetooth !== 'concedido') return iniciarSesion(); E.acc.buscando = true; decir('Buscando accesorios cercanos. Hay uno, simulado.'); render() } }
+  if (!E.acc.elegido) principal = { texto: 'Buscar accesorio', fn: () => { if (E.permisos.bluetooth !== 'concedido') return iniciarSesion(); E.acc.buscando = true; decir('Buscando accesorios cercanos. Hay uno, simulado.'); repintar() } }
   else if (E.acc.estado === 'sinDatos') principal = { texto: 'Reconectar', fn: reconectar }
   else if (sesionActiva()) principal = { texto: 'Detener sesión', fn: detenerSesion }
-  else principal = { texto: 'Iniciar sesión de orientación', fn: iniciarSesion }
+  else principal = { texto: 'Iniciar sesión de proximidad', fn: iniciarSesion }
   principal.id = 'acc-principal'
   return {
     titulo: 'Accesorio',
@@ -1112,7 +1142,7 @@ AREAS.accesorio = () => {
           ['Objeto detectado', 'Distancia relativa al sensor montado. No es tu ubicación.'],
           ['Sin datos', 'No llegan datos válidos: desconexión o dato vencido. No repito distancias viejas.'],
           ['Incompatible', 'El accesorio usa otra versión de datos. No se muestran mediciones.']].map(([t, d]) => [h('dt', {}, t), h('dd', {}, d)])))),
-    secundarias: E.acc.elegido ? [{ id: 'olvidar-accesorio', texto: 'Olvidar accesorio', fn: () => { if (sesionActiva()) detenerSesion(); E.acc.elegido = null; decir('Accesorio olvidado.'); render() } }] : [],
+    secundarias: E.acc.elegido ? [{ id: 'olvidar-accesorio', texto: 'Olvidar accesorio', fn: () => { const activa = sesionActiva(); E.acc.elegido = null; if (activa) detenerSesion({ texto: 'Sesión detenida y accesorio olvidado. No recibirás avisos de proximidad.' }); else { decir('Accesorio olvidado.'); repintar({ enfocar: 'acc-principal' }) } } }] : [],
   }
 }
 function interruptor(id, etiqueta, activo, fn, desc) {
@@ -1132,12 +1162,12 @@ AREAS.ajustes = () => {
     cuerpo: () => h('div', {},
       h('fieldset', {}, h('legend', {}, 'Tamaño del texto'),
         [[100, 'Normal'], [135, 'Grande'], [200, 'Muy grande'], [310, 'Máximo']].map(([v, n]) => h('label', { clase: 'opcion' },
-          h('input', { type: 'radio', name: 'tamano', 'data-id': 'tamano-' + v, checked: E.ajustes.texto === v, on: { change: () => { E.ajustes.texto = v; aplicarAjustes(); decir(`Texto al ${v} por ciento.`); render() } } }),
+          h('input', { type: 'radio', name: 'tamano', 'data-id': 'tamano-' + v, checked: E.ajustes.texto === v, on: { change: () => { E.ajustes.texto = v; aplicarAjustes(); decir(`Texto al ${v} por ciento.`); repintar() } } }),
           `${n} (${v} %)`)),
         h('p', { clase: 'desc' }, 'En el iPhone se usa el tamaño de texto de Ajustes de iOS. Aquí se simula.')),
-      interruptor('baja-vision', 'Modo baja visión', E.ajustes.bajaVision, () => { E.ajustes.bajaVision = !E.ajustes.bajaVision; aplicarAjustes(); decir(`Modo baja visión ${E.ajustes.bajaVision ? 'activado' : 'apagado'}.`); render() },
+      interruptor('baja-vision', 'Modo baja visión', E.ajustes.bajaVision, () => { E.ajustes.bajaVision = !E.ajustes.bajaVision; aplicarAjustes(); decir(`Modo baja visión ${E.ajustes.bajaVision ? 'activado' : 'apagado'}.`); repintar() },
         'Fondo negro, texto blanco, acciones en amarillo y bordes más gruesos.'),
-      interruptor('voz-app', 'Leer con la voz de la app', E.ajustes.vozApp, () => { E.ajustes.vozApp = !E.ajustes.vozApp; decir(`Voz de la app ${E.ajustes.vozApp ? 'activada' : 'apagada'}.`); render() },
+      interruptor('voz-app', 'Leer con la voz de la app', E.ajustes.vozApp, () => { E.ajustes.vozApp = !E.ajustes.vozApp; decir(`Voz de la app ${E.ajustes.vozApp ? 'activada' : 'apagada'}.`); repintar() },
         'Si usas VoiceOver, normalmente no hace falta: VoiceOver ya lee los anuncios.'),
       h('h2', {}, 'Permisos'),
       h('ul', {}, ['ubicacion', 'microfono', 'voz', 'bluetooth', 'camara'].map((k) => h('li', {}, `${{ ubicacion: 'Ubicación', microfono: 'Micrófono', voz: 'Reconocimiento de voz', bluetooth: 'Bluetooth', camara: 'Cámara' }[k]}: ${nombres[p[k]]}`))),
@@ -1148,14 +1178,15 @@ AREAS.ajustes = () => {
     secundarias: [EMERGENCIA],
   }
 }
+function vecesZoom(z) { return z === 1 ? 'sin aumento' : `${String(z).replace('.', ',')} veces` }
 const FILTROS = { normal: ['Normal', 'none'], contraste: ['Alto contraste', 'grayscale(1) contrast(2.2)'], invertir: ['Invertir', 'invert(1)'], gris: ['Blanco y negro', 'grayscale(1) contrast(1.3)'] }
 AREAS.lupa = () => {
   const l = E.lupa
   const abrir = () => pedirPermiso('camara', {
-    siguiente: () => { l.abierta = true; decir('Lupa lista. Apunta al letrero para verlo más grande.'); render({ enfocar: 'lupa-congelar' }) },
-    alternativa: (motivo) => { if (motivo === 'denegado') decir('No tengo permiso de cámara. Puedes activarlo en Ajustes de iOS.'); render() },
+    siguiente: () => { l.abierta = true; decir('Lupa lista. Apunta al letrero para verlo más grande.'); repintar({ enfocar: 'lupa-congelar' }) },
+    alternativa: (motivo) => { if (motivo === 'denegado') decir('No tengo permiso de cámara. Puedes activarlo en Ajustes de iOS.'); repintar() },
   })
-  const zoom = (paso) => { l.zoom = Math.min(5, Math.max(1, l.zoom + paso)); decir(`Zoom ${String(l.zoom).replace('.', ',')} veces.`); render() }
+  const zoom = (paso) => { l.zoom = Math.min(5, Math.max(1, l.zoom + paso)); decir(`Zoom ${vecesZoom(l.zoom)}.`); repintar() }
   const base = {
     titulo: 'Lupa',
     fijo: { tono: 'info', texto: 'La lupa amplía la imagen de la cámara. No lee letreros, no identifica buses y no detecta obstáculos.' },
@@ -1173,17 +1204,17 @@ AREAS.lupa = () => {
       { etiqueta: 'Zoom', valor: `${String(l.zoom).replace('.', ',')}×` },
       { etiqueta: 'Filtro', valor: FILTROS[l.filtro][0] },
     ],
-    principal: { id: 'lupa-congelar', texto: l.congelada ? 'Reanudar imagen' : 'Congelar imagen', fn: () => { l.congelada = !l.congelada; decir(l.congelada ? 'Imagen congelada.' : 'Imagen en vivo.'); render() } },
+    principal: { id: 'lupa-congelar', texto: l.congelada ? 'Reanudar imagen' : 'Congelar imagen', fn: () => { l.congelada = !l.congelada; decir(l.congelada ? 'Imagen congelada.' : 'Imagen en vivo.'); repintar() } },
     cuerpo: () => h('div', {},
-      h('div', { clase: 'visor recorte', role: 'img', 'aria-label': `Imagen de cámara simulada, zoom ${String(l.zoom).replace('.', ',')} veces. La lupa no lee el texto.` },
+      h('div', { clase: 'visor recorte', role: 'img', 'aria-label': `Imagen de cámara simulada, zoom ${vecesZoom(l.zoom)}. La lupa no lee el texto.` },
         imagenLetrero(l)),
       h('div', { clase: 'fila-botones' },
         boton('lupa-alejar', 'Alejar', () => zoom(-0.5), { atributos: { 'aria-disabled': l.zoom <= 1 ? 'true' : null } }),
         boton('lupa-acercar', 'Acercar', () => zoom(0.5), { atributos: { 'aria-disabled': l.zoom >= 5 ? 'true' : null } })),
       h('fieldset', {}, h('legend', {}, 'Filtro de color'),
         Object.entries(FILTROS).map(([k, [n]]) => h('label', { clase: 'opcion' },
-          h('input', { type: 'radio', name: 'filtro', 'data-id': 'filtro-' + k, checked: l.filtro === k, on: { change: () => { l.filtro = k; decir(`Filtro ${n.toLowerCase()}.`); render() } } }), n)))),
-    secundarias: [{ id: 'cerrar-camara', texto: 'Cerrar cámara', fn: () => { l.abierta = false; l.congelada = false; decir('Cámara cerrada.'); render({ enfocar: 'abrir-camara' }) } }],
+          h('input', { type: 'radio', name: 'filtro', 'data-id': 'filtro-' + k, checked: l.filtro === k, on: { change: () => { l.filtro = k; decir(`Filtro ${n.toLowerCase()}.`); repintar() } } }), n)))),
+    secundarias: [{ id: 'cerrar-camara', texto: 'Cerrar cámara', fn: () => { l.abierta = false; l.congelada = false; decir('Cámara cerrada.'); repintar({ enfocar: 'abrir-camara' }) } }],
   }
 }
 function imagenLetrero(l) {
@@ -1200,34 +1231,34 @@ function imagenLetrero(l) {
 }
 
 // ---------- Variante A «Una acción principal»: frase de estado, acción grande, detalles plegados ----------
-function presentarA(spec, contenedor) {
-  contenedor.append(h('h1', { tabindex: '-1', 'data-id': 'titulo' }, spec.titulo))
-  if (spec.fijo) contenedor.append(parrafoEstado(spec.fijo))
-  if (spec.resumen) contenedor.append(parrafoEstado(spec.resumen, { 'data-id': 'resumen' }))
-  if (spec.principal) contenedor.append(boton(spec.principal.id, spec.principal.texto, spec.principal.fn, { clase: 'principal', desc: spec.principal.desc }))
-  if (spec.cuerpo) contenedor.append(spec.cuerpo())
-  if (spec.navegacion) contenedor.append(h('nav', { 'aria-labelledby': 'ir-a-h2' }, h('h2', { id: 'ir-a-h2' }, 'Ir a'), listaBotones(spec.navegacion)))
-  if (spec.secundarias && spec.secundarias.length) contenedor.append(h('h2', {}, 'Más acciones'), listaBotones(spec.secundarias))
-  if (spec.estados && spec.estados.length) {
+function presentarA(ficha, contenedor) {
+  contenedor.append(h('h1', { tabindex: '-1', 'data-id': 'titulo' }, ficha.titulo))
+  if (ficha.fijo) contenedor.append(parrafoEstado(ficha.fijo))
+  if (ficha.resumen) contenedor.append(parrafoEstado(ficha.resumen, { 'data-id': 'resumen' }))
+  if (ficha.principal) contenedor.append(boton(ficha.principal.id, ficha.principal.texto, ficha.principal.fn, { clase: 'principal', desc: ficha.principal.desc }))
+  if (ficha.cuerpo) contenedor.append(ficha.cuerpo())
+  if (ficha.navegacion) contenedor.append(h('nav', { 'aria-labelledby': 'ir-a-h2' }, h('h2', { id: 'ir-a-h2' }, 'Ir a'), listaBotones(ficha.navegacion)))
+  if (ficha.secundarias && ficha.secundarias.length) contenedor.append(h('h2', {}, 'Más acciones'), listaBotones(ficha.secundarias))
+  if (ficha.estados && ficha.estados.length) {
     contenedor.append(h('details', {}, h('summary', { 'data-id': 'detalles-estado' }, 'Detalles del estado'),
-      h('dl', { clase: 'detalles' }, spec.estados.map((e) => [h('dt', {}, e.etiqueta), h('dd', {}, e.valor, e.nota ? '. ' + e.nota : '')]))))
+      h('dl', { clase: 'detalles' }, ficha.estados.map((e) => [h('dt', {}, e.etiqueta), h('dd', {}, e.valor, e.nota ? '. ' + e.nota : '')]))))
   }
 }
 
 // ---------- Variante B «Pestañas y lista de estados»: todo el estado visible, acciones en cada fila ----------
-function presentarB(spec, contenedor) {
-  contenedor.append(h('h1', { tabindex: '-1', 'data-id': 'titulo' }, spec.titulo))
-  if (spec.fijo) contenedor.append(parrafoEstado(spec.fijo))
-  if (spec.estados && spec.estados.length) {
-    contenedor.append(h('h2', {}, 'Estado'), h('ul', { role: 'list', clase: 'lista-estados' }, spec.estados.map((e) => h('li', { 'data-tono': e.tono && e.tono !== 'neutro' ? e.tono : null },
+function presentarB(ficha, contenedor) {
+  contenedor.append(h('h1', { tabindex: '-1', 'data-id': 'titulo' }, ficha.titulo))
+  if (ficha.fijo) contenedor.append(parrafoEstado(ficha.fijo))
+  if (ficha.estados && ficha.estados.length) {
+    contenedor.append(h('h2', {}, 'Estado'), h('ul', { role: 'list', clase: 'lista-estados' }, ficha.estados.map((e) => h('li', { 'data-tono': e.tono && e.tono !== 'neutro' ? e.tono : null },
       e.tono && e.tono !== 'neutro' ? etiquetaTono(e.tono) : null,
       h('span', { clase: 'etiqueta' }, e.etiqueta),
       h('span', {}, e.valor, e.nota ? '. ' + e.nota : ''),
       e.accion ? h('div', { clase: 'fila-accion' }, boton(e.accion.id, e.accion.texto, e.accion.fn)) : null))))
-  } else if (spec.resumen) contenedor.append(parrafoEstado(spec.resumen, { 'data-id': 'resumen' }))
-  if (spec.cuerpo) contenedor.append(spec.cuerpo())
-  if (spec.navegacion) contenedor.append(listaBotones(spec.navegacion))
-  const acciones = [spec.principalEnEstados ? null : spec.principal, ...(spec.secundarias || [])].filter(Boolean)
+  } else if (ficha.resumen) contenedor.append(parrafoEstado(ficha.resumen, { 'data-id': 'resumen' }))
+  if (ficha.cuerpo) contenedor.append(ficha.cuerpo())
+  if (ficha.navegacion) contenedor.append(listaBotones(ficha.navegacion))
+  const acciones = [ficha.principalEnEstados ? null : ficha.principal, ...(ficha.secundarias || [])].filter(Boolean)
   if (acciones.length) contenedor.append(h('h2', {}, 'Acciones'), listaBotones(acciones))
 }
 
@@ -1284,10 +1315,12 @@ function aplicarAjustes() {
   d.classList.toggle('texto-grande', E.ajustes.texto >= 200)
 }
 // Al repintar se conserva el foco por data-id: la persona no pierde su lugar en VoiceOver.
-function render({ enfocar = null } = {}) {
+// «enfocar»: destino pedido. «respaldo»: destino solo si el control que tenía el foco desapareció.
+function repintar({ enfocar = null, respaldo = null } = {}) {
   const activo = document.activeElement
   const enApp = activo && $('#disenio').contains(activo)
   const idFoco = enApp && activo.dataset ? activo.dataset.id : null
+  const enActividad = enApp && !!activo.closest('#actividad')
   const seleccion = enApp && activo.tagName === 'INPUT' && activo.type === 'text' ? [activo.selectionStart, activo.selectionEnd] : null
   pintarArmazon()
   aplicarAjustes()
@@ -1296,17 +1329,24 @@ function render({ enfocar = null } = {}) {
   pintarPestanas()
   const contenido = $('#contenido')
   contenido.replaceChildren()
-  const spec = (AREAS[pantalla()] || AREAS.inicio)()
-  ;(E.variante === 'A' ? presentarA : presentarB)(spec, contenido)
+  const ficha = (AREAS[pantalla()] || AREAS.inicio)()
+  ;(E.variante === 'A' ? presentarA : presentarB)(ficha, contenido)
   $('#voz-texto').textContent = E.voz.texto
-  document.title = `PROTOTIPO EA-02 · ${E.variante} · ${spec.titulo}`
+  document.title = `PROTOTIPO DESECHABLE EA-02 · ${E.variante} · ${ficha.titulo}`
   sincronizarPanel()
   if (document.querySelector('dialog[open]')) return
-  const objetivo = enfocar === 'h1' ? $('#contenido h1') : enfocar ? $(`#app [data-id="${CSS.escape(enfocar)}"]`) : idFoco ? $(`#app [data-id="${CSS.escape(idFoco)}"]`) : null
+  // Prioridad: destinos pedidos (en orden), luego el control que tenía el foco, luego el título.
+  // Si el foco estaba en la app y su control desapareció, nunca queda en <body>.
+  const buscar = (id) => (id === 'h1' ? $('#contenido h1') : $(`#app [data-id="${CSS.escape(id)}"]`))
+  // Al cancelar desde la franja de actividad, el foco pasa a «Repetir», junto a lo que la app acaba de decir.
+  const candidatos = [...[].concat(enfocar || []), ...(idFoco ? [idFoco] : []), ...[].concat(respaldo || []), ...(enActividad ? ['repetir-voz'] : [])]
+  let objetivo = null
+  for (const id of candidatos) { objetivo = buscar(id); if (objetivo) break }
+  if (!objetivo && (enfocar || enApp)) objetivo = $('#contenido h1')
   if (objetivo && objetivo !== document.activeElement) {
     objetivo.focus()
-    if (seleccion && objetivo === $(`#app [data-id="${CSS.escape(idFoco)}"]`) && objetivo.setSelectionRange) objetivo.setSelectionRange(seleccion[0], seleccion[1])
-  } else if (enfocar && !objetivo) $('#contenido h1').focus()
+    if (seleccion && idFoco && objetivo === buscar(idFoco) && objetivo.setSelectionRange) objetivo.setSelectionRange(seleccion[0], seleccion[1])
+  }
 }
 
 // ---------- Escenarios de tarea: todos empiezan en Inicio ----------
@@ -1316,6 +1356,7 @@ function reiniciar({ conservar = true } = {}) {
   const variante = E.variante, ajustes = { ...E.ajustes }
   Object.assign(E, estadoInicial())
   if (conservar) { E.variante = variante; E.ajustes = ajustes }
+  sistemaPendiente = false
   for (const d of document.querySelectorAll('dialog[open]')) d.close()
 }
 const ESCENARIOS = {
@@ -1329,13 +1370,13 @@ const ESCENARIOS = {
   T7: ['T7 Distinguir aviso local, anuncio y Metro', () => { E.operador = 'ejemplo'; avisar('audio', { severidad: 'importante', texto: 'Audio: sin salida confirmada. Se desconectaron los auriculares. No reproduzco avisos por el altavoz automáticamente.', fuente: 'Audio del iPhone (simulado)' }); E.audio = 'sin-salida' }],
   T8: ['T8 Estación futura del Metro', () => {}],
   T9: ['T9 Accesorio desconectado y reconexión', () => { E.permisos.bluetooth = 'concedido'; E.acc.elegido = 'TMV-01'; E.acc.estado = 'sinDeteccion' }],
-  T10: ['T10 Lupa, texto máximo y modo baja visión', () => {}],
+  T10: ['T10 Lupa con texto al 200 % y modo baja visión', () => { Object.assign(E.ajustes, { texto: 200, bajaVision: true }) }],
 }
 function aplicarEscenario(clave) {
   reiniciar()
   ESCENARIOS[clave][1]()
   decir('Escenario listo. Estás en Inicio.')
-  render({ enfocar: 'h1' })
+  repintar({ enfocar: 'h1' })
 }
 
 // ---------- Panel del facilitador ----------
@@ -1345,7 +1386,7 @@ function cambiarVariante(v) {
   E.variante = v
   E.pila = [{ p: 'inicio' }]
   if (actual !== 'inicio') irArea(actual === 'mas' && v === 'A' ? 'inicio' : actual, { enfocar: 'h1' })
-  else render({ enfocar: 'h1' })
+  else repintar({ enfocar: 'h1' })
   try { const u = new URL(location.href); u.searchParams.set('variante', v); history.replaceState(null, '', u) } catch { /* about:blank o file: sin historial */ }
 }
 function sincronizarPanel() {
@@ -1357,12 +1398,12 @@ const ACCIONES_PANEL = {
   'variante-anterior': () => cambiarVariante(E.variante === 'A' ? 'B' : 'A'),
   'variante-siguiente': () => cambiarVariante(E.variante === 'A' ? 'B' : 'A'),
   'aplicar-escenario': () => aplicarEscenario($('#panel-escenario').value),
-  reiniciar: () => { reiniciar(); render({ enfocar: 'h1' }); return 'Estado reiniciado.' },
+  reiniciar: () => { reiniciar(); repintar({ enfocar: 'h1' }); return 'Estado reiniciado.' },
   'medicion-frente': () => inyectarMedicion(1200, 'al frente'),
   'medicion-sin-angulo': () => inyectarMedicion(800, null),
   'sin-deteccion': volverSinDeteccion,
   desconectar: desconectarAccesorio,
-  incompatible: () => { E.acc.incompatible = true; if (sesionActiva()) E.acc.estado = 'incompatible'; render(); return 'Accesorio marcado como incompatible.' },
+  incompatible: () => { E.acc.incompatible = true; if (sesionActiva()) E.acc.estado = 'incompatible'; repintar(); return 'Accesorio marcado como incompatible.' },
   'bluetooth-apagado': (boton) => {
     E.acc.bluetooth = E.acc.bluetooth === 'apagado' ? 'encendido' : 'apagado'
     boton.textContent = E.acc.bluetooth === 'apagado' ? 'Encender Bluetooth' : 'Apagar Bluetooth'
@@ -1371,8 +1412,8 @@ const ACCIONES_PANEL = {
       E.acc.estado = 'bluetoothApagado'
       avisar('accesorio-desconectado', { severidad: 'urgente', texto: 'Bluetooth apagado. No hay avisos de proximidad.', fuente: 'Accesorio (simulado)' })
       decir('Bluetooth apagado. No hay avisos de proximidad.', { urgente: true })
-    } else if (E.acc.bluetooth === 'encendido' && E.acc.estado === 'bluetoothApagado') E.acc.estado = 'desactivada'
-    render()
+    } else if (E.acc.bluetooth === 'encendido') { resolverAviso('accesorio-desconectado'); if (E.acc.estado === 'bluetoothApagado') E.acc.estado = 'desactivada' }
+    repintar()
     return `Bluetooth ${E.acc.bluetooth}.`
   },
   comprobar: () => JSON.stringify(comprobar(), null, 1),
@@ -1380,7 +1421,7 @@ const ACCIONES_PANEL = {
 const CAMPOS_PANEL = {
   red: (v) => {
     E.red = v
-    if (v === 'sin-red') avisar('red', { severidad: 'importante', texto: 'Sin conexión con el servidor: no hay consultas de transporte nuevas. La sesión de orientación sigue.', fuente: 'Datos (simulado)' })
+    if (v === 'sin-red') avisar('red', { severidad: 'importante', texto: 'Sin conexión con el servidor: no hay consultas de transporte nuevas. La sesión de proximidad sigue.', fuente: 'Datos (simulado)' })
     else resolverAviso('red')
     if (v === 'catalogo-viejo') avisar('catalogo', { severidad: 'info', texto: 'Los datos de rutas son una copia guardada del 24/9/2026.', fuente: 'Datos (simulado)' })
     else resolverAviso('catalogo')
@@ -1390,6 +1431,7 @@ const CAMPOS_PANEL = {
   operador: (v) => { E.operador = v },
   gps: (v) => {
     E.gps.escenario = v
+    revisarOrientacion()
     if (E.gps.fase === 'listo' && !gpsActual().utilizable) avisar('gps', { severidad: 'importante', texto: textoGps().largo, fuente: 'Ubicación (simulada)' })
     else resolverAviso('gps')
   },
@@ -1406,7 +1448,7 @@ $('#panel').addEventListener('change', (evento) => {
   const campo = evento.target.dataset.panelCampo
   if (!campo) return
   CAMPOS_PANEL[campo](evento.target.value)
-  render()
+  repintar()
 })
 $('#panel-escenario').append(...Object.entries(ESCENARIOS).map(([k, [n]]) => h('option', { value: k }, n)))
 // Escape imita el gesto de escape de VoiceOver (dos dedos en «Z»): cancela lo transitorio o vuelve.
@@ -1557,6 +1599,7 @@ const PREPARADOS = {
   'gps-inicial': ['gps', () => {}],
   'gps-guiando': ['gps', () => { gpsListo('precisa'); E.gps.guiando = true }],
   'gps-imprecisa': ['gps', () => gpsListo('imprecisa')],
+  'gps-vieja': ['gps', () => gpsListo('vieja')],
   'gps-aproximada': ['gps', () => { gpsListo('precisa'); E.permisos.exacta = false }],
   'gps-denegado': ['gps', () => { E.permisos.ubicacion = 'denegado' }],
   'asistente-inicial': ['asistente', () => {}],
@@ -1588,7 +1631,7 @@ function preparar(nombre, { variante = E.variante, texto = E.ajustes.texto, baja
   Object.assign(E.ajustes, { texto, bajaVision })
   ajustar()
   if (destino) irArea(destino, { enfocar: 'h1' })
-  else render({ enfocar: 'h1' })
+  else repintar({ enfocar: 'h1' })
   if (despuesDeRender) despuesDeRender()
   return comprobar()
 }
@@ -1601,8 +1644,11 @@ if (parametros.get('bajavision') === '1') E.ajustes.bajaVision = true
 if (parametros.get('panel') === '0') $('#panel').hidden = true
 const escenario = parametros.get('escenario')
 if (escenario && ESCENARIOS[escenario]) { ESCENARIOS[escenario][1](); $('#panel-escenario').value = escenario }
-render()
-window.prototipo = { version: VERSION, E, render, irArea, volver, cambiarVariante, aplicarEscenario, reiniciar, preparar, PREPARADOS, comprobar, paradasLectura, ACCIONES_PANEL, CAMPOS_PANEL }
+// ?desconectar=20 desconecta el accesorio a los 20 s, para T9 sin el panel visible.
+const segundos = Number(parametros.get('desconectar'))
+if (segundos > 0 && segundos <= 600) despues(segundos * 1000, desconectarAccesorio)
+repintar()
+window.prototipo = { version: VERSION, E, repintar, irArea, volver, cambiarVariante, aplicarEscenario, reiniciar, preparar, PREPARADOS, comprobar, paradasLectura, planear, responderAsistente, ACCIONES_PANEL, CAMPOS_PANEL }
 })()
 </script>
 </body>

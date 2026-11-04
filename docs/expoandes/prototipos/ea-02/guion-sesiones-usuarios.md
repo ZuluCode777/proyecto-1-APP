@@ -5,7 +5,8 @@ Para A2 y el equipo. Las sesiones requieren personas, consentimiento y facilitac
 ## Antes de la sesión
 
 - Participantes: personas ciegas o con baja visión que acepten participar. Registrar solo un código (P1, P2…), nunca nombres, teléfonos ni fotos de la cara.
-- Equipo: iPhone con VoiceOver (para quien lo usa) o con su tamaño de texto habitual, y auriculares si los usa.
+- Equipo: iPhone con VoiceOver para quien lo usa, y auriculares si los usa.
+- El prototipo no toma el tamaño de texto del iPhone. Preguntar qué tamaño usa la persona y elegir el más parecido con `texto=100`, `135`, `200` o `310`; añadir `bajavision=1` si lo prefiere.
 - Abrir el prototipo en Safari del iPhone según el [README](README.md), con `panel=0` para que el panel no aparezca en el recorrido.
 - Preparar cada tarea con su escenario en la dirección: `prototipo.html?variante=A&panel=0&escenario=T2`. La persona que facilita cambia la dirección entre tareas; quien participa empieza siempre en Inicio.
 - Alternar el orden: la mitad de los participantes empieza por A y la otra mitad por B.
@@ -23,7 +24,7 @@ Leer cada tarea tal cual, sin indicar dónde tocar. Ayudar solo si la persona lo
 
 | Tarea | Escenario | Instrucción | Éxito |
 | --- | --- | --- | --- |
-| T1 | `T1` | «Empieza la sesión con tu accesorio y dime qué detecta. Luego deténla.» | Dice que no detecta nada **y** que eso no significa camino libre; detiene la sesión. |
+| T1 | `T1` | «Empieza la sesión con tu accesorio y dime qué detecta. Luego detenla.» | Dice que no detecta nada **y** que eso no significa camino libre; detiene la sesión. |
 | T2 | `T2` | «Averigua cómo ir de Terminal a Calle 72.» | Dice dónde subir y dónde bajar. |
 | T3 | `T3` | «Averigua cómo ir de Portal Usme a Molinos.» | Explica que la app no confirma dónde subir. |
 | T4 | `T4` | «Averigua cómo ir de Terminal a Calle 72 usando tu ubicación como origen.» | Ante el permiso denegado, escribe el origen y obtiene el viaje. |
@@ -31,8 +32,8 @@ Leer cada tarea tal cual, sin indicar dónde tocar. Ayudar solo si la persona lo
 | T6 | `T6` | «Pregúntale al asistente por voz y cancela antes de que responda.» | Cancela; no llega respuesta. |
 | T7 | `T7` | «Revisa los avisos y dime cuál viene del teléfono y cuál de TransMilenio.» | Distingue aviso del teléfono, anuncio (de ejemplo) y Metro. |
 | T8 | `T8` | «¿Se puede viajar hoy desde la estación Avenida Jiménez del Metro?» | Dice que no hay servicio. |
-| T9 | `T9`, **sin** `panel=0` | Antes de entregar el iPhone, quien facilita pulsa «Desconectar» en el panel, al final de la página, y vuelve arriba. «Algo cambió. ¿Qué pasó? Arréglalo.» | Reconoce la desconexión y reconecta. |
-| T10 | `T10` | «Usa la lupa para ampliar un letrero y deja la imagen quieta.» Solo para baja visión. | Abre la lupa, amplía y congela. |
+| T9 | `T9` y `desconectar=20` | El accesorio se desconecta solo a los 20 s. «Usa la app; si algo cambia, dime qué pasó y arréglalo.» | Reconoce la desconexión y reconecta. |
+| T10 | `T10` (texto al 200 % y baja visión) | «Usa la lupa para ampliar un letrero y deja la imagen quieta.» Solo para baja visión. | Abre la lupa, amplía y congela. |
 
 ## Registro por tarea
 
@@ -59,6 +60,11 @@ Copiar esta tabla por participante. Sin datos identificables.
 5. ¿Qué cambiarías primero?
 
 Registrar opiniones distintas tal como se dan; no convertir la preferencia del equipo en hallazgo de usuarios.
+
+## Efectos del prototipo que no son del diseño
+
+- Cuando llega un evento (conexión, vencimiento, desconexión), el prototipo repinta la pantalla y VoiceOver puede releer el control enfocado. No atribuirlo a la variante.
+- Accesorio, ubicación, cámara y permisos son simulados; los avisos del sistema llevan «Simulación del aviso de iOS».
 
 ## Después
 
