@@ -1,7 +1,8 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import snapshot from "../data/transmilenio.json" with { type: "json" }
 import { distanceToPath, pathBetween } from "./geo"
-import { fullStationName, normalizeTransmilenio } from "./transmilenio"
+import { fullStationName, normalizeTransmilenio, reconcileDirection, TransmilenioDataSchema } from "./transmilenio"
 
 // Respuesta mínima con la misma forma que devuelve el servicio ArcGIS.
 const stationsRaw = {
@@ -37,6 +38,37 @@ test("convierte la respuesta de ArcGIS en estaciones y rutas", () => {
 test("deduce las estaciones del recorrido en orden y descarta las lejanas", () => {
   const data = normalizeTransmilenio(stationsRaw, routesRaw, "2026-09-23T00:00:00Z", "live")
   assert.deepEqual(data.routes[0].stops, ["Centro", "Norte"])
+})
+
+test("no deduce paradas atendidas: servedStops queda vacío", () => {
+  const data = normalizeTransmilenio(stationsRaw, routesRaw, "2026-09-23T00:00:00Z", "live")
+  assert.deepEqual(data.routes[0].servedStops, [], "la geometría no se convierte en paradas verificadas")
+})
+
+test("reconcileDirection detecta el sentido consistente, el contradictorio y el indeterminado", () => {
+  const consistente = reconcileDirection("Alfa", "Eco", ["Alfa", "Bravo", "Eco"])
+  assert.equal(consistente.agreement, "consistente")
+  assert.equal(consistente.verified, false, "coincidir con la geometría no equivale a fuente oficial")
+
+  const contradictorio = reconcileDirection("Alfa", "Eco", ["Eco", "Bravo", "Alfa"])
+  assert.equal(contradictorio.agreement, "contradictorio")
+  assert.equal(contradictorio.verified, false)
+
+  const indeterminado = reconcileDirection("Alfa", "Eco", ["Bravo", "Charlie"])
+  assert.equal(indeterminado.agreement, "indeterminado")
+})
+
+test("8 G y 8 T quedan marcados como sentido contradictorio, sin invertir la geometría", () => {
+  const data = TransmilenioDataSchema.parse(snapshot)
+  const g = data.routes.find((r) => r.code === "8 G")
+  const t = data.routes.find((r) => r.code === "8 T")
+  assert.ok(g && t, "el catálogo real debe tener 8 G y 8 T")
+  assert.equal(g!.directionEvidence.agreement, "contradictorio")
+  assert.equal(t!.directionEvidence.agreement, "contradictorio")
+  assert.equal(g!.directionEvidence.verified, false)
+  // No se invierten: los stops conservan su orden original (no verificado).
+  assert.equal(g!.stops[0], "Terminal")
+  assert.equal(g!.stops[g!.stops.length - 1], "Guatoque - Veraguas")
 })
 
 test("mide la distancia de un punto a una línea", () => {

@@ -12,9 +12,23 @@ import { normalize } from "@/lib/text"
  *
  * El servicio no publica qué estaciones atiende cada ruta. Se deducen por
  * geometría: una estación pertenece al recorrido si queda a menos de
- * `STATION_MATCH_METERS` de la línea de la ruta. Eso da las estaciones por las
- * que pasa el bus, no necesariamente las que para: un servicio expreso pasa
- * por estaciones donde no se detiene.
+ * `STATION_MATCH_METERS` de la línea de la ruta. Eso da las ESTACIONES
+ * CERCANAS AL TRAZADO por las que pasa el bus, no las paradas que atiende: un
+ * servicio expreso pasa cerca de estaciones donde no se detiene.
+ *
+ * Por eso `BusRoute.stops` (estaciones cercanas al trazado) sirve solo para
+ * dibujar e ilustrar el recorrido. Las PARADAS ATENDIDAS —dónde se puede subir
+ * o bajar, en qué sentido— viven aparte en `BusRoute.servedStops`, y solo se
+ * llenan con evidencia de una fuente vigente. Mientras no haya esa evidencia,
+ * `servedStops` queda vacío y el planificador no convierte la cercanía
+ * geométrica en una instrucción de abordaje (ver `lib/routes.ts`).
+ *
+ * Capa 15 del servicio ArcGIS no expone un campo ni una relación con la
+ * secuencia de paradas atendidas por servicio y sentido; el directorio
+ * `GTFS_dinamicos` del operador responde con `services: []`. Un directorio
+ * vacío no demuestra que la matriz oficial no exista: solo que no se consiguió
+ * aquí una fuente descargable con licencia y vigencia comprobables. Integrar
+ * esa matriz, cuando se valide, es un cambio aditivo sobre `servedStops`.
  */
 export const ARCGIS_BASE =
   "https://gis.transmilenio.gov.co/arcgis/rest/services/ConsultaSubgerenciaPlanificacionSITP/Consulta_Planificacion_SITP/FeatureServer"
@@ -30,6 +44,65 @@ export const StationSchema = z.object({
 })
 export type Station = z.infer<typeof StationSchema>
 
+/**
+ * Estado operativo de una parada atendida según la fuente que la respalda.
+ * `operativa` solo cuando la fuente confirma que hoy se puede usar; los demás
+ * estados obligan a comunicar incertidumbre en vez de instruir el abordaje.
+ */
+export const ServedStopStatusSchema = z.enum(["operativa", "suspendida", "sin-verificar"])
+export type ServedStopStatus = z.infer<typeof ServedStopStatusSchema>
+
+/**
+ * Parada ATENDIDA por un servicio en un sentido: punto donde una fuente
+ * vigente confirma que se permite subir o bajar. Es distinta de una estación
+ * cercana al trazado (`BusRoute.stops`), que solo dice que el bus pasa cerca.
+ *
+ * `order` ubica la parada en la secuencia del servicio para poder planear un
+ * viaje con sentido. `source`, `date` y `status` dejan registrada la
+ * procedencia, la vigencia y el estado operativo, de modo que un dato viejo o
+ * sin respaldo no se confunda con una confirmación actual.
+ */
+export const ServedStopSchema = z.object({
+  /** Nombre de la estación, igual que en `Station.name`. */
+  name: z.string(),
+  /** Posición en la secuencia atendida, de origen a destino. */
+  order: z.number().int().nonnegative(),
+  /** Si la fuente confirma que el servicio permite abordar aquí. */
+  canBoard: z.boolean(),
+  /** Si la fuente confirma que el servicio permite descender aquí. */
+  canAlight: z.boolean(),
+  /** Entidad o documento que respalda la parada (fuente). */
+  source: z.string(),
+  /** Fecha ISO de la evidencia que respalda la parada. */
+  date: z.string(),
+  /** Estado operativo según la fuente. */
+  status: ServedStopStatusSchema,
+})
+export type ServedStop = z.infer<typeof ServedStopSchema>
+
+/**
+ * Cómo se reconcilió el sentido del servicio (`from`/`to`) con el orden de las
+ * estaciones cercanas al trazado (`stops`).
+ *
+ * - `consistente`: la etiqueta y la secuencia coinciden.
+ * - `contradictorio`: `from`/`to` y la secuencia apuntan a sentidos opuestos
+ *   (caso de 8 G y 8 T). No se invierte la geometría; se marca para que los
+ *   consumidores no afirmen un sentido que la fuente no confirma.
+ * - `indeterminado`: no hay datos suficientes para comparar.
+ */
+export const DirectionAgreementSchema = z.enum(["consistente", "contradictorio", "indeterminado"])
+export type DirectionAgreement = z.infer<typeof DirectionAgreementSchema>
+
+export const DirectionEvidenceSchema = z.object({
+  /** Resultado de comparar la etiqueta de sentido con la secuencia geométrica. */
+  agreement: DirectionAgreementSchema,
+  /** Si una fuente vigente confirmó el sentido declarado en `from`/`to`. */
+  verified: z.boolean(),
+  /** Nota corta con la evidencia usada y sus límites. */
+  note: z.string(),
+})
+export type DirectionEvidence = z.infer<typeof DirectionEvidenceSchema>
+
 export const BusRouteSchema = z.object({
   id: z.string(),
   /** Código del servicio, por ejemplo "B23". */
@@ -37,8 +110,25 @@ export const BusRouteSchema = z.object({
   label: z.string(),
   from: z.string(),
   to: z.string(),
-  /** Nombres de las estaciones por las que pasa, en orden de recorrido. */
+  /**
+   * Estaciones CERCANAS AL TRAZADO por las que pasa el bus, en orden de
+   * recorrido. Sirven para dibujar e ilustrar el recorrido; que una estación
+   * esté en esta lista NO demuestra que el servicio se detenga allí.
+   */
   stops: z.array(z.string()),
+  /**
+   * Paradas ATENDIDAS verificadas con fuente, fecha, sentido y estado. Vacío
+   * mientras no haya una fuente vigente que confirme dónde para el servicio.
+   * El planificador solo puede recomendar abordaje/descenso/transbordo con
+   * estas paradas, no con las estaciones cercanas al trazado. Campo aditivo.
+   */
+  servedStops: z.array(ServedStopSchema).default([]),
+  /** Reconciliación del sentido declarado con la secuencia geométrica. */
+  directionEvidence: DirectionEvidenceSchema.default({
+    agreement: "indeterminado",
+    verified: false,
+    note: "Sentido no reconciliado con una fuente vigente.",
+  }),
   /** Recorrido como pares [lat, lng], simplificado para dibujarlo. */
   path: z.array(z.tuple([z.number(), z.number()])),
   schedule: z.object({
@@ -112,6 +202,53 @@ export function fullStationName(raw: string, stations: Station[], stops: string[
   return pick.length === 1 ? pick[0].name : raw
 }
 
+/**
+ * Compara el sentido declarado (`from`/`to`) con el orden de las estaciones
+ * cercanas al trazado, para no afirmar un sentido que la fuente no confirma.
+ *
+ * El servicio ArcGIS trae `orig_ruta`/`dest_ruta` por un lado y la geometría
+ * por otro, sin garantizar que coincidan: en 8 G y 8 T la etiqueta y la
+ * secuencia apuntan a sentidos opuestos. Aquí solo se detecta y se registra la
+ * contradicción; NO se invierte la geometría ni se inventa una dirección. La
+ * decisión de cuál atributo es el correcto exige una fuente oficial vigente,
+ * que no se tiene, así que `verified` queda en falso.
+ */
+export function reconcileDirection(from: string, to: string, stops: string[]): DirectionEvidence {
+  if (stops.length < 2 || !from || !to) {
+    return {
+      agreement: "indeterminado",
+      verified: false,
+      note: "Faltan estaciones o etiqueta para comparar el sentido.",
+    }
+  }
+  const first = stops[0]
+  const last = stops[stops.length - 1]
+  const startsAtOrigin = first === from
+  const endsAtDestination = last === to
+  // El sentido inverso: la secuencia empieza en el destino y termina en el origen.
+  const reversed = first === to && last === from
+
+  if (startsAtOrigin && endsAtDestination) {
+    return {
+      agreement: "consistente",
+      verified: false,
+      note: "La secuencia de estaciones coincide con el sentido declarado; falta confirmarlo con una fuente oficial vigente.",
+    }
+  }
+  if (reversed) {
+    return {
+      agreement: "contradictorio",
+      verified: false,
+      note: `La secuencia empieza en «${first}» y termina en «${last}», al revés del sentido declarado «${from}» hacia «${to}». No se invierte la geometría; se requiere fuente oficial vigente para resolver cuál es correcto.`,
+    }
+  }
+  return {
+    agreement: "indeterminado",
+    verified: false,
+    note: `Los extremos de la secuencia («${first}» … «${last}») no coinciden exactamente con el sentido declarado «${from}» hacia «${to}».`,
+  }
+}
+
 /** Convierte las respuestas crudas de ArcGIS en los datos que usa la app. */
 export function normalizeTransmilenio(
   stationsRaw: ArcgisFeatureSet,
@@ -156,6 +293,9 @@ export function normalizeTransmilenio(
       from,
       to,
       stops,
+      // No hay fuente vigente de paradas atendidas; queda vacío a propósito.
+      servedStops: [],
+      directionEvidence: reconcileDirection(from, to, stops),
       path,
       schedule: {
         weekday: clean(f.attributes.hor_habil),

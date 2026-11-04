@@ -83,6 +83,11 @@ export function TripView({ legs, data, onOpenRoute, onBack }: TripViewProps) {
           </li>
         ))}
       </ol>
+
+      <p className="mt-4 rounded-2xl border-3 border-border bg-card p-4 text-base text-muted-foreground" role="note">
+        Plan armado con paradas verificadas. No tengo los horarios en tiempo real; confirma que el servicio esté
+        operando antes de salir.
+      </p>
     </section>
   )
 }

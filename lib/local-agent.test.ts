@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import snapshot from "../data/transmilenio.json" with { type: "json" }
+import { datosExpreso, datosTransbordoVerificado, datosVerificadosDirecto } from "./fixtures-sinteticas"
 import { interpretCommand, parseIntent } from "./local-agent"
 import { TransmilenioDataSchema } from "./transmilenio"
 
@@ -39,27 +40,54 @@ test("toma origen y destino en el orden en que se dicen", () => {
   })
 })
 
-test("planea un viaje directo con datos reales y deja los pasos", () => {
-  const reply = interpretCommand("cómo llego de Portal Usme a Molinos", data)
+test("con paradas verificadas, planea un viaje directo y deja los pasos", () => {
+  const fx = datosVerificadosDirecto()
+  const reply = interpretCommand("cómo llego de Alfa a Eco", fx)
   assert.ok(reply.action === "trip")
   assert.equal(reply.trip.length, 1)
-  assert.match(reply.reply, /^Toma la \S+ en Portal Usme y bájate en Molinos/)
+  assert.match(reply.reply, /^Toma la V1 en Alfa y bájate en Eco/)
   assert.ok(reply.steps.length >= 3, "debe registrar los pasos")
 })
 
-test("sin origen ni ubicación, lista las rutas que pasan por el destino", () => {
+test("con datos reales sin paradas verificadas, no instruye abordar y ofrece recorrido", () => {
+  const reply = interpretCommand("cómo llego de Portal Usme a Molinos", data)
+  // No debe abrir un plan de viaje (subir/bajar) con datos solo geométricos.
+  assert.notEqual(reply.action, "trip")
+  assert.match(reply.reply, /no puedo decirte con certeza dónde subir o bajar/)
+  // No afirma que no exista servicio.
+  assert.doesNotMatch(reply.reply, /ninguna ruta/i)
+})
+
+test("un expreso no recomienda abordar donde solo pasa, pero ofrece el recorrido", () => {
+  const fx = datosExpreso()
+  const reply = interpretCommand("cómo llego de Bravo a Delta", fx)
+  assert.notEqual(reply.action, "trip", "Bravo y Delta no son paradas del expreso")
+  assert.match(reply.reply, /dónde subir o bajar/)
+})
+
+test("un transbordo verificado sí abre un plan de dos tramos", () => {
+  const fx = datosTransbordoVerificado()
+  const reply = interpretCommand("cómo llego de Alfa a Eco", fx)
+  assert.ok(reply.action === "trip")
+  assert.equal(reply.trip.length, 2)
+  assert.equal(reply.trip[0].alight, reply.trip[1].board)
+})
+
+test("sin origen ni ubicación, informa el recorrido del destino con incertidumbre", () => {
   const reply = interpretCommand("quiero ir a Ricaurte", data)
   assert.ok(reply.action === "search")
   assert.equal(reply.station, "Ricaurte")
-  assert.match(reply.reply, /rutas pasan por Ricaurte/)
+  assert.match(reply.reply, /recorrido de .* pasan? por Ricaurte/)
+  assert.match(reply.reply, /No tengo confirmado dónde para/)
 })
 
-test("con ubicación, usa la estación más cercana como origen", () => {
-  // Frente a la estación Portal Usme.
+test("con ubicación y sin paradas verificadas, no inventa un abordaje", () => {
+  // Frente a la estación Portal Usme, pero el catálogo real no tiene paradas verificadas.
   const position = { lat: data.stations.find((s) => s.name === "Portal Usme")!.lat, lng: data.stations.find((s) => s.name === "Portal Usme")!.lng }
   const reply = interpretCommand("llévame a Molinos", data, { position })
-  assert.equal(reply.action, "trip")
+  assert.notEqual(reply.action, "trip")
   assert.ok(reply.steps.some((s) => s.label === "Usé tu ubicación"))
+  assert.match(reply.reply, /dónde subir o bajar/)
 })
 
 test("responde el horario real de una ruta", () => {

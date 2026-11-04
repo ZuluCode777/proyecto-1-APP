@@ -15,8 +15,13 @@ type RouteDetailProps = {
   onBack: () => void
 }
 
-const describe = (route: BusRoute) =>
-  `Ruta ${route.code}, de ${route.from} hacia ${route.to}. Pasa por ${route.stops.length} estaciones. Entre semana opera de ${route.schedule.weekday || "horario no publicado"}.`
+const describe = (route: BusRoute) => {
+  const sentido =
+    route.directionEvidence.agreement === "contradictorio"
+      ? `con sentido declarado de ${route.from} hacia ${route.to}, aún sin confirmar porque el orden de las estaciones no coincide`
+      : `de ${route.from} hacia ${route.to}`
+  return `Ruta ${route.code}, ${sentido}. Pasa cerca de ${route.stops.length} estaciones. Entre semana opera de ${route.schedule.weekday || "horario no publicado"}.`
+}
 
 /** Recorrido de una ruta en el mapa, con sus estaciones y horarios. */
 export function RouteDetail({ route, data, favorite, onToggleFavorite, onBack }: RouteDetailProps) {
@@ -38,11 +43,24 @@ export function RouteDetail({ route, data, favorite, onToggleFavorite, onBack }:
   )
   const lines = useMemo(() => [{ path: route.path }], [route])
 
+  // Paradas atendidas verificadas, por nombre, para marcarlas en la lista.
+  const verified = useMemo(
+    () => new Set(route.servedStops.filter((s) => s.status === "operativa").map((s) => s.name)),
+    [route],
+  )
+
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4" aria-label={`Ruta ${route.code}`}>
       <ScreenHeader title={`Ruta ${route.code}`} subtitle={route.label} icon={Bus} onBack={onBack} />
 
       <TransitMap lines={lines} markers={markers} label={`Mapa del recorrido de la ruta ${route.code}`} className="h-72 shrink-0" />
+
+      {route.directionEvidence.agreement === "contradictorio" && (
+        <p className="mt-4 rounded-2xl border-3 border-border bg-card p-4 text-base" role="note">
+          El sentido declarado ({route.from} hacia {route.to}) no coincide con el orden de las estaciones del
+          recorrido. No está confirmado con una fuente vigente; verifica la dirección antes de guiarte por ella.
+        </p>
+      )}
 
       <div className="mt-4 grid grid-cols-2 gap-3">
         <button
@@ -83,17 +101,27 @@ export function RouteDetail({ route, data, favorite, onToggleFavorite, onBack }:
         <dd>{route.schedule.holiday || "No publicado"}</dd>
       </dl>
 
-      <h3 className="mt-6 text-xl font-bold">Estaciones en el recorrido ({route.stops.length})</h3>
+      <h3 className="mt-6 text-xl font-bold">Estaciones cercanas al trazado ({route.stops.length})</h3>
       <p className="text-base text-muted-foreground">
-        Las estaciones por las que pasa el bus. Un servicio expreso no para en todas.
+        {verified.size > 0
+          ? "Las estaciones por las que pasa el bus. Las marcadas como parada verificada son donde una fuente confirma que se puede subir o bajar."
+          : "Las estaciones por las que pasa el bus. Aún no hay una fuente que confirme en cuáles para; no uses esta lista como paradas de abordaje."}
       </p>
       <ol className="mt-3 flex flex-col gap-2">
-        {route.stops.map((stop, i) => (
-          <li key={`${stop}-${i}`} className="flex items-center gap-3 rounded-xl border-3 border-border bg-card px-4 py-3 text-lg">
-            <span className="w-8 shrink-0 text-right font-bold tabular-nums text-brand-ink">{i + 1}</span>
-            {stop}
-          </li>
-        ))}
+        {route.stops.map((stop, i) => {
+          const isVerified = verified.has(stop)
+          return (
+            <li key={`${stop}-${i}`} className="flex items-center gap-3 rounded-xl border-3 border-border bg-card px-4 py-3 text-lg">
+              <span className="w-8 shrink-0 text-right font-bold tabular-nums text-brand-ink">{i + 1}</span>
+              <span className="flex-1">{stop}</span>
+              {isVerified && (
+                <span className="shrink-0 rounded-full border-3 border-border px-2 py-0.5 text-sm font-semibold">
+                  Parada verificada
+                </span>
+              )}
+            </li>
+          )
+        })}
       </ol>
     </section>
   )

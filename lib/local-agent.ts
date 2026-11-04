@@ -7,8 +7,10 @@ import {
   nearestStations,
   placeOf,
   planTrip,
+  routesAlongBoth,
   routesThrough,
   samePlace,
+  type BusRoute,
   type Place,
   type TransmilenioData,
   type TripPlan,
@@ -178,16 +180,60 @@ const bare = (value: string) => value.replace(/\.\s*$/, "")
 function describePlan(plan: TripPlan): string {
   if (plan.length === 1) {
     const [leg] = plan
-    return `Toma la ${leg.route.code} en ${leg.board} y bájate en ${leg.alight}, después de ${leg.stationsRidden} ${leg.stationsRidden === 1 ? "estación" : "estaciones"}.`
+    return `Toma la ${leg.route.code} en ${leg.board} y bájate en ${leg.alight}, después de ${leg.stationsRidden} ${leg.stationsRidden === 1 ? "estación" : "estaciones"}. Confirma el horario antes de salir.`
   }
   const [first, second] = plan
-  return `No hay una ruta directa. Toma la ${first.route.code} en ${first.board} hasta ${first.alight}, y ahí cambia a la ${second.route.code} hasta ${second.alight}.`
+  return `No hay una ruta directa. Toma la ${first.route.code} en ${first.board} hasta ${first.alight}, y ahí cambia a la ${second.route.code} hasta ${second.alight}. Confirma los horarios antes de salir.`
 }
 
 const summarize = (plan: TripPlan): TripLegSummary[] =>
   plan.map((leg) => ({ routeCode: leg.route.code, board: leg.board, alight: leg.alight, stationsRidden: leg.stationsRidden }))
 
 const resolvePlace = (name: string, data: TransmilenioData): Place | undefined => findPlaces(name, data)[0]
+
+/**
+ * Respuesta cuando no hay paradas verificadas para armar un viaje operativo.
+ * Ofrece INFORMACIÓN DE RECORRIDO con incertidumbre: nombra las rutas cuyo
+ * trazado conecta origen y destino, sin instruir subir, bajar ni transbordar,
+ * y sin afirmar que no exista ningún servicio. Abre la lista de rutas del
+ * destino para que la persona explore el recorrido.
+ */
+function tripUncertainReply({
+  origin,
+  destination,
+  data,
+  steps,
+  engine,
+}: {
+  origin: Place
+  destination: Place
+  data: TransmilenioData
+  steps: AgentStep[]
+  engine: AgentEngine
+}): AgentReply {
+  const along: BusRoute[] = routesAlongBoth(origin, destination, data)
+  steps.push({
+    label: "Busqué recorridos que conectan ambos lugares",
+    detail: along.length > 0 ? `${along.length} ${along.length === 1 ? "ruta" : "rutas"} por el trazado` : "Sin recorrido directo en el trazado",
+  })
+  const base = `Todavía no tengo confirmado dónde para cada servicio entre ${origin.name} y ${destination.name}, así que no puedo decirte con certeza dónde subir o bajar.`
+  if (along.length > 0) {
+    return {
+      reply: `${base} Por el recorrido, ${along.length === 1 ? "la ruta" : "las rutas"} ${listCodes(along.map((r) => r.code))} ${along.length === 1 ? "pasa" : "pasan"} cerca de los dos lugares; conviene confirmar las paradas con TransMilenio.`,
+      action: "search",
+      station: destination.name,
+      steps,
+      engine,
+    }
+  }
+  return {
+    reply: `${base} No tengo un recorrido troncal que conecte los dos lugares; puede existir un servicio que no tengo registrado, conviene confirmarlo con TransMilenio.`,
+    action: "search",
+    station: destination.name,
+    steps,
+    engine,
+  }
+}
 
 /** Resuelve una intención con los datos reales y devuelve la respuesta hablada. */
 export function runIntent(
@@ -272,10 +318,19 @@ export function runIntent(
 
       if (!origin) {
         const routes = routesThrough(destination, data)
-        steps.push({ label: "Busqué las rutas que pasan por ahí", detail: `${routes.length} rutas` })
-        if (routes.length === 0) return say(`Ninguna ruta troncal pasa por ${destination.name}.`)
+        steps.push({ label: "Busqué las rutas cuyo recorrido pasa por ahí", detail: `${routes.length} rutas` })
+        if (routes.length === 0) {
+          // El trazado no llega a la estación; no se afirma que ningún servicio exista.
+          return {
+            reply: `No tengo el recorrido de ninguna ruta troncal pasando por ${destination.name}. Puede que la sirva un servicio que no tengo registrado; conviene confirmarlo con TransMilenio.`,
+            action: "search",
+            station: destination.name,
+            steps,
+            engine,
+          }
+        }
         return {
-          reply: `${routes.length} ${routes.length === 1 ? "ruta pasa" : "rutas pasan"} por ${destination.name}: ${listCodes(routes.map((r) => r.code))}. Si me dices desde dónde sales, o activas tu ubicación, te digo cuál tomar.`,
+          reply: `El recorrido de ${routes.length === 1 ? "una ruta troncal pasa" : `${routes.length} rutas troncales pasan`} por ${destination.name}: ${listCodes(routes.map((r) => r.code))}. No tengo confirmado dónde para cada servicio; dime desde dónde sales para mostrarte el recorrido.`,
           action: "search",
           station: destination.name,
           steps,
@@ -290,13 +345,15 @@ export function runIntent(
         label: `Revisé las ${data.routes.length} rutas troncales`,
         detail:
           plans.length === 0
-            ? "Sin combinación con uno o dos buses"
+            ? "Sin paradas verificadas para armar un viaje"
             : plans[0].length === 1
               ? `${plans.length} ${plans.length === 1 ? "ruta directa" : "rutas directas"}`
-              : "Con un transbordo",
+              : "Con un transbordo verificado",
       })
       if (plans.length === 0) {
-        return say(`No encontré cómo ir de ${origin.name} a ${destination.name} con uno o dos buses troncales.`)
+        // Sin paradas verificadas no se instruye subir/bajar; se ofrece el
+        // recorrido con incertidumbre, sin afirmar que no exista servicio.
+        return tripUncertainReply({ origin, destination, data, steps, engine })
       }
       const [best, ...others] = plans
       steps.push({ label: "Elegí la opción con menos estaciones", detail: best.map((l) => l.route.code).join(" + ") })

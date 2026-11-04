@@ -52,7 +52,7 @@ const CHECKS: Check[] = [
   {
     id: "agent",
     title: "Asistente",
-    proves: "El asistente entiende una pregunta y planea un viaje con los datos reales.",
+    proves: "El asistente entiende una consulta de viaje y responde con los datos reales, sin inventar abordajes.",
     run: async () => {
       // Primero la configuración: si hay Ollama, esta llamada además precarga el modelo.
       const info = AgentInfoSchema.parse(await (await fetch("/api/agent")).json())
@@ -62,7 +62,14 @@ const CHECKS: Check[] = [
         body: JSON.stringify({ message: "cómo llego de Portal Usme a Molinos" }),
       })
       const reply = AgentReplySchema.parse(await res.json())
-      if (reply.action !== "trip") throw new Error(`Respondió "${reply.reply}"`)
+      // El asistente debe entender la consulta. Con paradas verificadas abre un
+      // plan de viaje; sin ellas (catálogo actual) ofrece recorrido con
+      // incertidumbre. Lo que NO puede es instruir un abordaje inferido por
+      // geometría: eso es justo lo que corrige el issue #31.
+      if (reply.action !== "trip" && reply.action !== "search") {
+        throw new Error(`No entendió la consulta de viaje: "${reply.reply}"`)
+      }
+      const modo = reply.action === "trip" ? "plan con paradas verificadas" : "recorrido con incertidumbre"
       // El motor sale de la respuesta, no de la configuración: así se ve si el modelo contestó de verdad.
       const engine = reply.engine === "ollama" ? `Ollama (${info.model ?? "modelo local"})` : "reglas locales"
       const warning =
@@ -71,7 +78,7 @@ const CHECKS: Check[] = [
             ? " Ollama está configurado pero no respondió a tiempo; contestaron las reglas."
             : " Ollama está configurado pero no está disponible o le falta el modelo; contestaron las reglas."
           : ""
-      return `Motor: ${engine}. ${reply.steps.length} pasos. «${reply.reply}»${warning}`
+      return `Motor: ${engine}. ${modo}. ${reply.steps.length} pasos. «${reply.reply}»${warning}`
     },
   },
   {
