@@ -45,6 +45,8 @@ button{font:inherit;color:var(--texto);background:var(--sec-fondo);border:3px so
   min-width:48px;padding:.4em 12px;text-align:left;cursor:pointer;line-height:1.25;overflow-wrap:anywhere}
 button.principal{background:var(--prim-fondo);color:var(--prim-texto);font-weight:700;width:100%;font-size:calc(1em + 2px);min-height:max(64px,3.2em);text-align:center;margin:.5em 0}
 button[aria-pressed="true"],button[aria-checked="true"]{font-weight:700}
+/* Deshabilitado: borde discontinuo y texto que lo dice; no depende del color ni baja el contraste. */
+button[aria-disabled="true"]{border-style:dashed;cursor:not-allowed}
 .lista-botones{list-style:none;margin:.3em 0;padding:0;display:flex;flex-direction:column;gap:.5em}
 .lista-botones button{width:100%}
 .desc{margin:.2em 0 0;font-size:.9em}
@@ -92,6 +94,7 @@ fieldset{border:3px solid var(--borde);border-radius:12px;margin:.8em 0;padding:
 legend{font-weight:800;padding:0 .3em}
 label.opcion{display:flex;align-items:center;gap:.5em;min-height:max(48px,2.8em);border:3px solid var(--borde);border-radius:12px;padding:.25em 10px;margin:.4em 0;cursor:pointer}
 label.opcion input{width:1.3em;height:1.3em;flex:none;margin:0;accent-color:var(--texto)}
+label.opcion:has(input:checked){border-width:5px;font-weight:800}
 .fuente{font-size:.9em}
 ol.pasos{padding-left:min(1.6em,32px)}
 ol.pasos li{margin:.35em 0}
@@ -354,6 +357,8 @@ function resolverAviso(clave) {
   E.avisos = E.avisos.filter((a) => a.clave !== clave)
   if (E.voz.urgente && E.voz.urgente.clave === clave) E.voz.urgente = null
 }
+// Primera frase del aviso, para nombrar sus botones («Repetir aviso: …»).
+function resumenAviso(a) { return a.texto.split('. ')[0].replace(/\.$/, '') }
 function avisosActivos() { return E.avisos.filter((a) => a.origen === 'telefono') }
 
 // ---------- Permisos: explicación propia justo antes del aviso del sistema ----------
@@ -985,7 +990,7 @@ function bloqueResultadoViaje() {
     partes.push(parrafoEstado({ tono: r.tipo === 'igual' ? 'info' : 'importante', texto: textoResultado(r) }))
   }
   partes.push(h('div', { clase: 'fila-botones' },
-    boton('repetir-viaje', 'Repetir', () => decir(textoResultado(r))),
+    boton('repetir-viaje', 'Repetir', () => decir(textoResultado(r)), { atributos: { 'aria-label': 'Repetir resultado del viaje' } }),
     boton('nueva-consulta', 'Nueva consulta', () => { Object.assign(E.viaje, { origen: '', destino: '', origenGps: false, fase: 'vacio', resultado: null }); repintar({ enfocar: 'origen' }) })))
   return h('section', { 'aria-labelledby': 'resultado-h2' }, partes)
 }
@@ -1132,7 +1137,7 @@ function cuerpoAsistente() {
       r.pasos.length ? h('h3', {}, 'Lo que hice') : null,
       r.pasos.length ? h('ol', { clase: 'pasos' }, r.pasos.map((p) => h('li', {}, h('strong', {}, p.l + ': '), p.d))) : null,
       h('div', { clase: 'fila-botones' },
-        boton('repetir-respuesta', 'Repetir respuesta', () => decir(r.texto)),
+        boton('repetir-respuesta', 'Repetir respuesta', () => decir(r.texto), { atributos: { 'aria-label': 'Repetir respuesta del asistente' } }),
         r.error ? boton('reintentar-pregunta', 'Reintentar', () => enviarPregunta(a.oido)) : null,
         r.accion === 'metro' ? boton('respuesta-metro', 'Ver Metro (escenario futuro)', () => irArea('metro')) : null,
         r.viaje && r.viaje.o && r.viaje.d ? boton('respuesta-viaje', 'Abrir en Rutas y viaje', () => { Object.assign(E.viaje, { origen: r.viaje.o, destino: r.viaje.d, origenGps: false, fase: 'resultado', resultado: r.viaje }); irArea('viaje', { enfocar: 'resultado-titulo' }) }) : null)))
@@ -1155,7 +1160,7 @@ AREAS.avisos = () => {
         etiquetaTono(a.severidad), ' ', a.texto,
         h('p', { clase: 'fuente' }, `Origen: ${a.fuente}. Hora: ${hora(a.hora)}${a.silenciado ? '. Silenciado.' : ''}`),
         h('div', { clase: 'fila-botones' },
-          boton('repetir-' + a.clave, 'Repetir', () => decir(a.texto)),
+          boton('repetir-' + a.clave, 'Repetir', () => decir(a.texto), { atributos: { 'aria-label': `Repetir aviso: ${resumenAviso(a)}` } }),
           a.severidad === 'urgente' ? null : boton('silenciar-' + a.clave, a.silenciado ? 'Volver a avisar' : 'Silenciar', () => { a.silenciado = !a.silenciado; decir(a.silenciado ? 'Aviso silenciado.' : 'Aviso activo.'); repintar() })))))
         : h('p', {}, 'No hay avisos del teléfono ahora.'),
       locales.some((a) => a.severidad === 'urgente') ? h('p', { clase: 'desc' }, 'Los avisos urgentes no se pueden silenciar mientras sigan activos.') : null,
@@ -1265,8 +1270,8 @@ AREAS.lupa = () => {
       h('div', { clase: 'visor recorte', role: 'img', 'aria-label': `Imagen de cámara simulada, zoom ${vecesZoom(l.zoom)}. La lupa no lee el texto.` },
         imagenLetrero(l)),
       h('div', { clase: 'fila-botones' },
-        boton('lupa-alejar', 'Alejar', () => zoom(-0.5), { atributos: { 'aria-disabled': l.zoom <= 1 ? 'true' : null } }),
-        boton('lupa-acercar', 'Acercar', () => zoom(0.5), { atributos: { 'aria-disabled': l.zoom >= 5 ? 'true' : null } })),
+        boton('lupa-alejar', l.zoom <= 1 ? 'Alejar (ya sin aumento)' : 'Alejar', () => zoom(-0.5), { atributos: { 'aria-disabled': l.zoom <= 1 ? 'true' : null } }),
+        boton('lupa-acercar', l.zoom >= 5 ? 'Acercar (ya al máximo)' : 'Acercar', () => zoom(0.5), { atributos: { 'aria-disabled': l.zoom >= 5 ? 'true' : null } })),
       h('fieldset', {}, h('legend', {}, 'Filtro de color'),
         Object.entries(FILTROS).map(([k, [n]]) => h('label', { clase: 'opcion' },
           h('input', { type: 'radio', name: 'filtro', 'data-id': 'filtro-' + k, checked: l.filtro === k, on: { change: () => { l.filtro = k; decir(`Filtro ${n.toLowerCase()}.`); repintar() } } }), n)))),
@@ -1327,7 +1332,7 @@ function pintarArmazon() {
   app.dataset.variante = E.variante
   const voz = h('div', { clase: 'voz', id: 'voz' },
     h('p', {}, h('strong', {}, 'La app dijo: '), h('span', { id: 'voz-texto' }, E.voz.texto)),
-    boton('repetir-voz', 'Repetir', () => decir(E.voz.texto)))
+    boton('repetir-voz', 'Repetir', () => decir(E.voz.texto), { atributos: { 'aria-label': 'Repetir lo que dijo la app' } }))
   const actividad = h('section', { clase: 'actividad', id: 'actividad', 'aria-label': 'Actividad en curso' })
   if (E.variante === 'A') {
     app.replaceChildren(h('div', { clase: 'cabecera', id: 'cabecera' }), actividad, voz, h('main', { id: 'contenido' }))
@@ -1350,9 +1355,9 @@ function pintarActividad() {
   cont.replaceChildren()
   if (E.voz.urgente) {
     cont.append(h('div', { clase: 'fila', 'data-tono': 'urgente' }, h('p', {}, etiquetaTono('urgente'), ' ', E.voz.urgente.texto),
-      pantalla() === 'avisos' ? null : boton('urgente-ver', 'Ver avisos', () => irArea('avisos'))))
+      pantalla() === 'avisos' ? null : boton('urgente-ver', 'Ver avisos', () => irArea('avisos'), { atributos: { 'aria-label': 'Ver avisos, aviso urgente' } })))
   }
-  for (const a of lista) cont.append(h('div', { clase: 'fila' }, h('p', {}, a.texto), boton('cancelar-' + a.id, a.cancelar, a.fn, { atributos: { 'data-cancelar': a.id } })))
+  for (const a of lista) cont.append(h('div', { clase: 'fila' }, h('p', {}, a.texto), boton('cancelar-' + a.id, a.cancelar, a.fn, { atributos: { 'data-cancelar': a.id, 'aria-label': `${a.cancelar}, actividad en curso` } })))
   cont.hidden = !lista.length && !E.voz.urgente
 }
 function pintarPestanas() {
@@ -1643,8 +1648,10 @@ function comprobar() {
   const raiz = dialogo || $('#disenio')
   const caja = dialogo ? { left: 0, right: innerWidth } : raiz.getBoundingClientRect()
   const interactivos = [...raiz.querySelectorAll(INTERACTIVO)].filter(visible)
-  const pequenos = [], sinNombre = []
+  const pequenos = [], sinNombre = [], nombres = new Map()
   for (const el of interactivos) {
+    const nombre = nombreAccesible(el).trim().toLowerCase()
+    if (nombre && !el.matches('input[type=radio]')) nombres.set(nombre, (nombres.get(nombre) || 0) + 1)
     const objetivo = el.matches('input[type=radio], input[type=checkbox]') ? el.closest('label') || el : el
     const r = objetivo.getBoundingClientRect()
     if (r.width < 43.5 || r.height < 43.5) pequenos.push(`${describir(el)} ${Math.round(r.width)}×${Math.round(r.height)}`)
@@ -1677,7 +1684,7 @@ function comprobar() {
   }
   return {
     variante: E.variante, pantalla: pantalla(), texto: E.ajustes.texto, bajaVision: E.ajustes.bajaVision, dialogo: dialogo ? dialogo.id : null,
-    interactivos: interactivos.length, pequenos, sinNombre, contrasteMinimo: Number(minimo.toFixed(2)), contrasteBajo: bajos.slice(0, 5),
+    interactivos: interactivos.length, pequenos, sinNombre, nombresRepetidos: [...nombres].filter(([, n]) => n > 1).map(([nombre, n]) => `${nombre} ×${n}`), contrasteMinimo: Number(minimo.toFixed(2)), contrasteBajo: bajos.slice(0, 5),
     desbordes: desbordes.slice(0, 5), tonosSinTexto, palabrasPartidas: partidas, h1: [...$('#contenido').querySelectorAll('h1')].filter(visible).length, paradas: paradasLectura().length,
   }
 }

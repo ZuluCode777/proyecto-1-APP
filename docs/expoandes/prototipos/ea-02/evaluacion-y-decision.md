@@ -86,7 +86,7 @@ Las filas de B probablemente se leen en VoiceOver como dos paradas (nombre y val
 
 | | A — Una acción principal | B — Pestañas y lista de estados |
 | --- | --- | --- |
-| A favor | Una decisión por pantalla; la acción principal aparece en los primeros pasos. «Cancelar» y «La app dijo» quedan justo antes del título. Menos texto que recorrer. | Todo el estado visible a la vez. Las pestañas cambian de área sin volver a Inicio. Patrón conocido de iOS. Cada acción está junto al estado que cambia. |
+| A favor | Una decisión por pantalla; la acción principal aparece en los primeros pasos. «Cancelar» y «La app dijo» quedan tres paradas antes del título. Menos texto que recorrer. | Todo el estado visible a la vez. Las pestañas cambian de área sin volver a Inicio. Patrón conocido de iOS. Cada acción está junto al estado que cambia. |
 | En contra | Los estados quedan plegados: ver todo exige abrir «Detalles del estado». Cambiar de área exige volver a Inicio. | Cancelar y «La app dijo» quedan al final, lejos del título. Las pestañas no crecen con Dynamic Type; iOS lo compensa con el visor de contenido grande. «Más» esconde lupa, ajustes, accesorio y Metro. |
 | Baja visión | Más espacio útil: sin franjas fijas con texto grande. | Con texto normal, casi un cuarto de la pantalla queda fijo mientras hay actividad. |
 
@@ -114,7 +114,7 @@ Las filas de B probablemente se leen en VoiceOver como dos paradas (nombre y val
 
 ## Recomendación provisional
 
-**A como base**, por menos recorrido en las diez tareas, cancelación justo antes del título y más espacio útil con texto grande. Conviene probar con usuarios una combinación: la jerarquía de A con una barra de pestañas como la de B, para cambiar de área sin volver a Inicio. La franja de actividad y «La app dijo» se mantendrían arriba.
+**A como base**, por menos recorrido en las diez tareas, cancelación a tres paradas del título y más espacio útil con texto grande. Conviene probar con usuarios una combinación: la jerarquía de A con una barra de pestañas como la de B, para cambiar de área sin volver a Inicio. La franja de actividad y «La app dijo» se mantendrían arriba.
 
 Esta recomendación sale de mediciones automáticas y revisión experta. No sustituye las sesiones con usuarios ni el recorrido con VoiceOver en iPhone.
 

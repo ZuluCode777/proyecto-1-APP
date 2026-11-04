@@ -24,6 +24,7 @@ async (page) => {
           const problemas = []
           if (r.pequenos.length) problemas.push('pequeños: ' + r.pequenos.join('; '))
           if (r.sinNombre.length) problemas.push('sin nombre: ' + r.sinNombre.join('; '))
+          if (r.nombresRepetidos.length) problemas.push('nombres repetidos: ' + r.nombresRepetidos.join('; '))
           if (r.contrasteMinimo < 7) problemas.push('contraste: ' + r.contrasteBajo.join('; '))
           if (r.desbordes.length) problemas.push('desborde: ' + r.desbordes.join('; '))
           if (r.tonosSinTexto.length) problemas.push('tono sin texto: ' + r.tonosSinTexto.join('; '))

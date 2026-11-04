@@ -158,17 +158,18 @@ async (page) => {
     const permiso = await ev(() => window.prototipo.E.permisos.camara)
     return abierta && cerrada && foco === 'abrir-camara' && sistema && permiso === 'denegado' ? true : JSON.stringify({ abierta, cerrada, foco, sistema, permiso })
   })
-  await prueba('El comprobador detecta un control pequeño, sin nombre y con contraste bajo', async () => {
+  await prueba('El comprobador detecta un control pequeño, sin nombre, con contraste bajo y nombres repetidos', async () => {
     const r = await ev(() => {
       const P = window.prototipo
       P.preparar('inicio', { variante: 'A' })
       const b = document.createElement('button'); b.style.cssText = 'min-height:20px;min-width:20px;height:20px;width:20px;padding:0'
       const p = document.createElement('p'); p.textContent = 'gris claro'; p.style.color = '#aaaaaa'
-      document.querySelector('#contenido').append(b, p)
-      const c = P.comprobar(); b.remove(); p.remove()
-      return { pequenos: c.pequenos.length, sinNombre: c.sinNombre.length, minimo: c.contrasteMinimo }
+      const d1 = document.createElement('button'), d2 = document.createElement('button'); d1.textContent = d2.textContent = 'Duplicado'
+      document.querySelector('#contenido').append(b, p, d1, d2)
+      const c = P.comprobar(); b.remove(); p.remove(); d1.remove(); d2.remove()
+      return { pequenos: c.pequenos.length, sinNombre: c.sinNombre.length, minimo: c.contrasteMinimo, repetidos: c.nombresRepetidos }
     })
-    return r.pequenos >= 1 && r.sinNombre >= 1 && r.minimo < 7 ? true : JSON.stringify(r)
+    return r.pequenos >= 1 && r.sinNombre >= 1 && r.minimo < 7 && r.repetidos.includes('duplicado ×2') ? true : JSON.stringify(r)
   })
   await prueba('Aviso de ubicación de iOS: el interruptor «Ubicación exacta» existe y apagarlo deja la ubicación aproximada', async () => {
     await ev(() => { window.prototipo.E.variante = 'A'; window.prototipo.aplicarEscenario('libre') })
@@ -250,6 +251,15 @@ async (page) => {
       return Object.values(r).every((x) => x === true) ? true : JSON.stringify(r)
     })
   }
+  await prueba('A: con sesión activa, «Detener sesión» de la franja está tres paradas antes del título (cifra de la spec §1)', async () => {
+    const r = await ev(() => {
+      const P = window.prototipo
+      P.preparar('inicio-activa', { variante: 'A' })
+      const ps = P.paradasLectura()
+      return { titulo: ps.findIndex((x) => x.id === 'titulo'), detener: ps.findIndex((x) => x.id === 'cancelar-sesion') }
+    })
+    return r.titulo - r.detener === 3 ? true : JSON.stringify(r)
+  })
   await prueba('Paridad: las frases de seguridad aparecen igual en A y en B', async () => {
     const casos = [
       ['gps-imprecisa', /no puedo saber si llegaste/i], ['gps-aproximada', /ubicación exacta/i], ['gps-vieja', /actualiza/i],

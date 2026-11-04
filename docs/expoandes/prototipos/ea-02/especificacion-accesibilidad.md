@@ -20,7 +20,7 @@ Vocabulario según [CONTEXT.md](../../../../CONTEXT.md) y la [arquitectura](../.
 
 Orden de lectura de cada pantalla:
 
-- **A:** «Volver» (o el nombre de la app en Inicio), franja de actividad (si hay), «La app dijo» con «Repetir», título, aviso fijo (si hay), frase de estado, acción principal, contenido, más acciones y detalles plegados. Al entrar, el foco va al título: la cancelación queda un deslizamiento hacia atrás.
+- **A:** «Volver» (o el nombre de la app en Inicio), franja de actividad (si hay), «La app dijo» con «Repetir», título, aviso fijo (si hay), frase de estado, acción principal, contenido, más acciones y detalles plegados. Al entrar, el foco va al título. Con una sesión activa, «Detener sesión» queda tres deslizamientos hacia atrás: «Repetir», «La app dijo» y la franja (medido con `paradasLectura`).
 - **B:** «Volver» (si hay), título, aviso fijo, filas de estado con su acción, contenido, acciones, y al final la franja de actividad, «La app dijo» y las pestañas.
 
 ## 2. Dynamic Type
@@ -37,7 +37,9 @@ Orden de lectura de cada pantalla:
 
 - Área táctil mínima de **44×44 pt**; el prototipo usa 48. En SwiftUI: `.frame(minWidth: 44, minHeight: 44)` y `.contentShape(Rectangle())`.
 - Cada control tiene nombre propio que dice qué hace: «Cancelar consulta», «Detener sesión», «Volver a Inicio». Nunca «OK» ni «Aquí».
-- Las opciones de radio y los interruptores muestran su estado en texto («Modo baja visión: activado»).
+- Los interruptores muestran su estado en texto («Modo baja visión: activado»). Las opciones de radio usan el estado nativo, que VoiceOver lee como «seleccionado»; a la vista, la elegida tiene además borde más grueso y texto en negrita.
+- Un botón deshabilitado lo dice en su texto («Acercar (ya al máximo)») y tiene borde discontinuo; no baja el contraste ni depende del color.
+- No hay dos controles con el mismo nombre en una pantalla: «Repetir aviso: …», «Repetir resultado del viaje», «Repetir lo que dijo la app». Los botones de la franja añaden «actividad en curso» a su nombre, porque a veces repiten una acción que también está en la pantalla.
 
 ## 4. Contraste y color
 
@@ -63,7 +65,7 @@ Orden de lectura de cada pantalla:
 
 ## 7. Cancelación siempre disponible
 
-- Toda actividad en curso (escucha, consulta, búsqueda de ubicación, orientación hacia la estación, sesión de proximidad) aparece en la franja «Actividad en curso» con su propio botón: «Cancelar escucha», «Cancelar consulta», «Cancelar búsqueda», «Detener orientación», «Detener sesión».
+- Toda actividad en curso (escucha, consulta, búsqueda de ubicación, orientación hacia estación, sesión de proximidad) aparece en la franja «Actividad en curso» con su propio botón: «Cancelar escucha», «Cancelar consulta», «Cancelar búsqueda», «Cancelar actualización», «Detener orientación», «Detener sesión».
 - Tras cancelar con un botón que desaparece (por ejemplo, desde la franja), el foco va al control que inicia esa actividad («Consultar viaje», «Hablar», el botón de ubicación o de sesión). Si ese control no está en la pantalla actual, va a «Repetir», junto a lo que la app acaba de decir. Nunca queda sin foco.
 - Cancelar una búsqueda de ubicación también detiene la orientación, que se quedaría sin ubicación actual.
 - La franja está en el mismo lugar en todas las pantallas.
@@ -120,7 +122,7 @@ En Metro, un aviso fijo dice que es escenario educativo. Ningún texto da indica
 | --- | --- | --- |
 | 1 Lectura y foco | Título único, foco al entrar, volver, repintar y al desaparecer un control; recorrido con teclado | Orden real de VoiceOver en Safari y SwiftUI |
 | 2 Dynamic Type | Sin desborde a 100/200/310 %; palabras partidas contadas | Tamaños reales del sistema |
-| 3 Controles | ≥ 44×44 y nombre accesible | Uso con una mano |
+| 3 Controles | ≥ 44×44, nombre accesible y sin nombres repetidos por pantalla | Uso con una mano |
 | 4 Contraste y color | ≥ 7:1; estado con palabra | Percepción con baja visión |
 | 5 Audio | Texto visible igual a la región viva | VoiceOver y voz propia a la vez (X2) |
 | 7 Cancelación | Escape, cancelar y salir; descarte de respuestas tardías | Gesto de escape y Magic Tap |
