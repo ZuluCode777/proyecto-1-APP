@@ -221,7 +221,13 @@ export function AuditoryGps({ data, onBack }: AuditoryGpsProps) {
           <h3 className="mb-3 text-xl font-bold" role="status">
             Estaciones cercanas
           </h3>
-          <ul className="flex flex-col gap-3">
+          {nearby.length === 0 ? (
+            <p className="rounded-2xl border-3 border-border bg-card p-4 text-lg" role="status">
+              No tengo estaciones de TransMilenio cargadas en este momento. Tu ubicación sí está activa; vuelve a
+              intentarlo cuando se carguen las estaciones.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-3">
             {nearby.map((station) => {
               const isTarget = target?.id === station.id
               return (
@@ -273,6 +279,7 @@ export function AuditoryGps({ data, onBack }: AuditoryGpsProps) {
               )
             })}
           </ul>
+          )}
         </>
       )}
     </section>

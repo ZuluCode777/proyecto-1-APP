@@ -19,6 +19,7 @@ import {
   type TripPlan,
 } from "@/lib/routes"
 import { normalize } from "@/lib/text"
+import { procedenciaCatalogo } from "@/lib/transmilenio"
 
 /**
  * Asistente de TransMiVoz en dos pasos:
@@ -311,7 +312,9 @@ export function textoViajeDesdeResumen(
   const steps: AgentStep[] = [
     { label: "Verifiqué las paradas y el sentido con los datos actuales", detail: trip.map((l) => l.routeCode).join(" + ") },
   ]
-  return { reply: `${formatearViajeDesdeResumen(trip)}${AVISO_PLAN}`, steps }
+  // La procedencia del catálogo también acompaña al texto reconstruido para la
+  // voz, que no pasa por `runIntent.conProcedencia`.
+  return { reply: `${formatearViajeDesdeResumen(trip)}${AVISO_PLAN} ${procedenciaCatalogo(data)}`, steps }
 }
 
 const resolvePlace = (name: string, data: TransmilenioData): Place | undefined => findPlaces(name, data)[0]
@@ -390,8 +393,41 @@ function tripUncertainReply({
   }
 }
 
-/** Resuelve una intención con los datos reales y devuelve la respuesta hablada. */
+/**
+ * Acciones cuya respuesta presenta datos del catálogo y por eso debe citar su
+ * procedencia (fuente y fecha). Un saludo, la ayuda o abrir el GPS no muestran
+ * datos del catálogo, así que no la llevan.
+ */
+const ACCIONES_CON_DATOS: ReadonlySet<AgentAction> = new Set<AgentAction>(["route", "trip", "search"])
+
+/**
+ * Añade la procedencia del catálogo (fuente y fecha) al final del texto de una
+ * respuesta que presenta datos, para que el texto Y la voz digan de dónde salen
+ * los datos. No la añade dos veces si ya está, ni a respuestas sin datos. La voz
+ * de un VIAJE reconstruye su texto desde el resumen (`textoViajeDesdeResumen`),
+ * que añade la procedencia por su cuenta; aquí se cubre el resto de acciones y
+ * el texto inicial del viaje.
+ */
+function conProcedencia(reply: AgentReply, data: TransmilenioData): AgentReply {
+  if (!ACCIONES_CON_DATOS.has(reply.action)) return reply
+  const aviso = procedenciaCatalogo(data)
+  if (reply.reply.includes(aviso)) return reply
+  return { ...reply, reply: `${reply.reply} ${aviso}` }
+}
+
+/**
+ * Resuelve una intención con los datos reales y devuelve la respuesta hablada,
+ * citando la procedencia del catálogo en las respuestas que presentan datos.
+ */
 export function runIntent(
+  intent: Intent,
+  opciones: { data: TransmilenioData; context?: AgentContext; engine?: AgentEngine },
+): AgentReply {
+  return conProcedencia(resolverIntent(intent, opciones), opciones.data)
+}
+
+/** Núcleo de resolución, sin añadir la procedencia (la añade `runIntent`). */
+function resolverIntent(
   intent: Intent,
   { data, context = {}, engine = "reglas" }: { data: TransmilenioData; context?: AgentContext; engine?: AgentEngine },
 ): AgentReply {
@@ -425,9 +461,15 @@ export function runIntent(
     case "gps": {
       if (context.position) {
         const [nearest] = nearestStations(context.position, data, 1)
+        if (!nearest) {
+          // Catálogo sin estaciones (vacío o aún no cargado): no se inventa una
+          // estación cercana; se abre el GPS igual para reintentar.
+          steps.push({ label: "No tengo estaciones cargadas para ubicar la más cercana" })
+          return say("Todavía no tengo las estaciones de TransMilenio para decirte la más cercana. Abro el GPS para reintentar.", "gps")
+        }
         steps.push({ label: "Usé tu ubicación", detail: `La estación más cercana es ${nearest.name}` })
         return say(
-          `La estación más cercana es ${nearest.name}, a ${spokenDistance(nearest.distance)}. Abro el GPS auditivo para guiarte.`,
+          `La estación más cercana es ${nearest.name}, a ${spokenDistance(nearest.distance)}. Abro el GPS auditivo para guiarte. ${procedenciaCatalogo(data)}`,
           "gps",
         )
       }
@@ -473,8 +515,11 @@ export function runIntent(
         steps.push({ label: "Busqué la estación de origen", detail: origin.name })
       } else if (!origin && context.position) {
         const [nearest] = nearestStations(context.position, data, 1)
-        origin = placeOf(nearest, data)
-        steps.push({ label: "Usé tu ubicación", detail: `Estás a ${spokenDistance(nearest.distance)} de ${nearest.name}` })
+        // Sin estaciones en el catálogo no se puede usar la ubicación como origen.
+        if (nearest) {
+          origin = placeOf(nearest, data)
+          steps.push({ label: "Usé tu ubicación", detail: `Estás a ${spokenDistance(nearest.distance)} de ${nearest.name}` })
+        }
       }
 
       if (!origin) {
