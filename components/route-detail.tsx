@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Bus, Clock, Heart, Volume2 } from "lucide-react"
 import { ScreenHeader } from "@/components/screen-header"
 import { TransitMap, type MapMarker } from "@/components/transit-map"
@@ -56,6 +56,12 @@ const describe = (route: BusRoute, now: Date = new Date()) => {
 /** Recorrido de una ruta en el mapa, con sus estaciones y horarios. */
 export function RouteDetail({ route, data, favorite, onToggleFavorite, onBack }: RouteDetailProps) {
   const { speak } = useSpeech()
+  // El calendario y los permisos pueden vencer aunque el catálogo no cambie.
+  const [ahora, setAhora] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setAhora(new Date()), 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   useEffect(() => {
     speak(describe(route), { queue: true })
@@ -76,9 +82,9 @@ export function RouteDetail({ route, data, favorite, onToggleFavorite, onBack }:
   // Paradas atendidas prescriptibles una por una (sentido confirmado, secuencia
   // válida y cada parada con fuente/estado/fecha vigentes). No se valida una y
   // se marcan todas: solo se marcan las que el validador compartido acepta.
-  const verified = useMemo(() => new Set(paradasPrescriptibles(route, new Date()).map((s) => s.name)), [route])
+  const verified = new Set(paradasPrescriptibles(route, ahora).map((s) => s.name))
   // Estado del calendario: opera | no-opera | sin-verificar.
-  const estadoCal = useMemo(() => estadoCalendarioEnFecha(route.verifiedCalendar, new Date()), [route])
+  const estadoCal = estadoCalendarioEnFecha(route.verifiedCalendar, ahora)
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4" aria-label={`Ruta ${route.code}`}>

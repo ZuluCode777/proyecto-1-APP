@@ -173,7 +173,7 @@ export function paradaCoincideConEstacion(stop: ServedStop, station: Station): b
  */
 export function paradasPrescriptibles(route: BusRoute, ahora: Date): ServedStop[] {
   if (!sentidoConfirmado(route) || !secuenciaAtendidaValida(route.servedStops)) return []
-  return route.servedStops.filter((s) => paradaPrescriptible(s, ahora))
+  return route.servedStops.filter((s) => (s.canBoard || s.canAlight) && paradaPrescriptible(s, ahora))
 }
 
 /** ¿El servicio tiene sentido confirmado, secuencia válida y alguna parada prescriptible? */

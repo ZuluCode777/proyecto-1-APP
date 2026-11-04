@@ -127,6 +127,10 @@ test("rutaConParadasVerificadas y paradasPrescriptibles evalúan cada parada", (
     ["Alfa", "Bravo", "Charlie"],
   )
 
+  mixta.routes[0].servedStops[1].canBoard = false
+  mixta.routes[0].servedStops[1].canAlight = false
+  assert.deepEqual(paradasPrescriptibles(mixta.routes[0], AHORA).map((s) => s.name), ["Alfa", "Charlie"], "sin permiso de subir ni bajar no se marca como parada utilizable")
+
   // Sin sentido confirmado no hay paradas prescriptibles.
   const sentido = datosVerificadosDirecto()
   sentido.routes[0].directionEvidence = { agreement: "contradictorio", verified: false, note: "x" }
