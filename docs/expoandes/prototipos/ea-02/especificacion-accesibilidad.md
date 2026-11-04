@@ -64,7 +64,7 @@ Orden de lectura de cada pantalla:
 ## 7. Cancelación siempre disponible
 
 - Toda actividad en curso (escucha, consulta, búsqueda de ubicación, orientación hacia la estación, sesión de proximidad) aparece en la franja «Actividad en curso» con su propio botón: «Cancelar escucha», «Cancelar consulta», «Cancelar búsqueda», «Detener orientación», «Detener sesión».
-- Tras cancelar, el foco va al control que inicia esa actividad («Consultar viaje», «Hablar», el botón de ubicación o de sesión). Si ese control no está en la pantalla actual, va a «Repetir», junto a lo que la app acaba de decir. Nunca queda sin foco.
+- Tras cancelar con un botón que desaparece (por ejemplo, desde la franja), el foco va al control que inicia esa actividad («Consultar viaje», «Hablar», el botón de ubicación o de sesión). Si ese control no está en la pantalla actual, va a «Repetir», junto a lo que la app acaba de decir. Nunca queda sin foco.
 - Cancelar una búsqueda de ubicación también detiene la orientación, que se quedaría sin ubicación actual.
 - La franja está en el mismo lugar en todas las pantallas.
 - El gesto de escape de VoiceOver (dos dedos en «Z») cancela lo transitorio; si no hay nada que cancelar, vuelve atrás. En el prototipo, la tecla Escape. En SwiftUI: `.accessibilityAction(.escape)`.

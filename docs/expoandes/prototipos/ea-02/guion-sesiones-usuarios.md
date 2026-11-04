@@ -32,7 +32,7 @@ Leer cada tarea tal cual, sin indicar dónde tocar. Ayudar solo si la persona lo
 | T6 | `T6` | «Pregúntale al asistente por voz y cancela antes de que responda.» | Cancela; no llega respuesta. |
 | T7 | `T7` | «Revisa los avisos y dime cuál viene del teléfono y cuál de TransMilenio.» | Distingue aviso del teléfono, anuncio (de ejemplo) y Metro. |
 | T8 | `T8` | «¿Se puede viajar hoy desde la estación Avenida Jiménez del Metro?» | Dice que no hay servicio. |
-| T9 | `T9` y `desconectar=20` | El accesorio se desconecta solo a los 20 s, si la sesión sigue activa; si la persona la detuvo antes, el panel lo indica y se repite la tarea. «Usa la app; si algo cambia, dime qué pasó y arréglalo.» | Reconoce la desconexión y reconecta. |
+| T9 | `T9` y `desconectar=20` | El accesorio se desconecta solo a los 20 s, si la sesión sigue activa. Quien facilita comprueba que aparece «Se perdió la conexión con el accesorio»; si no aparece (la persona detuvo la sesión antes), recarga la dirección y repite la tarea. «Usa la app; si algo cambia, dime qué pasó y arréglalo.» | Reconoce la desconexión y reconecta. |
 | T10 | `T10` (texto al 200 % y baja visión, salvo que la dirección indique otro `texto=`) | «Usa la lupa para ampliar un letrero y deja la imagen quieta.» Solo para baja visión. | Abre la lupa, amplía y congela. |
 
 ## Registro por tarea

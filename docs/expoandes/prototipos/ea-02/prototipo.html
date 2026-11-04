@@ -1352,7 +1352,7 @@ function repintar({ enfocar = null, respaldo = null } = {}) {
   // Prioridad: destinos pedidos (en orden), luego el control que tenía el foco, luego el título.
   // Si el foco estaba en la app y su control desapareció, nunca queda en <body>.
   const buscar = (id) => (id === 'h1' ? $('#contenido h1') : $(`#app [data-id="${CSS.escape(id)}"]`))
-  // Al cancelar desde la franja de actividad, el foco pasa a «Repetir», junto a lo que la app acaba de decir.
+  // Si el control enfocado desaparece, el foco va al respaldo que pidió la acción; si tampoco está y venía de la franja, a «Repetir».
   const candidatos = [...[].concat(enfocar || []), ...(idFoco ? [idFoco] : []), ...[].concat(respaldo || []), ...(enActividad ? ['repetir-voz'] : [])]
   let objetivo = null
   for (const id of candidatos) { objetivo = buscar(id); if (objetivo) break }
