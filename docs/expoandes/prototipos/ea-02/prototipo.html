@@ -698,11 +698,14 @@ const ERRORES = {
   '5xx': 'El servidor de TransMiVoz tuvo un error. Puedes reintentar en un momento; la sesión de proximidad sigue funcionando.',
 }
 const CODIGOS_ERROR = ['sin-red', '401', '429', 'timeout', '5xx']
-// Mismo texto que procedenciaCatalogo() de lib/transmilenio.ts en main, con las fechas del ejemplo.
+// Misma plantilla que procedenciaCatalogo() de lib/transmilenio.ts en main, con fechas fijas de ejemplo.
+// La marca «Ejemplo del prototipo.» va aparte para no alterar el texto del backend.
+const FECHA_VIVO = '4/11/2026', FECHA_COPIA = '24/9/2026', MARCA_EJEMPLO = 'Ejemplo del prototipo.'
 function procedencia() {
-  return E.catalogo === 'copia'
-    ? 'Datos de una copia guardada de TransMilenio del 24/9/2026 (sin conexión al servicio en vivo).'
-    : 'Datos de TransMilenio consultados hoy (datos de ejemplo).'
+  const backend = E.catalogo === 'copia'
+    ? `Datos de una copia guardada de TransMilenio del ${FECHA_COPIA} (sin conexión al servicio en vivo).`
+    : `Datos de TransMilenio consultados el ${FECHA_VIVO}.`
+  return `${backend} ${MARCA_EJEMPLO}`
 }
 function conProcedencia(texto) { return E.catalogo === 'copia' ? `${texto} ${procedencia()}` : texto }
 // Texto hablado y texto en pantalla salen de las mismas funciones.
@@ -773,7 +776,7 @@ function interpretar(texto) {
 function responderAsistente(texto) {
   if (CODIGOS_ERROR.includes(E.red)) return { error: true, texto: ERRORES[E.red], pasos: [] }
   const i = interpretar(texto)
-  const fecha = E.catalogo === 'copia' ? 'copia guardada del 24/9/2026' : 'datos de ejemplo consultados hoy'
+  const fecha = E.catalogo === 'copia' ? `copia guardada del ${FECHA_COPIA} (ejemplo)` : `datos consultados el ${FECHA_VIVO} (ejemplo)`
   switch (i.tipo) {
     case 'cancelar': return { texto: 'Listo, cancelado.', pasos: [] }
     case 'llegada': {
@@ -900,7 +903,7 @@ function textoCatalogo() {
   const actualizable = E.catalogo === 'copia' || ['sin-red', 'timeout', '5xx'].includes(E.red)
   if (E.catalogo === 'copia') return { tono: 'importante', corto: 'Copia guardada del 24/9/2026', nota: 'Puede estar desactualizada', largo: `${procedencia()} Puede estar desactualizada.`, actualizable }
   if (['sin-red', 'timeout', '5xx'].includes(E.red)) return { tono: 'importante', corto: { 'sin-red': 'Sin conexión con el servidor', timeout: 'El servidor no responde', '5xx': 'Error del servidor' }[E.red], nota: 'Sigo con los datos que tengo', largo: ERRORES[E.red], actualizable }
-  return { tono: 'neutro', corto: 'Datos de ejemplo consultados hoy', nota: null, largo: '', actualizable }
+  return { tono: 'neutro', corto: `Consultados el ${FECHA_VIVO} (ejemplo)`, nota: null, largo: '', actualizable }
 }
 // Actualizar el catálogo: falla si el servidor no está; con éxito deja de ser copia guardada.
 function actualizarDatos() {
@@ -914,7 +917,7 @@ function actualizarDatos() {
     if (d.turno !== turno || d.fase !== 'consultando') return
     d.fase = 'inactivo'
     if (CODIGOS_ERROR.includes(E.red)) decir(`No pude actualizar los datos. ${ERRORES[E.red]} Sigo con los datos que tengo.`)
-    else { E.catalogo = 'vivo'; resolverAviso('catalogo'); decir('Datos de rutas actualizados: consultados hoy.') }
+    else { E.catalogo = 'vivo'; resolverAviso('catalogo'); decir(`Datos de rutas actualizados. ${procedencia()}`) }
     repintar({ respaldo: RESPALDO_DATOS })
   })
 }

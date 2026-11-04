@@ -49,7 +49,7 @@ Leer la instrucción tal cual, sin indicar dónde tocar. Ayudar solo si la perso
 | T2 | `T2` | «Averigua cómo ir de Terminal a Calle 72.» | — | Dice dónde subir y dónde bajar. |
 | T3 | `T3` | «Averigua cómo ir de Portal Usme a Molinos.» | — | Explica que la app no confirma dónde subir. |
 | T4 | `T4` | «Estás en Terminal y quieres ir a Calle 72. Prueba usar tu ubicación como origen. Cuando el iPhone te pida permiso, no lo des.» | Ubicación empieza sin permiso. Tras «No permitir», la app explica y lleva al campo Origen. | Rechaza el permiso, escribe el origen y obtiene el viaje. |
-| T5 | `T5` | «Pregunta a la app si ya llegaste a la estación.» | La ubicación es imprecisa (±200 m). Vale preguntarle al asistente o mirar Ubicación y orientación. | Dice que la app no lo puede saber por la precisión. |
+| T5 | `T5` | «Pregunta a la app si ya llegaste a la estación.» | La ubicación es imprecisa (±200 m). Vale mirar Ubicación y orientación o preguntarle al asistente. La respuesta del asistente a «¿ya llegué?» es una **propuesta que el backend no tiene (requiere cambio de contrato, A1)**: anotar en el registro si la persona usó esa vía. | Dice que la app no lo puede saber por la precisión. |
 | T6 | `T6` | «Hazle una pregunta al asistente hablando y cancela antes de que responda.» | Micrófono y reconocimiento de voz empiezan sin permiso: verá la explicación y dos avisos simulados. | Acepta los permisos, cancela y no llega respuesta. |
 | T7 | `T7` | «Revisa los avisos y dime cuál viene del teléfono y cuál de TransMilenio.» | El anuncio del operador es un ejemplo ficticio. | Distingue aviso del teléfono, anuncio (de ejemplo) y Metro. |
 | T8 | `T8` | «¿Se puede viajar hoy desde la estación Avenida Jiménez del Metro?» | — | Dice que no hay servicio. |
