@@ -4,7 +4,14 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { CheckCircle2, Ear, Loader2, Mic, Send } from "lucide-react"
 import { useSpeech, useVoiceRecognition } from "@/hooks/use-speech"
 import type { LatLng } from "@/lib/geo"
-import { AgentReplySchema, interpretCommand, plainReply, type AgentReply, type AgentStep } from "@/lib/local-agent"
+import {
+  AgentReplySchema,
+  interpretCommand,
+  plainReply,
+  textoViajeDesdeResumen,
+  type AgentReply,
+  type AgentStep,
+} from "@/lib/local-agent"
 import type { TransmilenioData } from "@/lib/routes"
 
 type TotalAgentProps = {
@@ -20,6 +27,27 @@ const STEP_DELAY_MS = 450
 const NAVIGATE_DELAY_MS = 2500
 /** Texto en reposo, a la espera de un toque. */
 const IDLE_CAPTION = "Toca la pantalla y dime a dónde quieres ir"
+
+/** Aviso seguro cuando un viaje no puede confirmarse ahora, sin instrucciones. */
+const VIAJE_NO_CONFIRMABLE =
+  "No puedo confirmar las paradas y el horario de ese viaje con los datos actuales, así que no te doy indicaciones de abordaje. Confirma la ruta con TransMilenio."
+
+/**
+ * Deja una respuesta lista para mostrar/hablar/navegar con seguridad. Las
+ * acciones que no son de viaje no dan órdenes de abordaje y pasan igual. Una
+ * respuesta de viaje se revalida contra el catálogo MÁS RECIENTE y el reloj
+ * actual, y su texto y pasos se RECONSTRUYEN desde el resumen validado con la
+ * función responsable compartida; nunca se confía en la prosa recibida. Si no
+ * es prescriptible ahora (esquema viejo, otros datos, fuera de franja, sin
+ * catálogo), se degrada a un aviso seguro sin instrucciones.
+ */
+function sanear(reply: AgentReply, data: TransmilenioData | null): AgentReply {
+  if (reply.action !== "trip") return reply
+  if (!data) return plainReply(VIAJE_NO_CONFIRMABLE, reply.engine)
+  const reconstruido = textoViajeDesdeResumen(reply.trip, data, new Date())
+  if (!reconstruido) return plainReply(VIAJE_NO_CONFIRMABLE, reply.engine)
+  return { ...reply, reply: reconstruido.reply, steps: reconstruido.steps }
+}
 
 /**
  * Asistente de voz. Toda la pantalla es el botón para hablar. Debajo muestra
@@ -39,6 +67,15 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
   /** Número de la última pregunta: una respuesta vieja no navega si ya hay otra. */
   const lastAskRef = useRef(0)
   const positionRef = useRef<LatLng | undefined>(undefined)
+  /**
+   * Catálogo más reciente, en una ref: la revalidación de un viaje debe usar los
+   * datos actuales y no los capturados por el cierre cuando empezó el fetch o
+   * durante las pausas antes de navegar.
+   */
+  const dataRef = useRef<TransmilenioData | null>(data)
+  useEffect(() => {
+    dataRef.current = data
+  }, [data])
 
   /** Pide la ubicación sin bloquear: si llega, el asistente la usa como origen. */
   const locate = useCallback(() => {
@@ -71,30 +108,49 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
         reply = AgentReplySchema.parse(await res.json())
       } catch {
         // Sin servidor: el mismo intérprete corre en el navegador con los datos ya cargados.
-        if (!data) {
+        const actual = dataRef.current
+        if (!actual) {
           reply = plainReply("No tengo conexión con el servidor. Inténtalo de nuevo.")
         } else {
-          reply = interpretCommand(message, data, { position: positionRef.current })
+          reply = interpretCommand(message, actual, { position: positionRef.current, now: new Date() })
         }
       }
 
-      for (let i = 0; i < reply.steps.length; i++) {
+      // Guardia ANTES de pasos, subtítulo y voz: una respuesta de viaje se
+      // revalida contra el catálogo MÁS RECIENTE y el reloj actual, y su texto y
+      // pasos se reconstruyen desde el resumen validado (no se confía en la
+      // prosa que vino, que puede traer un conteo o un sentido viejos). Si no es
+      // prescriptible ahora, se degrada a una respuesta segura sin órdenes.
+      const seguro = sanear(reply, dataRef.current)
+
+      for (let i = 0; i < seguro.steps.length; i++) {
         await new Promise((r) => setTimeout(r, STEP_DELAY_MS))
-        setSteps(reply.steps.slice(0, i + 1))
+        if (ask !== lastAskRef.current) return
+        setSteps(seguro.steps.slice(0, i + 1))
       }
 
-      setEngine(reply.engine)
-      setCaption(reply.reply)
-      speak(reply.reply)
+      setEngine(seguro.engine)
+      setCaption(seguro.reply)
+      speak(seguro.reply)
       busyRef.current = false
       setStatus("idle")
-      if (reply.action === "none") return
+      if (seguro.action === "none") return
       // Deja ver los pasos y la respuesta antes de cambiar de pantalla. Si en
       // esa pausa llega otra pregunta, esta respuesta ya no navega.
-      if (reply.steps.length > 0) await new Promise((r) => setTimeout(r, NAVIGATE_DELAY_MS))
-      if (ask === lastAskRef.current) onAction(reply)
+      if (seguro.steps.length > 0) await new Promise((r) => setTimeout(r, NAVIGATE_DELAY_MS))
+      if (ask !== lastAskRef.current) return
+      // Revalida otra vez justo antes de navegar contra el catálogo actual: el
+      // tiempo o los datos pudieron cambiar durante la pausa.
+      const navegable = sanear(seguro, dataRef.current)
+      if (seguro.action === "trip" && navegable.action !== "trip") {
+        // El viaje dejó de ser prescriptible en la pausa: no se abre; se avisa.
+        setCaption(navegable.reply)
+        speak(navegable.reply)
+        return
+      }
+      onAction(navegable)
     },
-    [data, onAction, speak],
+    [onAction, speak],
   )
 
   const handleResult = useCallback(

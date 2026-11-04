@@ -5,7 +5,7 @@ import { Bus, Clock, Heart, Volume2 } from "lucide-react"
 import { ScreenHeader } from "@/components/screen-header"
 import { TransitMap, type MapMarker } from "@/components/transit-map"
 import { useSpeech } from "@/hooks/use-speech"
-import { calendarioOperaEnFecha, rutaConParadasVerificadas } from "@/lib/evidencia"
+import { estadoCalendarioEnFecha, paradasPrescriptibles, sentidoConfirmado } from "@/lib/evidencia"
 import type { BusRoute, TransmilenioData } from "@/lib/routes"
 
 type RouteDetailProps = {
@@ -16,23 +16,41 @@ type RouteDetailProps = {
   onBack: () => void
 }
 
+/**
+ * Frase sobre el sentido: solo se afirma cuando está confirmado; si es
+ * contradictorio, indeterminado o sin verificar, se dice explícitamente.
+ */
+const fraseSentido = (route: BusRoute): string => {
+  if (sentidoConfirmado(route)) return `de ${route.from} hacia ${route.to}`
+  if (route.directionEvidence.agreement === "contradictorio") {
+    return `con sentido declarado de ${route.from} hacia ${route.to}, aún sin confirmar porque el orden de las estaciones no coincide`
+  }
+  return `con sentido declarado de ${route.from} hacia ${route.to}, todavía sin confirmar con una fuente vigente`
+}
+
+/**
+ * Frase de operación: distingue los tres estados del calendario. «Vencido» o
+ * «desconocido» caen en `sin-verificar` y NUNCA dicen que no hay servicio.
+ */
+const fraseOperacion = (route: BusRoute, now: Date): string => {
+  switch (estadoCalendarioEnFecha(route.verifiedCalendar, now)) {
+    case "opera":
+      return " Según su calendario verificado, hoy tiene servicio programado; no es tiempo real, confirma el horario antes de salir."
+    case "no-opera":
+      return " Según su calendario verificado, hoy no tiene servicio programado."
+    case "sin-verificar":
+      return route.schedule.weekday
+        ? ` Su horario publicado entre semana es ${route.schedule.weekday}, pero no tengo un calendario vigente verificado para confirmar si opera ahora.`
+        : " No tengo un calendario vigente verificado para confirmar si opera ahora."
+  }
+}
+
 const describe = (route: BusRoute, now: Date = new Date()) => {
-  const sentido =
-    route.directionEvidence.agreement === "contradictorio"
-      ? `con sentido declarado de ${route.from} hacia ${route.to}, aún sin confirmar porque el orden de las estaciones no coincide`
-      : `de ${route.from} hacia ${route.to}`
-  // Operación: solo se afirma con calendario verificado; el horario textual no.
-  const operacion = route.verifiedCalendar
-    ? calendarioOperaEnFecha(route.verifiedCalendar, now)
-      ? " Según su calendario verificado, hoy opera; confirma el horario antes de salir."
-      : " Según su calendario verificado, hoy no tiene servicio programado."
-    : route.schedule.weekday
-      ? ` Su horario publicado entre semana es ${route.schedule.weekday}, pero no tengo calendario verificado para confirmar que opere ahora.`
-      : " No tengo horario publicado ni calendario verificado."
-  const paradas = rutaConParadasVerificadas(route, now)
-    ? ""
-    : " Aún no tengo confirmado en qué estaciones para, así que no uses el recorrido como paradas de abordaje."
-  return `Ruta ${route.code}, ${sentido}. Su recorrido pasa cerca de ${route.stops.length} estaciones.${paradas}${operacion}`
+  const paradas =
+    paradasPrescriptibles(route, now).length > 0
+      ? ""
+      : " Aún no tengo confirmado en qué estaciones para, así que no uses el recorrido como paradas de abordaje."
+  return `Ruta ${route.code}, ${fraseSentido(route)}. Su recorrido pasa cerca de ${route.stops.length} estaciones.${paradas}${fraseOperacion(route, now)}`
 }
 
 /** Recorrido de una ruta en el mapa, con sus estaciones y horarios. */
@@ -55,13 +73,12 @@ export function RouteDetail({ route, data, favorite, onToggleFavorite, onBack }:
   )
   const lines = useMemo(() => [{ path: route.path }], [route])
 
-  // Paradas atendidas prescriptibles (fuente/estado/fecha válidos), para marcarlas.
-  const verified = useMemo(() => {
-    const now = new Date()
-    if (!rutaConParadasVerificadas(route, now)) return new Set<string>()
-    return new Set(route.servedStops.filter((s) => s.canBoard || s.canAlight).map((s) => s.name))
-  }, [route])
-  const operaHoy = useMemo(() => calendarioOperaEnFecha(route.verifiedCalendar, new Date()), [route])
+  // Paradas atendidas prescriptibles una por una (sentido confirmado, secuencia
+  // válida y cada parada con fuente/estado/fecha vigentes). No se valida una y
+  // se marcan todas: solo se marcan las que el validador compartido acepta.
+  const verified = useMemo(() => new Set(paradasPrescriptibles(route, new Date()).map((s) => s.name)), [route])
+  // Estado del calendario: opera | no-opera | sin-verificar.
+  const estadoCal = useMemo(() => estadoCalendarioEnFecha(route.verifiedCalendar, new Date()), [route])
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4" aria-label={`Ruta ${route.code}`}>
@@ -69,10 +86,12 @@ export function RouteDetail({ route, data, favorite, onToggleFavorite, onBack }:
 
       <TransitMap lines={lines} markers={markers} label={`Mapa del recorrido de la ruta ${route.code}`} className="h-72 shrink-0" />
 
-      {route.directionEvidence.agreement === "contradictorio" && (
+      {!sentidoConfirmado(route) && (
         <p className="mt-4 rounded-2xl border-3 border-border bg-card p-4 text-base" role="note">
-          El sentido declarado ({route.from} hacia {route.to}) no coincide con el orden de las estaciones del
-          recorrido. No está confirmado con una fuente vigente; verifica la dirección antes de guiarte por ella.
+          {route.directionEvidence.agreement === "contradictorio"
+            ? `El sentido declarado (${route.from} hacia ${route.to}) no coincide con el orden de las estaciones del recorrido.`
+            : `El sentido declarado (${route.from} hacia ${route.to}) todavía no está confirmado con una fuente vigente.`}{" "}
+          Verifica la dirección antes de guiarte por ella.
         </p>
       )}
 
@@ -107,11 +126,11 @@ export function RouteDetail({ route, data, favorite, onToggleFavorite, onBack }:
         Horario
       </h3>
       <p className="text-base text-muted-foreground">
-        {route.verifiedCalendar
-          ? operaHoy
-            ? "Según el calendario verificado, hoy opera. Confirma el horario antes de salir."
-            : "Según el calendario verificado, hoy no tiene servicio programado."
-          : "Horario publicado por TransMilenio, no un calendario verificado. No confirma operación ahora."}
+        {estadoCal === "opera"
+          ? "Según el calendario verificado, hoy tiene servicio programado. No es tiempo real; confirma el horario antes de salir."
+          : estadoCal === "no-opera"
+            ? "Según el calendario verificado, hoy no tiene servicio programado."
+            : "El horario de abajo es el publicado por TransMilenio, no un calendario verificado y vigente. No confirma si opera ahora."}
       </p>
       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-lg">
         <dt className="font-bold">Lunes a viernes</dt>

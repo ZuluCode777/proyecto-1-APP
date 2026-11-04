@@ -19,17 +19,19 @@ import { normalize } from "@/lib/text"
  *
  * Por eso `BusRoute.stops` (estaciones cercanas al trazado) sirve solo para
  * dibujar e ilustrar el recorrido. Las PARADAS ATENDIDAS —dónde se puede subir
- * o bajar, en qué sentido— viven aparte en `BusRoute.servedStops`, y solo se
- * llenan con evidencia de una fuente vigente. Mientras no haya esa evidencia,
- * `servedStops` queda vacío y el planificador no convierte la cercanía
- * geométrica en una instrucción de abordaje (ver `lib/routes.ts`).
+ * o bajar, en qué sentido— viven aparte en `BusRoute.servedStops`, con su
+ * sentido, calendario y franjas, y solo se llenan con evidencia de una fuente
+ * vigente. Sin esa evidencia `servedStops` queda vacío y el planificador no
+ * convierte la cercanía geométrica en una instrucción de abordaje (ver
+ * `lib/routes.ts`).
  *
- * Capa 15 del servicio ArcGIS no expone un campo ni una relación con la
- * secuencia de paradas atendidas por servicio y sentido; el directorio
- * `GTFS_dinamicos` del operador responde con `services: []`. Un directorio
- * vacío no demuestra que la matriz oficial no exista: solo que no se consiguió
- * aquí una fuente descargable con licencia y vigencia comprobables. Integrar
- * esa matriz, cuando se valide, es un cambio aditivo sobre `servedStops`.
+ * La capa 15 del ArcGIS no expone la secuencia de paradas por servicio y
+ * sentido, pero TransMilenio SÍ publica un GTFS oficial diario
+ * (`https://gtfs.transmilenio.gov.co/`, licencia CC-BY-SA-4.0 declarada por el
+ * catálogo CKAN; atribución TransMilenio S.A.). De ese GTFS sale la evidencia
+ * corroborada de paradas atendidas, sentido y calendario que `lib/evidencia-gtfs.ts`
+ * aplica sobre los servicios ya verificados (8 G y 8 T), tanto a la consulta en
+ * vivo como a la copia. Ampliar a más servicios es aditivo sobre `servedStops`.
  */
 export const ARCGIS_BASE =
   "https://gis.transmilenio.gov.co/arcgis/rest/services/ConsultaSubgerenciaPlanificacionSITP/Consulta_Planificacion_SITP/FeatureServer"

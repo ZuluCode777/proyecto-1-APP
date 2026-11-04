@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ArrowRight, Route as RouteIcon } from "lucide-react"
 import { ScreenHeader } from "@/components/screen-header"
 import { TransitMap, type MapLine, type MapMarker } from "@/components/transit-map"
@@ -15,15 +15,28 @@ type TripViewProps = {
   onBack: () => void
 }
 
+/** Cada cuánto se revalida el plan mientras la pantalla sigue abierta. */
+const REVALIDA_MS = 30_000
+
 /** Plan de viaje que armó el asistente: uno o dos buses, en el mapa. */
 export function TripView({ legs, data, onOpenRoute, onBack }: TripViewProps) {
   const station = (name: string) => data.stations.find((s) => s.name === name)
 
   // Revalida el resumen contra el catálogo y la evidencia ACTUAL antes de dar
-  // órdenes de subir/bajar: los datos de servidor y navegador pueden diferir, y
-  // un resumen de un esquema viejo podría no tener evidencia. Si no valida, se
-  // muestra el recorrido sin instrucciones prescriptivas.
-  const prescriptible = useMemo(() => tripSummaryStillValid(legs, data), [legs, data])
+  // órdenes de subir/bajar, y VUELVE a hacerlo mientras la pantalla siga
+  // montada: el plan puede salir de su franja con el paso del tiempo. El tic
+  // acotado (cada 30 s, sin framework) fuerza el recálculo; por eso la validez
+  // no puede ser un useMemo que dependa solo de legs/data.
+  const [tic, setTic] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTic((t) => t + 1), REVALIDA_MS)
+    return () => clearInterval(id)
+  }, [])
+  const prescriptible = useMemo(
+    () => tripSummaryStillValid(legs, data, new Date()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [legs, data, tic],
+  )
 
   // Solo el tramo que se recorre, de la estación donde se sube a la de bajada.
   const lines = useMemo<MapLine[]>(
@@ -90,9 +103,11 @@ export function TripView({ legs, data, onOpenRoute, onBack }: TripViewProps) {
                       <ArrowRight className="size-5 shrink-0" aria-hidden="true" />
                       Bájate en {leg.alight}
                     </span>
-                    <span className="text-base text-muted-foreground">
-                      {leg.stationsRidden} {leg.stationsRidden === 1 ? "estación" : "estaciones"}
-                    </span>
+                    {leg.conteoVerificado && (
+                      <span className="text-base text-muted-foreground">
+                        {leg.stationsRidden} {leg.stationsRidden === 1 ? "estación" : "estaciones"}
+                      </span>
+                    )}
                   </>
                 ) : (
                   <>

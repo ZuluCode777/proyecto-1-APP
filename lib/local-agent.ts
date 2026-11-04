@@ -236,6 +236,44 @@ const summarize = (plan: TripPlan): TripLegSummary[] =>
     conteoVerificado: leg.conteoVerificado,
   }))
 
+/** Frase de un viaje directo desde el resumen validado; omite el conteo si no está garantizado. */
+function fraseDirectaResumen(leg: TripLegSummary): string {
+  const conteo = leg.conteoVerificado
+    ? `, después de ${leg.stationsRidden} ${leg.stationsRidden === 1 ? "estación" : "estaciones"}`
+    : ""
+  return `Toma la ${leg.routeCode} en ${leg.board} y bájate en ${leg.alight}${conteo}`
+}
+
+/**
+ * Reconstruye el texto y los pasos PRESCRIPTIVOS de un viaje a partir del
+ * resumen serializado, revalidándolo antes contra el catálogo y el reloj
+ * actuales (mismas reglas que `planTrip`). No confía en ningún texto libre que
+ * venga con el resumen: arma la prosa aquí, con la misma función responsable, y
+ * omite el conteo exacto cuando la fuente no lo garantiza.
+ *
+ * Devuelve `null` si el resumen ya no es prescriptible (esquema viejo, otro
+ * origen de datos, fuera de franja, sin evidencia vigente). Quien lo llame debe
+ * entonces dar una respuesta segura, sin instrucciones.
+ */
+export function textoViajeDesdeResumen(
+  trip: TripLegSummary[],
+  data: TransmilenioData,
+  now: Date = new Date(),
+): { reply: string; steps: AgentStep[] } | null {
+  if (!tripSummaryStillValid(trip, data, now)) return null
+  const steps: AgentStep[] = [
+    { label: "Verifiqué las paradas y el sentido con los datos actuales", detail: trip.map((l) => l.routeCode).join(" + ") },
+  ]
+  let reply: string
+  if (trip.length === 1) {
+    reply = `${fraseDirectaResumen(trip[0])}.${AVISO_PLAN}`
+  } else {
+    const [first, second] = trip
+    reply = `No hay una ruta directa. Toma la ${first.routeCode} en ${first.board} hasta ${first.alight}, y ahí cambia a la ${second.routeCode} hasta ${second.alight}.${AVISO_PLAN}`
+  }
+  return { reply, steps }
+}
+
 const resolvePlace = (name: string, data: TransmilenioData): Place | undefined => findPlaces(name, data)[0]
 
 /**

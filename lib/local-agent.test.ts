@@ -2,7 +2,15 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import snapshot from "../data/transmilenio.json" with { type: "json" }
 import { datosExpreso, datosTransbordoVerificado, datosVerificadosDirecto } from "./fixtures-sinteticas"
-import { interpretCommand, parseIntent, plainReply, respuestaPrescriptivaValida, runIntent } from "./local-agent"
+import {
+  interpretCommand,
+  parseIntent,
+  plainReply,
+  respuestaPrescriptivaValida,
+  runIntent,
+  textoViajeDesdeResumen,
+  type TripLegSummary,
+} from "./local-agent"
 import { TransmilenioDataSchema } from "./transmilenio"
 
 const data = TransmilenioDataSchema.parse(snapshot)
@@ -96,6 +104,55 @@ test("sin sentido confirmado no hay viaje aunque las paradas existan", () => {
   const reply = resolver("cómo llego de Alfa a Eco", fx)
   assert.notEqual(reply.action, "trip")
   assert.doesNotMatch(reply.reply, /Toma|bájate/)
+})
+
+test("textoViajeDesdeResumen reconstruye el texto desde el resumen validado, sin confiar en prosa vieja", () => {
+  const fx = datosVerificadosDirecto()
+  // Resumen válido pero con conteoVerificado=false: el texto reconstruido no
+  // debe mencionar un número de estaciones aunque el resumen traiga uno.
+  const resumen: TripLegSummary[] = [
+    { routeCode: "V1", board: "Alfa", alight: "Eco", stationsRidden: 4, conteoVerificado: false },
+  ]
+  const salida = textoViajeDesdeResumen(resumen, fx, NOW)
+  assert.ok(salida, "un resumen válido debe reconstruirse")
+  assert.match(salida!.reply, /^Toma la V1 en Alfa y bájate en Eco\./)
+  assert.doesNotMatch(salida!.reply, /\d+ estaci/)
+  assert.ok(salida!.steps.length >= 1)
+})
+
+test("textoViajeDesdeResumen rechaza un resumen viejo o inválido (devuelve null)", () => {
+  const fx = datosVerificadosDirecto()
+  // Parada inexistente.
+  assert.equal(
+    textoViajeDesdeResumen([{ routeCode: "V1", board: "Alfa", alight: "Narnia", stationsRidden: 1, conteoVerificado: false }], fx, NOW),
+    null,
+  )
+  // Conteo declarado que la fuente no garantiza.
+  fx.routes[0].servedStops.forEach((s) => (s.conteoExacto = false))
+  assert.equal(
+    textoViajeDesdeResumen([{ routeCode: "V1", board: "Alfa", alight: "Eco", stationsRidden: 4, conteoVerificado: true }], fx, NOW),
+    null,
+    "no debe aceptar un conteo que la fuente no garantiza",
+  )
+  // Fuera de franja (madrugada): no prescribe.
+  const fx2 = datosVerificadosDirecto()
+  assert.equal(
+    textoViajeDesdeResumen(
+      [{ routeCode: "V1", board: "Alfa", alight: "Eco", stationsRidden: 4, conteoVerificado: true }],
+      fx2,
+      new Date("2026-11-04T03:00:00-05:00"),
+    ),
+    null,
+  )
+})
+
+test("8 T: el resumen reconstruido no dice un número de estaciones (conteo no garantizado)", () => {
+  const resumen: TripLegSummary[] = [
+    { routeCode: "8 T", board: "Guatoque - Veraguas", alight: "Terminal", stationsRidden: 26, conteoVerificado: false },
+  ]
+  const salida = textoViajeDesdeResumen(resumen, data, NOW)
+  assert.ok(salida, "8 T es un viaje válido a las 10:00")
+  assert.doesNotMatch(salida!.reply, /\d+ estaci/, "aunque el resumen traiga 26, no se dice el número")
 })
 
 test("respuestaPrescriptivaValida revalida una respuesta de viaje antes de hablarla", () => {

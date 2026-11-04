@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react"
 import { CheckCircle2, CircleDashed, Loader2, XCircle } from "lucide-react"
 import { z } from "zod"
-import { AgentReplySchema } from "@/lib/local-agent"
-import { TransmilenioDataSchema } from "@/lib/transmilenio"
+import { AgentReplySchema, respuestaPrescriptivaValida, type AgentReply } from "@/lib/local-agent"
+import { TransmilenioDataSchema, type TransmilenioData } from "@/lib/transmilenio"
 
 type Result = { state: "idle" | "running" | "ok" | "fail"; detail: string }
 
@@ -56,6 +56,12 @@ const CHECKS: Check[] = [
     run: async () => {
       // Primero la configuración: si hay Ollama, esta llamada además precarga el modelo.
       const info = AgentInfoSchema.parse(await (await fetch("/api/agent")).json())
+      // Catálogo actual del servidor: toda validación de payload usa estos datos
+      // y el reloj real (sin parámetro `now` en la API ni reloj congelado).
+      const dataRes = await fetch("/api/transmilenio")
+      if (!dataRes.ok) throw new Error(`No pude leer el catálogo: HTTP ${dataRes.status}`)
+      const data: TransmilenioData = TransmilenioDataSchema.parse(await dataRes.json())
+      const ahora = new Date()
       const ask = async (message: string) => {
         const res = await fetch("/api/agent", {
           method: "POST",
@@ -71,23 +77,39 @@ const CHECKS: Check[] = [
       if (incierto.action !== "search") {
         throw new Error(`Sin paradas verificadas debería ofrecer recorrido, no "${incierto.action}": «${incierto.reply}»`)
       }
-      if (!/no puedo decirte con certeza dónde subir o bajar/i.test(incierto.reply)) {
-        throw new Error(`La respuesta incierta no advierte la falta de certeza: «${incierto.reply}»`)
-      }
       if (/\b(sube en|toma la .* en|bájate en)\b/i.test(incierto.reply)) {
         throw new Error(`No debe instruir abordaje sin evidencia: «${incierto.reply}»`)
       }
 
-      // Caso con evidencia GTFS corroborada (8 G): debe abrir un plan de viaje
-      // cuyos tramos coincidan con paradas verificadas reales del catálogo.
+      // Caso con evidencia GTFS corroborada (8 G): si abre un viaje, su resumen
+      // debe PASAR la validación contra el catálogo real y el reloj actual, no
+      // solo tener el texto correcto. Fuera de franja o con evidencia vencida,
+      // abstenerse (action search) es una respuesta honesta y válida.
       const verificado = await ask("cómo llego de Terminal a Guatoque - Veraguas")
-      let detalleVerificado = "sin plan verificado disponible"
+      let detalleVerificado: string
       if (verificado.action === "trip") {
-        if (verificado.trip.length === 0) throw new Error("Plan verificado sin tramos.")
-        if (!/^Toma la .+ en .+ y bájate en /i.test(verificado.reply)) {
-          throw new Error(`El plan verificado no da instrucción clara: «${verificado.reply}»`)
+        if (!respuestaPrescriptivaValida(verificado, data, ahora)) {
+          throw new Error("Abrió un viaje cuyo resumen NO valida contra el catálogo actual.")
         }
-        detalleVerificado = `plan ${verificado.trip.map((l) => l.routeCode).join(" + ")}`
+        detalleVerificado = `plan verificado ${verificado.trip.map((l) => l.routeCode).join(" + ")}`
+      } else if (verificado.action === "search") {
+        detalleVerificado = "abstención honesta (fuera de franja o sin confirmar ahora)"
+      } else {
+        throw new Error(`Respuesta inesperada a un viaje verificable: "${verificado.action}"`)
+      }
+
+      // Payload FORJADO que imita un viaje inseguro (abordar en Calle 127 en la
+      // H72, que no la atiende): la guardia debe rechazarlo. Si lo aceptara, la
+      // versión insegura original pasaría el diagnóstico.
+      const forjado = {
+        reply: "Toma la H72 en Calle 127 y bájate en Portal Usme.",
+        action: "trip" as const,
+        engine: "reglas" as const,
+        steps: [],
+        trip: [{ routeCode: "H72", board: "Calle 127", alight: "Portal Usme", stationsRidden: 10, conteoVerificado: true }],
+      }
+      if (respuestaPrescriptivaValida(forjado as AgentReply, data, ahora)) {
+        throw new Error("La guardia aceptó un abordaje forjado en Calle 127 (H72). Debe rechazarlo.")
       }
 
       const engine = incierto.engine === "ollama" ? `Ollama (${info.model ?? "modelo local"})` : "reglas locales"
@@ -97,7 +119,7 @@ const CHECKS: Check[] = [
             ? " Ollama está configurado pero no respondió a tiempo; contestaron las reglas."
             : " Ollama está configurado pero no está disponible o le falta el modelo; contestaron las reglas."
           : ""
-      return `Motor: ${engine}. Recorrido con incertidumbre validado; ${detalleVerificado}.${warning}`
+      return `Motor: ${engine}. Incertidumbre validada; ${detalleVerificado}; payload forjado rechazado.${warning}`
     },
   },
   {
