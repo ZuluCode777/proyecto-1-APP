@@ -255,7 +255,7 @@ async (page) => {
       ['gps-imprecisa', /no puedo saber si llegaste/i], ['gps-aproximada', /ubicación exacta/i], ['gps-vieja', /actualiza/i],
       ['accesorio-desconectado', /no hay avisos de proximidad/i], ['accesorio-medicion', /relativa al sensor/i],
       ['metro', /sin servicio comercial|no tiene servicio comercial/i], ['metro-estacion', /no se puede viajar hoy/i],
-      ['viaje-incierto', /no te indico dónde subir/i], ['viaje-copia', /copia guardada/i], ['inicio-copia', /copia guardada/i], ['inicio-sin-red', /sin conexión/i], ['viaje-timeout', /tardó demasiado/i], ['viaje-5xx', /tuvo un error/i], ['lupa-cerrada', /no lee letreros/i],
+      ['viaje-incierto', /no te indico dónde subir/i], ['viaje-copia', /copia guardada/i], ['inicio-copia', /copia guardada/i], ['inicio-sin-red', /conexión con el servidor/i], ['viaje-timeout', /tardó demasiado/i], ['viaje-5xx', /tuvo un error/i], ['lupa-cerrada', /no lee letreros/i],
     ]
     const malos = []
     for (const [nombre, frase] of casos) for (const v of ['A', 'B']) {
