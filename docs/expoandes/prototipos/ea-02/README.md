@@ -42,6 +42,8 @@ Debajo del iPhone simulado, con estilo distinto para no confundirlo con el dise�
 
 Inicio, Rutas y viaje, Metro (escenario futuro), Ubicación y orientación, Asistente, Avisos, Accesorio, Ajustes y ayuda, y Lupa. En B también existe «Más».
 
+«Emergencia: llamar al 123» (en Inicio de A, en Más de B y en Ajustes y ayuda) es un marcador de la función que ya existe en la app (`components/assistance.tsx`): línea de emergencias 123, Policía de TransMilenio 156 y Atención al usuario de TransMilenio 195. El prototipo no llama y **no evalúa** este flujo; ninguna tarea lo usa.
+
 ## Límites
 
 - Las capturas y el árbol de Chromium no prueban VoiceOver. El prototipo tampoco es la app terminada.

@@ -6,7 +6,8 @@
 <meta name="robots" content="noindex">
 <title>PROTOTIPO DESECHABLE EA-02 · TransMiVoz iPhone</title>
 <!--
-  Prototipo desechable de EA-02 (#28), versión 0.1. No es la app TransMiVoz.
+  Prototipo desechable de EA-02 (#28), versión 0.2. No es la app TransMiVoz.
+  Versiones: 0.1 (commits 3d3d381 a 359d078); 0.2 (correcciones de la revisión del PR #58).
   Pregunta: ¿qué estructura permite a una persona ciega o con baja visión iniciar,
   consultar, reconocer un fallo, cancelar y recuperarse sin ayuda visual?
   Dos variantes con la misma información y distinta estructura, elegidas con ?variante=A|B:
@@ -118,7 +119,7 @@ dialog .sim-etiqueta{margin:.2em 0 .4em;font-size:.85em;font-weight:800}
 </style>
 </head>
 <body>
-<p class="aviso-prototipo"><strong>Prototipo desechable EA-02, versión 0.1.</strong> No es la app TransMiVoz. Usa datos de ejemplo, simula accesorio, ubicación, cámara y permisos de iOS, y no guarda nada.</p>
+<p class="aviso-prototipo"><strong>Prototipo desechable EA-02, versión 0.2.</strong> No es la app TransMiVoz. Usa datos de ejemplo, simula accesorio, ubicación, cámara y permisos de iOS, y no guarda nada.</p>
 <div class="marco">
   <div id="disenio" class="disenio">
     <div id="app"></div>
@@ -186,7 +187,7 @@ dialog .sim-etiqueta{margin:.2em 0 .4em;font-size:.85em;font-weight:800}
 <script>
 'use strict'
 ;(() => {
-const VERSION = '0.1'
+const VERSION = '0.2'
 const $ = (selector, raiz = document) => raiz.querySelector(selector)
 
 // ---------- Datos de ejemplo: catálogo del 3/11/2026 e investigación Metro del 2/11/2026 ----------
@@ -939,7 +940,8 @@ function destinosInicio() {
     { id: 'nav-ajustes', texto: 'Ajustes y ayuda', fn: () => irArea('ajustes') },
   ]
 }
-const EMERGENCIA = { id: 'emergencia', texto: 'Emergencia: llamar al 123', fn: () => decir('En la app real se abriría la llamada al 123. El prototipo no llama.') }
+// Marcador de la función existente (components/assistance.tsx): 123, 156 y 195. No se evalúa en este prototipo.
+const EMERGENCIA = { id: 'emergencia', texto: 'Emergencia: llamar al 123', fn: () => decir('En la app real se abriría la llamada al 123. También están la Policía de TransMilenio, 156, y Atención al usuario de TransMilenio, 195. El prototipo no llama.') }
 const AREAS = {}
 AREAS.inicio = () => {
   const s = textoSesion(), n = avisosActivos().length, au = textoAudio(), g = textoGps(), c = textoCatalogo()

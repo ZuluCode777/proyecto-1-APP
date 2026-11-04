@@ -116,6 +116,10 @@ En Metro, un aviso fijo dice que es escenario educativo. Ningún texto da indica
 - Errores con texto propio y reintento explícito: sin conexión, 401, 429, tiempo de espera agotado (el cliente de `main` corta a los 20 s en `hooks/use-transmilenio.ts`) y error 5xx del servidor.
 - **Propuesta, requiere cambio de contrato (A1):** no indicar abordaje cuando el catálogo es una copia guardada. Hoy `planTrip` (`lib/routes.ts`) no lee `source`, `aplicarEvidenciaGtfs` (`lib/transmilenio-data.ts`) se aplica igual a la copia y `/api/agent` no devuelve la versión del catálogo. El prototipo sigue el comportamiento actual del backend.
 
+## 12. Emergencia
+
+- «Emergencia: llamar al 123» es un marcador de la función existente (`components/assistance.tsx`), con 123, 156 (Policía de TransMilenio) y 195 (Atención al usuario de TransMilenio). Este prototipo no la evalúa. Su diseño accesible en el iPhone queda para #51.
+
 ## Cómo se comprueba
 
 | Regla | Comprobación automática | Pendiente en iPhone |
@@ -128,3 +132,4 @@ En Metro, un aviso fijo dice que es escenario educativo. Ningún texto da indica
 | 7 Cancelación | Escape, cancelar y salir; descarte de respuestas tardías | Gesto de escape y Magic Tap |
 | 8 Permisos | Hoja previa, Escape, denegación y alternativa | Avisos reales del sistema |
 | 9–11 | Llegada, distancia, abordaje, Metro, procedencia, «Actualizar datos» y paridad entre variantes | Datos reales del backend |
+| 12 | No se comprueba: marcador sin evaluar | Diseño del flujo de emergencia en #51 |
