@@ -1,0 +1,179 @@
+async (page) => {
+  const errores = []
+  page.on('pageerror', (e) => errores.push(e.message))
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.setContent(__HTML__)
+  const esperar = (ms) => page.waitForTimeout(ms)
+  const ev = (fn, arg) => page.evaluate(fn, arg)
+  const resultados = []
+  const prueba = async (nombre, fn) => { try { const r = await fn(); resultados.push({ nombre, ok: r === true, detalle: r === true ? '' : String(r) }) } catch (e) { resultados.push({ nombre, ok: false, detalle: 'excepción: ' + e.message }) } }
+  const clic = (id) => ev((id) => { const el = document.querySelector(`#disenio [data-id="${id}"]`); if (!el) throw new Error('no existe ' + id); el.focus(); el.click() }, id)
+  const texto = () => ev(() => document.querySelector('#contenido').innerText)
+  const activo = () => ev(() => document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.id || document.activeElement.tagName : null)
+  for (const v of ['A', 'B']) {
+    const libre = () => ev((v) => { window.prototipo.E.variante = v; window.prototipo.aplicarEscenario('libre') }, v)
+    await prueba(`${v} cancelar consulta de viaje con Escape: no llega resultado tardío`, async () => {
+      await libre(); await clic(v === 'A' ? 'nav-viaje' : 'tab-viaje')
+      await ev(() => { const E = window.prototipo.E; E.viaje.origen = 'Terminal'; E.viaje.destino = 'Calle 72' })
+      await clic('consultar-viaje'); await esperar(300); await page.keyboard.press('Escape'); await esperar(2000)
+      const t = await texto(); const fase = await ev(() => window.prototipo.E.viaje.fase)
+      return fase === 'cancelado' && !/Sube a la/.test(t) ? true : `fase=${fase}`
+    })
+    await prueba(`${v} salir de Rutas durante la consulta la cancela`, async () => {
+      await libre(); await clic(v === 'A' ? 'nav-viaje' : 'tab-viaje')
+      await ev(() => { const E = window.prototipo.E; E.viaje.origen = 'Terminal'; E.viaje.destino = 'Calle 72' })
+      await clic('consultar-viaje'); await esperar(200); await ev(() => window.prototipo.irArea('inicio')); await esperar(2000)
+      const r = await ev(() => [window.prototipo.E.viaje.fase, window.prototipo.E.voz.texto])
+      return r[0] === 'cancelado' && /Saliste/.test(r[1]) ? true : r.join(' / ')
+    })
+    await prueba(`${v} cancelar al asistente mientras piensa descarta la respuesta`, async () => {
+      await libre(); await clic(v === 'A' ? 'nav-asistente' : 'tab-asistente')
+      await ev(() => { const E = window.prototipo.E; E.asis.envioAceptado = true; E.asis.texto = 'horario 8 G' })
+      await clic('enviar-pregunta'); await esperar(300); await clic('cancelar-asistente'); await esperar(2000)
+      const r = await ev(() => [window.prototipo.E.asis.fase, !!document.querySelector('#respuesta-h2')])
+      return r[0] === 'cancelado' && !r[1] ? true : r.join(' / ')
+    })
+    await prueba(`${v} la medición vence a los 3 s y no se repite la distancia`, async () => {
+      await ev((v) => { window.prototipo.E.variante = v; window.prototipo.aplicarEscenario('T1') }, v)
+      await clic(v === 'A' ? 'sesion-principal' : 'fila-sesion'); await esperar(1700)
+      await ev(() => window.prototipo.ACCIONES_PANEL['medicion-frente']())
+      const durante = await texto(); await esperar(3300); const despues = await texto()
+      const r = await ev(() => [window.prototipo.E.acc.estado, window.prototipo.E.avisos.some((a) => a.clave === 'dato-vencido')])
+      return /1,2 m/.test(durante) && !/1,2 m/.test(despues) && r[0] === 'sinDatos' && r[1] ? true : `estado=${r[0]} aviso=${r[1]} durante=${/1,2 m/.test(durante)} después=${/1,2 m/.test(despues)}`
+    })
+    await prueba(`${v} un aviso de proximidad corta la escucha y no la reanuda`, async () => {
+      await ev((v) => { const P = window.prototipo; P.E.variante = v; P.aplicarEscenario('T6'); Object.assign(P.E.acc, { elegido: 'TMV-01', estado: 'sinDeteccion' }); P.E.permisos.bluetooth = 'concedido'; P.irArea('asistente') }, v)
+      await clic('hablar'); await esperar(400); await ev(() => window.prototipo.ACCIONES_PANEL['medicion-frente']()); await esperar(3000)
+      const r = await ev(() => [window.prototipo.E.asis.fase, !!document.querySelector('#respuesta-h2')])
+      return r[0] === 'interrumpido' && !r[1] ? true : r.join(' / ')
+    })
+    await prueba(`${v} ubicación imprecisa, antigua o aproximada nunca anuncia llegada`, async () => {
+      const malos = []
+      for (const nombre of ['gps-imprecisa', 'gps-aproximada']) {
+        await ev(({ v, nombre }) => { window.prototipo.preparar(nombre, { variante: v }); window.prototipo.E.gps.guiando = true; window.prototipo.render() }, { v, nombre })
+        const t = (await texto()) + (await ev(() => window.prototipo.E.voz.texto))
+        if (/has llegado|ya llegaste|llegaste a /i.test(t)) malos.push(nombre)
+      }
+      return malos.length ? malos.join(', ') : true
+    })
+    await prueba(`${v} «sin detección» siempre dice que no es camino libre`, async () => {
+      const malos = []
+      for (const destino of ['inicio', 'accesorio']) {
+        await ev(({ v, destino }) => { const P = window.prototipo; P.preparar('inicio', { variante: v }); Object.assign(P.E.acc, { elegido: 'TMV-01', estado: 'sinDeteccion' }); P.irArea(destino) }, { v, destino })
+        const t = await texto()
+        if (/sin detección/i.test(t) && !/no significa que el camino esté libre/i.test(t)) malos.push(destino)
+      }
+      return malos.length ? malos.join(', ') : true
+    })
+    await prueba(`${v} solo el viaje verificado dice dónde subir y bajar`, async () => {
+      const malos = []
+      for (const nombre of ['viaje-verificado', 'viaje-incierto', 'viaje-candidato', 'viaje-sin-red', 'viaje-401', 'viaje-catalogo-viejo', 'asistente-respuesta']) {
+        await ev(({ v, nombre }) => window.prototipo.preparar(nombre, { variante: v }), { v, nombre })
+        const t = await texto(), ordena = /sube a la|bájate en|toma la 8/i.test(t)
+        const debe = nombre === 'viaje-verificado' || nombre === 'asistente-respuesta'
+        if (ordena !== debe) malos.push(`${nombre}: ordena=${ordena}`)
+      }
+      return malos.length ? malos.join(', ') : true
+    })
+    await prueba(`${v} Metro nunca da indicaciones de abordaje y declara que no hay servicio`, async () => {
+      const malos = []
+      for (const nombre of ['metro', 'metro-estacion']) {
+        await ev(({ v, nombre }) => window.prototipo.preparar(nombre, { variante: v }), { v, nombre })
+        const t = await texto()
+        if (/sube a|bájate/i.test(t) || !/sin servicio comercial|no tiene servicio comercial/i.test(t)) malos.push(nombre)
+      }
+      return malos.length ? malos.join(', ') : true
+    })
+  }
+  await prueba('A al volver, el foco regresa al botón que abrió la pantalla', async () => {
+    await ev(() => { window.prototipo.E.variante = 'A'; window.prototipo.aplicarEscenario('libre') })
+    await clic('nav-metro'); const enMetro = await activo(); await clic('metro-E12'); await clic('volver'); const f1 = await activo(); await clic('volver'); const f2 = await activo()
+    return enMetro === 'titulo' && f1 === 'metro-E12' && f2 === 'nav-metro' ? true : `${enMetro} ${f1} ${f2}`
+  })
+  await prueba('B al volver, el foco regresa al botón que abrió la pantalla', async () => {
+    await ev(() => { window.prototipo.E.variante = 'B'; window.prototipo.aplicarEscenario('libre') })
+    await clic('tab-mas'); await clic('mas-lupa'); await clic('volver'); const f = await activo()
+    return f === 'mas-lupa' ? true : f
+  })
+  await prueba('El foco se conserva cuando un evento repinta la pantalla', async () => {
+    await ev(() => { const P = window.prototipo; P.E.variante = 'A'; P.aplicarEscenario('T9') })
+    await ev(() => document.querySelector('[data-id="repetir-voz"]').focus())
+    await ev(() => window.prototipo.ACCIONES_PANEL.desconectar())
+    const f = await activo()
+    return f === 'repetir-voz' ? true : f
+  })
+  await prueba('Cada locución aparece como texto visible y en la región viva', async () => {
+    await ev(() => { window.prototipo.E.variante = 'B'; window.prototipo.aplicarEscenario('libre') })
+    await clic('tab-viaje'); await clic('frecuente-1'); await esperar(1900)
+    const r = await ev(() => [window.prototipo.E.voz.texto, document.querySelector('#voz-texto').textContent, document.querySelector('#anuncio-cortes').textContent])
+    return r[0] === r[1] && r[1] === r[2] && r[0].length > 20 ? true : JSON.stringify(r)
+  })
+  await prueba('Ubicación denegada: «Usar mi ubicación» explica y lleva el foco al campo Origen', async () => {
+    await ev(() => { window.prototipo.E.variante = 'A'; window.prototipo.aplicarEscenario('T4') })
+    await clic('nav-viaje'); await clic('origen-gps')
+    const r = await ev(() => [document.activeElement.dataset.id, document.querySelector('#error-origen') ? document.querySelector('#error-origen').innerText : '', document.querySelector('#campo-origen').getAttribute('aria-invalid')])
+    return r[0] === 'origen' && /permiso/.test(r[1]) && r[2] === 'true' ? true : JSON.stringify(r)
+  })
+  await prueba('Escape en la explicación propia equivale a «Ahora no»; el aviso del sistema exige respuesta', async () => {
+    await ev(() => { window.prototipo.E.variante = 'A'; window.prototipo.aplicarEscenario('libre') })
+    await clic('nav-lupa'); await clic('abrir-camara')
+    const abierta = await ev(() => document.querySelector('#hoja').open)
+    await page.keyboard.press('Escape'); const cerrada = await ev(() => !document.querySelector('#hoja').open)
+    const foco = await activo()
+    await clic('abrir-camara'); await clic('hoja-seguir'); await page.keyboard.press('Escape')
+    const sistema = await ev(() => document.querySelector('#sistema').open)
+    await clic('sistema-no')
+    const permiso = await ev(() => window.prototipo.E.permisos.camara)
+    return abierta && cerrada && foco === 'abrir-camara' && sistema && permiso === 'denegado' ? true : JSON.stringify({ abierta, cerrada, foco, sistema, permiso })
+  })
+  await prueba('El comprobador detecta un control pequeño, sin nombre y con contraste bajo', async () => {
+    const r = await ev(() => {
+      const P = window.prototipo
+      P.preparar('inicio', { variante: 'A' })
+      const b = document.createElement('button'); b.style.cssText = 'min-height:20px;min-width:20px;height:20px;width:20px;padding:0'
+      const p = document.createElement('p'); p.textContent = 'gris claro'; p.style.color = '#aaaaaa'
+      document.querySelector('#contenido').append(b, p)
+      const c = P.comprobar(); b.remove(); p.remove()
+      return { pequenos: c.pequenos.length, sinNombre: c.sinNombre.length, minimo: c.contrasteMinimo }
+    })
+    return r.pequenos >= 1 && r.sinNombre >= 1 && r.minimo < 7 ? true : JSON.stringify(r)
+  })
+  await prueba('Aviso de ubicación de iOS: el interruptor «Ubicación exacta» existe y apagarlo deja la ubicación aproximada', async () => {
+    await ev(() => { window.prototipo.E.variante = 'A'; window.prototipo.aplicarEscenario('libre') })
+    await clic('nav-gps'); await clic('gps-principal'); await clic('hoja-seguir')
+    const objeto = await ev(() => document.querySelector('#sistema').innerText.includes('[object'))
+    await clic('sistema-exacta'); await clic('sistema-al-usar'); await esperar(1400)
+    const r = await ev(() => [window.prototipo.E.permisos.exacta, document.querySelector('#contenido').innerText])
+    return !objeto && r[0] === false && /aproximada/i.test(r[1]) && /Escribir mi origen/.test(r[1]) ? true : JSON.stringify({ objeto, exacta: r[0] })
+  })
+  await prueba('Ningún texto visible contiene «[object»', async () => {
+    const malos = await ev(() => {
+      const P = window.prototipo, m = []
+      for (const v of ['A', 'B']) for (const n of Object.keys(P.PREPARADOS)) { if (n === 'mas' && v === 'A') continue; P.preparar(n, { variante: v }); if (document.body.innerText.includes('[object')) m.push(v + ' ' + n) }
+      return m
+    })
+    return malos.length ? malos.join(', ') : true
+  })
+  await prueba('Al desplazar, la franja de actividad (A) y las pestañas con actividad (B) siguen en pantalla', async () => {
+    const r = await ev(() => {
+      const P = window.prototipo, out = {}
+      P.preparar('inicio-activa', { variante: 'A', texto: 100 }); window.scrollTo(0, 600)
+      const a = document.querySelector('#actividad').getBoundingClientRect(); out.A = a.top >= -1 && a.bottom <= innerHeight
+      P.preparar('inicio-activa', { variante: 'B', texto: 100 }); window.scrollTo(0, 300)
+      const t = document.querySelector('#pestanas').getBoundingClientRect(), c = document.querySelector('[data-id="cancelar-sesion"]').getBoundingClientRect()
+      out.B = Math.abs(t.bottom - innerHeight) <= 1 && c.top >= 0 && c.bottom <= innerHeight
+      P.preparar('inicio-activa', { variante: 'B', texto: 310 }); window.scrollTo(0, 2000)
+      const t3 = document.querySelector('#pestanas').getBoundingClientRect(); out.B310 = Math.abs(t3.bottom - innerHeight) <= 1
+      window.scrollTo(0, 0)
+      return out
+    })
+    return r.A && r.B && r.B310 ? true : JSON.stringify(r)
+  })
+  await prueba('Escape sin actividad transitoria vuelve a la pantalla anterior', async () => {
+    await ev(() => { window.prototipo.E.variante = 'A'; window.prototipo.aplicarEscenario('libre') })
+    await clic('nav-ajustes'); await page.keyboard.press('Escape')
+    const r = await ev(() => [document.title, document.activeElement.dataset.id])
+    return /Inicio$/.test(r[0]) && r[1] === 'nav-ajustes' ? true : r.join(' / ')
+  })
+  return { resultados, errores }
+}

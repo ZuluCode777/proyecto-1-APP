@@ -16,6 +16,7 @@ Comenzar por [plan de ejecución](plan-ejecucion.md), que identifica prioridades
 | [Puertas de hardware](puertas-hardware.md) | Criterios propuestos para estáticos, móviles e interior; medidas de audio/enlace y ruta crítica. |
 | [Enunciado, rúbrica y correcciones](lectura-rubrica.md) | Doce criterios, enunciado ExpoAndes y reconciliación del 3/11: trabajo reutilizable, comentarios de evaluación, afiche/stand, CANVAS y pendientes. |
 | [Corroboración](corroboracion.md) | Pruebas observadas, fuentes contrastadas, datos confirmados y lo que permanece pendiente. |
+| [Prototipo iPhone accesible — EA-02](prototipos/ea-02/README.md) | Prototipo desechable con dos variantes, especificación de accesibilidad, evaluación provisional y guion de sesiones de #28; decisión pendiente de A2. |
 
 Las fuentes primarias y sus fechas están junto a las afirmaciones en los informes. Las recomendaciones posteriores de arquitectura ajustan las propuestas iniciales al calendario: SwiftUI **mínimo** condicionado a prueba, conservando backend Next y web; paridad completa permanece como trabajo posterior. Las cifras de ensayo son metas propuestas, no desempeño medido.
 
