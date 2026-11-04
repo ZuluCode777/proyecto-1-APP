@@ -2,17 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { CheckCircle2, Ear, Loader2, Mic, Send } from "lucide-react"
-import { useSpeech, useVoiceRecognition } from "@/hooks/use-speech"
+import { ESCUCHA_ESPERA_MS, esUltimaLocucion, useSpeech, useVoiceRecognition } from "@/hooks/use-speech"
 import type { LatLng } from "@/lib/geo"
+import { consultarAgente } from "@/lib/consulta-agente"
 import {
-  AgentReplySchema,
-  interpretCommand,
+  parseIntent,
   plainReply,
   respuestaSinImperativos,
   textoViajeDesdeResumen,
   type AgentReply,
   type AgentStep,
 } from "@/lib/local-agent"
+import { intencionUsaUbicacion } from "@/lib/seleccion-interprete"
 import type { TransmilenioData } from "@/lib/routes"
 
 type TotalAgentProps = {
@@ -22,16 +23,52 @@ type TotalAgentProps = {
 
 type Status = "idle" | "listening" | "thinking" | "error"
 
-/** Pausa entre pasos, para que se vea y se oiga el razonamiento del asistente. */
-const STEP_DELAY_MS = 450
-/** Tiempo que se queda la respuesta en pantalla antes de abrir el resultado. */
-const NAVIGATE_DELAY_MS = 2500
+/**
+ * Plazo máximo para obtener la POSICIÓN una vez el permiso ya está concedido.
+ * NO cuenta el tiempo en que la persona responde al aviso de permiso (la
+ * especificación de Geolocation aclara que su `timeout` no corre mientras el
+ * aviso está abierto), por eso la espera del permiso se trata aparte.
+ */
+const UBICACION_ESPERA_MS = 2_000
+/**
+ * Cota TOTAL mientras el permiso está en `prompt`. La persona necesita tiempo
+ * (p. ej. con lector de pantalla), pero el asistente no puede quedar ocupado
+ * indefinidamente: al vencer, la pregunta sigue SIN coordenada, se libera
+ * `busyRef` y se avisa que puede decir o escribir su origen (EA-08, decisión F).
+ */
+const UBICACION_PERMISO_ESPERA_MS = 15_000
 /** Texto en reposo, a la espera de un toque. */
 const IDLE_CAPTION = "Toca la pantalla y dime a dónde quieres ir"
+/** Subtítulo mientras se espera que la persona conceda el permiso de ubicación. */
+const SUBTITULO_ESPERANDO_PERMISO = "Esperando permiso de ubicación… Toca para cancelar."
+/**
+ * Aviso NEUTRO que se antepone al texto Y al subtítulo de la respuesta cuando
+ * vence la espera del permiso (decisión F/G1/R5-2): la consulta sigue sin
+ * coordenada y la misma locución de la respuesta empieza por este aviso (no una
+ * segunda locución ni cola, para no interferir con la identidad de locución de
+ * E). Es NEUTRO a propósito: no pide el origen, porque la propia respuesta ya lo
+ * pide cuando hace falta (un viaje sin origen), y con «dónde estoy» no tendría
+ * sentido pedirlo. Así no suena raro ni se repite la petición.
+ */
+const SIN_PERMISO_UBICACION = "No recibí permiso de ubicación a tiempo."
+
+/**
+ * Aviso de privacidad del ASISTENTE, breve y accesible, visible antes de
+ * capturar (EA-08, hallazgo 8/decisión B/R3-4). Explica el procesamiento real:
+ * el audio del reconocimiento puede ir a un servicio del navegador (no es
+ * necesariamente local); la frase viaja al servidor y, si está activo, al
+ * modelo; dar la ubicación es OPCIONAL (puedes decir o escribir el origen); al
+ * abrir Google Maps se comparte el origen. Hay alternativa por texto.
+ */
+const AVISO_PRIVACIDAD =
+  "El reconocimiento de voz puede enviar tu audio al servicio del navegador (no es necesariamente local). Tu frase viaja a este servidor y, si está activo, a un modelo local. La ubicación es opcional: puedes decir o escribir tu origen; si preguntas dónde estás o cómo llegar sin origen, tu ubicación se envía a este servidor. Al abrir Google Maps se comparte tu origen. Puedes escribir en vez de hablar."
 
 /** Aviso seguro cuando un viaje no puede confirmarse ahora, sin instrucciones. */
 const VIAJE_NO_CONFIRMABLE =
   "No puedo confirmar las paradas y el horario de ese viaje con los datos actuales, así que no te doy indicaciones de abordaje. Confirma la ruta con TransMilenio."
+
+/** Aviso recuperable cuando la consulta falla por algo que no es un aborto. */
+const ERROR_RECUPERABLE = "Tuve un problema para responder. Toca la pantalla e inténtalo de nuevo."
 
 /**
  * Deja una respuesta lista para mostrar/hablar/navegar con seguridad. Las
@@ -67,7 +104,7 @@ function sanear(reply: AgentReply, data: TransmilenioData | null): AgentReply {
  * hay ruido o el micrófono no está disponible.
  */
 export function TotalAgent({ data, onAction }: TotalAgentProps) {
-  const { speak } = useSpeech()
+  const { speak, cancel } = useSpeech()
   const [status, setStatus] = useState<Status>("idle")
   const [caption, setCaption] = useState(IDLE_CAPTION)
   const [steps, setSteps] = useState<AgentStep[]>([])
@@ -76,102 +113,203 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
   /** Verdadero mientras el asistente piensa una respuesta. */
   const busyRef = useRef(false)
   const startTimerRef = useRef<number | undefined>(undefined)
-  /** Número de la última pregunta: una respuesta vieja no navega si ya hay otra. */
+  /** Número de la última pregunta: una respuesta vieja no habla ni navega. */
   const lastAskRef = useRef(0)
+  /** Aborta el `fetch` (y la espera de ubicación) al salir, cancelar o preguntar de nuevo. */
+  const controladorRef = useRef<AbortController | null>(null)
   const positionRef = useRef<LatLng | undefined>(undefined)
   /**
-   * Catálogo más reciente, en una ref: la revalidación de un viaje debe usar los
-   * datos actuales y no los capturados por el cierre cuando empezó el fetch o
-   * durante las pausas antes de navegar.
+   * ¿El desmontaje lo provocó la navegación que ordenó la respuesta vigente?
+   * Se marca justo antes de `onAction`. Si está puesta, la limpieza NO calla la
+   * voz (la respuesta que navega debe oírse completa); si no, y el asistente
+   * tiene una locución propia sonando, la limpieza la calla (la persona salió).
+   * Decisión A (EA-08).
+   */
+  const navegoPorRespuestaRef = useRef(false)
+  /**
+   * LOCUCIÓN propia que está sonando ahora (el objeto, no un booleano). Permite
+   * callar al salir solo la voz propia, y de forma fiable frente a los eventos
+   * de cancelación ASÍNCRONOS del navegador: un `end`/`error` tardío de una
+   * locución YA cancelada no borra la marca si no es la locución actual. Y al
+   * salir solo se calla si esta locución sigue siendo la ÚLTIMA entregada a la
+   * síntesis global, de modo que un anuncio de otra pantalla posterior (p. ej.
+   * «Modo baja visión activado» de `changeMode`) no se corta. Decisión E (EA-08).
+   */
+  const locucionPropiaRef = useRef<SpeechSynthesisUtterance | null>(null)
+  /**
+   * Catálogo más reciente, en una ref: la revalidación de un viaje y el respaldo
+   * local deben usar los datos actuales y no los capturados por el cierre cuando
+   * empezó el fetch.
    */
   const dataRef = useRef<TransmilenioData | null>(data)
   useEffect(() => {
     dataRef.current = data
   }, [data])
 
-  /** Pide la ubicación sin bloquear: si llega, el asistente la usa como origen. */
-  const locate = useCallback(() => {
-    if (positionRef.current || !navigator.geolocation) return
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        positionRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude }
-      },
-      () => undefined,
-      { maximumAge: 60_000, timeout: 10_000 },
-    )
+  /**
+   * Habla y RASTREA la locución propia por IDENTIDAD: guarda el objeto en
+   * `locucionPropiaRef` y, en `end`/`error`, solo lo borra si sigue siendo esa
+   * misma locución (así un evento tardío de una locución cancelada no afecta a
+   * la nueva). Decisión E (EA-08).
+   */
+  const hablar = useCallback(
+    (texto: string, opciones?: { queue?: boolean }) => {
+      const locucion = speak(texto, opciones)
+      if (!locucion) return
+      locucionPropiaRef.current = locucion
+      const terminar = () => {
+        if (locucionPropiaRef.current === locucion) locucionPropiaRef.current = null
+      }
+      locucion.addEventListener("end", terminar, { once: true })
+      locucion.addEventListener("error", terminar, { once: true })
+    },
+    [speak],
+  )
+
+  /**
+   * Consigue la ubicación SOLO cuando la pregunta puede usarla (GPS o viaje sin
+   * origen). Si ya se tenía, la devuelve sin pedir permiso. Según el estado del
+   * permiso:
+   * - `granted`: obtiene la posición con la cota `UBICACION_ESPERA_MS` (2 s).
+   * - `prompt`: anuncia «Esperando permiso…» y espera hasta `UBICACION_PERMISO_ESPERA_MS`
+   *   (15 s) o hasta que la persona responda o cancele con un toque. Al vencer,
+   *   resuelve SIN coordenada y llama `alVencer` (que marca que debe anteponerse
+   *   el aviso de permiso vencido al texto de la respuesta; ver `askAgent`). La
+   *   petición de posición queda viva para cachearla si se concede más tarde; esa
+   *   pregunta no la usa, la siguiente sí.
+   * - `denied` (o aborto antes/durante la consulta de permiso): resuelve SIN
+   *   coordenada de inmediato, sin anunciar espera (decisión F/G).
+   * Nunca deja la interfaz colgada ni `busyRef` bloqueado.
+   */
+  const obtenerUbicacion = useCallback((señal: AbortSignal, alVencer: () => void): Promise<LatLng | undefined> => {
+    if (positionRef.current) return Promise.resolve(positionRef.current)
+    if (señal.aborted || typeof navigator === "undefined" || !navigator.geolocation) return Promise.resolve(undefined)
+
+    const permisos = navigator.permissions
+    const estadoPermiso = permisos?.query
+      ? permisos.query({ name: "geolocation" as PermissionName }).then((p) => p.state).catch(() => "prompt" as const)
+      : Promise.resolve<"prompt">("prompt")
+
+    return estadoPermiso.then((estado) => {
+      // G: si se canceló/salió mientras la consulta de permiso estaba pendiente,
+      // o el permiso está denegado, no se anuncia espera ni se pide la posición.
+      if (señal.aborted || estado === "denied") return undefined
+      return new Promise<LatLng | undefined>((resolver) => {
+        let resuelto = false
+        let temporizador: number | undefined
+        const terminar = (valor: LatLng | undefined, vencioPermiso = false) => {
+          if (resuelto) return
+          resuelto = true
+          if (temporizador !== undefined) window.clearTimeout(temporizador)
+          señal.removeEventListener("abort", alAbortar)
+          if (vencioPermiso) alVencer()
+          resolver(valor)
+        }
+        const alAbortar = () => terminar(undefined)
+        señal.addEventListener("abort", alAbortar, { once: true })
+
+        // `granted`: cota de 2 s para la fijación. `prompt`: se anuncia y hay una
+        // cota TOTAL de 15 s (el `timeout` de la API no cuenta el aviso); al
+        // vencer se sigue sin coordenada y se avisa por voz.
+        if (estado === "granted") {
+          temporizador = window.setTimeout(() => terminar(undefined), UBICACION_ESPERA_MS)
+        } else {
+          setCaption(SUBTITULO_ESPERANDO_PERMISO)
+          temporizador = window.setTimeout(() => terminar(undefined, true), UBICACION_PERMISO_ESPERA_MS)
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            positionRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+            terminar(positionRef.current)
+          },
+          () => terminar(undefined),
+          { maximumAge: 60_000, timeout: UBICACION_PERMISO_ESPERA_MS },
+        )
+      })
+    })
   }, [])
 
   const askAgent = useCallback(
     async (message: string) => {
       const ask = ++lastAskRef.current
+      // Una pregunta nueva aborta la anterior: ni su voz ni su navegación llegan.
+      controladorRef.current?.abort()
+      const control = new AbortController()
+      controladorRef.current = control
       busyRef.current = true
       setStatus("thinking")
       setCaption("Pensando…")
       setSteps([])
 
-      let reply: AgentReply
+      /** ¿Sigue vigente esta pregunta? Se comprueba antes de CADA efecto. */
+      const vigente = () => ask === lastAskRef.current && !control.signal.aborted
+
       try {
-        const res = await fetch("/api/agent", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message, position: positionRef.current }),
-        })
-        if (!res.ok && res.status !== 429 && res.status !== 413) throw new Error(`HTTP ${res.status}`)
-        reply = AgentReplySchema.parse(await res.json())
-      } catch {
-        // Sin servidor: el mismo intérprete corre en el navegador con los datos ya cargados.
         const actual = dataRef.current
-        if (!actual) {
-          reply = plainReply("No tengo conexión con el servidor. Inténtalo de nuevo.")
-        } else {
-          reply = interpretCommand(message, actual, { position: positionRef.current, now: new Date() })
-        }
-      }
+        // La ubicación se decide con la intención de REGLAS en el cliente, sin
+        // red, y SOLO se pide/envía si la frase la usa (GPS o viaje sin origen).
+        // Una frase que las reglas no entienden (`unknown`) NO lleva coordenada
+        // (decisión B/AC4): si el servidor la resuelve con el modelo como `gps`
+        // o viaje sin origen, responde por su camino de falta de ubicación (pide
+        // origen o permiso). El aviso de privacidad coincide con esto.
+        const intencion = actual ? parseIntent(message, actual) : null
+        let permisoVencido = false
+        const position =
+          intencion && intencionUsaUbicacion(intencion)
+            ? await obtenerUbicacion(control.signal, () => { permisoVencido = true })
+            : undefined
+        if (!vigente()) return
+        setCaption("Pensando…") // borra el subtítulo «Esperando permiso…» si lo hubo
 
-      // Cuántos pasos mostrará la respuesta, para animar la espera. El texto de
-      // los pasos NO se fija aquí: una respuesta de viaje puede dejar de ser
-      // prescriptible durante la animación, así que los pasos reales se
-      // reconstruyen al final, tras revalidar. Durante la espera solo avanza un
-      // marcador neutro, sin instrucciones que puedan quedar viejas.
-      const pasosPrevios = sanear(reply, dataRef.current).steps.length
-      for (let i = 0; i < pasosPrevios; i++) {
-        await new Promise((r) => setTimeout(r, STEP_DELAY_MS))
-        if (ask !== lastAskRef.current) return
-      }
+        const reply = await consultarAgente({
+          message,
+          position,
+          data: dataRef.current,
+          signal: control.signal,
+          now: () => new Date(),
+        })
+        if (!vigente()) return
 
-      // Guardia JUSTO antes de subtítulo, voz y pasos, DESPUÉS de todas las
-      // esperas: se revalida la respuesta ORIGINAL contra el catálogo más
-      // reciente y el reloj actual. Un viaje que era válido al llegar puede
-      // haber salido de su franja durante la animación; en ese caso aquí se
-      // degrada a un aviso seguro, y nunca se habla ni se muestran instrucciones
-      // viejas.
-      if (ask !== lastAskRef.current) return
-      const seguro = sanear(reply, dataRef.current)
-      setSteps(seguro.steps)
-      setEngine(seguro.engine)
-      setCaption(seguro.reply)
-      speak(seguro.reply)
-      busyRef.current = false
-      setStatus("idle")
-      if (seguro.action === "none") return
-      // Deja ver los pasos y la respuesta antes de cambiar de pantalla. Si en
-      // esa pausa llega otra pregunta, esta respuesta ya no navega.
-      if (seguro.steps.length > 0) await new Promise((r) => setTimeout(r, NAVIGATE_DELAY_MS))
-      if (ask !== lastAskRef.current) return
-      // Revalida otra vez justo antes de navegar contra el catálogo actual: el
-      // tiempo o los datos pudieron cambiar durante la pausa.
-      const navegable = sanear(reply, dataRef.current)
-      if (seguro.action === "trip" && navegable.action !== "trip") {
-        // El viaje dejó de ser prescriptible en la pausa: no se abre; se avisa,
-        // reemplazando también los pasos viejos.
-        setSteps(navegable.steps)
-        setCaption(navegable.reply)
-        speak(navegable.reply)
-        return
+        // Guardia ÚNICA justo antes de los efectos (texto, voz, pasos,
+        // navegación): se sanea la respuesta contra el catálogo más reciente y
+        // el reloj actual (revalidación EA-05). Sin pausas ya no hay `await`
+        // entre aquí y `onAction`, así que una sola comprobación basta.
+        const seguro = sanear(reply, dataRef.current)
+        // Si venció la espera del permiso (decisión F/G1), el aviso va DELANTE
+        // del texto de la respuesta, en la MISMA locución y subtítulo (no una
+        // segunda locución ni cola, para no interferir con la identidad de
+        // locución de E). Se aplica tras `sanear` y solo si la pregunta sigue
+        // vigente.
+        const textoFinal = permisoVencido ? `${SIN_PERMISO_UBICACION} ${seguro.reply}` : seguro.reply
+        setSteps(seguro.steps)
+        setEngine(seguro.engine)
+        setCaption(textoFinal)
+        hablar(textoFinal)
+        setStatus("idle")
+        if (seguro.action === "none") return
+        // Navega: marca que el desmontaje que provoque esta navegación NO debe
+        // callar la voz de esta respuesta (decisión A). Una pregunta nueva o la
+        // salida de la persona la habrían invalidado antes por `vigente()`.
+        navegoPorRespuestaRef.current = true
+        onAction(seguro)
+      } catch (error) {
+        // Un aborto (salir, cancelar o pregunta nueva) no muestra nada. Un fallo
+        // real (p. ej. catálogo corrupto en el respaldo local) no se traga: se
+        // avisa de forma recuperable y se vuelve a reposo (EA-08, estándares 11).
+        if (control.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return
+        if (!vigente()) return
+        setStatus("idle")
+        setSteps([])
+        setCaption(ERROR_RECUPERABLE)
+        hablar(ERROR_RECUPERABLE)
+      } finally {
+        // `busyRef` se libera cuando esta pregunta sigue siendo la vigente,
+        // aunque fallara, para no bloquear preguntas nuevas (EA-08, hallazgo 7).
+        // Si otra pregunta ya tomó el relevo, es ella quien gobierna `busyRef`.
+        if (ask === lastAskRef.current) busyRef.current = false
       }
-      onAction(navegable)
     },
-    [onAction, speak],
+    [onAction, hablar, obtenerUbicacion],
   )
 
   const handleResult = useCallback(
@@ -195,9 +333,9 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
             ? "No te escuché. Toca la pantalla e inténtalo otra vez."
             : "Hubo un problema con el micrófono. Toca para reintentar o escribe abajo."
       setCaption(message)
-      speak(message)
+      hablar(message)
     },
-    [speak],
+    [hablar],
   )
 
   const { listening, supported, start, abort } = useVoiceRecognition({ onResult: handleResult, onError: handleError })
@@ -206,11 +344,14 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
 
   /**
    * Deja de escuchar, incluso si el micrófono aún no había arrancado, y
-   * descarta lo que ya oyó para que no llegue una respuesta tardía.
+   * descarta lo que ya oyó para que no llegue una respuesta tardía. También
+   * aborta cualquier consulta o espera de ubicación en curso. NO calla la voz:
+   * eso lo decide quien llama (la cancelación explícita o la limpieza al salir).
    */
   const stopListening = useCallback(() => {
     window.clearTimeout(startTimerRef.current)
     abort()
+    controladorRef.current?.abort()
   }, [abort])
 
   const backToIdle = useCallback(() => {
@@ -219,15 +360,24 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
   }, [])
 
   useEffect(() => {
-    speak("Asistente de voz. Toca la pantalla y dime a dónde quieres ir.", { queue: true })
-    return () => {
-      stopListening()
-      // Si la persona sale en la pausa antes de navegar, la respuesta ya no abre su pantalla.
+    hablar("Asistente de voz. Toca la pantalla y dime a dónde quieres ir.", { queue: true })
+    const invalidar = () => {
+      // Al desmontar: invalida respuestas en vuelo y aborta captura, consulta y
+      // espera de ubicación. Decisión A/E: si el desmontaje lo provocó la
+      // navegación de la respuesta vigente (`navegoPorRespuestaRef`), su voz
+      // sigue sonando; si la persona SALIÓ y hay una locución PROPIA que además
+      // sigue siendo la ÚLTIMA entregada a la síntesis, se calla. Si otra pantalla
+      // habló después (p. ej. «Modo baja visión» de `changeMode`), esa ya no es
+      // la última propia, así que no se corta.
       lastAskRef.current++
+      stopListening()
+      if (!navegoPorRespuestaRef.current && locucionPropiaRef.current && esUltimaLocucion(locucionPropiaRef.current)) cancel()
     }
-  }, [speak, stopListening])
+    return invalidar
+  }, [hablar, cancel, stopListening])
 
-  // Si el micrófono se apaga sin oír nada, vuelve a esperar un toque.
+  // Si el micrófono se apaga sin oír nada, vuelve a esperar un toque. No
+  // reinicia la escucha por su cuenta: hace falta otro toque (EA-08, hallazgo 6).
   const wasListeningRef = useRef(false)
   useEffect(() => {
     if (wasListeningRef.current && !listening && status === "listening") backToIdle()
@@ -235,28 +385,33 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
   }, [listening, status, backToIdle])
 
   const handleTap = useCallback(() => {
-    if (busyRef.current) return
-    if (active) {
+    if (active || thinking) {
+      // Cancelación EXPLÍCITA de la persona (escuchando o pensando): invalida la
+      // pregunta en vuelo, calla la voz, aborta captura, consulta y espera de
+      // ubicación, libera `busyRef` y vuelve a reposo. Sí silencia.
+      lastAskRef.current++
       stopListening()
+      cancel()
+      busyRef.current = false
       backToIdle()
       return
     }
-    locate()
+    if (busyRef.current) return
     if (!supported) {
       const message = "Este navegador no reconoce la voz. Escribe tu pregunta abajo."
       setStatus("error")
       setCaption(message)
-      speak(message)
+      hablar(message)
       return
     }
-    // Una pregunta nueva: la respuesta anterior ya no abre su pantalla.
+    // Una pregunta nueva: la respuesta anterior ya no habla ni navega.
     lastAskRef.current++
     setStatus("listening")
     setCaption("Escuchando…")
     navigator.vibrate?.(40)
-    speak("Te escucho.")
-    startTimerRef.current = window.setTimeout(() => start(), 650)
-  }, [active, supported, start, stopListening, backToIdle, speak, locate])
+    hablar("Te escucho.")
+    startTimerRef.current = window.setTimeout(() => start(), ESCUCHA_ESPERA_MS)
+  }, [active, thinking, supported, start, stopListening, cancel, backToIdle, hablar])
 
   const handleTyped = (event: FormEvent) => {
     event.preventDefault()
@@ -264,7 +419,6 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
     if (!text || busyRef.current) return
     // Escribir mientras escucha: deja el micrófono y responde a lo escrito.
     stopListening()
-    locate()
     setTyped("")
     setCaption(`“${text}”`)
     void askAgent(text)
@@ -275,7 +429,11 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
       <button
         type="button"
         onClick={handleTap}
-        aria-label="Asistente de voz. Toca para hablar y pedir rutas, horarios o tu ubicación."
+        aria-label={
+          active || thinking
+            ? "Cancelar. Toca para detener la escucha o la respuesta en curso."
+            : "Asistente de voz. Toca para hablar y pedir rutas, horarios o tu ubicación."
+        }
         className="relative flex min-h-[55%] shrink-0 flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-bar via-background to-background px-6 py-8 text-center"
       >
         <span className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden="true">
@@ -336,6 +494,10 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
             </ol>
           </div>
         )}
+
+        <p className="rounded-2xl border-3 border-border bg-card p-3 text-sm text-muted-foreground" role="note">
+          {AVISO_PRIVACIDAD}
+        </p>
 
         <form onSubmit={handleTyped} className="flex gap-2">
           <label htmlFor="agent-text" className="sr-only">

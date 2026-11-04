@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { CheckCircle2, CircleDashed, Loader2, XCircle } from "lucide-react"
-import { z } from "zod"
 import { AgentReplySchema, respuestaSeguraParaMostrar, type AgentReply } from "@/lib/local-agent"
+import { AgentInfoSchema, mensajeMotor } from "@/lib/estado-motor"
 import { TransmilenioDataSchema, type TransmilenioData } from "@/lib/transmilenio"
 
 type Result = { state: "idle" | "running" | "ok" | "fail"; detail: string }
@@ -15,14 +15,6 @@ type Check = {
   proves: string
   run: () => Promise<string>
 }
-
-/** Respuesta de `GET /api/agent`: qué motor está configurado. */
-const AgentInfoSchema = z.object({
-  engine: z.enum(["reglas", "ollama"]),
-  model: z.string().optional(),
-  reachable: z.boolean().optional(),
-  hasModel: z.boolean().optional(),
-})
 
 const withTimeout = <T,>(promise: Promise<T>, ms: number, message: string) =>
   Promise.race([promise, new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms))])
@@ -128,14 +120,10 @@ const CHECKS: Check[] = [
         throw new Error("La guardia aceptó un viaje forjado con paradas no verificadas (H72/Calle 127).")
       }
 
-      const engine = incierto.engine === "ollama" ? `Ollama (${info.model ?? "modelo local"})` : "reglas locales"
-      const warning =
-        info.engine === "ollama" && incierto.engine !== "ollama"
-          ? info.reachable && info.hasModel
-            ? " Ollama está configurado pero no respondió a tiempo; contestaron las reglas."
-            : " Ollama está configurado pero no está disponible o le falta el modelo; contestaron las reglas."
-          : ""
-      return `Motor: ${engine}. Incertidumbre validada; ${detalleVerificado}; payload forjado rechazado.${warning}`
+      // El estado del motor se reporta según la SALUD del servidor (GET), no
+      // según `incierto.engine`, para no dar avisos falsos (EA-08, decisión C).
+      // La lógica vive en `lib/estado-motor.ts` para poder probarla.
+      return mensajeMotor(info, detalleVerificado)
     },
   },
   {
