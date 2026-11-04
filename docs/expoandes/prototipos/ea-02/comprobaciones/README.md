@@ -5,7 +5,7 @@ Guiones de Playwright usados para la [evaluación](../evaluacion-y-decision.md).
 | Guion | Qué mide | Resultado en la versión 0.1 |
 | --- | --- | --- |
 | `barrido.js` | 355 combinaciones de variante, estado, tamaño de texto y baja visión: controles ≥ 44×44, nombres accesibles, contraste ≥ 7:1, desbordes, estados sin palabra, título y foco. También palabras partidas, franjas fijas, red y errores. | 0 fallos; contraste mínimo 17,31:1; 0 peticiones de red. |
-| `invariantes.js` | 45 pruebas de comportamiento: cancelaciones, respuestas tardías, foco, vencimiento de datos, ubicación, abordaje, Metro, paridad A/B, texto equivalente, permisos, Escape, teclado y franjas fijas. | 45/45. |
+| `invariantes.js` | 47 pruebas de comportamiento: cancelaciones, respuestas tardías, foco, vencimiento de datos, ubicación, abordaje, Metro, paridad A/B, texto equivalente, permisos, Escape, teclado y franjas fijas. | 47/47. |
 | `tareas.js` | Deslizamientos y activaciones de VoiceOver, aproximados, en diez tareas por variante. | A 155 / 24; B 292 / 26. |
 
 ## Ejecutar

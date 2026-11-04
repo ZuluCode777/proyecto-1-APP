@@ -591,15 +591,16 @@ function indicacionGps() {
   return `${ESTACION_CERCANA} está a ${metrosHablados(g.distancia)} ${direccion(g)}, ${ref}. Es distancia en línea recta, no un camino peatonal.`
 }
 // Cada búsqueda tiene su turno: una búsqueda cancelada o abandonada nunca completa otra posterior.
-// Devuelve lo que hay que decir; sin búsqueda, la orientación se detiene porque no queda ubicación.
+// Sin búsqueda no queda ubicación actual, así que la orientación también se detiene.
+// Devuelve la frase sobre la orientación (vacía si no estaba activa) para que quien llama la incluya.
+const ORIENTACION_DETENIDA = ' Orientación detenida: no hay ubicación actual.'
 function cancelarBusquedaGps({ silencioso = false } = {}) {
   E.gps.turno++
   E.gps.fase = 'inactivo'
-  const orientaba = E.gps.guiando
+  const extra = E.gps.guiando ? ORIENTACION_DETENIDA : ''
   E.gps.guiando = false
-  const texto = 'Búsqueda de ubicación cancelada.' + (orientaba ? ' Orientación detenida: no hay ubicación actual.' : '')
-  if (!silencioso) { decir(texto); repintar({ respaldo: ['gps-principal', 'origen-gps'] }) }
-  return texto
+  if (!silencioso) { decir('Búsqueda de ubicación cancelada.' + extra); repintar({ respaldo: ['gps-principal', 'origen-gps'] }) }
+  return extra
 }
 function activarUbicacion({ luego } = {}) {
   pedirPermiso('ubicacion', {
@@ -826,10 +827,8 @@ function salirDe(actual, siguiente) {
   if (actual === 'lupa' && E.lupa.abierta) { E.lupa.abierta = false; E.lupa.congelada = false }
   let extra = ''
   if (E.gps.fase === 'buscando' && E.gps.desde === actual) {
-    const orientaba = E.gps.guiando
-    cancelarBusquedaGps({ silencioso: true })
+    extra = cancelarBusquedaGps({ silencioso: true })
     cancelado.push('la búsqueda de ubicación')
-    if (orientaba) extra = ' Orientación detenida: no hay ubicación actual.'
   }
   if (cancelado.length) decir(`Saliste de ${TITULOS[actual]}: cancelé ${cancelado.join(' y ')}.${extra}`)
 }

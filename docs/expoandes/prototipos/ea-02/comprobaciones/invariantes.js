@@ -258,16 +258,20 @@ async (page) => {
     const r = await ev(() => [window.prototipo.E.viaje.origen, window.prototipo.E.gps.fase])
     return r[0] === '' && r[1] === 'listo' ? true : JSON.stringify(r)
   })
-  await prueba('Cancelar «Actualizar ubicación» durante la orientación la detiene y lo dice', async () => {
-    const r = await ev(async () => {
-      const P = window.prototipo
-      P.preparar('gps-guiando', { variante: 'A' })
-      document.querySelector('[data-id="gps-actualizar"]').click()
-      document.querySelector('[data-id="cancelar-gps"]').click()
-      return [P.E.gps.guiando, P.E.voz.texto]
+  // Tres caminos para cancelar la actualización: la franja, salir con «Volver» y cambiar de pestaña en B.
+  for (const [nombre, variante, salir] of [['la franja', 'A', 'franja'], ['«Volver»', 'A', 'volver'], ['otra pestaña', 'B', 'pestana']]) {
+    await prueba(`Cancelar «Actualizar ubicación» durante la orientación desde ${nombre} la detiene y lo dice`, async () => {
+      const r = await ev(({ variante, salir }) => {
+        const P = window.prototipo
+        P.preparar('gps-guiando', { variante })
+        document.querySelector('[data-id="gps-actualizar"]').click()
+        const id = { franja: 'cancelar-gps', volver: 'volver', pestana: 'tab-inicio' }[salir]
+        document.querySelector(`[data-id="${id}"]`).click()
+        return [P.E.gps.guiando, P.E.gps.fase, P.E.voz.texto, !!document.querySelector('[data-id="cancelar-guia"]')]
+      }, { variante, salir })
+      return r[0] === false && r[1] === 'inactivo' && /Orientación detenida/.test(r[2]) && !r[3] ? true : JSON.stringify(r)
     })
-    return r[0] === false && /Orientación detenida/.test(r[1]) ? true : JSON.stringify(r)
-  })
+  }
   await prueba('Salir de Rutas con consulta y búsqueda de ubicación en curso: un solo anuncio con ambas', async () => {
     await ev(() => { const P = window.prototipo; P.E.variante = 'A'; P.aplicarEscenario('libre'); P.E.permisos.ubicacion = 'concedido'; P.irArea('viaje'); Object.assign(P.E.viaje, { origen: 'Terminal', destino: 'Calle 72' }) })
     await clic('consultar-viaje'); await clic('origen-gps'); await esperar(200); await ev(() => window.prototipo.irArea('inicio'))

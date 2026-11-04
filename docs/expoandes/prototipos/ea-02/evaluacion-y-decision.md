@@ -29,7 +29,7 @@ Todo se ejecutó en Chromium sin interfaz, con ventana de 390×844 CSS px (tama�
    - un único título y el foco en él (en las 335 combinaciones sin diálogo abierto).
 
    También cuenta palabras partidas y mide las franjas fijas.
-2. **Invariantes** (`invariantes.js`). 45 pruebas de comportamiento con temporizadores reales: cancelaciones y respuestas tardías, foco, vencimiento de datos, ubicación sin llegada ni distancia falsa, abordaje solo verificado, Metro, paridad de frases de seguridad entre A y B, permisos, Escape y teclado.
+2. **Invariantes** (`invariantes.js`). 47 pruebas de comportamiento con temporizadores reales: cancelaciones y respuestas tardías, foco, vencimiento de datos, ubicación sin llegada ni distancia falsa, abordaje solo verificado, Metro, paridad de frases de seguridad entre A y B, permisos, Escape y teclado.
 3. **Teclado.** Una prueba completa T2 solo con Tab, Enter y escritura en cada variante, y comprueba que no hay `tabindex` positivos.
 4. **Recorrido de tareas** (`tareas.js`). Diez tareas en ambas variantes. Cuenta los deslizamientos de VoiceOver necesarios para llegar a cada objetivo desde el foco actual, y las activaciones (toque doble). Si el texto buscado aparece en dos lugares, por ejemplo en el resultado y en «La app dijo», se toma el más cercano. Es una aproximación lineal: VoiceOver real agrupa algunos elementos de otra forma, y el rotor de encabezados o el toque con cuatro dedos acortan los recorridos.
 5. **Revisión experta** de las capturas en [capturas/](capturas/) y del árbol de accesibilidad. Además hubo una revisión independiente del código y los documentos; sus hallazgos se corrigieron (ver «Cambios»).
@@ -44,7 +44,7 @@ Todo se ejecutó en Chromium sin interfaz, con ventana de 390×844 CSS px (tama�
 | Desborde horizontal | Ninguno, también al 310 %. |
 | Estado comunicado solo por color | Ninguno. Todo estado con color lleva palabra («Urgente:», «Importante:»…) e ícono. |
 | Foco en el título al entrar en pantalla | 335/335 combinaciones sin diálogo. Con diálogo, el foco va a su título. |
-| Invariantes de comportamiento | **45/45.** |
+| Invariantes de comportamiento | **47/47.** |
 | Teclado | T2 completa con 5 pulsaciones de Tab en A y 11 en B. No hay `tabindex` positivos. |
 | Red, guardado, errores | Cero peticiones de red y cero errores de JavaScript. El código no usa almacenamiento, cookies ni red. |
 | Palabras partidas | Ninguna al 100 y al 200 %. Al 310 %: 28 palabras en 23 de 35 pantallas (A) y 27 en 23 de 36 (B), por ejemplo «programación» o «TransMilenio». Pasa con palabras más anchas que la línea; iOS también las corta en AX5. |
