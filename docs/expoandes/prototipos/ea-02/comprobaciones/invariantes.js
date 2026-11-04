@@ -200,21 +200,33 @@ async (page) => {
     })
     return r.A && r.B && r.B310 ? true : JSON.stringify(r)
   })
-  // Un evento asíncrono (desconexión, vencimiento, búsqueda) no debe mover la lectura de la persona.
+  // Un evento asíncrono (desconexión) no debe mover la lectura de la persona. Se comprueba que el bloque
+  // visible arriba sigue en el mismo sitio y el foco en el mismo control. Si el evento cambia el alto de lo
+  // que hay encima (aviso urgente en la franja, fila más larga), scrollY cambia lo justo para compensarlo.
   for (const v of ['A', 'B']) for (const tamano of [100, 200]) {
-    await prueba(`${v} ${tamano} %: un evento asíncrono conserva desplazamiento y foco`, async () => {
+    await prueba(`${v} ${tamano} %: un evento asíncrono conserva lo visible, el desplazamiento y el foco`, async () => {
       const r = await ev(({ v, tamano }) => {
         const P = window.prototipo
         P.preparar('inicio-activa', { variante: v, texto: tamano })
         document.querySelector('#contenido h1').focus({ preventScroll: true })
         window.scrollTo(0, 700)
-        const antes = window.scrollY
+        const tapa = () => { const f = document.querySelector('#actividad'); return f && !f.hidden && getComputedStyle(f).position === 'sticky' ? Math.max(0, f.getBoundingClientRect().bottom) : 0 }
+        // Bloque de referencia: el primer control visible con identificador estable.
+        const bloques = () => [...document.querySelectorAll('#contenido [data-id]')].filter((el) => el.getBoundingClientRect().height > 0)
+        const ancla = bloques().find((el) => el.getBoundingClientRect().bottom > tapa())
+        const clave = ancla.dataset.id, sepAntes = ancla.getBoundingClientRect().top - tapa()
+        const antes = window.scrollY, docAntes = ancla.getBoundingClientRect().top + window.scrollY
         P.ACCIONES_PANEL.desconectar()
         const despues = window.scrollY
+        const igual = bloques().find((el) => el.dataset.id === clave)
+        const sepDespues = igual ? igual.getBoundingClientRect().top - tapa() : null
+        const crecioEncima = igual ? igual.getBoundingClientRect().top + window.scrollY - docAntes : null
         window.scrollTo(0, 0)
-        return { antes, despues, foco: document.activeElement.dataset.id }
+        return { antes, despues, crecioEncima, sepAntes, sepDespues, foco: document.activeElement.dataset.id }
       }, { v, tamano })
-      return r.antes > 0 && Math.abs(r.despues - r.antes) <= 1 && r.foco === 'titulo' ? true : JSON.stringify(r)
+      // Lo que se exige: el bloque que se leía queda a la misma distancia del borde visible (debajo de la
+      // franja fija, si la hay) y el foco sigue en su control. scrollY solo cambia lo necesario para eso.
+      return r.antes > 0 && r.sepDespues !== null && Math.abs(r.sepDespues - r.sepAntes) <= 1 && r.foco === 'titulo' ? true : JSON.stringify(r)
     })
   }
   for (const v of ['A', 'B']) {

@@ -17,7 +17,7 @@
 -->
 <style>
 *,*::before,*::after{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%;overflow-anchor:none}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;background:#d4d4d4;color:#000;font-size:16px;line-height:1.4}
 .aviso-prototipo{margin:0;padding:10px 14px;background:#000;color:#fff;font-size:15px;text-align:center}
 /* overflow:clip recorta las esquinas sin crear contenedor de desplazamiento; con hidden, las franjas fijas no se fijarían. */
@@ -327,7 +327,8 @@ function pantalla() { return E.pila[E.pila.length - 1].p }
 function decir(texto, { urgente = false } = {}) {
   E.voz.texto = texto
   const visible = $('#voz-texto')
-  if (visible) visible.textContent = texto
+  // «La app dijo» está encima del contenido en A: cambiar su texto no debe desplazar la lectura.
+  if (visible) conservarLectura(() => { visible.textContent = texto })
   const region = $(urgente ? '#anuncio-urgente' : '#anuncio-cortes')
   region.textContent = ''
   setTimeout(() => { region.textContent = texto }, 50)
@@ -1328,6 +1329,38 @@ function aplicarAjustes() {
   d.classList.toggle('texto-grande', E.ajustes.texto >= 200)
 }
 // Al repintar se conserva el foco por data-id: la persona no pierde su lugar en VoiceOver.
+// Ancla de lectura: el primer bloque del contenido que se ve en pantalla. Tras repintar se busca el mismo
+// bloque (por data-id o por etiqueta y texto) y se desplaza para dejarlo en el mismo sitio, aunque la
+// franja de actividad de arriba haya cambiado de alto. Si no aparece, se restaura el desplazamiento tal cual.
+// El anclaje de desplazamiento del navegador está desactivado (CSS overflow-anchor): Safari no lo tiene y
+// Chromium lo aplica después, así que el prototipo hace lo mismo en los dos.
+const BLOQUES_ANCLA = 'h1, h2, h3, p, li, dt, dd, button, summary, label, input, [role="img"]'
+function claveBloque(el) { return el.dataset.id ? '#' + el.dataset.id : `${el.tagName}|${el.textContent.trim().slice(0, 80)}` }
+// Borde inferior de la franja fija de arriba (A con texto < 200 %); lo que queda debajo es lo que se lee.
+function tapaSuperior() {
+  const franja = $('#actividad')
+  if (!franja || franja.hidden || getComputedStyle(franja).position !== 'sticky') return 0
+  return Math.max(0, franja.getBoundingClientRect().bottom)
+}
+// Se prefiere un bloque con data-id, cuya identidad no cambia aunque cambie su texto.
+function anclaVisible() {
+  const tapa = tapaSuperior()
+  const visibles = [...document.querySelectorAll(`#contenido :is(${BLOQUES_ANCLA})`)].filter((el) => { const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom > tapa })
+  const el = visibles.find((x) => x.dataset.id) || visibles[0]
+  return el ? { clave: claveBloque(el), separacion: el.getBoundingClientRect().top - tapa } : null
+}
+// Cambia el DOM sin mover lo que la persona está leyendo.
+function conservarLectura(cambio) {
+  const ancla = anclaVisible(), desplazamiento = window.scrollY
+  cambio()
+  restaurarAncla(ancla, desplazamiento)
+}
+function restaurarAncla(ancla, desplazamiento) {
+  window.scrollTo(window.scrollX, desplazamiento)
+  if (!ancla) return
+  const el = [...document.querySelectorAll(`#contenido :is(${BLOQUES_ANCLA})`)].find((x) => claveBloque(x) === ancla.clave)
+  if (el) window.scrollBy(0, el.getBoundingClientRect().top - tapaSuperior() - ancla.separacion)
+}
 // «enfocar»: destino pedido. «respaldo»: destino solo si el control que tenía el foco desapareció.
 // Un repintado de la misma pantalla (evento, temporizador, panel) conserva el desplazamiento y los
 // «details» abiertos, y devuelve el foco sin desplazar la página: la persona no pierde su lugar.
@@ -1340,6 +1373,7 @@ function repintar({ enfocar = null, respaldo = null } = {}) {
   const seleccion = enApp && activo.tagName === 'INPUT' && activo.type === 'text' ? [activo.selectionStart, activo.selectionEnd] : null
   const mismaPantalla = pintada.pantalla === pantalla() && pintada.variante === E.variante
   const desplazamiento = window.scrollY
+  const ancla = mismaPantalla ? anclaVisible() : null
   const abiertos = new Set(mismaPantalla ? [...document.querySelectorAll('#app details[open] > summary[data-id]')].map((s) => s.dataset.id) : [])
   pintarArmazon()
   aplicarAjustes()
@@ -1356,7 +1390,7 @@ function repintar({ enfocar = null, respaldo = null } = {}) {
   // Reabre los «details» que estaban abiertos (por el data-id de su «summary») y restaura el desplazamiento.
   for (const s of document.querySelectorAll('#app details > summary[data-id]')) if (abiertos.has(s.dataset.id)) s.parentElement.open = true
   pintada = { pantalla: pantalla(), variante: E.variante }
-  if (mismaPantalla) window.scrollTo(window.scrollX, desplazamiento)
+  if (mismaPantalla) restaurarAncla(ancla, desplazamiento)
   if (document.querySelector('dialog[open]')) return
   // Prioridad: destinos pedidos (en orden), luego el control que tenía el foco, luego el título.
   // Si el foco estaba en la app y su control desapareció, nunca queda en <body>.
