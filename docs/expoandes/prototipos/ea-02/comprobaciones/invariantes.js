@@ -98,10 +98,11 @@ async (page) => {
     })
     await prueba(`${v} solo el viaje verificado dice dónde subir y bajar`, async () => {
       const malos = []
-      for (const nombre of ['viaje-verificado', 'viaje-incierto', 'viaje-candidato', 'viaje-sin-red', 'viaje-401', 'viaje-catalogo-viejo', 'asistente-respuesta']) {
+      // Con copia guardada el backend aplica la misma evidencia GTFS: indica abordaje y añade la procedencia.
+      for (const nombre of ['viaje-verificado', 'viaje-incierto', 'viaje-candidato', 'viaje-sin-red', 'viaje-401', 'viaje-timeout', 'viaje-5xx', 'viaje-copia', 'asistente-respuesta']) {
         await ev(({ v, nombre }) => window.prototipo.preparar(nombre, { variante: v }), { v, nombre })
         const t = await texto(), ordena = /sube a la|bájate en|toma la 8/i.test(t)
-        const debe = nombre === 'viaje-verificado' || nombre === 'asistente-respuesta'
+        const debe = ['viaje-verificado', 'asistente-respuesta', 'viaje-copia'].includes(nombre)
         if (ordena !== debe) malos.push(`${nombre}: ordena=${ordena}`)
       }
       return malos.length ? malos.join(', ') : true
@@ -254,7 +255,7 @@ async (page) => {
       ['gps-imprecisa', /no puedo saber si llegaste/i], ['gps-aproximada', /ubicación exacta/i], ['gps-vieja', /actualiza/i],
       ['accesorio-desconectado', /no hay avisos de proximidad/i], ['accesorio-medicion', /relativa al sensor/i],
       ['metro', /sin servicio comercial|no tiene servicio comercial/i], ['metro-estacion', /no se puede viajar hoy/i],
-      ['viaje-incierto', /no te indico dónde subir/i], ['viaje-catalogo-viejo', /copia guardada/i], ['lupa-cerrada', /no lee letreros/i],
+      ['viaje-incierto', /no te indico dónde subir/i], ['viaje-copia', /copia guardada/i], ['inicio-copia', /copia guardada/i], ['inicio-sin-red', /sin conexión/i], ['viaje-timeout', /tardó demasiado/i], ['viaje-5xx', /tuvo un error/i], ['lupa-cerrada', /no lee letreros/i],
     ]
     const malos = []
     for (const [nombre, frase] of casos) for (const v of ['A', 'B']) {
@@ -331,10 +332,34 @@ async (page) => {
     const r = await ev(() => { const P = window.prototipo; P.preparar('viaje-vacio', { variante: 'A' }); const a = P.planear('Terminal', 'Calle 1').tipo; const b = P.planear('Terminal', 'Calle 72').tipo; return [a, b] })
     return r[0] === 'desconocida' && r[1] === 'verificado' ? true : r.join(' / ')
   })
-  await prueba('Con catálogo viejo, el horario del asistente no se presenta como verificado', async () => {
-    const r = await ev(() => { const P = window.prototipo; P.preparar('asistente-inicial', { variante: 'A' }); P.E.red = 'catalogo-viejo'; return P.responderAsistente('horario 8 G').texto })
-    return !/Según el calendario verificado/.test(r) && /no un calendario verificado/.test(r) ? true : r
+  await prueba('Con copia guardada, el horario del asistente dice la procedencia', async () => {
+    const r = await ev(() => { const P = window.prototipo; P.preparar('asistente-inicial', { variante: 'A' }); P.E.catalogo = 'copia'; return P.responderAsistente('horario 8 G').texto })
+    return /copia guardada de TransMilenio del 24\/9\/2026/.test(r) ? true : r
   })
+  for (const v of ['A', 'B']) {
+    await prueba(`${v}: «Actualizar datos» está en Inicio y en Rutas con copia guardada o sin conexión, y funciona`, async () => {
+      const malos = []
+      const control = (ids) => ev((ids) => ids.map((id) => document.querySelector(`#contenido [data-id="${id}"]`)).find(Boolean)?.dataset.id || null, ids)
+      for (const caso of ['copia', 'sin-red', 'timeout', '5xx']) {
+        await ev(({ v, caso }) => { const P = window.prototipo; P.preparar('inicio', { variante: v }); if (caso === 'copia') P.E.catalogo = 'copia'; else P.E.red = caso; P.repintar() }, { v, caso })
+        if (!(await control(['actualizar-datos', 'fila-datos']))) malos.push(`Inicio ${caso}`)
+        await ev(() => window.prototipo.irArea('viaje'))
+        if (!(await control(['actualizar-datos-viaje']))) malos.push(`Rutas ${caso}`)
+      }
+      await ev((v) => { const P = window.prototipo; P.preparar('inicio-copia', { variante: v }) }, v)
+      await clic(v === 'A' ? 'actualizar-datos' : 'fila-datos'); await esperar(1700)
+      const ok = await ev(() => [window.prototipo.E.catalogo, !!document.querySelector('#contenido [data-id="actualizar-datos"], #contenido [data-id="fila-datos"]'), document.activeElement === document.body])
+      if (ok[0] !== 'vivo' || ok[1] || ok[2]) malos.push('actualizar con servidor: ' + JSON.stringify(ok))
+      await ev((v) => { const P = window.prototipo; P.preparar('viaje-vacio', { variante: v }); P.E.catalogo = 'copia'; P.E.red = 'sin-red'; P.repintar() }, v)
+      await clic('actualizar-datos-viaje'); await esperar(1700)
+      const falla = await ev(() => [window.prototipo.E.catalogo, window.prototipo.E.voz.texto])
+      if (falla[0] !== 'copia' || !/No pude actualizar/.test(falla[1])) malos.push('actualizar sin red: ' + JSON.stringify(falla))
+      await ev(() => { window.prototipo.E.red = 'ok' }); await clic('actualizar-datos-viaje'); await esperar(200); await clic('cancelar-datos'); await esperar(1600)
+      const cancelada = await ev(() => [window.prototipo.E.catalogo, window.prototipo.E.datos.fase])
+      if (cancelada[0] !== 'copia' || cancelada[1] !== 'inactivo') malos.push('cancelar: ' + JSON.stringify(cancelada))
+      return malos.length ? malos.join(', ') : true
+    })
+  }
   await prueba('Encender Bluetooth retira el aviso urgente que dejó al apagarlo', async () => {
     const r = await ev(() => {
       const P = window.prototipo, b = document.createElement('button')

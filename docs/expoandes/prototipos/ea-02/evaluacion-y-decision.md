@@ -104,7 +104,7 @@ Las filas de B probablemente se leen en VoiceOver como dos paradas (nombre y val
 | Una búsqueda de ubicación cancelada podía completar otra posterior, rellenar el origen tras salir de Rutas o dejar la orientación activa sin ubicación. | Cada búsqueda tiene turno; salir de la pantalla la cancela; cancelarla detiene la orientación. Al salir, todo lo cancelado se dice en un solo anuncio. |
 | El paso de vuelta a «sin detección» se decía sin «no significa que el camino esté libre». | La voz incluye la advertencia, y la prueba revisa también la voz. |
 | Dos anuncios seguidos se pisaban, por ejemplo al olvidar el accesorio con la sesión activa. | Un solo anuncio con ambas cosas. |
-| Con catálogo viejo, el asistente daba el horario como verificado. | Lo da como horario publicado. |
+| Con catálogo viejo, el prototipo negaba el abordaje y el horario verificado, cosa que el backend no hace. Tampoco había forma de actualizar los datos, ni estados de tiempo de espera o error 5xx. | Se alinea con el backend: la evidencia GTFS se aplica igual y se muestra la procedencia de la copia. «Actualizar datos» en Inicio y Rutas, en A y B; estados de tiempo de espera y 5xx. Negar el abordaje con copia queda como propuesta para A1. |
 | «Calle 1» se resolvía como «Calle 187». | Coincidencia por palabras completas. |
 | El aviso de ubicación de iOS no mostraba el interruptor «Ubicación exacta», y un segundo Escape lo cerraba. | Interruptor visible; el aviso se reabre si se cierra sin respuesta. |
 | Las franjas «fijas» no se fijaban. | Corregido. Con texto al 200 % o más dejan de ser fijas, salvo las pestañas de B. |

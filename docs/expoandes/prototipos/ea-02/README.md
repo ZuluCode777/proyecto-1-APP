@@ -36,7 +36,7 @@
 
 ## Panel del facilitador
 
-Debajo del iPhone simulado, con estilo distinto para no confundirlo con el diseño. Permite cambiar de variante y de tarea, simular servidor caído, 401, 429 o catálogo viejo, evidencia vencida, hora fuera de horario, anuncio de ejemplo, calidad y permiso de la ubicación, mediciones y desconexión del accesorio, y la salida de audio. «Comprobar accesibilidad de la pantalla» mide la pantalla actual: tamaño de controles, nombres, contraste, desbordes, palabras partidas y estados sin palabra.
+Debajo del iPhone simulado, con estilo distinto para no confundirlo con el diseño. Permite cambiar de variante y de tarea, simular servidor caído, 401, 429, tiempo de espera, error 5xx o catálogo en copia guardada, evidencia vencida, hora fuera de horario, anuncio de ejemplo, calidad y permiso de la ubicación, mediciones y desconexión del accesorio, y la salida de audio. «Comprobar accesibilidad de la pantalla» mide la pantalla actual: tamaño de controles, nombres, contraste, desbordes, palabras partidas y estados sin palabra.
 
 ## Áreas
 

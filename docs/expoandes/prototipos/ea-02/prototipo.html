@@ -140,7 +140,9 @@ dialog .sim-etiqueta{margin:.2em 0 .4em;font-size:.85em;font-weight:800}
       <select data-panel-campo="red" aria-label="Servidor">
         <option value="ok">Servidor disponible</option><option value="sin-red">Sin conexión</option>
         <option value="401">Pide clave (401)</option><option value="429">Demasiadas consultas (429)</option>
-        <option value="catalogo-viejo">Catálogo viejo (copia guardada)</option></select>
+        <option value="timeout">Servidor sin respuesta (tiempo de espera)</option><option value="5xx">Error del servidor (5xx)</option></select>
+      <select data-panel-campo="catalogo" aria-label="Catálogo de rutas">
+        <option value="vivo">Catálogo en vivo</option><option value="copia">Copia guardada del 24/9/2026</option></select>
       <select data-panel-campo="evidencia" aria-label="Evidencia de paradas">
         <option value="vigente">Evidencia de paradas vigente</option><option value="vencida">Evidencia vencida</option></select>
       <select data-panel-campo="franja" aria-label="Hora simulada">
@@ -234,7 +236,7 @@ function estadoInicial() {
     pila: [{ p: 'inicio' }],
     ajustes: { texto: 100, bajaVision: false, vozApp: false },
     permisos: { ubicacion: 'sin-preguntar', exacta: true, microfono: 'sin-preguntar', voz: 'sin-preguntar', bluetooth: 'sin-preguntar', camara: 'sin-preguntar' },
-    red: 'ok', evidencia: 'vigente', franja: 'en-franja', operador: 'sin-fuente', audio: 'auriculares',
+    red: 'ok', catalogo: 'vivo', datos: { fase: 'inactivo', turno: 0 }, evidencia: 'vigente', franja: 'en-franja', operador: 'sin-fuente', audio: 'auriculares',
     gps: { fase: 'inactivo', escenario: 'precisa', guiando: false, turno: 0, desde: null },
     acc: { elegido: null, buscando: false, estado: 'desactivada', motivo: '', mm: 0, sector: null, bluetooth: 'encendido', incompatible: false, turno: 0, medida: 0 },
     asis: { fase: 'inactivo', texto: '', oido: '', respuesta: null, envioAceptado: false, pendiente: null, turno: 0, nota: '' },
@@ -654,7 +656,7 @@ function buscarEstacion(texto) {
     ESTACIONES.find(contiene) || null
 }
 function planear(origenTexto, destinoTexto) {
-  if (['sin-red', '401', '429'].includes(E.red)) return { tipo: 'error', codigo: E.red }
+  if (CODIGOS_ERROR.includes(E.red)) return { tipo: 'error', codigo: E.red }
   const o = buscarEstacion(origenTexto), d = buscarEstacion(destinoTexto)
   if (!o) return { tipo: 'desconocida', texto: origenTexto }
   if (!d) return { tipo: 'desconocida', texto: destinoTexto }
@@ -662,7 +664,6 @@ function planear(origenTexto, destinoTexto) {
   const io = PARADAS_8G.indexOf(o), id = PARADAS_8G.indexOf(d)
   if (io < 0 || id < 0) return { tipo: 'incierto', o, d, motivo: 'sin-paradas' }
   const ruta = io < id ? '8 G' : '8 T', sentido = io < id ? 'Guatoque - Veraguas' : 'Terminal'
-  if (E.red === 'catalogo-viejo') return { tipo: 'incierto', o, d, motivo: 'catalogo-viejo' }
   if (ruta === '8 T' && (o === 'Calle 187' || d === 'Calle 187')) return { tipo: 'incierto', o, d, motivo: 'parada-sin-verificar' }
   if (E.evidencia === 'vencida') return { tipo: 'incierto', o, d, motivo: 'evidencia-vencida' }
   if (E.franja === 'fuera') return { tipo: 'candidato', o, d, ruta }
@@ -670,7 +671,6 @@ function planear(origenTexto, destinoTexto) {
 }
 const MOTIVOS = {
   'sin-paradas': (r) => `Todavía no tengo confirmado dónde para cada servicio entre ${r.o} y ${r.d}`,
-  'catalogo-viejo': () => 'Solo tengo una copia guardada de las rutas, del 24/9/2026',
   'parada-sin-verificar': () => 'La parada Calle 187 no está verificada en sentido hacia Terminal',
   'evidencia-vencida': () => 'La evidencia de paradas tiene más de 31 días',
 }
@@ -678,15 +678,25 @@ const ERRORES = {
   'sin-red': 'No hay conexión con el servidor de TransMiVoz. Las consultas de transporte no están disponibles; la sesión de proximidad sigue funcionando.',
   401: 'El servidor pidió la clave de TransMiVoz. En la app real se escribe una vez y se guarda en el llavero del iPhone.',
   429: 'Hiciste muchas consultas seguidas. Espera un momento y vuelve a intentarlo.',
+  timeout: 'El servidor de TransMiVoz tardó demasiado en responder. Puedes reintentar; la sesión de proximidad sigue funcionando.',
+  '5xx': 'El servidor de TransMiVoz tuvo un error. Puedes reintentar en un momento; la sesión de proximidad sigue funcionando.',
 }
+const CODIGOS_ERROR = ['sin-red', '401', '429', 'timeout', '5xx']
+// Mismo texto que procedenciaCatalogo() de lib/transmilenio.ts en main, con las fechas del ejemplo.
+function procedencia() {
+  return E.catalogo === 'copia'
+    ? 'Datos de una copia guardada de TransMilenio del 24/9/2026 (sin conexión al servicio en vivo).'
+    : 'Datos de TransMilenio consultados hoy (datos de ejemplo).'
+}
+function conProcedencia(texto) { return E.catalogo === 'copia' ? `${texto} ${procedencia()}` : texto }
 // Texto hablado y texto en pantalla salen de las mismas funciones.
 const NOTA_VERIFICADO = 'Según el calendario verificado hay servicio programado ahora. No es tiempo real: confirma el horario antes de salir.'
 function pasosViaje(r) { return [`Sube a la ${r.ruta} en ${r.o}, sentido ${r.sentido}.`, `Bájate en ${r.d}.`] }
 function textoResultado(r) {
   switch (r.tipo) {
-    case 'verificado': return `${pasosViaje(r).join(' ')} ${NOTA_VERIFICADO}`
-    case 'candidato': return `Según la programación verificada, la ${r.ruta} conecta ${r.o} con ${r.d}, pero ahora no puedo confirmar que esté en servicio, así que no te doy indicaciones de abordaje. Confirma el horario con TransMilenio.`
-    case 'incierto': return `${MOTIVOS[r.motivo](r)}, así que no te indico dónde subir ni bajar. Confirma las paradas con TransMilenio antes de viajar.`
+    case 'verificado': return conProcedencia(`${pasosViaje(r).join(' ')} ${NOTA_VERIFICADO}`)
+    case 'candidato': return conProcedencia(`Según la programación verificada, la ${r.ruta} conecta ${r.o} con ${r.d}, pero ahora no puedo confirmar que esté en servicio, así que no te doy indicaciones de abordaje. Confirma el horario con TransMilenio.`)
+    case 'incierto': return conProcedencia(`${MOTIVOS[r.motivo](r)}, así que no te indico dónde subir ni bajar. Confirma las paradas con TransMilenio antes de viajar.`)
     case 'desconocida': return `No encontré la estación «${r.texto}». Prueba con otro nombre, por ejemplo Terminal o Calle 72.`
     case 'igual': return `El origen y el destino son la misma estación: ${r.o}.`
     default: return ERRORES[r.codigo]
@@ -744,13 +754,13 @@ function interpretar(texto) {
   return { tipo: 'desconocido' }
 }
 function responderAsistente(texto) {
-  if (['sin-red', '401', '429'].includes(E.red)) return { error: true, texto: ERRORES[E.red], pasos: [] }
+  if (CODIGOS_ERROR.includes(E.red)) return { error: true, texto: ERRORES[E.red], pasos: [] }
   const i = interpretar(texto)
-  const fecha = E.red === 'catalogo-viejo' ? 'copia del 24/9/2026' : 'catálogo de ejemplo del 3/11/2026'
+  const fecha = E.catalogo === 'copia' ? 'copia guardada del 24/9/2026' : 'datos de ejemplo consultados hoy'
   switch (i.tipo) {
     case 'cancelar': return { texto: 'Listo, cancelado.', pasos: [] }
     case 'metro': return { texto: 'El Metro de Bogotá todavía no tiene servicio comercial: la Línea 1 está en construcción. Puedo mostrarte sus 16 estaciones futuras como escenario, no como viaje.', pasos: [{ l: 'Entendí', d: 'pregunta sobre el Metro' }, { l: 'Resultado', d: 'escenario futuro, sin viaje' }], accion: 'metro' }
-    case 'horario': return { texto: `La ${i.ruta} tiene horario publicado entre semana de 4:30 a. m. a 11:00 p. m. ` + (E.evidencia === 'vigente' && E.red !== 'catalogo-viejo' ? 'Según el calendario verificado, hoy tiene servicio programado. No es tiempo real.' : 'Es el horario publicado, no un calendario verificado; confírmalo con TransMilenio.'), pasos: [{ l: 'Entendí', d: `horario de la ${i.ruta}` }, { l: 'Consulté', d: fecha }] }
+    case 'horario': return { texto: `La ${i.ruta} tiene horario publicado entre semana de 4:30 a. m. a 11:00 p. m. ` + conProcedencia(E.evidencia === 'vigente' ? 'Según el calendario verificado, hoy tiene servicio programado. No es tiempo real.' : 'Es el horario publicado, no un calendario verificado; confírmalo con TransMilenio.'), pasos: [{ l: 'Entendí', d: `horario de la ${i.ruta}` }, { l: 'Consulté', d: fecha }] }
     case 'viaje': {
       const r = planear(i.origen, i.destino)
       const nombres = { verificado: 'paradas verificadas', candidato: 'servicio sin confirmar a esta hora', incierto: 'paradas sin confirmar', desconocida: 'estación no encontrada', igual: 'mismo lugar' }
@@ -809,6 +819,7 @@ function actividades() {
   if (E.asis.fase === 'escuchando') lista.push({ id: 'escucha', texto: 'Escuchando tu pregunta', cancelar: 'Cancelar escucha', fn: () => cancelarAsistente(), transitoria: true })
   if (E.asis.fase === 'pensando') lista.push({ id: 'asistente', texto: 'Consultando al asistente', cancelar: 'Cancelar consulta', fn: () => cancelarAsistente(), transitoria: true })
   if (E.viaje.fase === 'consultando') lista.push({ id: 'viaje', texto: 'Consultando el viaje', cancelar: 'Cancelar consulta', fn: () => cancelarViaje(), transitoria: true })
+  if (E.datos.fase === 'consultando') lista.push({ id: 'datos', texto: 'Actualizando los datos de rutas', cancelar: 'Cancelar actualización', fn: cancelarDatos, transitoria: true })
   if (E.gps.fase === 'buscando') lista.push({ id: 'gps', texto: 'Buscando tu ubicación', cancelar: 'Cancelar búsqueda', fn: () => cancelarBusquedaGps(), transitoria: true })
   if (E.gps.guiando) lista.push({ id: 'guia', texto: `Orientación hacia ${ESTACION_CERCANA}`, cancelar: 'Detener orientación', fn: () => guiar(false) })
   if (sesionActiva()) lista.push({ id: 'sesion', texto: `Sesión de proximidad: ${textoSesion().corto.toLowerCase()}`, cancelar: 'Detener sesión', fn: detenerSesion })
@@ -862,9 +873,37 @@ function pestanaActual() { return E.pila[0].p }
 // Cada constructor devuelve { titulo, fijo, resumen, estados, principal, cuerpo, secundarias, navegacion }.
 // A muestra resumen + una acción grande y pliega los estados; B lista todos los estados con su acción.
 function textoCatalogo() {
-  if (E.red === 'catalogo-viejo') return { tono: 'importante', corto: 'Copia guardada del 24/9/2026', largo: 'Los datos de rutas son una copia guardada del 24/9/2026 y pueden estar desactualizados.' }
-  if (E.red === 'sin-red') return { tono: 'importante', corto: 'Sin conexión con el servidor', largo: ERRORES['sin-red'] }
-  return { tono: 'neutro', corto: 'Catálogo de ejemplo del 3/11/2026', largo: '' }
+  // Visible en Inicio y en Rutas cuando hay copia guardada o falta el servidor (como pide EA-06).
+  const actualizable = E.catalogo === 'copia' || ['sin-red', 'timeout', '5xx'].includes(E.red)
+  if (E.catalogo === 'copia') return { tono: 'importante', corto: 'Copia guardada del 24/9/2026', nota: 'Puede estar desactualizada', largo: `${procedencia()} Puede estar desactualizada.`, actualizable }
+  if (['sin-red', 'timeout', '5xx'].includes(E.red)) return { tono: 'importante', corto: { 'sin-red': 'Sin conexión con el servidor', timeout: 'El servidor no responde', '5xx': 'Error del servidor' }[E.red], nota: 'Sigo con los datos que tengo', largo: ERRORES[E.red], actualizable }
+  return { tono: 'neutro', corto: 'Datos de ejemplo consultados hoy', nota: null, largo: '', actualizable }
+}
+// Actualizar el catálogo: falla si el servidor no está; con éxito deja de ser copia guardada.
+function actualizarDatos() {
+  const d = E.datos
+  if (d.fase === 'consultando') return
+  const turno = ++d.turno
+  d.fase = 'consultando'
+  decir('Actualizando los datos de rutas.')
+  repintar({ respaldo: RESPALDO_DATOS })
+  despues(1500, () => {
+    if (d.turno !== turno || d.fase !== 'consultando') return
+    d.fase = 'inactivo'
+    if (CODIGOS_ERROR.includes(E.red)) decir(`No pude actualizar los datos. ${ERRORES[E.red]} Sigo con los datos que tengo.`)
+    else { E.catalogo = 'vivo'; resolverAviso('catalogo'); decir('Datos de rutas actualizados: consultados hoy.') }
+    repintar({ respaldo: RESPALDO_DATOS })
+  })
+}
+function cancelarDatos() {
+  E.datos.turno++
+  E.datos.fase = 'inactivo'
+  decir('Actualización cancelada. Sigo con los datos que tengo.')
+  repintar({ respaldo: RESPALDO_DATOS })
+}
+const RESPALDO_DATOS = ['actualizar-datos', 'fila-datos', 'actualizar-datos-viaje', 'titulo']
+function botonActualizar(id) {
+  return boton(id, E.datos.fase === 'consultando' ? 'Actualizando datos…' : 'Actualizar datos', actualizarDatos)
 }
 function destinosInicio() {
   const n = avisosActivos().length
@@ -898,8 +937,9 @@ AREAS.inicio = () => {
       { etiqueta: 'Audio', valor: au.corto, tono: au.tono, nota: au.nota },
       { etiqueta: 'Ubicación', valor: g.corto, tono: g.tono, accion: { id: 'fila-gps', texto: 'Ver ubicación', fn: () => irArea('gps') } },
       { etiqueta: 'Avisos del teléfono', valor: n ? `${n} activo${n > 1 ? 's' : ''}` : 'Ninguno', accion: { id: 'fila-avisos', texto: 'Ver avisos', fn: () => irArea('avisos') } },
-      { etiqueta: 'Datos de transporte', valor: c.corto, tono: c.tono },
+      { etiqueta: 'Datos de transporte', valor: c.corto, tono: c.tono, nota: c.nota, accion: c.actualizable ? { id: 'fila-datos', texto: E.datos.fase === 'consultando' ? 'Actualizando datos…' : 'Actualizar datos', fn: actualizarDatos } : null },
     ],
+    cuerpo: E.variante === 'A' && c.actualizable ? () => h('div', {}, parrafoEstado({ tono: c.tono, texto: c.largo }), botonActualizar('actualizar-datos')) : null,
     navegacion: E.variante === 'A' ? [...destinosInicio(), EMERGENCIA] : null,
     secundarias: E.variante === 'B' ? [EMERGENCIA] : [],
   }
@@ -935,6 +975,7 @@ function bloqueResultadoViaje() {
     partes.push(parrafoEstado({ tono: 'ok', texto: 'paradas, sentido y horario programado confirmados.' }),
       h('ol', { clase: 'pasos' }, pasosViaje(r).map((paso) => h('li', {}, paso))),
       h('p', {}, NOTA_VERIFICADO),
+      h('p', { clase: 'fuente' }, procedencia()),
       h('p', { clase: 'fuente' }, 'Fuente: programación GTFS de TransMilenio publicada el 3/11/2026, válida hasta el 4/12/2026.'))
   } else if (r.tipo === 'error') {
     partes.push(parrafoEstado({ tono: 'importante', texto: ERRORES[r.codigo] }))
@@ -955,11 +996,12 @@ AREAS.viaje = () => {
     titulo: 'Rutas y viaje',
     fijo: c.largo ? { tono: c.tono, texto: c.largo } : null,
     estados: [
-      { etiqueta: 'Datos de transporte', valor: c.corto, tono: c.tono },
+      { etiqueta: 'Datos de transporte', valor: c.corto, tono: c.tono, nota: c.nota },
       { etiqueta: 'Origen', valor: v.origen ? v.origen + (v.origenGps ? ' (desde tu ubicación)' : '') : 'Sin escribir' },
       { etiqueta: 'Consulta', valor: { vacio: 'Sin consultar', consultando: 'En curso', resultado: 'Con resultado', cancelado: 'Cancelada' }[v.fase] },
     ],
     cuerpo: () => h('div', {},
+      c.actualizable ? botonActualizar('actualizar-datos-viaje') : null,
       h('p', {}, 'Escribe origen y destino. Solo te indico dónde subir y bajar cuando las paradas están verificadas.'),
       h('form', { on: { submit: (ev) => { ev.preventDefault(); consultarViaje() } } },
         campoTexto('origen', 'Origen', v.origen, (x) => { v.origen = x; v.origenGps = false }, {
@@ -1450,7 +1492,7 @@ function cambiarVariante(v) {
 }
 function sincronizarPanel() {
   $('#panel-variante').textContent = 'Variante ' + NOMBRES_VARIANTE[E.variante]
-  const valores = { red: E.red, evidencia: E.evidencia, franja: E.franja, operador: E.operador, gps: E.gps.escenario, 'permiso-ubicacion': E.permisos.ubicacion, audio: E.audio }
+  const valores = { red: E.red, catalogo: E.catalogo, evidencia: E.evidencia, franja: E.franja, operador: E.operador, gps: E.gps.escenario, 'permiso-ubicacion': E.permisos.ubicacion, audio: E.audio }
   for (const [campo, valor] of Object.entries(valores)) { const s = $(`[data-panel-campo="${campo}"]`); if (s && s.value !== valor) s.value = valor }
 }
 const ACCIONES_PANEL = {
@@ -1480,9 +1522,12 @@ const ACCIONES_PANEL = {
 const CAMPOS_PANEL = {
   red: (v) => {
     E.red = v
-    if (v === 'sin-red') avisar('red', { severidad: 'importante', texto: 'Sin conexión con el servidor: no hay consultas de transporte nuevas. La sesión de proximidad sigue.', fuente: 'Datos (simulado)' })
+    if (['sin-red', 'timeout', '5xx'].includes(v)) avisar('red', { severidad: 'importante', texto: `${ERRORES[v]}`, fuente: 'Datos (simulado)' })
     else resolverAviso('red')
-    if (v === 'catalogo-viejo') avisar('catalogo', { severidad: 'info', texto: 'Los datos de rutas son una copia guardada del 24/9/2026.', fuente: 'Datos (simulado)' })
+  },
+  catalogo: (v) => {
+    E.catalogo = v
+    if (v === 'copia') avisar('catalogo', { severidad: 'info', texto: procedencia(), fuente: 'Datos (simulado)' })
     else resolverAviso('catalogo')
   },
   evidencia: (v) => { E.evidencia = v },
@@ -1652,7 +1697,11 @@ const PREPARADOS = {
   'viaje-candidato': ['viaje', () => { E.franja = 'fuera'; viajeListo('Terminal', 'Calle 72 - Areandina') }],
   'viaje-sin-red': ['viaje', () => { E.red = 'sin-red'; viajeListo('Terminal', 'Calle 72') }],
   'viaje-401': ['viaje', () => { E.red = '401'; viajeListo('Terminal', 'Calle 72') }],
-  'viaje-catalogo-viejo': ['viaje', () => { E.red = 'catalogo-viejo'; viajeListo('Terminal', 'Calle 72') }],
+  'viaje-copia': ['viaje', () => { E.catalogo = 'copia'; viajeListo('Terminal', 'Calle 72') }],
+  'viaje-timeout': ['viaje', () => { E.red = 'timeout'; viajeListo('Terminal', 'Calle 72') }],
+  'viaje-5xx': ['viaje', () => { E.red = '5xx'; viajeListo('Terminal', 'Calle 72') }],
+  'inicio-copia': [null, () => { E.catalogo = 'copia' }],
+  'inicio-sin-red': [null, () => { E.red = 'sin-red' }],
   metro: ['metro', () => {}],
   'metro-estacion': ['metro-estacion', () => { E.metro = 11 }],
   'gps-inicial': ['gps', () => {}],
