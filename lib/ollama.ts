@@ -17,8 +17,15 @@ export const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? ""
  * Tiempo máximo de espera por el modelo. Ya cargado, qwen2.5:3b responde en
  * unos 150 ms en una RTX 3080; si tarda más, es que se está cargando, y el
  * asistente responde con las reglas en vez de dejar a la persona esperando.
+ *
+ * EA-08: presupuesto de 2 s con respaldo inmediato a las reglas. El modelo solo
+ * se consulta cuando las reglas no entienden la frase (ver
+ * `lib/seleccion-interprete.ts`), así que agotar esta espera no deja a la
+ * persona sin respuesta: devuelve la de desconocimiento de reglas enseguida. Es
+ * el presupuesto que fija la auditoría frente a los 8 s anteriores; no es una
+ * medición del modelo real.
  */
-const TIMEOUT_MS = 8_000
+const TIMEOUT_MS = 2_000
 /** Cuánto tiempo mantiene Ollama el modelo en memoria sin uso. */
 const KEEP_ALIVE = "1h"
 

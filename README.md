@@ -72,15 +72,19 @@ da horarios, no tiempos de llegada.
 
 Trabaja en dos pasos:
 
-1. **Entender** la frase. Por reglas (`parseIntent`), o con un modelo local de
-   Ollama si `OLLAMA_MODEL` está configurado (`lib/ollama.ts`).
+1. **Entender** la frase. Las reglas (`parseIntent`) interpretan primero; si
+   reconocen un comando conocido, se usan y no se consulta el modelo. Solo
+   cuando las reglas no entienden la frase se consulta un modelo local de Ollama,
+   si `OLLAMA_MODEL` está configurado (`lib/ollama.ts`), con un presupuesto corto
+   y respaldo inmediato a las reglas.
 2. **Resolver** con herramientas sobre los datos reales (`runIntent`): buscar
    estaciones, planear el viaje, leer el recorrido o el horario, usar la
    ubicación como origen.
 
 El modelo solo clasifica la frase y extrae nombres. Las rutas, estaciones y
 horarios salen siempre de los datos, y cualquier nombre que devuelva el modelo
-se valida contra ellos. Si Ollama no responde o devuelve algo que no cuadra,
+se valida contra ellos. Un «no entiendo» del modelo nunca anula una intención
+que las reglas sí resuelven. Si Ollama no responde o devuelve algo que no cuadra,
 el asistente usa las reglas. Sin Ollama, funciona igual, solo con las reglas.
 
 ## Cómo correrlo
@@ -125,7 +129,7 @@ funcionan ahí.
 
 ```
 app/
-  api/agent/route.ts         asistente: reglas u Ollama sobre los datos reales
+  api/agent/route.ts         asistente: reglas primero y Ollama solo si no entienden
   api/transmilenio/route.ts  estaciones y rutas, en vivo o desde la copia
   diagnostico/               pruebas en vivo de cada función
 components/                  una pantalla por archivo, el mapa y los diálogos

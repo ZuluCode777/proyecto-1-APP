@@ -79,13 +79,18 @@ OLLAMA_BASE_URL=http://127.0.0.1:11435
 Después vuelve a compilar (`pnpm build`). La instancia en el 11435 la arranca
 la tarea programada de la sección [Que siga corriendo](#que-siga-corriendo).
 
-`/diagnostico` muestra "Motor: Ollama (qwen2.5:3b)" cuando el modelo contestó
-de verdad. Si Ollama está configurado pero no respondió, lo dice.
+`/diagnostico` muestra "Motor: Ollama (qwen2.5:3b), alcanzable y con el modelo
+listo" cuando el servidor puede contactar Ollama y tiene el modelo descargado
+(lo comprueba con `GET /api/agent`, no clasificando una frase). Si Ollama está
+configurado pero no responde o le falta el modelo, lo dice. Como las reglas
+interpretan primero, "Motor: reglas" en la lista de pasos de una respuesta es lo
+normal para las frases conocidas; no significa que el modelo fallara.
 
 Cargar el modelo en la GPU tarda unos segundos. El servidor lo precarga al
 arrancar y al abrir `/diagnostico`, y Ollama lo mantiene una hora en memoria.
-Si aun así tarda más de 8 s, o se cae, el asistente responde con las reglas;
-la persona nunca se queda esperando.
+El modelo solo se consulta cuando las reglas no entienden la frase; si entonces
+tarda más de 2 s, o se cae, el asistente responde con las reglas; la persona
+nunca se queda esperando.
 
 Las dos instancias escuchan solo en `127.0.0.1`. Como la app corre en la misma
 máquina, no hace falta abrir esos puertos a la red.

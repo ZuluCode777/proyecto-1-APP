@@ -58,10 +58,13 @@ Firefox no tiene `SpeechRecognition`, así que los modos de voz no harían nada.
 La pantalla de diagnóstico es la prueba de que todo funciona. Después, en este
 orden:
 
-1. **Asistente** → escribe o di "cómo llego de Ricaurte a Calle 72". Se ven los
-   pasos que sigue, dice la respuesta y abre el plan de viaje en el mapa.
-2. **Asistente** → "cómo llego de Portal Norte a Portal Usme". No hay ruta
-   directa: propone un transbordo y dibuja los dos buses.
+1. **Asistente** → escribe o di "información de la B23". Se ven los pasos que
+   sigue, dice el recorrido y el horario, y abre el detalle de la ruta.
+2. **Asistente** → "cómo llego de Ricaurte a Calle 72". Con el catálogo actual
+   (sin paradas verificadas, EA-05) NO prescribe un plan: responde con una
+   abstención honesta —«Todavía no tengo confirmado dónde para cada servicio
+   entre Ricaurte y Calle 72…»— y ofrece el recorrido de las rutas que pasan
+   cerca. Lo mismo con "cómo llego de Portal Norte a Portal Usme".
 3. **Asistente** → "¿a qué hora pasa la H54?". Lee el horario real.
 4. **Rutas** → busca "A52" → abre el detalle: recorrido en el mapa, 25
    estaciones y horarios. Toca **Guardar** y muéstrala en **Rutas frecuentes**.
@@ -75,33 +78,39 @@ orden:
 
 ## Frases que funcionan bien
 
-Medidas con los datos reales:
+Salidas REALES del código actual, con las reglas locales (sin Ollama) sobre la
+copia guardada del catálogo (`data/transmilenio.json`, consultada el
+2026-09-24). Con el catálogo en vivo, cifras como «29 rutas» o «47 rutas» pueden
+variar. Tras EA-05, un viaje solo da indicaciones de abordaje si la fuente
+confirma las paradas; el catálogo de hoy no las tiene, así que los «cómo llego»
+responden con una ABSTENCIÓN honesta (acción de búsqueda que abre el recorrido),
+no con un plan prescriptivo. Ejecutadas una por una el 2026-11-04:
 
-| Frase | Resultado |
+| Frase | Resultado real actual |
 | --- | --- |
-| "cómo llego de Ricaurte a Calle 72" | Directa: A52, 13 estaciones; también A60 y A61 |
-| "cómo llego de Portal Usme a Molinos" | Directa: B72, 2 estaciones |
-| "de Calle 100 a Museo del Oro" | Directa: J70, 15 estaciones |
-| "cómo llego de Portal Norte a Portal Usme" | Transbordo: 8 G hasta Toberín y luego H72 |
-| "información de la B23" | Recorrido: 32 estaciones y horario |
-| "¿a qué hora pasa la H54?" | Horario entre semana, sábados y festivos |
+| "información de la B23" | Recorrido: va de Portal El Dorado hacia Alcalá, ~32 estaciones y horario publicado |
+| "¿a qué hora pasa la H54?" | Horario publicado (entre semana, sábados, festivos); avisa que no es calendario verificado |
+| "me gustaría saber qué buses paran en Héroes" | Lista 29 rutas por el recorrido; pide origen para un viaje |
+| "quiero ir a Ricaurte" | Lista 47 rutas que pasan por Ricaurte; pide desde dónde sales |
+| "quiero ver las rutas que tengo guardadas" | Abre rutas frecuentes |
 | "hola" / "¿qué puedes hacer?" | Saludo y ayuda |
 | "¿cuánto cuesta el pasaje?" | Dice que no tiene tarifas |
+| "cómo llego de Ricaurte a Calle 72" | Abstención: «Todavía no tengo confirmado dónde para cada servicio entre Ricaurte y Calle 72…»; ofrece el recorrido de las rutas que conectan |
+| "cómo llego de Portal Norte a Portal Usme" | Abstención análoga; sin un plan de abordaje mientras falten paradas verificadas |
 
-Con Ollama activo (`/diagnostico` dice "Motor: Ollama") también entiende frases
-libres. Medidas en la máquina con Windows con `qwen2.5:3b`, unos 200 ms cada
-una:
+Las reglas interpretan PRIMERO; todas estas frases las resuelven las reglas, así
+que en la lista de pasos sale "Motor: reglas". Eso es lo normal y no significa
+que Ollama fallara: el modelo solo se consulta cuando las reglas no reconocen la
+frase.
 
-| Frase | Resultado |
-| --- | --- |
-| "necesito llegar a la Universidad Nacional saliendo desde Ricaurte" | Directa: 4 H, 4 estaciones |
-| "oye, ¿me podrías decir hasta qué hora funciona la B23?" | Horario de la B23 |
-| "estoy saliendo del Portal Suba y voy para el Portal Sur" | Directa: G30, 35 estaciones |
-| "me gustaría saber qué buses paran en Héroes" | 29 rutas |
-| "quiero ver las rutas que tengo guardadas" | Rutas frecuentes |
-
-En la lista de pasos, "Motor: Ollama" muestra que respondió el modelo. Si sale
-"Motor: reglas", el modelo no respondió a tiempo y contestaron las reglas.
+**Ninguna frase de esta demo pasa por el modelo** (todas las entienden las
+reglas). Una frase que las reglas NO entienden, p. ej. «explícame la teoría de la
+relatividad por favor», hoy da «No te entendí…» con las reglas; con Ollama activo
+iría al modelo, pero **ese resultado con un Ollama real no se ha medido** en esta
+tarea. "Motor: Ollama" en la lista de pasos solo aparece en ese caso. Para
+confirmar que Ollama está sano, usa `/diagnostico`: la prueba del asistente
+comprueba su salud (alcanzable y con el modelo) con `GET /api/agent`, no
+clasificando una frase, así que no da falsos fallos.
 
 Una estación sola ("quiero ir a Ricaurte") sin ubicación lista las rutas que
 pasan por ahí y pide el origen. Con la ubicación activada, usa la estación más
