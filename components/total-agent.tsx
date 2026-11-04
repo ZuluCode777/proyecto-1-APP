@@ -6,9 +6,9 @@ import { useSpeech, useVoiceRecognition } from "@/hooks/use-speech"
 import type { LatLng } from "@/lib/geo"
 import {
   AgentReplySchema,
-  contieneImperativoDeViaje,
   interpretCommand,
   plainReply,
+  respuestaSinImperativos,
   textoViajeDesdeResumen,
   type AgentReply,
   type AgentStep,
@@ -43,22 +43,22 @@ const VIAJE_NO_CONFIRMABLE =
  * catálogo), se degrada a un aviso seguro sin instrucciones.
  */
 function sanear(reply: AgentReply, data: TransmilenioData | null): AgentReply {
+  const ahora = new Date()
   if (reply.action === "trip") {
+    // Sin catálogo no se puede revalidar: incertidumbre segura para el viaje.
     if (!data) return plainReply(VIAJE_NO_CONFIRMABLE, reply.engine)
-    const reconstruido = textoViajeDesdeResumen(reply.trip, data, new Date())
+    // El texto y los pasos de un viaje se RECONSTRUYEN desde el resumen
+    // revalidado; nunca se confía en la prosa recibida.
+    const reconstruido = textoViajeDesdeResumen(reply.trip, data, ahora)
     if (!reconstruido) return plainReply(VIAJE_NO_CONFIRMABLE, reply.engine)
     return { ...reply, reply: reconstruido.reply, steps: reconstruido.steps }
   }
-  // Una acción que no es de viaje tampoco puede traer órdenes de abordaje en su
-  // texto o en sus pasos (p. ej. un `search` con «Toma la H72 en Calle 127…»):
-  // si las trae, se descarta por seguro y se conserva la acción sin instrucciones.
-  const pasoInseguro = reply.steps.some(
-    (s) => contieneImperativoDeViaje(s.label) || (s.detail ? contieneImperativoDeViaje(s.detail) : false),
-  )
-  if (contieneImperativoDeViaje(reply.reply) || pasoInseguro) {
-    return { ...reply, reply: VIAJE_NO_CONFIRMABLE, steps: [] }
-  }
-  return reply
+  // Una acción informativa es válida salvo que traiga órdenes de abordaje en su
+  // texto o en sus pasos. Es la MISMA decisión que usa el diagnóstico y la
+  // guardia compartida (`respuestaSinImperativos`), para no divergir entre voz
+  // y diagnóstico. Sin catálogo igual se puede mostrar una respuesta segura.
+  if (respuestaSinImperativos(reply)) return reply
+  return { ...reply, reply: VIAJE_NO_CONFIRMABLE, steps: [] }
 }
 
 /**

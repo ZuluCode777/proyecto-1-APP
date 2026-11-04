@@ -131,7 +131,7 @@ abordar en Calle 127. Evidencia independiente del aviso de 2018.
 ## Comandos ejecutados
 
 - `pnpm exec tsc --noEmit` → sin errores.
-- `pnpm test` → 98 pruebas, 0 fallos (incluye reloj fijo 2026 y 2027, el borde
+- `pnpm test` → 100 pruebas, 0 fallos (incluye reloj fijo 2026 y 2027, el borde
   de franja, el contenido inseguro de una abstención y los payloads forjados).
 - `pnpm build` → compilación de producción correcta.
 - `pnpm verificar http://127.0.0.1:3218` → **9/9** en el host del coordinador,

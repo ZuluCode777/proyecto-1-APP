@@ -3,7 +3,7 @@ import test from "node:test"
 import snapshot from "../data/transmilenio.json" with { type: "json" }
 import { aplicarEvidenciaGtfs, CORRECCIONES_GTFS, H72_NO_PARA_EN } from "./evidencia-gtfs"
 import { distanceToPath, pathBetween } from "./geo"
-import { fullStationName, normalizeTransmilenio, reconcileDirection, TransmilenioDataSchema } from "./transmilenio"
+import { fullStationName, normalizeTransmilenio, reconciliarSentido, TransmilenioDataSchema } from "./transmilenio"
 
 // Respuesta mínima con la misma forma que devuelve el servicio ArcGIS.
 const stationsRaw = {
@@ -46,16 +46,16 @@ test("no deduce paradas atendidas: servedStops queda vacío", () => {
   assert.deepEqual(data.routes[0].servedStops, [], "la geometría no se convierte en paradas verificadas")
 })
 
-test("reconcileDirection detecta el sentido consistente, el contradictorio y el indeterminado", () => {
-  const consistente = reconcileDirection("Alfa", "Eco", ["Alfa", "Bravo", "Eco"])
+test("reconciliarSentido detecta el sentido consistente, el contradictorio y el indeterminado", () => {
+  const consistente = reconciliarSentido("Alfa", "Eco", ["Alfa", "Bravo", "Eco"])
   assert.equal(consistente.agreement, "consistente")
   assert.equal(consistente.verified, false, "coincidir con la geometría no equivale a fuente oficial")
 
-  const contradictorio = reconcileDirection("Alfa", "Eco", ["Eco", "Bravo", "Alfa"])
+  const contradictorio = reconciliarSentido("Alfa", "Eco", ["Eco", "Bravo", "Alfa"])
   assert.equal(contradictorio.agreement, "contradictorio")
   assert.equal(contradictorio.verified, false)
 
-  const indeterminado = reconcileDirection("Alfa", "Eco", ["Bravo", "Charlie"])
+  const indeterminado = reconciliarSentido("Alfa", "Eco", ["Bravo", "Charlie"])
   assert.equal(indeterminado.agreement, "indeterminado")
 })
 

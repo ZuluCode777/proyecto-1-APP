@@ -3,7 +3,7 @@
  *
  * Paso 1 (aditivo, todos los servicios): agrega `servedStops: []` cuando falta
  * y calcula `directionEvidence` comparando `from`/`to` con el orden de las
- * estaciones cercanas al trazado (`reconcileDirection`). No invierte geometría
+ * estaciones cercanas al trazado (`reconciliarSentido`). No invierte geometría
  * ni inventa sentidos.
  *
  * Paso 2 (evidencia GTFS, solo servicios corroborados): `aplicarEvidenciaGtfs`
@@ -20,7 +20,7 @@
  */
 import { readFileSync, writeFileSync } from "node:fs"
 import { aplicarEvidenciaGtfs, CORRECCIONES_GTFS } from "@/lib/evidencia-gtfs"
-import { reconcileDirection, TransmilenioDataSchema } from "@/lib/transmilenio"
+import { reconciliarSentido, TransmilenioDataSchema } from "@/lib/transmilenio"
 
 const url = new URL("../data/transmilenio.json", import.meta.url)
 const snapshot = JSON.parse(readFileSync(url, "utf8"))
@@ -28,7 +28,7 @@ const snapshot = JSON.parse(readFileSync(url, "utf8"))
 // Con el esquema vigente: lo anterior queda en su forma actual (p. ej. un
 // calendario viejo sin `servicios`) y la evidencia GTFS se vuelve a escribir.
 const data = TransmilenioDataSchema.parse(snapshot)
-for (const route of data.routes) route.directionEvidence = reconcileDirection(route.from, route.to, route.stops)
+for (const route of data.routes) route.directionEvidence = reconciliarSentido(route.from, route.to, route.stops)
 aplicarEvidenciaGtfs(data.routes, data.stations)
 
 const corregidos = data.routes.filter((r) => CORRECCIONES_GTFS[r.code] && r.verifiedCalendar).map((r) => r.code)

@@ -106,9 +106,17 @@ export function contieneImperativoDeViaje(texto: string): boolean {
   return /\btoma la\b[^.]*\ben\b/.test(t) || /\bsube en\b/.test(t) || /\bbajate en\b/.test(t) || /\bcambia (a|en)\b/.test(t)
 }
 
-/** ¿Algún paso contiene una orden de abordaje en su etiqueta o detalle? */
-const pasosConImperativo = (steps: AgentStep[]): boolean =>
-  steps.some((s) => contieneImperativoDeViaje(s.label) || (s.detail ? contieneImperativoDeViaje(s.detail) : false))
+/**
+ * ¿El texto y los pasos de una respuesta están LIBRES de órdenes de abordaje?
+ * Decisión compartida por la voz (`TotalAgent.sanear`) y el diagnóstico
+ * (`respuestaSeguraParaMostrar`), para que una abstención con «Toma la H72 en
+ * Calle 127…» —en el texto o en un paso— se rechace igual en ambos. No depende
+ * del catálogo: solo mira el contenido mostrable.
+ */
+export function respuestaSinImperativos(reply: AgentReply): boolean {
+  if (contieneImperativoDeViaje(reply.reply)) return false
+  return !reply.steps.some((s) => contieneImperativoDeViaje(s.label) || (s.detail ? contieneImperativoDeViaje(s.detail) : false))
+}
 
 /**
  * Guardia de CONTENIDO que debe cumplir una respuesta REAL del asistente antes
@@ -126,7 +134,7 @@ const pasosConImperativo = (steps: AgentStep[]): boolean =>
  */
 export function respuestaSeguraParaMostrar(reply: AgentReply, data: TransmilenioData, now: Date = new Date()): boolean {
   if (reply.action === "trip") return tripSummaryStillValid(reply.trip, data, now)
-  return !contieneImperativoDeViaje(reply.reply) && !pasosConImperativo(reply.steps)
+  return respuestaSinImperativos(reply)
 }
 
 export type AgentContext = {
@@ -249,19 +257,6 @@ function operacionHoy(route: BusRoute, now: Date = new Date()): string {
 const AVISO_PLAN =
   " Según el calendario y las franjas programadas que tengo verificadas, ahora hay servicio programado; no es tiempo real, confirma el horario antes de salir."
 
-function describePlan(plan: TripPlan): string {
-  if (plan.length === 1) {
-    const [leg] = plan
-    // Sin conteo garantizado por la fuente no se dice cuántas estaciones son.
-    const conteo = leg.conteoVerificado
-      ? `, después de ${leg.stationsRidden} ${leg.stationsRidden === 1 ? "estación" : "estaciones"}`
-      : ""
-    return `Toma la ${leg.route.code} en ${leg.board} y bájate en ${leg.alight}${conteo}.${AVISO_PLAN}`
-  }
-  const [first, second] = plan
-  return `No hay una ruta directa. Toma la ${first.route.code} en ${first.board} hasta ${first.alight}, y ahí cambia a la ${second.route.code} hasta ${second.alight}.${AVISO_PLAN}`
-}
-
 const summarize = (plan: TripPlan): TripLegSummary[] =>
   plan.map((leg) => ({
     routeCode: leg.route.code,
@@ -271,19 +266,36 @@ const summarize = (plan: TripPlan): TripLegSummary[] =>
     conteoVerificado: leg.conteoVerificado,
   }))
 
-/** Frase de un viaje directo desde el resumen validado; omite el conteo si no está garantizado. */
-function fraseDirectaResumen(leg: TripLegSummary): string {
-  const conteo = leg.conteoVerificado
-    ? `, después de ${leg.stationsRidden} ${leg.stationsRidden === 1 ? "estación" : "estaciones"}`
-    : ""
-  return `Toma la ${leg.routeCode} en ${leg.board} y bájate en ${leg.alight}${conteo}`
+/**
+ * Único formateador de la indicación de un viaje a partir del RESUMEN tipado
+ * (`TripLegSummary[]`). Lo comparten `describePlan` y `textoViajeDesdeResumen`
+ * para no duplicar el texto de viaje directo/transbordo ni la omisión del
+ * conteo no garantizado. No incluye el aviso de operación ni las alternativas:
+ * esos los añade quien llama. Mantiene la semántica exacta previa.
+ */
+function formatearViajeDesdeResumen(trip: TripLegSummary[]): string {
+  if (trip.length === 1) {
+    const [leg] = trip
+    // Sin conteo garantizado por la fuente no se dice cuántas estaciones son.
+    const conteo = leg.conteoVerificado
+      ? `, después de ${leg.stationsRidden} ${leg.stationsRidden === 1 ? "estación" : "estaciones"}`
+      : ""
+    return `Toma la ${leg.routeCode} en ${leg.board} y bájate en ${leg.alight}${conteo}.`
+  }
+  const [first, second] = trip
+  return `No hay una ruta directa. Toma la ${first.routeCode} en ${first.board} hasta ${first.alight}, y ahí cambia a la ${second.routeCode} hasta ${second.alight}.`
+}
+
+/** Indicación de un plan (modelo interno), con el aviso de operación programada. */
+function describePlan(plan: TripPlan): string {
+  return `${formatearViajeDesdeResumen(summarize(plan))}${AVISO_PLAN}`
 }
 
 /**
  * Reconstruye el texto y los pasos PRESCRIPTIVOS de un viaje a partir del
  * resumen serializado, revalidándolo antes contra el catálogo y el reloj
  * actuales (mismas reglas que `planTrip`). No confía en ningún texto libre que
- * venga con el resumen: arma la prosa aquí, con la misma función responsable, y
+ * venga con el resumen: arma la prosa con el mismo formateador responsable, y
  * omite el conteo exacto cuando la fuente no lo garantiza.
  *
  * Devuelve `null` si el resumen ya no es prescriptible (esquema viejo, otro
@@ -299,14 +311,7 @@ export function textoViajeDesdeResumen(
   const steps: AgentStep[] = [
     { label: "Verifiqué las paradas y el sentido con los datos actuales", detail: trip.map((l) => l.routeCode).join(" + ") },
   ]
-  let reply: string
-  if (trip.length === 1) {
-    reply = `${fraseDirectaResumen(trip[0])}.${AVISO_PLAN}`
-  } else {
-    const [first, second] = trip
-    reply = `No hay una ruta directa. Toma la ${first.routeCode} en ${first.board} hasta ${first.alight}, y ahí cambia a la ${second.routeCode} hasta ${second.alight}.${AVISO_PLAN}`
-  }
-  return { reply, steps }
+  return { reply: `${formatearViajeDesdeResumen(trip)}${AVISO_PLAN}`, steps }
 }
 
 const resolvePlace = (name: string, data: TransmilenioData): Place | undefined => findPlaces(name, data)[0]

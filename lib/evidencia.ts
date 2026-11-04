@@ -1,4 +1,5 @@
 import type { BusRoute, ServedStop, ServicioCalendario, Station, VerifiedCalendar } from "@/lib/transmilenio"
+import { z } from "zod"
 
 /**
  * Validación COMPARTIDA de evidencia de paradas, sentido y calendario.
@@ -181,41 +182,55 @@ export function rutaConParadasVerificadas(route: BusRoute, ahora: Date): boolean
   return paradasPrescriptibles(route, ahora).length > 0
 }
 
-/** Servicio de calendario con todos sus campos bien formados. */
-function servicioBienFormado(s: ServicioCalendario): boolean {
-  return (
-    typeof s?.serviceId === "string" &&
-    s.serviceId !== "" &&
-    Array.isArray(s.weekdays) &&
-    s.weekdays.every((d) => Number.isInteger(d) && d >= 0 && d <= 6) &&
-    Array.isArray(s.addedDates) &&
-    s.addedDates.every(esFechaIso) &&
-    Array.isArray(s.removedDates) &&
-    s.removedDates.every(esFechaIso)
-  )
-}
+/**
+ * Fecha AAAA-MM-DD REAL (no «2026-02-30»), como pieza de esquema reutilizable.
+ * Reutiliza `esFechaIso` para no repetir la validación semántica de fecha.
+ */
+const FechaIsoSchema = z.string().refine(esFechaIso, "fecha AAAA-MM-DD inválida")
 
 /**
- * ¿El calendario puede usarse? Exige fuente, fecha de evidencia vigente, zona
- * horaria IANA reconocida, ventana de vigencia real y ordenada, y al menos un
- * servicio bien formado. Cualquier campo malformado lo invalida entero: no se
- * adivina una zona ni se ignoran excepciones ilegibles.
+ * Esquema ESTRICTO de un servicio de calendario para decidir si puede usarse.
+ * A diferencia de `ServicioCalendarioSchema` (que aplica `default` permisivos al
+ * LEER una copia), aquí no se rellenan huecos: un servicio sin `serviceId`, con
+ * días fuera de rango o con fechas de excepción ilegibles se RECHAZA. Encode la
+ * estructura con Zod para no repetir `typeof`/`Array.isArray`; las reglas
+ * semánticas (días 0..6, fechas reales) viven en los tipos/refinamientos.
+ */
+const ServicioUsableSchema = z.object({
+  serviceId: z.string().min(1),
+  weekdays: z.array(z.number().int().min(0).max(6)),
+  addedDates: z.array(FechaIsoSchema),
+  removedDates: z.array(FechaIsoSchema),
+})
+
+/**
+ * Esquema ESTRICTO de un calendario usable: estructura + reglas semánticas en
+ * un solo lugar. La frescura de la evidencia (`fechaEvidenciaVigente`) y el
+ * reloj quedan FUERA a propósito: se comprueban aparte en `calendarioUsable`.
+ */
+const CalendarioUsableSchema = z
+  .object({
+    source: z.string().refine((s) => s.trim() !== "", "fuente vacía"),
+    date: z.string(),
+    timezone: z.string().refine(zonaValida, "zona horaria no reconocida"),
+    startDate: FechaIsoSchema,
+    endDate: FechaIsoSchema,
+    servicios: z.array(ServicioUsableSchema).min(1),
+  })
+  .refine((c) => c.startDate <= c.endDate, "ventana de vigencia invertida")
+
+/**
+ * ¿El calendario puede usarse? La ESTRUCTURA y las reglas semánticas estables
+ * (fuente no vacía, zona IANA reconocida, fechas reales, ventana ordenada, al
+ * menos un servicio bien formado) las decide el esquema estricto; la FRESCURA
+ * de la evidencia (dependiente del reloj) se comprueba aparte. Un calendario
+ * viejo sin `servicios` o con un servicio incompleto no pasa el esquema: la app
+ * se abstiene, no se adivina una zona ni se ignoran excepciones ilegibles.
  */
 function calendarioUsable(cal: VerifiedCalendar | undefined, ahora: Date): cal is VerifiedCalendar {
-  return (
-    cal !== undefined &&
-    cal !== null &&
-    typeof cal.source === "string" &&
-    cal.source.trim() !== "" &&
-    fechaEvidenciaVigente(cal.date, ahora) &&
-    zonaValida(cal.timezone) &&
-    esFechaIso(cal.startDate) &&
-    esFechaIso(cal.endDate) &&
-    cal.startDate <= cal.endDate &&
-    Array.isArray(cal.servicios) &&
-    cal.servicios.length > 0 &&
-    cal.servicios.every(servicioBienFormado)
-  )
+  if (cal === undefined || cal === null) return false
+  if (!CalendarioUsableSchema.safeParse(cal).success) return false
+  return fechaEvidenciaVigente(cal.date, ahora)
 }
 
 /** Servicios del calendario que operan en una fecha: las excepciones ganan al patrón semanal. */

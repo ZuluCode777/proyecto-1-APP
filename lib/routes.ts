@@ -178,22 +178,31 @@ const descendible = (stop: ServedStop, now: Date): boolean => stop.canAlight && 
 const mismaEstacion = (a: ServedStop, b: ServedStop): boolean =>
   a.name === b.name && (a.nodeId === undefined || b.nodeId === undefined || Number(a.nodeId) === Number(b.nodeId))
 
+/** Qué papel cumple la parada buscada: dónde se sube o dónde se baja. */
+type RolParada = "abordaje" | "descenso"
+
 /**
  * Parada ATENDIDA del lugar en la ruta, o `undefined` si la fuente no confirma
  * que el servicio pare allí. Devuelve el REGISTRO que realmente coincidió (no se
  * busca por `order`, que podría estar duplicado o ser ambiguo).
  */
-const matchServedStop = (
-  route: BusRoute,
-  place: Place,
-  need: "board" | "alight",
-  now: Date,
-  conOperacion: boolean,
-): ServedStop | undefined => {
-  if (!rutaPlaneable(route)) return undefined
-  for (const stop of route.servedStops) {
-    if (need === "board" ? !abordable(route, stop, now, conOperacion) : !descendible(stop, now)) continue
-    if (place.stations.some((s) => paradaCoincideConEstacion(stop, s))) return stop
+const paradaAtendidaDelLugar = ({
+  ruta,
+  lugar,
+  rol,
+  ahora,
+  conOperacion,
+}: {
+  ruta: BusRoute
+  lugar: Place
+  rol: RolParada
+  ahora: Date
+  conOperacion: boolean
+}): ServedStop | undefined => {
+  if (!rutaPlaneable(ruta)) return undefined
+  for (const stop of ruta.servedStops) {
+    if (rol === "abordaje" ? !abordable(ruta, stop, ahora, conOperacion) : !descendible(stop, ahora)) continue
+    if (lugar.stations.some((s) => paradaCoincideConEstacion(stop, s))) return stop
   }
   return undefined
 }
@@ -273,28 +282,40 @@ const tramo = (route: BusRoute, board: ServedStop, alight: ServedStop): TripLeg 
 })
 
 /**
- * Transbordo verificado: una estación donde `first` permite descender y
- * `second` permite abordar, con `first` llegando después de subir y antes de
- * que `second` siga hacia el destino. Devuelve el registro de parada de cada
- * servicio (no se asume igualdad de `order` entre servicios distintos), o
- * `undefined` si no hay una conexión respaldada por paradas atendidas vigentes.
+ * Transbordo verificado: una estación donde el primer servicio permite
+ * descender y el segundo permite abordar, con el primero llegando después de
+ * subir y antes de que el segundo siga hacia el destino. Devuelve el registro
+ * de parada de cada servicio (no se asume igualdad de `order` entre servicios
+ * distintos), o `undefined` si no hay una conexión respaldada por paradas
+ * atendidas vigentes y confirmada contra el catálogo (misma estación y nodo).
  */
-function verifiedTransfer(
-  first: BusRoute,
-  firstBoard: ServedStop,
-  second: BusRoute,
-  secondAlight: ServedStop,
-  now: Date,
-  conOperacion: boolean,
-  estaciones: Station[],
-): { firstAlight: ServedStop; secondBoard: ServedStop } | undefined {
-  for (const stop of first.servedStops) {
-    if (!descendible(stop, now) || stop.order <= firstBoard.order) continue
-    const match = second.servedStops.find(
-      (s) => abordable(second, s, now, conOperacion) && mismaEstacion(s, stop) && s.order < secondAlight.order &&
+function transbordoVerificado({
+  primeraRuta,
+  abordajePrimera,
+  segundaRuta,
+  descensoSegunda,
+  ahora,
+  conOperacion,
+  estaciones,
+}: {
+  primeraRuta: BusRoute
+  abordajePrimera: ServedStop
+  segundaRuta: BusRoute
+  descensoSegunda: ServedStop
+  ahora: Date
+  conOperacion: boolean
+  estaciones: Station[]
+}): { descensoPrimera: ServedStop; abordajeSegunda: ServedStop } | undefined {
+  for (const stop of primeraRuta.servedStops) {
+    if (!descendible(stop, ahora) || stop.order <= abordajePrimera.order) continue
+    const match = segundaRuta.servedStops.find(
+      (s) =>
+        abordable(segundaRuta, s, ahora, conOperacion) &&
+        mismaEstacion(s, stop) &&
+        s.order < descensoSegunda.order &&
         estaciones.some((e) => paradaCoincideConEstacion(stop, e) && paradaCoincideConEstacion(s, e)),
     )
-    if (match) return { firstAlight: stop, secondBoard: match }
+    if (match) return { descensoPrimera: stop, abordajeSegunda: match }
   }
   return undefined
 }
@@ -308,26 +329,37 @@ function buscarPlanes(
 ): TripPlan[] {
   const direct: TripPlan[] = []
   for (const route of data.routes) {
-    const board = matchServedStop(route, origin, "board", now, conOperacion)
-    const alight = matchServedStop(route, destination, "alight", now, conOperacion)
+    const board = paradaAtendidaDelLugar({ ruta: route, lugar: origin, rol: "abordaje", ahora: now, conOperacion })
+    const alight = paradaAtendidaDelLugar({ ruta: route, lugar: destination, rol: "descenso", ahora: now, conOperacion })
     if (board && alight && alight.order > board.order) direct.push([tramo(route, board, alight)])
   }
   if (direct.length > 0) return rank(direct).slice(0, limit)
 
   const transfers: TripPlan[] = []
   const fromOrigin = data.routes
-    .map((route) => ({ route, board: matchServedStop(route, origin, "board", now, conOperacion) }))
+    .map((route) => ({ route, board: paradaAtendidaDelLugar({ ruta: route, lugar: origin, rol: "abordaje", ahora: now, conOperacion }) }))
     .filter((r): r is { route: BusRoute; board: ServedStop } => r.board !== undefined)
   const toDestination = data.routes
-    .map((route) => ({ route, alight: matchServedStop(route, destination, "alight", now, conOperacion) }))
+    .map((route) => ({ route, alight: paradaAtendidaDelLugar({ ruta: route, lugar: destination, rol: "descenso", ahora: now, conOperacion }) }))
     .filter((r): r is { route: BusRoute; alight: ServedStop } => r.alight !== undefined)
 
   for (const first of fromOrigin) {
     for (const second of toDestination) {
       if (first.route === second.route) continue
-      const transfer = verifiedTransfer(first.route, first.board, second.route, second.alight, now, conOperacion, data.stations)
+      const transfer = transbordoVerificado({
+        primeraRuta: first.route,
+        abordajePrimera: first.board,
+        segundaRuta: second.route,
+        descensoSegunda: second.alight,
+        ahora: now,
+        conOperacion,
+        estaciones: data.stations,
+      })
       if (!transfer) continue
-      transfers.push([tramo(first.route, first.board, transfer.firstAlight), tramo(second.route, transfer.secondBoard, second.alight)])
+      transfers.push([
+        tramo(first.route, first.board, transfer.descensoPrimera),
+        tramo(second.route, transfer.abordajeSegunda, second.alight),
+      ])
     }
   }
   return rank(transfers).slice(0, limit)

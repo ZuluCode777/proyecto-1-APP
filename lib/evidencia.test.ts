@@ -15,7 +15,7 @@ import {
   sentidoConfirmado,
 } from "./evidencia"
 import { calendarioSintetico, datosVerificadosDirecto, FUENTE_PRUEBA } from "./fixtures-sinteticas"
-import { TransmilenioDataSchema, type ServedStop } from "./transmilenio"
+import { TransmilenioDataSchema, VerifiedCalendarSchema, type ServedStop } from "./transmilenio"
 
 const AHORA = new Date("2026-11-04T10:00:00-05:00")
 const real = TransmilenioDataSchema.parse(snapshot)
@@ -241,6 +241,33 @@ test("estadoOperacionEnParada: sin franja, calendario vencido o ausente no afirm
     estadoOperacionEnParada(sinDomingo, datosVerificadosDirecto().routes[0].servedStops[0], new Date("2026-11-08T10:00:00-05:00")),
     "sin-servicio-hoy",
   )
+})
+
+test("refactor de esquema: un calendario viejo cuyos defaults rellenan servicios se abstiene", () => {
+  // Una copia anterior sin `servicios`: el esquema de lectura aplica el default
+  // `[]`. Ese default NO debe convertirse en permiso operativo; el calendario
+  // usable exige al menos un servicio bien formado, así que se abstiene.
+  const viejo = VerifiedCalendarSchema.parse({
+    startDate: "2026-01-01",
+    endDate: "2026-12-31",
+    timezone: "America/Bogota",
+    source: "copia anterior",
+    date: "2026-11-03",
+  })
+  assert.deepEqual(viejo.servicios, [], "el default de lectura rellena servicios")
+  assert.equal(estadoCalendarioEnFecha(viejo, AHORA), "sin-verificar")
+  assert.equal(calendarioOperaEnFecha(viejo, AHORA), false)
+})
+
+test("refactor de esquema: un servicio incompleto o con campos ajenos no habilita", () => {
+  // serviceId vacío: estructura presente pero semánticamente inválido.
+  const vacio = calendarioSintetico()
+  vacio.servicios[0].serviceId = ""
+  assert.equal(estadoCalendarioEnFecha(vacio, AHORA), "sin-verificar")
+  // Día de la semana fuera de rango: el esquema estricto lo rechaza entero.
+  const diaMalo = calendarioSintetico()
+  diaMalo.servicios[0].weekdays = [7]
+  assert.equal(estadoCalendarioEnFecha(diaMalo, AHORA), "sin-verificar")
 })
 
 test("fechaCivilEnZona respeta la zona de Bogotá en el borde de día", () => {

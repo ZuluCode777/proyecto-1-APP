@@ -293,7 +293,7 @@ export function fullStationName(raw: string, stations: Station[], stops: string[
  * decisión de cuál atributo es el correcto exige una fuente oficial vigente,
  * que no se tiene, así que `verified` queda en falso.
  */
-export function reconcileDirection(from: string, to: string, stops: string[]): DirectionEvidence {
+export function reconciliarSentido(from: string, to: string, stops: string[]): DirectionEvidence {
   if (stops.length < 2 || !from || !to) {
     return {
       agreement: "indeterminado",
@@ -375,7 +375,7 @@ export function normalizeTransmilenio(
       stops,
       // No hay fuente vigente de paradas atendidas; queda vacío a propósito.
       servedStops: [],
-      directionEvidence: reconcileDirection(from, to, stops),
+      directionEvidence: reconciliarSentido(from, to, stops),
       path,
       schedule: {
         weekday: clean(f.attributes.hor_habil),
