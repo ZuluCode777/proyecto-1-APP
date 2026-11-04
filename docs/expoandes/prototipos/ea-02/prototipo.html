@@ -1408,12 +1408,16 @@ function tapaSuperior() {
   if (!franja || franja.hidden || getComputedStyle(franja).position !== 'sticky') return 0
   return Math.max(0, franja.getBoundingClientRect().bottom)
 }
-// Se prefiere un bloque con data-id, cuya identidad no cambia aunque cambie su texto.
+// Candidatos de ancla: todos los bloques que se ven (debajo de la franja fija y por encima del borde
+// inferior de la ventana), de arriba abajo. Tras repintar se alinea el primero que siga existiendo con la
+// misma identidad (data-id, o etiqueta y texto). Así no se mueve lo que está arriba en pantalla. Si un
+// bloque visible cambia de alto, lo que está debajo de él se desplaza: eso no se puede evitar.
 function anclaVisible() {
   const tapa = tapaSuperior()
-  const visibles = [...document.querySelectorAll(`#contenido :is(${BLOQUES_ANCLA})`)].filter((el) => { const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom > tapa })
-  const el = visibles.find((x) => x.dataset.id) || visibles[0]
-  return el ? { clave: claveBloque(el), separacion: el.getBoundingClientRect().top - tapa } : null
+  return [...document.querySelectorAll(`#contenido :is(${BLOQUES_ANCLA})`)]
+    .map((el) => ({ el, r: el.getBoundingClientRect() }))
+    .filter(({ r }) => r.height > 0 && r.bottom > tapa && r.top < innerHeight)
+    .map(({ el, r }) => ({ clave: claveBloque(el), separacion: r.top - tapa }))
 }
 // Cambia el DOM sin mover lo que la persona está leyendo.
 function conservarLectura(cambio) {
@@ -1421,11 +1425,14 @@ function conservarLectura(cambio) {
   cambio()
   restaurarAncla(ancla, desplazamiento)
 }
-function restaurarAncla(ancla, desplazamiento) {
+function restaurarAncla(anclas, desplazamiento) {
   window.scrollTo(window.scrollX, desplazamiento)
-  if (!ancla) return
-  const el = [...document.querySelectorAll(`#contenido :is(${BLOQUES_ANCLA})`)].find((x) => claveBloque(x) === ancla.clave)
-  if (el) window.scrollBy(0, el.getBoundingClientRect().top - tapaSuperior() - ancla.separacion)
+  if (!anclas || !anclas.length) return
+  const bloques = [...document.querySelectorAll(`#contenido :is(${BLOQUES_ANCLA})`)]
+  for (const ancla of anclas) {
+    const el = bloques.find((x) => claveBloque(x) === ancla.clave)
+    if (el) { window.scrollBy(0, el.getBoundingClientRect().top - tapaSuperior() - ancla.separacion); return }
+  }
 }
 // «enfocar»: destino pedido. «respaldo»: destino solo si el control que tenía el foco desapareció.
 // Un repintado de la misma pantalla (evento, temporizador, panel) conserva el desplazamiento y los

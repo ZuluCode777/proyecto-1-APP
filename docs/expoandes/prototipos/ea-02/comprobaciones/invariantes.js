@@ -233,6 +233,94 @@ async (page) => {
       return r.antes > 0 && r.sepDespues !== null && Math.abs(r.sepDespues - r.sepAntes) <= 1 && r.foco === 'titulo' ? true : JSON.stringify(r)
     })
   }
+  // Referencia independiente del ancla del prototipo: bloques de texto que se ven enteros antes del
+  // evento (debajo de la franja fija y dentro de la ventana). Después, los mismos bloques (misma etiqueta
+  // y texto) deben seguir en el mismo sitio. Se usa con eventos síncronos y con temporizadores reales.
+  const tomarReferencias = () => ev(() => {
+    const f = document.querySelector('#actividad')
+    const tapa = f && !f.hidden && getComputedStyle(f).position === 'sticky' ? Math.max(0, f.getBoundingClientRect().bottom) : 0
+    return [...document.querySelectorAll('#contenido :is(h1, h2, h3, p, li, dt, dd, summary, button, label)')]
+      .map((el) => ({ el, r: el.getBoundingClientRect() }))
+      .filter(({ r }) => r.height > 0 && r.top >= tapa && r.bottom <= innerHeight)
+      .map(({ el, r }) => ({ etiqueta: el.tagName, texto: el.textContent.trim().slice(0, 80), arriba: r.top }))
+  })
+  // Se recorren de arriba abajo. Hasta el primer bloque que el evento cambió (otro texto o eliminado),
+  // ninguno puede moverse. Lo que queda debajo de un bloque que cambió de alto se desplaza a la fuerza.
+  const compararReferencias = (antes) => ev((antes) => {
+    const todos = [...document.querySelectorAll('#contenido :is(h1, h2, h3, p, li, dt, dd, summary, button, label)')]
+    const movidos = [], encontrados = []
+    for (const ref of [...antes].sort((x, y) => x.arriba - y.arriba)) {
+      const el = todos.find((x) => x.tagName === ref.etiqueta && x.textContent.trim().slice(0, 80) === ref.texto)
+      if (!el) break
+      const arriba = el.getBoundingClientRect().top
+      encontrados.push(ref.texto)
+      if (Math.abs(arriba - ref.arriba) > 1) movidos.push(`«${ref.texto.slice(0, 30)}» ${ref.arriba.toFixed(1)}→${arriba.toFixed(1)}`)
+    }
+    return { encontrados: encontrados.length, movidos }
+  }, antes)
+  const sinPanel = (fn) => async () => {
+    await ev(() => { document.querySelector('#panel').hidden = true })
+    try { return await fn() } finally { await ev(() => { document.querySelector('#panel').hidden = false; window.scrollTo(0, 0) }) }
+  }
+  await prueba('R2-1: B, 200 %, Accesorio con detalles abiertos: desconectar no mueve el texto visible', sinPanel(async () => {
+    await ev(() => {
+      const P = window.prototipo
+      P.preparar('accesorio-medicion', { variante: 'B', texto: 200 })
+      document.querySelector('[data-id="significado-estados"]').parentElement.open = true
+      document.querySelector('#contenido h1').focus({ preventScroll: true })
+      window.scrollTo(0, 700)
+    })
+    const antes = await tomarReferencias()
+    await ev(() => window.prototipo.ACCIONES_PANEL.desconectar())
+    const r = await compararReferencias(antes)
+    return antes.length > 0 && r.encontrados > 0 && !r.movidos.length ? true : JSON.stringify({ visibles: antes.length, ...r })
+  }))
+  await prueba('Temporizador real: el vencimiento a 3 s no mueve el texto visible (B, 200 %, Accesorio)', sinPanel(async () => {
+    await ev(() => {
+      const P = window.prototipo
+      P.preparar('accesorio-sin-elegir', { variante: 'B', texto: 200 })
+      Object.assign(P.E.permisos, { bluetooth: 'concedido' }); Object.assign(P.E.acc, { elegido: 'TMV-01', estado: 'sinDeteccion' }); P.repintar()
+      document.querySelector('[data-id="significado-estados"]').parentElement.open = true
+      P.ACCIONES_PANEL['medicion-frente']()
+      window.scrollTo(0, 700)
+    })
+    const antes = await tomarReferencias()
+    await esperar(3400)
+    const estado = await ev(() => window.prototipo.E.acc.estado)
+    const r = await compararReferencias(antes)
+    return estado === 'sinDatos' && antes.length > 0 && r.encontrados > 0 && !r.movidos.length ? true : JSON.stringify({ estado, visibles: antes.length, ...r })
+  }))
+  await prueba('Temporizador real: el fin de la búsqueda de ubicación no mueve el texto visible (A, 200 %, Ubicación)', sinPanel(async () => {
+    await ev(() => {
+      const P = window.prototipo
+      P.preparar('gps-guiando', { variante: 'A', texto: 200 })
+      document.querySelector('[data-id="gps-actualizar"]').click()
+      window.scrollTo(0, 400)
+    })
+    const antes = await tomarReferencias()
+    await esperar(1500)
+    const fase = await ev(() => window.prototipo.E.gps.fase)
+    const r = await compararReferencias(antes)
+    return fase === 'listo' && antes.length > 0 && r.encontrados > 0 && !r.movidos.length ? true : JSON.stringify({ fase, visibles: antes.length, ...r })
+  }))
+  await prueba('R2-2: la secuencia de T9 del guion (panel, «Desconectar en 20 s», aplicar) desconecta a los 20 s', async () => {
+    await ev(() => {
+      document.querySelector('#panel').hidden = true
+      document.querySelector('.aviso-prototipo').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    })
+    await esperar(1700)
+    await ev(() => {
+      document.querySelector('.aviso-prototipo').dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+      document.querySelector('#panel-escenario').value = 'T9'
+      document.querySelector('[data-panel="desconectar-20"]').click()
+      document.querySelector('[data-panel="aplicar-escenario"]').click()
+    })
+    const antes = await ev(() => [window.prototipo.E.acc.estado, document.querySelector('#panel').hidden])
+    await esperar(20600)
+    const despues = await ev(() => [window.prototipo.E.acc.estado, window.prototipo.E.acc.motivo, document.querySelector('#panel-salida').textContent])
+    await ev(() => { document.querySelector('#panel').hidden = false })
+    return antes[0] === 'sinDeteccion' && antes[1] && despues[0] === 'sinDatos' && /se perdió/.test(despues[1]) && /desconectado/.test(despues[2]) ? true : JSON.stringify({ antes, despues })
+  })
   for (const v of ['A', 'B']) {
     await prueba(`${v}: los «details» abiertos siguen abiertos tras un evento`, async () => {
       const r = await ev((v) => {
