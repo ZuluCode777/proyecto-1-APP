@@ -25,7 +25,7 @@ Estado: **hecho**, **en curso** o **pendiente**. «Kiro» es el agente en el san
 | 2 | Fijar pregunta, tareas representativas y criterios de aprobación. | Kiro | Hecho, en [evaluación y decisión](evaluacion-y-decision.md) |
 | 3 | Especificar lectura y foco, Dynamic Type, controles de 44×44 pt, contraste 7:1, texto equivalente al audio, modo de baja visión, cancelación, permisos y separación de avisos. | Kiro | Hecho, en [especificación de accesibilidad](especificacion-accesibilidad.md) |
 | 4 | Construir el prototipo desechable con dos variantes (A y B), nueve áreas y sus estados, sin red ni guardado. | Kiro | Hecho, en [prototipo.html](prototipo.html) |
-| 5 | Comprobar en Chromium sin interfaz, a 390×844: tamaño y nombre de controles, contraste calculado, texto al 100/200/310 % y baja visión, desbordes, foco al entrar, volver, repintar y al desaparecer un control, comportamiento (47 pruebas), ausencia de red y de guardado. | Kiro | Hecho, resultados en evaluación |
+| 5 | Comprobar en Chromium sin interfaz, a 390×844: tamaño y nombre de controles, contraste calculado, texto al 100/200/310 % y baja visión, desbordes, foco al entrar, volver, repintar y al desaparecer un control, comportamiento (60 pruebas), ausencia de red y de guardado. | Kiro | Hecho, resultados en evaluación |
 | 6 | Recorrido experto: diez tareas por variante con conteo aproximado de deslizamientos de VoiceOver, y T2 completa solo con teclado en ambas. | Kiro | Hecho, marcado como revisión experta provisional |
 | 7 | Preparar guion de sesiones con usuarios y tabla de registro sin datos identificables. | Kiro | Hecho, en [guion de sesiones](guion-sesiones-usuarios.md) |
 | 8 | Registrar recomendación provisional, cambios de diseño y límites. | Kiro | Hecho, en evaluación |

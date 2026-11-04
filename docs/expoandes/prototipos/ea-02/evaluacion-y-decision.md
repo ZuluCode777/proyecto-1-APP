@@ -8,7 +8,9 @@
 
 ## Versión evaluada
 
-[Prototipo](prototipo.html) versión 0.1, rama `ea-02-prototipo-accesible`. El commit exacto figura en el PR. Las dos variantes tienen las mismas nueve áreas y los mismos textos:
+[Prototipo](prototipo.html) versión 0.2, rama `ea-02-prototipo-accesible`. Las cifras de este documento corresponden al archivo con SHA-256 `673908c82122983fd775f3584a93b8488d762c8dbbc1d084bef6854092fb6b38` (compruébalo con `sha256sum prototipo.html`). La versión 0.1 cubre los commits `3d3d381` a `359d078`; la 0.2, las correcciones de la revisión del PR #58.
+
+Las dos variantes tienen las mismas nueve áreas y los mismos textos:
 
 | Variante | Estructura |
 | --- | --- |
@@ -19,17 +21,17 @@ Se descartó una tercera variante de flujo guiado (C en [arquitectura](../../arq
 
 ## Método
 
-Todo se ejecutó en Chromium sin interfaz, con ventana de 390×844 CSS px (tamaño de iPhone). Los guiones están en [comprobaciones/](comprobaciones/).
+Todo se ejecutó en HeadlessChrome 151.0.7922.10 en Linux, con ventana de 390×844 CSS px (tamaño de iPhone). La pila de fuentes `-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif` se resolvió a **Noto Sans** (dato de `barrido.js`, campo `entorno`). Las cifras que dependen del ancho del texto (palabras partidas y alto de las franjas) pueden cambiar con otra fuente; en el iPhone se usa SF Pro. Los guiones están en [comprobaciones/](comprobaciones/) y cada cifra sale de lo que devuelven.
 
-1. **Barrido** (`barrido.js`). 355 combinaciones: 2 variantes × 35 estados (36 en B, que añade «Más») × 5 configuraciones (texto al 100, 200 y 310 %; baja visión al 100 y 310 %). En cada combinación se comprueban:
-   - tamaño y nombre accesible de cada control;
+1. **Barrido** (`barrido.js`). 395 combinaciones: 2 variantes × 39 estados (40 en B, que añade «Más») × 5 configuraciones (texto al 100, 200 y 310 %; baja visión al 100 y 310 %). En cada combinación se comprueban:
+   - tamaño y nombre accesible de cada control, y que no haya dos controles con el mismo nombre;
    - contraste de todo texto visible;
    - desborde horizontal;
    - que todo estado con color lleve su palabra;
-   - un único título y el foco en él (en las 335 combinaciones sin diálogo abierto).
+   - un único título y el foco en él (en las 375 combinaciones sin diálogo abierto).
 
    También cuenta palabras partidas y mide las franjas fijas.
-2. **Invariantes** (`invariantes.js`). 47 pruebas de comportamiento con temporizadores reales: cancelaciones y respuestas tardías, foco, vencimiento de datos, ubicación sin llegada ni distancia falsa, abordaje solo verificado, Metro, paridad de frases de seguridad entre A y B, permisos, Escape y teclado.
+2. **Invariantes** (`invariantes.js`). 60 pruebas de comportamiento con temporizadores reales: cancelaciones y respuestas tardías, foco, desplazamiento y «details» tras un evento, vencimiento de datos, ubicación sin llegada ni distancia falsa, abordaje solo verificado, procedencia y «Actualizar datos», Metro, paridad de frases de seguridad entre A y B, permisos en T1, T4 y T6, Escape y teclado. Aparte devuelve dos mediciones (`datos`): pulsaciones de Tab en T2.
 3. **Teclado.** Una prueba completa T2 solo con Tab, Enter y escritura en cada variante, y comprueba que no hay `tabindex` positivos.
 4. **Recorrido de tareas** (`tareas.js`). Diez tareas en ambas variantes. Cuenta los deslizamientos de VoiceOver necesarios para llegar a cada objetivo desde el foco actual, y las activaciones (toque doble). Si el texto buscado aparece en dos lugares, por ejemplo en el resultado y en «La app dijo», se toma el más cercano. Es una aproximación lineal: VoiceOver real agrupa algunos elementos de otra forma, y el rotor de encabezados o el toque con cuatro dedos acortan los recorridos.
 5. **Revisión experta** de las capturas en [capturas/](capturas/) y del árbol de accesibilidad. Además hubo una revisión independiente del código y los documentos; sus hallazgos se corrigieron (ver «Cambios»).
@@ -38,16 +40,16 @@ Todo se ejecutó en Chromium sin interfaz, con ventana de 390×844 CSS px (tama�
 
 | Comprobación | Resultado |
 | --- | --- |
-| Controles de al menos 44×44 | 355/355 combinaciones. El mínimo usado es 48 px. |
-| Nombre accesible en todo control | 355/355. |
-| Contraste de texto | Mínimo **17,31:1** en las 355 (objetivo 7:1), en tema claro y en baja visión. |
+| Controles de al menos 44×44 | 395/395 combinaciones. El mínimo usado es 48 px. |
+| Nombre accesible en todo control | 395/395, sin nombres repetidos en ninguna pantalla. |
+| Contraste de texto | Mínimo **17,31:1** en las 395 (objetivo 7:1), en tema claro y en baja visión. No depende de la fuente. |
 | Desborde horizontal | Ninguno, también al 310 %. |
 | Estado comunicado solo por color | Ninguno. Todo estado con color lleva palabra («Urgente:», «Importante:»…) e ícono. |
-| Foco en el título al entrar en pantalla | 335/335 combinaciones sin diálogo. Con diálogo, el foco va a su título. |
-| Invariantes de comportamiento | **47/47.** |
-| Teclado | T2 completa con 5 pulsaciones de Tab en A y 11 en B. No hay `tabindex` positivos. |
+| Foco en el título al entrar en pantalla | 375/375 combinaciones sin diálogo. Con diálogo, el foco va a su título. |
+| Invariantes de comportamiento | **60/60.** |
+| Teclado | T2 completa con 5 pulsaciones de Tab en A y 11 en B (mediciones, no pruebas). No hay `tabindex` positivos. |
 | Red, guardado, errores | Cero peticiones de red y cero errores de JavaScript. El código no usa almacenamiento, cookies ni red. |
-| Palabras partidas | Ninguna al 100 y al 200 %. Al 310 %: 28 palabras en 23 de 35 pantallas (A) y 27 en 23 de 36 (B), por ejemplo «programación» o «TransMilenio». Pasa con palabras más anchas que la línea; iOS también las corta en AX5. |
+| Palabras partidas | Ninguna al 100 y al 200 %. Al 310 %, con Noto Sans: 31 palabras en 24 de 39 pantallas (A) y 29 en 24 de 40 (B), por ejemplo «programación» o «desactualizada». **Depende de la fuente:** la revisión del PR midió 5 en 5 de 35 (A) y 5 en 5 de 36 (B) con Chrome 156 en Fedora, sobre la versión 0.1. Pasa con palabras más anchas que la línea; iOS también las corta en AX5. |
 
 ## Comparación A y B
 
@@ -57,19 +59,19 @@ Deslizamientos / activaciones. Menos es mejor.
 
 | Tarea | A | B |
 | --- | --- | --- |
-| T1 Iniciar sesión, oír «sin detección», detenerla | **3 / 2** | 4 / 2 |
+| T1 Iniciar sesión (con permiso de Bluetooth), oír «sin detección», detenerla | **8 / 4** | 9 / 4 |
 | T2 Viaje Terminal → Calle 72 (verificado) | **16 / 2** | 33 / 2 |
 | T3 Viaje Portal Usme → Molinos (sin confirmar) | **12 / 2** | 29 / 2 |
-| T4 Viaje con ubicación denegada (origen manual) | **15 / 3** | 32 / 3 |
+| T4 Viaje: rechazar el permiso de ubicación y escribir el origen | **22 / 5** | 39 / 5 |
 | T5 Reconocer ubicación imprecisa | **9 / 1** | 11 / 1 |
-| T6 Preguntar por voz y cancelar | **8 / 3** | 29 / 3 |
+| T6 Preguntar por voz (con permisos) y cancelar | **16 / 6** | 37 / 6 |
 | T7 Distinguir aviso local, anuncio y Metro | **29 / 1** | 43 / 1 |
 | T8 Estación futura E12 del Metro | **24 / 2** | 43 / 3 |
 | T9 Accesorio desconectado y reconexión | **14 / 2** | 19 / 2 |
-| T10 Abrir lupa, ampliar y congelar | **25 / 6** | 49 / 7 |
-| **Total** | **155 / 24** | 292 / 26 |
+| T10 Abrir lupa, ampliar y congelar | **24 / 6** | 48 / 7 |
+| **Total** | **174 / 31** | 311 / 33 |
 
-Las dos escriben el mismo texto en T2, T3 y T4 (6 entradas). A necesita 47 % menos deslizamientos y gana las 10 tareas. La diferencia es pequeña en T1 y T5, donde B muestra el estado completo sin entrar en otra pantalla. Es mayor donde B deja la cancelación y «La app dijo» al final (T6) o esconde el área en «Más» (T8, T10).
+Las dos escriben el mismo texto en T2, T3 y T4 (6 entradas). T1, T4 y T6 incluyen la explicación previa y el aviso simulado de iOS, porque sus permisos empiezan sin preguntar. A necesita 44 % menos deslizamientos y gana las 10 tareas. La diferencia es pequeña en T1 y T5, donde B muestra el estado completo sin entrar en otra pantalla. Es mayor donde B deja la cancelación y «La app dijo» al final (T6) o esconde el área en «Más» (T8, T10).
 
 Las filas de B probablemente se leen en VoiceOver como dos paradas (nombre y valor), y el conteo las toma como una. Si es así, los recorridos de B serían aún más largos.
 
@@ -77,9 +79,9 @@ Las filas de B probablemente se leen en VoiceOver como dos paradas (nombre y val
 
 | Medida | A | B |
 | --- | --- | --- |
-| Paradas de lectura por pantalla, media, texto al 100 % | **16,7** | 23,7 |
-| Controles por pantalla, media, texto al 100 % | **8,3** | 11,4 |
-| Franjas fijas en Inicio con una sesión activa, texto al 100 % | **71 px (8 %)** | 197 px (23 %) |
+| Paradas de lectura por pantalla, media, texto al 100 % | **17,5** | 24,3 |
+| Controles por pantalla, media, texto al 100 % | **8,9** | 11,8 |
+| Franjas fijas en Inicio con una sesión activa, texto al 100 %, con Noto Sans | **71 px (8 %)** | 197 px (23 %) |
 | Franjas fijas con texto al 200 o 310 % | **0 px** (dejan de ser fijas) | 59 px (7 %, pestañas) |
 
 ### Revisión experta
@@ -111,6 +113,12 @@ Las filas de B probablemente se leen en VoiceOver como dos paradas (nombre y val
 | La pregunta por voz se enviaba sin el aviso de envío al servidor. | Voz y texto pasan por el mismo aviso. |
 | Faltaba un equivalente del gesto de escape. | Escape cancela lo transitorio o vuelve atrás. |
 | La primera versión del conteo de tareas tomaba la primera aparición del texto en la página, no la más cercana al foco. | Corregido. Con la regla anterior el total era A 206 y B 303, y B ganaba T1 y T9. |
+| **Versión 0.2, revisión del PR #58.** Un evento (conexión, vencimiento, desconexión, búsqueda, panel) repintaba la pantalla, movía el desplazamiento y cerraba los «details». | El repintado ancla la lectura al bloque visible, conserva los «details» abiertos y devuelve el foco sin desplazar. Pruebas añadidas para A y B, al 100 y 200 %. |
+| Botones con el mismo nombre en una pantalla («Repetir» ×3 en Avisos, «Detener sesión» en la franja y en la fila). | Nombres con contexto («Repetir aviso: …», «…, actividad en curso»); el barrido falla si se repite un nombre. |
+| T1, T4 y T6 empezaban con el permiso ya resuelto, así que el criterio 5 de #28 no se ensayaba con personas. | Empiezan sin preguntar; T4 incluye rechazar el permiso. Las cifras de esas tareas suben por la explicación y el aviso. |
+| La spec decía «un deslizamiento» hasta cancelar en A, la versión no estaba fijada, la cifra de palabras partidas dependía de la fuente y el conteo de pruebas incluía mediciones. | Cifra medida (tres paradas, con prueba), versión 0.2 con SHA-256, navegador y fuente anotados, y mediciones aparte. |
+| Otros: botones deshabilitados sin señal visual, opciones de radio sin distinción a la vista, emergencia sin documentar, guion de 20 recorridos en 45 min y consentimiento de grabación ambiguo. | Corregidos; ver el PR #58 para la lista de 16 puntos. |
+
 
 ## Recomendación provisional
 
@@ -131,7 +139,7 @@ Esta recomendación sale de mediciones automáticas y revisión experta. No sust
 ## Límites
 
 - El árbol de accesibilidad de Chromium y las capturas no prueban VoiceOver. El orden de lectura de Safari para iOS y el de SwiftUI pueden diferir.
-- Cada repintado reconstruye la pantalla y devuelve el foco a un elemento nuevo con el mismo identificador. Es probable que VoiceOver relea ese control cuando llega un evento (conexión, vencimiento, desconexión). Es un efecto del prototipo, no del diseño: en SwiftUI la vista bajo el foco conserva su identidad. Anotarlo en las sesiones para no atribuirlo a la variante.
+- Cada repintado reconstruye la pantalla. Conserva lo que se estaba leyendo, los «details» abiertos y el foco, pero el foco pasa a un elemento nuevo con el mismo identificador, y es probable que VoiceOver relea ese control cuando llega un evento. Es un efecto del prototipo, no del diseño: en SwiftUI la vista bajo el foco conserva su identidad. Anotarlo en las sesiones para no atribuirlo a la variante.
 - El tamaño de texto es simulado: Safari no aplica el Dynamic Type del iPhone a este prototipo. Dynamic Type, Negrita, Aumentar contraste, Reducir movimiento e Invertir colores reales requieren iPhone.
 - Accesorio, ubicación, cámara, audio y permisos están simulados. No se midió latencia, audio por auriculares ni la coexistencia de VoiceOver con la voz de la app (experimento X2).
 - El contraste calculado no dice cómo lo perciben personas con baja visión.
