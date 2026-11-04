@@ -200,6 +200,43 @@ async (page) => {
     })
     return r.A && r.B && r.B310 ? true : JSON.stringify(r)
   })
+  // Un evento asíncrono (desconexión, vencimiento, búsqueda) no debe mover la lectura de la persona.
+  for (const v of ['A', 'B']) for (const tamano of [100, 200]) {
+    await prueba(`${v} ${tamano} %: un evento asíncrono conserva desplazamiento y foco`, async () => {
+      const r = await ev(({ v, tamano }) => {
+        const P = window.prototipo
+        P.preparar('inicio-activa', { variante: v, texto: tamano })
+        document.querySelector('#contenido h1').focus({ preventScroll: true })
+        window.scrollTo(0, 700)
+        const antes = window.scrollY
+        P.ACCIONES_PANEL.desconectar()
+        const despues = window.scrollY
+        window.scrollTo(0, 0)
+        return { antes, despues, foco: document.activeElement.dataset.id }
+      }, { v, tamano })
+      return r.antes > 0 && Math.abs(r.despues - r.antes) <= 1 && r.foco === 'titulo' ? true : JSON.stringify(r)
+    })
+  }
+  for (const v of ['A', 'B']) {
+    await prueba(`${v}: los «details» abiertos siguen abiertos tras un evento`, async () => {
+      const r = await ev((v) => {
+        const P = window.prototipo, abierto = (id) => { const s = document.querySelector(`[data-id="${id}"]`); return s ? s.parentElement.open : null }
+        const salida = {}
+        if (v === 'A') {
+          P.preparar('inicio-activa', { variante: v })
+          document.querySelector('[data-id="detalles-estado"]').parentElement.open = true
+          P.ACCIONES_PANEL.desconectar()
+          salida.inicio = abierto('detalles-estado')
+        }
+        P.preparar('accesorio-medicion', { variante: v })
+        document.querySelector('[data-id="significado-estados"]').parentElement.open = true
+        P.ACCIONES_PANEL['sin-deteccion']()
+        salida.accesorio = abierto('significado-estados')
+        return salida
+      }, v)
+      return Object.values(r).every((x) => x === true) ? true : JSON.stringify(r)
+    })
+  }
   await prueba('Paridad: las frases de seguridad aparecen igual en A y en B', async () => {
     const casos = [
       ['gps-imprecisa', /no puedo saber si llegaste/i], ['gps-aproximada', /ubicación exacta/i], ['gps-vieja', /actualiza/i],

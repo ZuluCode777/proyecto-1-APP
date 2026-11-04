@@ -1329,12 +1329,18 @@ function aplicarAjustes() {
 }
 // Al repintar se conserva el foco por data-id: la persona no pierde su lugar en VoiceOver.
 // «enfocar»: destino pedido. «respaldo»: destino solo si el control que tenía el foco desapareció.
+// Un repintado de la misma pantalla (evento, temporizador, panel) conserva el desplazamiento y los
+// «details» abiertos, y devuelve el foco sin desplazar la página: la persona no pierde su lugar.
+let pintada = { pantalla: null, variante: null }
 function repintar({ enfocar = null, respaldo = null } = {}) {
   const activo = document.activeElement
   const enApp = activo && $('#disenio').contains(activo)
   const idFoco = enApp && activo.dataset ? activo.dataset.id : null
   const enActividad = enApp && !!activo.closest('#actividad')
   const seleccion = enApp && activo.tagName === 'INPUT' && activo.type === 'text' ? [activo.selectionStart, activo.selectionEnd] : null
+  const mismaPantalla = pintada.pantalla === pantalla() && pintada.variante === E.variante
+  const desplazamiento = window.scrollY
+  const abiertos = new Set(mismaPantalla ? [...document.querySelectorAll('#app details[open] > summary[data-id]')].map((s) => s.dataset.id) : [])
   pintarArmazon()
   aplicarAjustes()
   pintarCabecera()
@@ -1347,6 +1353,10 @@ function repintar({ enfocar = null, respaldo = null } = {}) {
   $('#voz-texto').textContent = E.voz.texto
   document.title = `PROTOTIPO DESECHABLE EA-02 · ${E.variante} · ${ficha.titulo}`
   sincronizarPanel()
+  // Reabre los «details» que estaban abiertos (por el data-id de su «summary») y restaura el desplazamiento.
+  for (const s of document.querySelectorAll('#app details > summary[data-id]')) if (abiertos.has(s.dataset.id)) s.parentElement.open = true
+  pintada = { pantalla: pantalla(), variante: E.variante }
+  if (mismaPantalla) window.scrollTo(window.scrollX, desplazamiento)
   if (document.querySelector('dialog[open]')) return
   // Prioridad: destinos pedidos (en orden), luego el control que tenía el foco, luego el título.
   // Si el foco estaba en la app y su control desapareció, nunca queda en <body>.
@@ -1357,8 +1367,10 @@ function repintar({ enfocar = null, respaldo = null } = {}) {
   for (const id of candidatos) { objetivo = buscar(id); if (objetivo) break }
   if (!objetivo && (enfocar || enApp)) objetivo = $('#contenido h1')
   if (objetivo && objetivo !== document.activeElement) {
-    objetivo.focus()
-    if (seleccion && idFoco && objetivo === buscar(idFoco) && objetivo.setSelectionRange) objetivo.setSelectionRange(seleccion[0], seleccion[1])
+    // Volver al mismo control en la misma pantalla no desplaza; navegar o ir a otro destino sí.
+    const mismoControl = !!idFoco && objetivo === buscar(idFoco)
+    objetivo.focus({ preventScroll: mismaPantalla && mismoControl })
+    if (seleccion && mismoControl && objetivo.setSelectionRange) objetivo.setSelectionRange(seleccion[0], seleccion[1])
   }
 }
 
