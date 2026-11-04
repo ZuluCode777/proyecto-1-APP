@@ -112,7 +112,7 @@ En Metro, un aviso fijo dice que es escenario educativo. Ningún texto da indica
 
 - Solo un viaje con paradas, sentido y horario verificados dice «Sube» y «Bájate». Sin esa evidencia se explica por qué no se indica abordaje.
 - Siempre se muestra la procedencia del catálogo con el texto de `procedenciaCatalogo()` (`lib/transmilenio.ts`): consulta en vivo o copia guardada, con su fecha. También en la respuesta hablada cuando es copia guardada.
-- Con copia guardada o sin servidor, Inicio y Rutas muestran «Actualizar datos» en las dos variantes, como pide EA-06 ([nota](../../ea-06-catalogo-recuperable.md)). Si la actualización falla, se dice por qué y se siguen usando los datos que hay.
+- Con copia guardada o sin servidor, Inicio y Rutas muestran «Actualizar datos» en las dos variantes, como pide EA-06 ([nota](https://github.com/ZuluCode777/proyecto-1-APP/blob/main/docs/expoandes/ea-06-catalogo-recuperable.md)). Si la actualización falla, se dice por qué y se siguen usando los datos que hay.
 - Errores con texto propio y reintento explícito: sin conexión, 401, 429, tiempo de espera agotado (el cliente de `main` corta a los 20 s en `hooks/use-transmilenio.ts`) y error 5xx del servidor.
 - **Propuesta, requiere cambio de contrato (A1):** no indicar abordaje cuando el catálogo es una copia guardada. Hoy `planTrip` (`lib/routes.ts`) no lee `source`, `aplicarEvidenciaGtfs` (`lib/transmilenio-data.ts`) se aplica igual a la copia y `/api/agent` no devuelve la versión del catálogo. El prototipo sigue el comportamiento actual del backend.
 
