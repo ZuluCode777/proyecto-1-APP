@@ -6,6 +6,8 @@ async (page) => {
   const esperar = (ms) => page.waitForTimeout(ms)
   const ev = (fn, arg) => page.evaluate(fn, arg)
   const resultados = []
+  // Mediciones que no son pruebas (por ejemplo, pulsaciones de Tab): van aparte para no inflar el conteo.
+  const datos = {}
   const prueba = async (nombre, fn) => { try { const r = await fn(); resultados.push({ nombre, ok: r === true, detalle: r === true ? '' : String(r) }) } catch (e) { resultados.push({ nombre, ok: false, detalle: 'excepción: ' + e.message }) } }
   const clic = (id) => ev((id) => { const el = document.querySelector(`#disenio [data-id="${id}"]`); if (!el) throw new Error('no existe ' + id); el.focus(); el.click() }, id)
   const texto = () => ev(() => document.querySelector('#contenido').innerText)
@@ -326,7 +328,7 @@ async (page) => {
       await page.keyboard.type('Calle 72'); await page.keyboard.press('Enter'); await esperar(1800)
       const t = await texto()
       const positivos = await ev(() => document.querySelectorAll('[tabindex]:not([tabindex="-1"]):not([tabindex="0"])').length)
-      resultados.push({ nombre: `${v} teclado: pulsaciones de Tab en T2`, ok: true, detalle: String(tabs) })
+      datos[`${v} pulsaciones de Tab en T2`] = tabs
       return /Sube a la 8 G en Terminal/.test(t) && positivos === 0 ? true : `resultado=${/Sube a la/.test(t)} tabindex>0=${positivos}`
     })
   }
@@ -424,5 +426,5 @@ async (page) => {
     const r = await ev(() => [document.title, document.activeElement.dataset.id])
     return /Inicio$/.test(r[0]) && r[1] === 'nav-ajustes' ? true : r.join(' / ')
   })
-  return { resultados, errores }
+  return { pruebas: resultados.length, aprobadas: resultados.filter((r) => r.ok).length, resultados, datos, errores }
 }

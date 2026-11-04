@@ -6,6 +6,24 @@ async (page) => {
   page.on('request', (r) => { if (!r.url().startsWith('data:') && r.url() !== 'about:blank') peticiones.push(r.url()) })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.setContent(__HTML__)
+  // Entorno: la cifra de palabras partidas depende del navegador y de la fuente que resuelve
+  // -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif.
+  const entorno = { agente: await page.evaluate(() => navigator.userAgent) }
+  try { entorno.navegador = page.context().browser().version() } catch (e) { entorno.navegador = 'no disponible' }
+  try {
+    await page.evaluate(() => window.prototipo.preparar('inicio', { variante: 'A', texto: 100 }))
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('DOM.enable'); await cdp.send('CSS.enable')
+    const { root } = await cdp.send('DOM.getDocument')
+    entorno.fuentes = {}
+    for (const selector of ['#contenido h1', '#contenido p', '#contenido button']) {
+      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector })
+      if (!nodeId) continue
+      const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId })
+      entorno.fuentes[selector] = fonts.map((f) => f.familyName).join(', ')
+    }
+    await cdp.detach()
+  } catch (e) { entorno.fuentes = 'no disponible: ' + e.message }
   const resultado = await page.evaluate(() => {
     const P = window.prototipo
     const nombres = Object.keys(P.PREPARADOS)
@@ -57,5 +75,5 @@ async (page) => {
     const sinFoco = filas.length - filas.filter((f) => ['hoja-ubicacion', 'sistema-ubicacion'].includes(f.nombre)).length
     return { combinaciones: filas.length, combinacionesConFocoComprobado: sinFoco, contrasteMinimoGlobal: minimo, fallos: fallos.slice(0, 60), totalFallos: fallos.length, resumen, porPantalla, franjasFijas }
   })
-  return { ...resultado, errores, peticiones }
+  return { ...resultado, entorno, errores, peticiones }
 }
