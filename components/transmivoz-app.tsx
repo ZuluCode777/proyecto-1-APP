@@ -19,7 +19,7 @@ import { useSpeech } from "@/hooks/use-speech"
 import { useTransmilenio } from "@/hooks/use-transmilenio"
 import type { AgentReply, TripLegSummary } from "@/lib/local-agent"
 import { searchRoutes, type BusRoute } from "@/lib/routes"
-import { Bot } from "lucide-react"
+import { Bot, RefreshCw } from "lucide-react"
 
 export type Mode = "parcial" | "total"
 type Screen =
@@ -39,7 +39,7 @@ const FLUOR_KEY = "transmivoz-fluor"
 
 export function TransMiVozApp() {
   const { speak } = useSpeech()
-  const { data, error } = useTransmilenio()
+  const { data, error, cargando, reintentar } = useTransmilenio()
   const favorites = useFavorites()
 
   const [mode, setMode] = useState<Mode>("parcial")
@@ -48,9 +48,19 @@ export function TransMiVozApp() {
   const [voiceOpen, setVoiceOpen] = useState(false)
   const [fluor, setFluor] = useState(false)
   const [query, setQuery] = useState("")
-  const [results, setResults] = useState<BusRoute[]>([])
+  /**
+   * Consulta CONFIRMADA (ya ejecutada), separada del texto que se está
+   * escribiendo. Los resultados se DERIVAN de ella y del catálogo actual, así
+   * que al renovarse el catálogo la lista y su cabecera citan el mismo dato.
+   */
+  const [consultaConfirmada, setConsultaConfirmada] = useState<string | null>(null)
   const [routeCode, setRouteCode] = useState<string | null>(null)
   const [trip, setTrip] = useState<TripLegSummary[] | null>(null)
+
+  const results = useMemo<BusRoute[]>(
+    () => (data && consultaConfirmada ? searchRoutes(consultaConfirmada, data) : []),
+    [data, consultaConfirmada],
+  )
 
   const screen = history[history.length - 1]
   const go = useCallback((next: Screen) => setHistory((h) => (h[h.length - 1] === next ? h : [...h, next])), [])
@@ -87,8 +97,11 @@ export function TransMiVozApp() {
     (text: string) => {
       if (!data) return speak("Todavía estoy cargando las rutas. Intenta en un momento.")
       const found = searchRoutes(text, data)
-      setResults(found)
+      // Se guarda la CONSULTA, no la lista: los resultados se derivan del
+      // catálogo actual para que no queden objetos viejos con cabecera nueva.
+      setConsultaConfirmada(text)
       go("buscar")
+      // La procedencia del catálogo la dice la lista al mostrarse (RouteList).
       speak(
         found.length === 0
           ? `No encontré rutas para ${text}.`
@@ -123,11 +136,10 @@ export function TransMiVozApp() {
   // El asistente ya dijo su respuesta; aquí solo se navega.
   const handleAgentAction = useCallback(
     (reply: AgentReply) => {
-      if (!data) return
       switch (reply.action) {
         case "search":
           setQuery(reply.station)
-          setResults(searchRoutes(reply.station, data))
+          setConsultaConfirmada(reply.station)
           go("buscar")
           break
         case "frequent":
@@ -145,14 +157,60 @@ export function TransMiVozApp() {
           break
       }
     },
-    [data, go, openRoute],
+    [go, openRoute],
   )
 
   const selectedRoute = data && routeCode ? data.routes.find((r) => r.code === routeCode) : undefined
   const loading = (
     <p className="m-4 rounded-2xl border-3 border-border bg-card p-6 text-center text-xl" role="status">
-      {error ? "No pude cargar las rutas de TransMilenio. Revisa la conexión." : "Cargando rutas de TransMilenio…"}
+      {cargando ? "Cargando rutas de TransMilenio…" : "Rutas de TransMilenio no disponibles por ahora."}
     </p>
+  )
+
+  /**
+   * Aviso de fallo con reintento, ÚNICO y accesible: se muestra en cualquier
+   * pantalla y modo cuando la última consulta falló, haya o no catálogo
+   * conservado (en modo ceguera total sin catálogo ninguna pantalla pasa por
+   * `loading`). Reintenta sin recargar ni cambiar de modo.
+   */
+  const avisoReintento = error ? (
+    <div className="mx-4 mt-3 flex items-center gap-3 rounded-2xl border-3 border-fail bg-card p-3" role="alert">
+      <p className="min-w-0 flex-1 text-base">
+        {data
+          ? "No pude actualizar las rutas de TransMilenio. Sigues viendo los últimos datos cargados."
+          : "No pude cargar las rutas de TransMilenio. Revisa la conexión."}
+      </p>
+      <button
+        type="button"
+        onClick={() => {
+          reintentar()
+          speak("Reintentando cargar las rutas de TransMilenio.")
+        }}
+        disabled={cargando}
+        className="flex min-h-12 shrink-0 items-center gap-2 rounded-xl border-3 border-border bg-brand px-4 text-base font-bold text-brand-foreground disabled:opacity-60"
+      >
+        <RefreshCw className={cargando ? "size-5 animate-spin" : "size-5"} aria-hidden="true" />
+        Reintentar
+      </button>
+    </div>
+  ) : null
+
+  /**
+   * Estado recuperable cuando algo que estaba abierto ya no existe en el
+   * catálogo actual (una ruta o un plan que desapareció al renovar). No deja una
+   * carga eterna: explica y ofrece volver.
+   */
+  const recuperable = (mensaje: string) => (
+    <div className="m-4 flex flex-col gap-3 rounded-2xl border-3 border-border bg-card p-6 text-center" role="alert">
+      <p className="text-xl">{mensaje}</p>
+      <button
+        type="button"
+        onClick={back}
+        className="mx-auto min-h-14 rounded-2xl border-3 border-border bg-brand px-6 text-lg font-bold text-brand-foreground"
+      >
+        Volver
+      </button>
+    </div>
   )
 
   return (
@@ -163,6 +221,8 @@ export function TransMiVozApp() {
       ].join(" ")}
     >
       <AppHeader onMenu={() => setMenuOpen(true)} onNotifications={() => speak("No tienes notificaciones nuevas.")} />
+
+      {avisoReintento}
 
       {screen === "home" && mode === "parcial" && (
         <PartialHome
@@ -213,10 +273,11 @@ export function TransMiVozApp() {
       {screen === "buscar" &&
         (data ? (
           <RouteList
-            title={query ? `Rutas para “${query}”` : "Resultados"}
+            title={consultaConfirmada ? `Rutas para “${consultaConfirmada}”` : "Resultados"}
             routes={results}
             emptyMessage="No encontré rutas. Prueba con el nombre de una estación o un código como B23."
             fetchedAt={data.fetchedAt}
+            source={data.source}
             onOpen={(r) => openRoute(r.code)}
             onBack={back}
           />
@@ -231,6 +292,7 @@ export function TransMiVozApp() {
             routes={favoriteRoutes}
             emptyMessage="Aún no tienes rutas frecuentes. Abre una ruta y toca Guardar."
             fetchedAt={data.fetchedAt}
+            source={data.source}
             onOpen={(r) => openRoute(r.code)}
             onBack={back}
           />
@@ -239,7 +301,9 @@ export function TransMiVozApp() {
         ))}
 
       {screen === "detalle" &&
-        (data && selectedRoute ? (
+        (!data ? (
+          loading
+        ) : selectedRoute ? (
           <RouteDetail
             route={selectedRoute}
             data={data}
@@ -248,11 +312,11 @@ export function TransMiVozApp() {
             onBack={back}
           />
         ) : (
-          loading
+          recuperable(`La ruta ${routeCode ?? ""} ya no está en el catálogo actualizado de TransMilenio.`)
         ))}
 
       {screen === "viaje" &&
-        (data && trip ? <TripView legs={trip} data={data} onOpenRoute={openRoute} onBack={back} /> : loading)}
+        (!data ? loading : trip ? <TripView legs={trip} data={data} onOpenRoute={openRoute} onBack={back} /> : recuperable("Ese plan de viaje ya no está disponible."))}
 
       {screen === "asistencia" && <Assistance onBack={back} />}
 

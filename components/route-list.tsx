@@ -1,7 +1,9 @@
 "use client"
 
+import { useEffect } from "react"
 import { Bus, ChevronRight, Database, MapPin } from "lucide-react"
 import type { BusRoute } from "@/lib/routes"
+import { procedenciaCatalogo, type TransmilenioData } from "@/lib/transmilenio"
 import { useSpeech } from "@/hooks/use-speech"
 import { ScreenHeader } from "@/components/screen-header"
 
@@ -11,12 +13,20 @@ type RouteListProps = {
   emptyMessage: string
   /** Fecha de la consulta a TransMilenio, para citar la fuente. */
   fetchedAt?: string
+  /** Origen del catálogo (en vivo o copia guardada), para citar la procedencia. */
+  source?: TransmilenioData["source"]
   onOpen: (route: BusRoute) => void
   onBack: () => void
 }
 
-export function RouteList({ title, routes, emptyMessage, fetchedAt, onOpen, onBack }: RouteListProps) {
+export function RouteList({ title, routes, emptyMessage, fetchedAt, source, onOpen, onBack }: RouteListProps) {
   const { speak } = useSpeech()
+
+  // Dice la procedencia UNA vez al entrar a la lista y cada vez que cambia
+  // (catálogo renovado); no al enfocar cada ruta, para no repetir la fecha.
+  useEffect(() => {
+    if (source && fetchedAt) speak(procedenciaCatalogo({ source, fetchedAt }), { queue: true })
+  }, [source, fetchedAt, speak])
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4" aria-label={title}>
@@ -25,7 +35,7 @@ export function RouteList({ title, routes, emptyMessage, fetchedAt, onOpen, onBa
       {fetchedAt && (
         <p className="mb-3 flex items-start gap-2 text-base text-muted-foreground">
           <Database className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
-          Datos abiertos de TransMilenio, consultados el {new Date(fetchedAt).toLocaleDateString("es-CO")}.
+          {source ? procedenciaCatalogo({ source, fetchedAt }) : `Datos abiertos de TransMilenio, consultados el ${new Date(fetchedAt).toLocaleDateString("es-CO")}.`}
         </p>
       )}
 

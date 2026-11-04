@@ -71,6 +71,12 @@ export function useVoiceRecognition({ onResult, onError }: VoiceRecognitionOptio
   const [listening, setListening] = useState(false)
   const [supported, setSupported] = useState(false)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  const manejadores = useRef({ onResult, onError })
+
+  // Renovar el catálogo actualiza los receptores sin cortar la captura activa.
+  useEffect(() => {
+    manejadores.current = { onResult, onError }
+  }, [onResult, onError])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -86,11 +92,11 @@ export function useVoiceRecognition({ onResult, onError }: VoiceRecognitionOptio
     recognition.onend = () => setListening(false)
     recognition.onerror = (event) => {
       setListening(false)
-      onError?.(event.error)
+      manejadores.current.onError?.(event.error)
     }
     recognition.onresult = (event) => {
       const transcript = event.results[0]?.[0]?.transcript ?? ""
-      onResult(transcript)
+      manejadores.current.onResult(transcript)
     }
     recognitionRef.current = recognition
     return () => {
@@ -103,7 +109,7 @@ export function useVoiceRecognition({ onResult, onError }: VoiceRecognitionOptio
       // onend ya no llega: sin esto, "escuchando" quedaría encendido para siempre.
       setListening(false)
     }
-  }, [onResult, onError])
+  }, [])
 
   const start = useCallback(() => {
     if (!recognitionRef.current || listening) return

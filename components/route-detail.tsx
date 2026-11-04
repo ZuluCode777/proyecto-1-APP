@@ -6,6 +6,7 @@ import { ScreenHeader } from "@/components/screen-header"
 import { TransitMap, type MapMarker } from "@/components/transit-map"
 import { useSpeech } from "@/hooks/use-speech"
 import { estadoCalendarioEnFecha, paradasPrescriptibles, sentidoConfirmado } from "@/lib/evidencia"
+import { procedenciaCatalogo } from "@/lib/transmilenio"
 import type { BusRoute, TransmilenioData } from "@/lib/routes"
 
 type RouteDetailProps = {
@@ -45,12 +46,12 @@ const fraseOperacion = (route: BusRoute, now: Date): string => {
   }
 }
 
-const describe = (route: BusRoute, now: Date = new Date()) => {
+const describe = (route: BusRoute, data: TransmilenioData, now: Date = new Date()) => {
   const paradas =
     paradasPrescriptibles(route, now).length > 0
       ? ""
       : " Aún no tengo confirmado en qué estaciones para, así que no uses el recorrido como paradas de abordaje."
-  return `Ruta ${route.code}, ${fraseSentido(route)}. Su recorrido pasa cerca de ${route.stops.length} estaciones.${paradas}${fraseOperacion(route, now)}`
+  return `Ruta ${route.code}, ${fraseSentido(route)}. Su recorrido pasa cerca de ${route.stops.length} estaciones.${paradas}${fraseOperacion(route, now)} ${procedenciaCatalogo(data)}`
 }
 
 /** Recorrido de una ruta en el mapa, con sus estaciones y horarios. */
@@ -64,8 +65,8 @@ export function RouteDetail({ route, data, favorite, onToggleFavorite, onBack }:
   }, [])
 
   useEffect(() => {
-    speak(describe(route), { queue: true })
-  }, [route, speak])
+    speak(describe(route, data), { queue: true })
+  }, [route, data, speak])
 
   const markers = useMemo<MapMarker[]>(
     () =>
@@ -92,6 +93,8 @@ export function RouteDetail({ route, data, favorite, onToggleFavorite, onBack }:
 
       <TransitMap lines={lines} markers={markers} label={`Mapa del recorrido de la ruta ${route.code}`} className="h-72 shrink-0" />
 
+      <p className="mt-3 text-base text-muted-foreground">{procedenciaCatalogo(data)}</p>
+
       {!sentidoConfirmado(route) && (
         <p className="mt-4 rounded-2xl border-3 border-border bg-card p-4 text-base" role="note">
           {route.directionEvidence.agreement === "contradictorio"
@@ -104,7 +107,7 @@ export function RouteDetail({ route, data, favorite, onToggleFavorite, onBack }:
       <div className="mt-4 grid grid-cols-2 gap-3">
         <button
           type="button"
-          onClick={() => speak(describe(route))}
+          onClick={() => speak(describe(route, data))}
           className="flex min-h-14 items-center justify-center gap-2 rounded-2xl border-3 border-border bg-card px-3 text-lg font-bold"
         >
           <Volume2 className="size-6 text-brand-ink" aria-hidden="true" />

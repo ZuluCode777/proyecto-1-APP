@@ -6,6 +6,7 @@ import { ScreenHeader } from "@/components/screen-header"
 import { TransitMap, type MapLine, type MapMarker } from "@/components/transit-map"
 import type { TripLegSummary } from "@/lib/local-agent"
 import { pathBetween } from "@/lib/geo"
+import { procedenciaCatalogo } from "@/lib/transmilenio"
 import { tripSummaryStillValid, type TransmilenioData } from "@/lib/routes"
 
 type TripViewProps = {
@@ -131,6 +132,10 @@ export function TripView({ legs, data, onOpenRoute, onBack }: TripViewProps) {
           operando antes de salir.
         </p>
       )}
+
+      <p className="mt-4 text-base text-muted-foreground" role="note">
+        {procedenciaCatalogo(data)}
+      </p>
     </section>
   )
 }
