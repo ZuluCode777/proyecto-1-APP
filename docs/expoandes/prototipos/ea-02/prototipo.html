@@ -554,6 +554,7 @@ function desconectarAccesorio() {
 }
 function programarDesconexion(segundos) {
   despues(segundos * 1000, () => {
+    desconexionPendiente = 0
     const salida = desconectarAccesorio()
     $('#panel-salida').textContent = E.acc.estado === 'sinDatos' && E.acc.motivo.startsWith('se perdió') ? 'T9: accesorio desconectado.' : `T9: no se desconectó (${salida})`
   })
@@ -1505,9 +1506,14 @@ const ESCENARIOS = {
   T9: ['T9 Accesorio desconectado y reconexión', () => { E.permisos.bluetooth = 'concedido'; E.acc.elegido = 'TMV-01'; E.acc.estado = 'sinDeteccion' }],
   T10: ['T10 Lupa con texto al 200 % y modo baja visión', () => { Object.assign(E.ajustes, { texto: 200, bajaVision: true }) }],
 }
+let desconexionPendiente = 0
 function aplicarEscenario(clave) {
+  const pendiente = desconexionPendiente
+  desconexionPendiente = 0
   reiniciar()
   ESCENARIOS[clave][1]()
+  // Si se pidió «Desconectar en 20 s» antes de aplicar, se vuelve a programar tras reiniciar.
+  if (pendiente) programarDesconexion(pendiente)
   decir('Escenario listo. Estás en Inicio.')
   repintar({ enfocar: 'h1' })
 }
@@ -1534,7 +1540,7 @@ const ACCIONES_PANEL = {
     aplicarEscenario($('#panel-escenario').value)
     if (panelTemporal) { $('#panel').hidden = true; panelTemporal = false; window.scrollTo(0, 0) }
   },
-  'desconectar-20': () => { programarDesconexion(20); return 'El accesorio se desconectará en 20 s si la sesión sigue activa.' },
+  'desconectar-20': () => { desconexionPendiente = 20; programarDesconexion(20); return 'El accesorio se desconectará en 20 s si la sesión sigue activa. Si ahora aplicas una tarea, los 20 s cuentan desde que la apliques.' },
   reiniciar: () => { reiniciar(); repintar({ enfocar: 'h1' }); return 'Estado reiniciado.' },
   'medicion-frente': () => inyectarMedicion(1200, 'al frente'),
   'medicion-sin-angulo': () => inyectarMedicion(800, null),
