@@ -88,7 +88,7 @@ Las filas de B probablemente se leen en VoiceOver como dos paradas (nombre y val
 
 | | A — Una acción principal | B — Pestañas y lista de estados |
 | --- | --- | --- |
-| A favor | Una decisión por pantalla; la acción principal aparece en los primeros pasos. «Cancelar» y «La app dijo» quedan tres paradas antes del título. Menos texto que recorrer. | Todo el estado visible a la vez. Las pestañas cambian de área sin volver a Inicio. Patrón conocido de iOS. Cada acción está junto al estado que cambia. |
+| A favor | Una decisión por pantalla; la acción principal aparece en los primeros pasos. «Detener sesión» queda tres paradas antes del título; «La app dijo», dos. Menos texto que recorrer. | Todo el estado visible a la vez. Las pestañas cambian de área sin volver a Inicio. Patrón conocido de iOS. Cada acción está junto al estado que cambia. |
 | En contra | Los estados quedan plegados: ver todo exige abrir «Detalles del estado». Cambiar de área exige volver a Inicio. | Cancelar y «La app dijo» quedan al final, lejos del título. Las pestañas no crecen con Dynamic Type; iOS lo compensa con el visor de contenido grande. «Más» esconde lupa, ajustes, accesorio y Metro. |
 | Baja visión | Más espacio útil: sin franjas fijas con texto grande. | Con texto normal, casi un cuarto de la pantalla queda fijo mientras hay actividad. |
 
@@ -133,7 +133,7 @@ Esta recomendación sale de mediciones automáticas y revisión experta. No sust
 | Decisión | **Pendiente de A2.** |
 | Opciones | A, B o combinación A + pestañas. |
 | Validación con usuarios | Pendiente. Muestra: ninguna todavía. |
-| Fecha | — |
+| Fecha | Pendiente |
 | Consecuencia para #43 | Las vistas SwiftUI de #43 siguen la variante elegida y la [especificación de accesibilidad](especificacion-accesibilidad.md). |
 
 ## Límites

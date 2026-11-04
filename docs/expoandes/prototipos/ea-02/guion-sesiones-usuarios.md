@@ -17,10 +17,10 @@ Diez tareas en dos variantes son 20 recorridos y no caben en 45 minutos. Cada se
 
 | Parte | Tareas | Tiempo |
 | --- | --- | --- |
-| Consentimiento y preparación | — | 5 min |
+| Consentimiento y preparación | No aplica | 5 min |
 | Núcleo, en A y en B | T1, T2, T5, T6, T9 | unos 30 min (3 min por recorrido) |
 | Rotativa, en una sola variante | Dos de T3, T4, T7 y T8, distintas para cada participante, alternando la variante | 6 min |
-| Preguntas finales | — | 4 min |
+| Preguntas finales | No aplica | 4 min |
 
 - T10 se hace solo con personas de baja visión, en lugar de una tarea rotativa.
 - Con personas de baja visión, T1 y T6 en B se hacen con `texto=200`, para ver la barra de pestañas y la franja de abajo con texto grande.
@@ -46,13 +46,13 @@ Leer la instrucción tal cual, sin indicar dónde tocar. Ayudar solo si la perso
 | Tarea | Escenario | Instrucción para la persona | Para quien facilita | Éxito |
 | --- | --- | --- | --- | --- |
 | T1 | `T1` | «Empieza la sesión con tu accesorio y dime qué detecta. Luego detenla.» | Bluetooth empieza sin permiso: la persona verá la explicación previa y el aviso simulado de iOS. | Acepta el permiso, dice que no detecta nada **y** que eso no significa camino libre, y detiene la sesión. |
-| T2 | `T2` | «Averigua cómo ir de Terminal a Calle 72.» | — | Dice dónde subir y dónde bajar. |
-| T3 | `T3` | «Averigua cómo ir de Portal Usme a Molinos.» | — | Explica que la app no confirma dónde subir. |
+| T2 | `T2` | «Averigua cómo ir de Terminal a Calle 72.» | Sin indicaciones adicionales | Dice dónde subir y dónde bajar. |
+| T3 | `T3` | «Averigua cómo ir de Portal Usme a Molinos.» | Sin indicaciones adicionales | Explica que la app no confirma dónde subir. |
 | T4 | `T4` | «Estás en Terminal y quieres ir a Calle 72. Prueba usar tu ubicación como origen. Cuando el iPhone te pida permiso, no lo des.» | Ubicación empieza sin permiso. Tras «No permitir», la app explica y lleva al campo Origen. | Rechaza el permiso, escribe el origen y obtiene el viaje. |
 | T5 | `T5` | «Pregunta a la app si ya llegaste a la estación.» | La ubicación es imprecisa (±200 m). Vale mirar Ubicación y orientación o preguntarle al asistente. La respuesta del asistente a «¿ya llegué?» es una **propuesta que el backend no tiene (requiere cambio de contrato, A1)**: anotar en el registro si la persona usó esa vía. | Dice que la app no lo puede saber por la precisión. |
 | T6 | `T6` | «Hazle una pregunta al asistente hablando y cancela antes de que responda.» | Micrófono y reconocimiento de voz empiezan sin permiso: verá la explicación y dos avisos simulados. | Acepta los permisos, cancela y no llega respuesta. |
 | T7 | `T7` | «Revisa los avisos y dime cuál viene del teléfono y cuál de TransMilenio.» | El anuncio del operador es un ejemplo ficticio. | Distingue aviso del teléfono, anuncio (de ejemplo) y Metro. |
-| T8 | `T8` | «¿Se puede viajar hoy desde la estación Avenida Jiménez del Metro?» | — | Dice que no hay servicio. |
+| T8 | `T8` | «¿Se puede viajar hoy desde la estación Avenida Jiménez del Metro?» | Sin indicaciones adicionales | Dice que no hay servicio. |
 | T9 | `T9` | «Usa la app como quieras. Si notas algo raro, dime qué pasó y arréglalo.» | Cargar directamente `prototipo.html?variante=A&panel=0&escenario=T9&desconectar=20` (o `variante=B`), sin aplicar otra tarea después. Desde el panel también sirve: elegir T9, pulsar «Desconectar en 20 s» y luego «Aplicar y volver a Inicio»; los 20 s cuentan desde que se aplica. Comprobar que aparece «Se perdió la conexión con el accesorio». Si la persona detuvo la sesión antes, el panel dice «T9: no se desconectó»: repetir la tarea. | Reconoce la desconexión y reconecta. |
 | T10 | `T10` | «Usa la lupa para ampliar un letrero y deja la imagen quieta.» | Solo baja visión. El escenario pone texto al 200 % y baja visión, salvo que la dirección indique otro `texto=`. Cámara empieza sin permiso. | Abre la lupa, amplía y congela. |
 
