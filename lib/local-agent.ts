@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { spokenDistance, type LatLng } from "@/lib/geo"
+import { estadoCalendarioEnFecha } from "@/lib/evidencia"
 import {
   findPlaceMentions,
   findPlaces,
@@ -7,8 +8,12 @@ import {
   nearestStations,
   placeOf,
   planTrip,
+  planTripCandidato,
+  tripSummaryStillValid,
+  routesAlongBoth,
   routesThrough,
   samePlace,
+  type BusRoute,
   type Place,
   type TransmilenioData,
   type TripPlan,
@@ -52,6 +57,8 @@ const TripLegSummarySchema = z.object({
   board: z.string(),
   alight: z.string(),
   stationsRidden: z.number(),
+  /** Solo si es `true` puede decirse el número exacto de estaciones. */
+  conteoVerificado: z.boolean().default(false),
 })
 export type TripLegSummary = z.infer<typeof TripLegSummarySchema>
 
@@ -77,9 +84,64 @@ export type AgentEngine = AgentReply["engine"]
 
 export type AgentAction = AgentReply["action"]
 
+/**
+ * Guardia que debe pasar una respuesta ANTES de hablarla, subtitularla o abrir
+ * una pantalla: una respuesta de viaje se revalida contra el catálogo y la
+ * evidencia actuales (mismas reglas que `planTrip`); las demás acciones no dan
+ * órdenes de abordaje. Si devuelve `false`, no se prescribe nada.
+ */
+export function respuestaPrescriptivaValida(reply: AgentReply, data: TransmilenioData, now: Date = new Date()): boolean {
+  return reply.action !== "trip" || tripSummaryStillValid(reply.trip, data, now)
+}
+
+/**
+ * ¿Un texto contiene una ORDEN de abordaje/descenso/transbordo? Detecta las
+ * formas imperativas que solo deben aparecer en un plan verificado («Toma la X
+ * en Y», «sube en», «bájate en», «cambia a/en»). No marca frases de
+ * incertidumbre como «no puedo decirte dónde subir o bajar» ni «no te doy
+ * indicaciones de abordaje», que mencionan esas palabras sin ordenar nada.
+ */
+export function contieneImperativoDeViaje(texto: string): boolean {
+  const t = normalize(texto)
+  return /\btoma la\b[^.]*\ben\b/.test(t) || /\bsube en\b/.test(t) || /\bbajate en\b/.test(t) || /\bcambia (a|en)\b/.test(t)
+}
+
+/**
+ * ¿El texto y los pasos de una respuesta están LIBRES de órdenes de abordaje?
+ * Decisión compartida por la voz (`TotalAgent.sanear`) y el diagnóstico
+ * (`respuestaSeguraParaMostrar`), para que una abstención con «Toma la H72 en
+ * Calle 127…» —en el texto o en un paso— se rechace igual en ambos. No depende
+ * del catálogo: solo mira el contenido mostrable.
+ */
+export function respuestaSinImperativos(reply: AgentReply): boolean {
+  if (contieneImperativoDeViaje(reply.reply)) return false
+  return !reply.steps.some((s) => contieneImperativoDeViaje(s.label) || (s.detail ? contieneImperativoDeViaje(s.detail) : false))
+}
+
+/**
+ * Guardia de CONTENIDO que debe cumplir una respuesta REAL del asistente antes
+ * de mostrarse, hablarse o navegar. Frontera común con `TotalAgent` (que luego
+ * reconstruye el texto de un viaje desde el resumen validado):
+ *
+ * - Un viaje (`trip`) es seguro solo si su resumen revalida contra el catálogo
+ *   y el reloj actuales (paradas, sentido y franja). El texto mostrado se
+ *   reconstruye, así que lo que importa es que el resumen sea prescriptible.
+ * - Cualquier otra acción es insegura si su TEXTO o sus PASOS contienen órdenes
+ *   de abordaje: una abstención con «Toma la H72 en Calle 127…» —en el texto o
+ *   en un paso— es insegura aunque `action` sea `search`.
+ *
+ * Detecta tanto un viaje forjado/vencido como una abstención con instrucciones.
+ */
+export function respuestaSeguraParaMostrar(reply: AgentReply, data: TransmilenioData, now: Date = new Date()): boolean {
+  if (reply.action === "trip") return tripSummaryStillValid(reply.trip, data, now)
+  return respuestaSinImperativos(reply)
+}
+
 export type AgentContext = {
   /** Ubicación de la persona, si dio permiso. */
   position?: LatLng
+  /** Instante actual, para evaluar vigencia de evidencia y calendario. */
+  now?: Date
 }
 
 /** Respuesta sin acción ni pasos, para avisos como "no te escuché". */
@@ -175,19 +237,158 @@ function listCodes(codes: string[], max = 3): string {
 /** Quita el punto final de un horario como "10:00 p. m." para no duplicarlo. */
 const bare = (value: string) => value.replace(/\.\s*$/, "")
 
-function describePlan(plan: TripPlan): string {
-  if (plan.length === 1) {
-    const [leg] = plan
-    return `Toma la ${leg.route.code} en ${leg.board} y bájate en ${leg.alight}, después de ${leg.stationsRidden} ${leg.stationsRidden === 1 ? "estación" : "estaciones"}.`
+/**
+ * Frase sobre la operación de un servicio HOY. Solo afirma servicio o falta de
+ * servicio cuando el calendario verificado y vigente lo dice; si no, advierte
+ * que no está verificado (desconocido no es "sin servicio"). Es del día, no de
+ * la hora, y nunca afirma salida inmediata.
+ */
+function operacionHoy(route: BusRoute, now: Date = new Date()): string {
+  switch (estadoCalendarioEnFecha(route.verifiedCalendar, now)) {
+    case "opera":
+      return "Según su calendario verificado, hoy tiene servicio programado; no es tiempo real, confirma el horario antes de salir."
+    case "no-opera":
+      return "Según su calendario verificado, hoy no tiene servicio programado."
+    case "sin-verificar":
+      return "No tengo un calendario vigente verificado para confirmar si opera hoy."
   }
-  const [first, second] = plan
-  return `No hay una ruta directa. Toma la ${first.route.code} en ${first.board} hasta ${first.alight}, y ahí cambia a la ${second.route.code} hasta ${second.alight}.`
 }
 
+const AVISO_PLAN =
+  " Según el calendario y las franjas programadas que tengo verificadas, ahora hay servicio programado; no es tiempo real, confirma el horario antes de salir."
+
 const summarize = (plan: TripPlan): TripLegSummary[] =>
-  plan.map((leg) => ({ routeCode: leg.route.code, board: leg.board, alight: leg.alight, stationsRidden: leg.stationsRidden }))
+  plan.map((leg) => ({
+    routeCode: leg.route.code,
+    board: leg.board,
+    alight: leg.alight,
+    stationsRidden: leg.stationsRidden,
+    conteoVerificado: leg.conteoVerificado,
+  }))
+
+/**
+ * Único formateador de la indicación de un viaje a partir del RESUMEN tipado
+ * (`TripLegSummary[]`). Lo comparten `describePlan` y `textoViajeDesdeResumen`
+ * para no duplicar el texto de viaje directo/transbordo ni la omisión del
+ * conteo no garantizado. No incluye el aviso de operación ni las alternativas:
+ * esos los añade quien llama. Mantiene la semántica exacta previa.
+ */
+function formatearViajeDesdeResumen(trip: TripLegSummary[]): string {
+  if (trip.length === 1) {
+    const [leg] = trip
+    // Sin conteo garantizado por la fuente no se dice cuántas estaciones son.
+    const conteo = leg.conteoVerificado
+      ? `, después de ${leg.stationsRidden} ${leg.stationsRidden === 1 ? "estación" : "estaciones"}`
+      : ""
+    return `Toma la ${leg.routeCode} en ${leg.board} y bájate en ${leg.alight}${conteo}.`
+  }
+  const [first, second] = trip
+  return `No hay una ruta directa. Toma la ${first.routeCode} en ${first.board} hasta ${first.alight}, y ahí cambia a la ${second.routeCode} hasta ${second.alight}.`
+}
+
+/** Indicación de un plan (modelo interno), con el aviso de operación programada. */
+function describePlan(plan: TripPlan): string {
+  return `${formatearViajeDesdeResumen(summarize(plan))}${AVISO_PLAN}`
+}
+
+/**
+ * Reconstruye el texto y los pasos PRESCRIPTIVOS de un viaje a partir del
+ * resumen serializado, revalidándolo antes contra el catálogo y el reloj
+ * actuales (mismas reglas que `planTrip`). No confía en ningún texto libre que
+ * venga con el resumen: arma la prosa con el mismo formateador responsable, y
+ * omite el conteo exacto cuando la fuente no lo garantiza.
+ *
+ * Devuelve `null` si el resumen ya no es prescriptible (esquema viejo, otro
+ * origen de datos, fuera de franja, sin evidencia vigente). Quien lo llame debe
+ * entonces dar una respuesta segura, sin instrucciones.
+ */
+export function textoViajeDesdeResumen(
+  trip: TripLegSummary[],
+  data: TransmilenioData,
+  now: Date = new Date(),
+): { reply: string; steps: AgentStep[] } | null {
+  if (!tripSummaryStillValid(trip, data, now)) return null
+  const steps: AgentStep[] = [
+    { label: "Verifiqué las paradas y el sentido con los datos actuales", detail: trip.map((l) => l.routeCode).join(" + ") },
+  ]
+  return { reply: `${formatearViajeDesdeResumen(trip)}${AVISO_PLAN}`, steps }
+}
 
 const resolvePlace = (name: string, data: TransmilenioData): Place | undefined => findPlaces(name, data)[0]
+
+/**
+ * Respuesta cuando las paradas y el sentido están verificados pero la operación
+ * actual no se puede confirmar (fuera de franja, hoy sin servicio, calendario
+ * vencido o ausente). Presenta el servicio como candidato, sin instruir subir,
+ * bajar ni transbordar, y sin afirmar que no exista servicio.
+ */
+function tripCandidatoReply({
+  plan,
+  origin,
+  destination,
+  steps,
+  engine,
+}: {
+  plan: TripPlan
+  origin: Place
+  destination: Place
+  steps: AgentStep[]
+  engine: AgentEngine
+}): AgentReply {
+  const codes = plan.map((leg) => leg.route.code)
+  steps.push({ label: "Encontré un servicio candidato", detail: `${codes.join(" + ")}, sin operación confirmada ahora` })
+  return {
+    reply: `Según la programación que tengo verificada, ${codes.length === 1 ? "la ruta" : "las rutas"} ${listCodes(codes)} ${codes.length === 1 ? "conecta" : "conectan"} ${origin.name} con ${destination.name}, pero ahora no puedo confirmar que ${codes.length === 1 ? "esté" : "estén"} en servicio, así que no te doy indicaciones de abordaje. Confirma el horario con TransMilenio.`,
+    action: "search",
+    station: destination.name,
+    steps,
+    engine,
+  }
+}
+
+/**
+ * Respuesta cuando no hay paradas verificadas para armar un viaje operativo.
+ * Ofrece INFORMACIÓN DE RECORRIDO con incertidumbre: nombra las rutas cuyo
+ * trazado conecta origen y destino, sin instruir subir, bajar ni transbordar,
+ * y sin afirmar que no exista ningún servicio. Abre la lista de rutas del
+ * destino para que la persona explore el recorrido.
+ */
+function tripUncertainReply({
+  origin,
+  destination,
+  data,
+  steps,
+  engine,
+}: {
+  origin: Place
+  destination: Place
+  data: TransmilenioData
+  steps: AgentStep[]
+  engine: AgentEngine
+}): AgentReply {
+  const along: BusRoute[] = routesAlongBoth(origin, destination, data)
+  steps.push({
+    label: "Busqué recorridos que conectan ambos lugares",
+    detail: along.length > 0 ? `${along.length} ${along.length === 1 ? "ruta" : "rutas"} por el trazado` : "Sin recorrido directo en el trazado",
+  })
+  const base = `Todavía no tengo confirmado dónde para cada servicio entre ${origin.name} y ${destination.name}, así que no puedo decirte con certeza dónde subir o bajar.`
+  if (along.length > 0) {
+    return {
+      reply: `${base} Por el recorrido, ${along.length === 1 ? "la ruta" : "las rutas"} ${listCodes(along.map((r) => r.code))} ${along.length === 1 ? "pasa" : "pasan"} cerca de los dos lugares; conviene confirmar las paradas con TransMilenio.`,
+      action: "search",
+      station: destination.name,
+      steps,
+      engine,
+    }
+  }
+  return {
+    reply: `${base} No tengo un recorrido troncal que conecte los dos lugares; puede existir un servicio que no tengo registrado, conviene confirmarlo con TransMilenio.`,
+    action: "search",
+    station: destination.name,
+    steps,
+    engine,
+  }
+}
 
 /** Resuelve una intención con los datos reales y devuelve la respuesta hablada. */
 export function runIntent(
@@ -239,16 +440,22 @@ export function runIntent(
       if (!route) return say(`No encontré la ruta ${intent.routeCode}.`)
       steps.push({ label: `Busqué la ruta ${route.code}`, detail: route.label })
 
-      const weekday = bare(route.schedule.weekday) || "sin horario publicado"
+      const weekday = bare(route.schedule.weekday)
+      // El texto del horario NO es un calendario verificado: se cita como
+      // horario publicado, sin afirmar operación ni salida inmediata.
+      const horarioPublicado = weekday ? `Horario publicado entre semana: ${weekday}.` : "No tengo horario publicado entre semana."
       if (intent.type === "schedule") {
         const saturday = route.schedule.saturday ? ` Sábados: ${bare(route.schedule.saturday)}.` : ""
         const holiday = route.schedule.holiday ? ` Festivos: ${bare(route.schedule.holiday)}.` : ""
-        return { reply: `La ${route.code} opera entre semana de ${weekday}.${saturday}${holiday}`, action: "route", routeCode: route.code, steps, engine }
+        const aviso = route.verifiedCalendar
+          ? ` ${operacionHoy(route, context.now)}`
+          : " Es el horario publicado, no un calendario verificado; confirma con TransMilenio antes de salir."
+        return { reply: `${horarioPublicado}${saturday}${holiday}${aviso}`, action: "route", routeCode: route.code, steps, engine }
       }
-      steps.push({ label: "Revisé su recorrido", detail: `${route.stops.length} estaciones` })
+      steps.push({ label: "Revisé su recorrido", detail: `${route.stops.length} estaciones cercanas al trazado` })
       const sample = route.stops.slice(1, 4).join(", ")
       return {
-        reply: `La ${route.code} va de ${route.from} hacia ${route.to}. Pasa por ${route.stops.length} estaciones, entre ellas ${sample}. Entre semana opera de ${weekday}.`,
+        reply: `La ${route.code} va de ${route.from} hacia ${route.to}. Su recorrido pasa cerca de ${route.stops.length} estaciones, entre ellas ${sample}. ${horarioPublicado} No tengo confirmado en cuáles para; para un viaje, dime origen y destino.`,
         action: "route",
         routeCode: route.code,
         steps,
@@ -272,10 +479,19 @@ export function runIntent(
 
       if (!origin) {
         const routes = routesThrough(destination, data)
-        steps.push({ label: "Busqué las rutas que pasan por ahí", detail: `${routes.length} rutas` })
-        if (routes.length === 0) return say(`Ninguna ruta troncal pasa por ${destination.name}.`)
+        steps.push({ label: "Busqué las rutas cuyo recorrido pasa por ahí", detail: `${routes.length} rutas` })
+        if (routes.length === 0) {
+          // El trazado no llega a la estación; no se afirma que ningún servicio exista.
+          return {
+            reply: `No tengo el recorrido de ninguna ruta troncal pasando por ${destination.name}. Puede que la sirva un servicio que no tengo registrado; conviene confirmarlo con TransMilenio.`,
+            action: "search",
+            station: destination.name,
+            steps,
+            engine,
+          }
+        }
         return {
-          reply: `${routes.length} ${routes.length === 1 ? "ruta pasa" : "rutas pasan"} por ${destination.name}: ${listCodes(routes.map((r) => r.code))}. Si me dices desde dónde sales, o activas tu ubicación, te digo cuál tomar.`,
+          reply: `El recorrido de ${routes.length === 1 ? "una ruta troncal pasa" : `${routes.length} rutas troncales pasan`} por ${destination.name}: ${listCodes(routes.map((r) => r.code))}. No tengo confirmado dónde para cada servicio; dime desde dónde sales para mostrarte el recorrido.`,
           action: "search",
           station: destination.name,
           steps,
@@ -285,18 +501,24 @@ export function runIntent(
 
       if (samePlace(origin, destination)) return say(`Ya estás en ${destination.name}.`)
 
-      const plans = planTrip({ origin, destination }, data)
+      const now = context.now ?? new Date()
+      const plans = planTrip({ origin, destination }, data, 3, now)
       steps.push({
         label: `Revisé las ${data.routes.length} rutas troncales`,
         detail:
           plans.length === 0
-            ? "Sin combinación con uno o dos buses"
+            ? "Sin viaje operativo confirmado ahora"
             : plans[0].length === 1
               ? `${plans.length} ${plans.length === 1 ? "ruta directa" : "rutas directas"}`
-              : "Con un transbordo",
+              : "Con un transbordo verificado",
       })
       if (plans.length === 0) {
-        return say(`No encontré cómo ir de ${origin.name} a ${destination.name} con uno o dos buses troncales.`)
+        // Sin plan operativo no se instruye subir/bajar. Con paradas verificadas
+        // pero operación sin confirmar se informa un candidato; si no, el
+        // recorrido con incertidumbre. Nunca se afirma que no exista servicio.
+        const [candidato] = planTripCandidato({ origin, destination }, data, 1, now)
+        if (candidato) return tripCandidatoReply({ plan: candidato, origin, destination, steps, engine })
+        return tripUncertainReply({ origin, destination, data, steps, engine })
       }
       const [best, ...others] = plans
       steps.push({ label: "Elegí la opción con menos estaciones", detail: best.map((l) => l.route.code).join(" + ") })

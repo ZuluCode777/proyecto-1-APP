@@ -1,4 +1,5 @@
 import snapshot from "@/data/transmilenio.json"
+import { aplicarEvidenciaGtfs } from "@/lib/evidencia-gtfs"
 import { fetchTransmilenio, TransmilenioDataSchema, type TransmilenioData } from "@/lib/transmilenio"
 
 /**
@@ -24,6 +25,8 @@ export async function getTransmilenioData(): Promise<TransmilenioData> {
     .catch((error) => {
       console.warn("[transmilenio] servicio no disponible, uso la copia guardada:", error)
       const data = TransmilenioDataSchema.parse(snapshot)
+      // Asegura la evidencia GTFS corroborada también si la copia no se migró.
+      aplicarEvidenciaGtfs(data.routes, data.stations)
       cache = { data, expires: Date.now() + RETRY_MS }
       return data
     })

@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react"
 import { CheckCircle2, CircleDashed, Loader2, XCircle } from "lucide-react"
 import { z } from "zod"
-import { AgentReplySchema } from "@/lib/local-agent"
-import { TransmilenioDataSchema } from "@/lib/transmilenio"
+import { AgentReplySchema, respuestaSeguraParaMostrar, type AgentReply } from "@/lib/local-agent"
+import { TransmilenioDataSchema, type TransmilenioData } from "@/lib/transmilenio"
 
 type Result = { state: "idle" | "running" | "ok" | "fail"; detail: string }
 
@@ -52,26 +52,90 @@ const CHECKS: Check[] = [
   {
     id: "agent",
     title: "Asistente",
-    proves: "El asistente entiende una pregunta y planea un viaje con los datos reales.",
+    proves: "El asistente entiende una consulta de viaje y responde con los datos reales, sin inventar abordajes.",
     run: async () => {
       // Primero la configuración: si hay Ollama, esta llamada además precarga el modelo.
       const info = AgentInfoSchema.parse(await (await fetch("/api/agent")).json())
-      const res = await fetch("/api/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: "cómo llego de Portal Usme a Molinos" }),
-      })
-      const reply = AgentReplySchema.parse(await res.json())
-      if (reply.action !== "trip") throw new Error(`Respondió "${reply.reply}"`)
-      // El motor sale de la respuesta, no de la configuración: así se ve si el modelo contestó de verdad.
-      const engine = reply.engine === "ollama" ? `Ollama (${info.model ?? "modelo local"})` : "reglas locales"
+      // Catálogo actual del servidor: toda validación de payload usa estos datos
+      // y el reloj real (sin parámetro `now` en la API ni reloj congelado).
+      const dataRes = await fetch("/api/transmilenio")
+      if (!dataRes.ok) throw new Error(`No pude leer el catálogo: HTTP ${dataRes.status}`)
+      const data: TransmilenioData = TransmilenioDataSchema.parse(await dataRes.json())
+      const ask = async (message: string) => {
+        const res = await fetch("/api/agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+        })
+        return AgentReplySchema.parse(await res.json())
+      }
+
+      // Valida el CONTENIDO real de la respuesta (acción, texto y pasos) con el
+      // catálogo y el reloj del momento de validar, no solo `action`. Una
+      // abstención con «Toma la H72 en Calle 127…» en texto o pasos es insegura
+      // aunque la acción sea `search`; un viaje requiere un resumen válido,
+      // desde el que la pantalla reconstruye la prosa. Si falla, se detecta.
+      const validarContenido = (reply: AgentReply, etiqueta: string) => {
+        if (!respuestaSeguraParaMostrar(reply, data, new Date())) {
+          throw new Error(`Respuesta insegura en «${etiqueta}»: acción ${reply.action}, texto «${reply.reply}»`)
+        }
+      }
+
+      // Caso sin paradas verificadas: debe ofrecer recorrido con incertidumbre,
+      // NO una orden de abordaje (lo que corrige #31), ni en texto ni en pasos.
+      const incierto = await ask("cómo llego de Portal Usme a Molinos")
+      if (incierto.action !== "search") {
+        throw new Error(`Sin paradas verificadas debería ofrecer recorrido, no "${incierto.action}": «${incierto.reply}»`)
+      }
+      validarContenido(incierto, "Portal Usme → Molinos")
+
+      // Caso con evidencia GTFS corroborada (8 G): si abre un viaje, su resumen
+      // debe validar para reconstruir texto y pasos antes de mostrarlos.
+      // Fuera de franja o con evidencia vencida, abstenerse es honesto, pero su
+      // texto y pasos tampoco pueden contener imperativos de abordaje.
+      const verificado = await ask("cómo llego de Terminal a Guatoque - Veraguas")
+      if (verificado.action !== "trip" && verificado.action !== "search") {
+        throw new Error(`Respuesta inesperada a un viaje verificable: "${verificado.action}"`)
+      }
+      validarContenido(verificado, "Terminal → Guatoque")
+      const detalleVerificado =
+        verificado.action === "trip"
+          ? `plan verificado ${verificado.trip.map((l) => l.routeCode).join(" + ")}`
+          : "abstención honesta, sin órdenes de abordaje"
+
+      // Payload FORJADO inseguro: un `search` cuyo TEXTO y PASOS dan órdenes de
+      // abordar la H72 en Calle 127 (que no la atiende). La guardia de contenido
+      // debe rechazarlo; si lo aceptara, una respuesta real insegura pasaría.
+      const forjadoSearch: AgentReply = {
+        reply: "Toma la H72 en Calle 127 y bájate en Portal Usme.",
+        action: "search",
+        station: "Portal Usme",
+        engine: "reglas",
+        steps: [{ label: "Sube en Calle 127", detail: "Bájate en Portal Usme" }],
+      }
+      if (respuestaSeguraParaMostrar(forjadoSearch, data, new Date())) {
+        throw new Error("La guardia de contenido aceptó una abstención con órdenes de abordaje. Debe rechazarla.")
+      }
+      // Payload FORJADO como viaje con resumen imposible (H72 no atiende Calle 127).
+      const forjadoTrip: AgentReply = {
+        reply: "Toma la H72 en Calle 127 y bájate en Portal Usme.",
+        action: "trip",
+        engine: "reglas",
+        steps: [],
+        trip: [{ routeCode: "H72", board: "Calle 127", alight: "Portal Usme", stationsRidden: 10, conteoVerificado: true }],
+      }
+      if (respuestaSeguraParaMostrar(forjadoTrip, data, new Date())) {
+        throw new Error("La guardia aceptó un viaje forjado con paradas no verificadas (H72/Calle 127).")
+      }
+
+      const engine = incierto.engine === "ollama" ? `Ollama (${info.model ?? "modelo local"})` : "reglas locales"
       const warning =
-        info.engine === "ollama" && reply.engine !== "ollama"
+        info.engine === "ollama" && incierto.engine !== "ollama"
           ? info.reachable && info.hasModel
             ? " Ollama está configurado pero no respondió a tiempo; contestaron las reglas."
             : " Ollama está configurado pero no está disponible o le falta el modelo; contestaron las reglas."
           : ""
-      return `Motor: ${engine}. ${reply.steps.length} pasos. «${reply.reply}»${warning}`
+      return `Motor: ${engine}. Incertidumbre validada; ${detalleVerificado}; payload forjado rechazado.${warning}`
     },
   },
   {
