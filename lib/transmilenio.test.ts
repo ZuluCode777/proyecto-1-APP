@@ -58,17 +58,31 @@ test("reconcileDirection detecta el sentido consistente, el contradictorio y el 
   assert.equal(indeterminado.agreement, "indeterminado")
 })
 
-test("8 G y 8 T quedan marcados como sentido contradictorio, sin invertir la geometría", () => {
+test("8 G y 8 T quedan reconciliados desde GTFS: sentido corregido, geometría preservada", () => {
   const data = TransmilenioDataSchema.parse(snapshot)
   const g = data.routes.find((r) => r.code === "8 G")
   const t = data.routes.find((r) => r.code === "8 T")
   assert.ok(g && t, "el catálogo real debe tener 8 G y 8 T")
-  assert.equal(g!.directionEvidence.agreement, "contradictorio")
-  assert.equal(t!.directionEvidence.agreement, "contradictorio")
-  assert.equal(g!.directionEvidence.verified, false)
-  // No se invierten: los stops conservan su orden original (no verificado).
+
+  // El sentido se corrigió con evidencia GTFS y quedó verificado.
+  assert.equal(g!.directionEvidence.agreement, "consistente")
+  assert.equal(g!.directionEvidence.verified, true)
+  assert.equal(g!.from, "Terminal")
+  assert.equal(g!.to, "Guatoque - Veraguas")
+  assert.equal(t!.from, "Guatoque - Veraguas")
+  assert.equal(t!.to, "Terminal")
+
+  // La geometría (stops) NO se invirtió: conserva su orden original.
   assert.equal(g!.stops[0], "Terminal")
   assert.equal(g!.stops[g!.stops.length - 1], "Guatoque - Veraguas")
+  assert.equal(t!.stops[0], "Guatoque - Veraguas")
+  assert.equal(t!.stops[t!.stops.length - 1], "Terminal")
+
+  // Paradas atendidas verificadas (extremos) y calendario presente.
+  assert.ok(g!.servedStops.length >= 2)
+  assert.ok(g!.verifiedCalendar, "8 G debe tener calendario verificado")
+  assert.equal(g!.servedStops[0].name, "Terminal")
+  assert.equal(g!.servedStops[0].canBoard, true)
 })
 
 test("mide la distancia de un punto a una línea", () => {

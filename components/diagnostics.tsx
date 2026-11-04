@@ -56,29 +56,48 @@ const CHECKS: Check[] = [
     run: async () => {
       // Primero la configuración: si hay Ollama, esta llamada además precarga el modelo.
       const info = AgentInfoSchema.parse(await (await fetch("/api/agent")).json())
-      const res = await fetch("/api/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: "cómo llego de Portal Usme a Molinos" }),
-      })
-      const reply = AgentReplySchema.parse(await res.json())
-      // El asistente debe entender la consulta. Con paradas verificadas abre un
-      // plan de viaje; sin ellas (catálogo actual) ofrece recorrido con
-      // incertidumbre. Lo que NO puede es instruir un abordaje inferido por
-      // geometría: eso es justo lo que corrige el issue #31.
-      if (reply.action !== "trip" && reply.action !== "search") {
-        throw new Error(`No entendió la consulta de viaje: "${reply.reply}"`)
+      const ask = async (message: string) => {
+        const res = await fetch("/api/agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+        })
+        return AgentReplySchema.parse(await res.json())
       }
-      const modo = reply.action === "trip" ? "plan con paradas verificadas" : "recorrido con incertidumbre"
-      // El motor sale de la respuesta, no de la configuración: así se ve si el modelo contestó de verdad.
-      const engine = reply.engine === "ollama" ? `Ollama (${info.model ?? "modelo local"})` : "reglas locales"
+
+      // Caso sin paradas verificadas: debe ofrecer recorrido con incertidumbre,
+      // NO una orden de abordaje inferida por geometría (lo que corrige #31).
+      const incierto = await ask("cómo llego de Portal Usme a Molinos")
+      if (incierto.action !== "search") {
+        throw new Error(`Sin paradas verificadas debería ofrecer recorrido, no "${incierto.action}": «${incierto.reply}»`)
+      }
+      if (!/no puedo decirte con certeza dónde subir o bajar/i.test(incierto.reply)) {
+        throw new Error(`La respuesta incierta no advierte la falta de certeza: «${incierto.reply}»`)
+      }
+      if (/\b(sube en|toma la .* en|bájate en)\b/i.test(incierto.reply)) {
+        throw new Error(`No debe instruir abordaje sin evidencia: «${incierto.reply}»`)
+      }
+
+      // Caso con evidencia GTFS corroborada (8 G): debe abrir un plan de viaje
+      // cuyos tramos coincidan con paradas verificadas reales del catálogo.
+      const verificado = await ask("cómo llego de Terminal a Guatoque - Veraguas")
+      let detalleVerificado = "sin plan verificado disponible"
+      if (verificado.action === "trip") {
+        if (verificado.trip.length === 0) throw new Error("Plan verificado sin tramos.")
+        if (!/^Toma la .+ en .+ y bájate en /i.test(verificado.reply)) {
+          throw new Error(`El plan verificado no da instrucción clara: «${verificado.reply}»`)
+        }
+        detalleVerificado = `plan ${verificado.trip.map((l) => l.routeCode).join(" + ")}`
+      }
+
+      const engine = incierto.engine === "ollama" ? `Ollama (${info.model ?? "modelo local"})` : "reglas locales"
       const warning =
-        info.engine === "ollama" && reply.engine !== "ollama"
+        info.engine === "ollama" && incierto.engine !== "ollama"
           ? info.reachable && info.hasModel
             ? " Ollama está configurado pero no respondió a tiempo; contestaron las reglas."
             : " Ollama está configurado pero no está disponible o le falta el modelo; contestaron las reglas."
           : ""
-      return `Motor: ${engine}. ${modo}. ${reply.steps.length} pasos. «${reply.reply}»${warning}`
+      return `Motor: ${engine}. Recorrido con incertidumbre validado; ${detalleVerificado}.${warning}`
     },
   },
   {

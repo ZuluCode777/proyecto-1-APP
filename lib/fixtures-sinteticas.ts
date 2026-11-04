@@ -98,10 +98,34 @@ const SERVICIO_SIN_VERIFICAR: BusRoute = {
 export function datosVerificadosDirecto(): TransmilenioData {
   return {
     stations: ESTACIONES_SINTETICAS,
-    routes: [SERVICIO_VERIFICADO],
+    routes: [structuredClone(SERVICIO_VERIFICADO)],
     fetchedAt: FECHA_PRUEBA + "T00:00:00Z",
     source: "snapshot",
   }
+}
+
+/** Calendario sintético verificado que opera lunes a viernes todo 2026. */
+export const CALENDARIO_SINTETICO = {
+  weekdays: [1, 2, 3, 4, 5],
+  startDate: "2026-01-01",
+  endDate: "2026-12-31",
+  addedDates: [] as string[],
+  removedDates: ["2026-11-02"],
+  timezone: "America/Bogota",
+  source: FUENTE_PRUEBA,
+  date: FECHA_PRUEBA,
+}
+
+/**
+ * Datos sintéticos verificados con calendario verificado adjunto. La evidencia
+ * de paradas se fecha el 2026-11-01 para que sea vigente tanto el 2026-11-02
+ * (día retirado del calendario) como el 2026-11-04 (día operativo).
+ */
+export function datosConCalendario(): TransmilenioData {
+  const fx = datosVerificadosDirecto()
+  fx.routes[0].servedStops = fx.routes[0].servedStops.map((s) => ({ ...s, date: "2026-11-01" }))
+  fx.routes[0].verifiedCalendar = { ...CALENDARIO_SINTETICO, date: "2026-11-01" }
+  return fx
 }
 
 /** Datos sintéticos con el expreso que pasa sin parar por Bravo y Delta. */

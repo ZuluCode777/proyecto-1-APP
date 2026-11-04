@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import snapshot from "../data/transmilenio.json" with { type: "json" }
-import { datosExpreso, datosTransbordoVerificado, datosVerificadosDirecto } from "./fixtures-sinteticas"
-import { interpretCommand, parseIntent } from "./local-agent"
+import { datosConCalendario, datosExpreso, datosTransbordoVerificado, datosVerificadosDirecto } from "./fixtures-sinteticas"
+import { interpretCommand, parseIntent, runIntent } from "./local-agent"
 import { TransmilenioDataSchema } from "./transmilenio"
 
 const data = TransmilenioDataSchema.parse(snapshot)
@@ -40,13 +40,47 @@ test("toma origen y destino en el orden en que se dicen", () => {
   })
 })
 
+const NOW = new Date("2026-11-04T10:00:00-05:00")
+const resolver = (text: string, d = data, ctx = {}) => runIntent(parseIntent(text, d), { data: d, context: { now: NOW, ...ctx } })
+
 test("con paradas verificadas, planea un viaje directo y deja los pasos", () => {
   const fx = datosVerificadosDirecto()
-  const reply = interpretCommand("cómo llego de Alfa a Eco", fx)
+  const reply = resolver("cómo llego de Alfa a Eco", fx)
   assert.ok(reply.action === "trip")
   assert.equal(reply.trip.length, 1)
   assert.match(reply.reply, /^Toma la V1 en Alfa y bájate en Eco/)
+  // Sin calendario verificado no afirma operación ni salida inmediata.
+  assert.match(reply.reply, /No tengo calendario verificado/)
   assert.ok(reply.steps.length >= 3, "debe registrar los pasos")
+})
+
+test("con calendario verificado que opera hoy, lo dice con cautela", () => {
+  const fx = datosConCalendario()
+  const reply = resolver("cómo llego de Alfa a Eco", fx)
+  assert.ok(reply.action === "trip")
+  assert.match(reply.reply, /hoy operan; confirma el horario antes de salir/)
+})
+
+test("con calendario verificado que hoy no opera, lo advierte", () => {
+  const fx = datosConCalendario()
+  // 2026-11-02 está en removedDates del calendario sintético.
+  const reply = runIntent(parseIntent("cómo llego de Alfa a Eco", fx), {
+    data: fx,
+    context: { now: new Date("2026-11-02T10:00:00-05:00") },
+  })
+  assert.ok(reply.action === "trip")
+  assert.match(reply.reply, /hoy alguno no tiene servicio programado/)
+})
+
+test("el horario de una ruta sin calendario no se afirma como operación", () => {
+  const route = data.routes.find((r) => r.code === "H54")!
+  const reply = resolver("¿a qué hora pasa la H54?")
+  assert.equal(reply.action, "route")
+  assert.match(reply.reply, /Horario publicado/)
+  assert.match(reply.reply, /no un calendario verificado/)
+  assert.ok(reply.reply.includes(route.schedule.weekday))
+  // No debe afirmar categóricamente que "opera".
+  assert.doesNotMatch(reply.reply, /^La H54 opera/)
 })
 
 test("con datos reales sin paradas verificadas, no instruye abordar y ofrece recorrido", () => {

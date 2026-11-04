@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { spokenDistance, type LatLng } from "@/lib/geo"
+import { calendarioOperaEnFecha, estadoOperativo } from "@/lib/evidencia"
 import {
   findPlaceMentions,
   findPlaces,
@@ -82,6 +83,8 @@ export type AgentAction = AgentReply["action"]
 export type AgentContext = {
   /** Ubicación de la persona, si dio permiso. */
   position?: LatLng
+  /** Instante actual, para evaluar vigencia de evidencia y calendario. */
+  now?: Date
 }
 
 /** Respuesta sin acción ni pasos, para avisos como "no te escuché". */
@@ -177,13 +180,44 @@ function listCodes(codes: string[], max = 3): string {
 /** Quita el punto final de un horario como "10:00 p. m." para no duplicarlo. */
 const bare = (value: string) => value.replace(/\.\s*$/, "")
 
-function describePlan(plan: TripPlan): string {
+/**
+ * Frase sobre la operación de un servicio HOY. Solo afirma operación cuando
+ * hay calendario verificado que lo confirma; si no, advierte que no está
+ * verificado. Nunca afirma salida inmediata.
+ */
+function operacionHoy(route: BusRoute, now: Date = new Date()): string {
+  if (!route.verifiedCalendar) {
+    return "No tengo calendario verificado para confirmar si opera ahora."
+  }
+  return calendarioOperaEnFecha(route.verifiedCalendar, now)
+    ? "Según su calendario verificado, hoy opera; aun así confirma el horario antes de salir."
+    : "Según su calendario verificado, hoy no tiene servicio programado."
+}
+
+/**
+ * Advertencia de operación para un plan completo: si algún tramo no tiene
+ * calendario verificado, no se afirma operación; si todos operan hoy, se dice
+ * con cautela; si alguno no opera hoy, se avisa.
+ */
+function avisoOperacionPlan(plan: TripPlan, now: Date): string {
+  const estados = plan.map((leg) => estadoOperativo(leg.route, now))
+  if (estados.some((e) => !e.tieneCalendario)) {
+    return " No tengo calendario verificado de todos los servicios; confirma los horarios antes de salir."
+  }
+  if (estados.every((e) => e.operaHoy)) {
+    return " Según su calendario verificado, hoy operan; confirma el horario antes de salir."
+  }
+  return " Según su calendario verificado, hoy alguno no tiene servicio programado; confírmalo antes de salir."
+}
+
+function describePlan(plan: TripPlan, now: Date = new Date()): string {
+  const aviso = avisoOperacionPlan(plan, now)
   if (plan.length === 1) {
     const [leg] = plan
-    return `Toma la ${leg.route.code} en ${leg.board} y bájate en ${leg.alight}, después de ${leg.stationsRidden} ${leg.stationsRidden === 1 ? "estación" : "estaciones"}. Confirma el horario antes de salir.`
+    return `Toma la ${leg.route.code} en ${leg.board} y bájate en ${leg.alight}, después de ${leg.stationsRidden} ${leg.stationsRidden === 1 ? "estación" : "estaciones"}.${aviso}`
   }
   const [first, second] = plan
-  return `No hay una ruta directa. Toma la ${first.route.code} en ${first.board} hasta ${first.alight}, y ahí cambia a la ${second.route.code} hasta ${second.alight}. Confirma los horarios antes de salir.`
+  return `No hay una ruta directa. Toma la ${first.route.code} en ${first.board} hasta ${first.alight}, y ahí cambia a la ${second.route.code} hasta ${second.alight}.${aviso}`
 }
 
 const summarize = (plan: TripPlan): TripLegSummary[] =>
@@ -285,16 +319,22 @@ export function runIntent(
       if (!route) return say(`No encontré la ruta ${intent.routeCode}.`)
       steps.push({ label: `Busqué la ruta ${route.code}`, detail: route.label })
 
-      const weekday = bare(route.schedule.weekday) || "sin horario publicado"
+      const weekday = bare(route.schedule.weekday)
+      // El texto del horario NO es un calendario verificado: se cita como
+      // horario publicado, sin afirmar operación ni salida inmediata.
+      const horarioPublicado = weekday ? `Horario publicado entre semana: ${weekday}.` : "No tengo horario publicado entre semana."
       if (intent.type === "schedule") {
         const saturday = route.schedule.saturday ? ` Sábados: ${bare(route.schedule.saturday)}.` : ""
         const holiday = route.schedule.holiday ? ` Festivos: ${bare(route.schedule.holiday)}.` : ""
-        return { reply: `La ${route.code} opera entre semana de ${weekday}.${saturday}${holiday}`, action: "route", routeCode: route.code, steps, engine }
+        const aviso = route.verifiedCalendar
+          ? ` ${operacionHoy(route, context.now)}`
+          : " Es el horario publicado, no un calendario verificado; confirma con TransMilenio antes de salir."
+        return { reply: `${horarioPublicado}${saturday}${holiday}${aviso}`, action: "route", routeCode: route.code, steps, engine }
       }
-      steps.push({ label: "Revisé su recorrido", detail: `${route.stops.length} estaciones` })
+      steps.push({ label: "Revisé su recorrido", detail: `${route.stops.length} estaciones cercanas al trazado` })
       const sample = route.stops.slice(1, 4).join(", ")
       return {
-        reply: `La ${route.code} va de ${route.from} hacia ${route.to}. Pasa por ${route.stops.length} estaciones, entre ellas ${sample}. Entre semana opera de ${weekday}.`,
+        reply: `La ${route.code} va de ${route.from} hacia ${route.to}. Su recorrido pasa cerca de ${route.stops.length} estaciones, entre ellas ${sample}. ${horarioPublicado} No tengo confirmado en cuáles para; para un viaje, dime origen y destino.`,
         action: "route",
         routeCode: route.code,
         steps,
@@ -340,7 +380,8 @@ export function runIntent(
 
       if (samePlace(origin, destination)) return say(`Ya estás en ${destination.name}.`)
 
-      const plans = planTrip({ origin, destination }, data)
+      const now = context.now ?? new Date()
+      const plans = planTrip({ origin, destination }, data, 3, now)
       steps.push({
         label: `Revisé las ${data.routes.length} rutas troncales`,
         detail:
@@ -359,7 +400,7 @@ export function runIntent(
       steps.push({ label: "Elegí la opción con menos estaciones", detail: best.map((l) => l.route.code).join(" + ") })
       const alternatives =
         best.length === 1 && others.length > 0 ? ` También te sirven ${listCodes(others.map((p) => p[0].route.code))}.` : ""
-      return { reply: `${describePlan(best)}${alternatives}`, action: "trip", trip: summarize(best), steps, engine }
+      return { reply: `${describePlan(best, now)}${alternatives}`, action: "trip", trip: summarize(best), steps, engine }
     }
 
     case "trip_missing_destination":

@@ -108,3 +108,93 @@ oficial** y no se copian a `data/`.
   preservar); no se modificaron workflows, secretos ni infraestructura.
 - `pnpm verificar` con Chrome real quedó sin ejecutar por el entorno; se declara
   explícitamente.
+
+---
+
+## Actualización 2026-11-04 (tarde): evidencia GTFS corroborada e iteración
+
+El coordinador aportó evidencia primaria: descargó y verificó el GTFS oficial
+diario (manifest, hash, routes/trips/stop_times, calendar, unión GIS↔GTFS). Con
+ella se corrigió el cierre previo de «no se obtuvo fuente»: **sí existe** un GTFS
+oficial utilizable.
+
+### Fuente primaria confirmada (comprobada 2026-11-04)
+
+- `https://gtfs.transmilenio.gov.co/manifest.json`: `generated_at`
+  2026-11-03T04:19:59-05:00; `GTFS.zip` 119 934 110 bytes, `last_modified`
+  2026-11-03. (No se descarga el ZIP de 120 MB al repo; `stop_times` pesa 573 MB
+  y se procesa en origen por streaming.)
+- Licencia del catálogo institucional (`package_show`): **CC-BY-SA-4.0**;
+  metadatos del catálogo de 2022/2023, que documentan la licencia pero NO la
+  frescura. El ZIP diario no repite la licencia; se documenta el alcance sin
+  inventar una licencia específica ni tratar la ausencia de aviso como
+  prohibición. Atribución: **TransMilenio S.A.**
+
+La evidencia corroborada quedó transcrita en `lib/evidencia-gtfs.ts`, con su
+fuente, fecha y nodos. Es el único punto donde se declara catálogo oficial.
+
+### Reconciliación 8 G / 8 T (con evidencia)
+
+- GTFS route_id 13307 (8 G) y 13308 (8 T) coinciden con los GIS route_id por
+  unión de claves. El patrón dominante de 8 G va **Terminal (nodo 2502) →
+  Guatoque - Veraguas (nodo 7201)** y el de 8 T al revés. En GIS, `orig_ruta`/
+  `dest_ruta` estaban **invertidos** para ambos.
+- Corrección aplicada: `from`/`to`/`label` corregidos desde GTFS,
+  `directionEvidence.verified = true`, paradas atendidas verificadas (extremos
+  del patrón dominante, con nodo), y calendario verificado. Se **preserva** la
+  geometría (`stops`, `path`); no se invierte nada. Solo cambian 8 G y 8 T.
+- Límite honesto: de las 27 paradas del patrón solo se transcribieron los
+  EXTREMOS verificados (los que el coordinador detalló con nodo); las
+  intermedias quedan como recorrido, en abstención segura, hasta transcribir la
+  secuencia completa.
+
+### H72 no para en Calle 127 (con evidencia, independiente del aviso de 2018)
+
+- GTFS route_id 13476: ningún patrón de H72 incluye el nodo 2202 (Calle 127);
+  el patrón principal va Toberín (2101) → Portal Usme (90004). H72 queda sin
+  `servedStops`, así que el planificador se abstiene y nunca ofrece abordar en
+  Calle 127. Verificado en el servidor real: «Calle 127 → Portal Usme» responde
+  recorrido con incertidumbre, sin instrucción de abordaje.
+
+### Aplicación en vivo y en copia
+
+La corrección se aplica en `normalizeTransmilenio` (consulta en vivo) y al cargar
+la copia (`lib/transmilenio-data.ts`), además de quedar escrita en el snapshot
+por la migración. Así llega a la app sin depender de qué origen respondió.
+Verificado contra el servidor real con datos `source: live`.
+
+### Fallos reproducidos por el coordinador, ya corregidos
+
+Validación compartida en `lib/evidencia.ts`, usada por planificador, asistente,
+TripView, detalle y diagnóstico:
+
+- **Evidencia basura ya no prescribe.** `source` vacío, fecha vacía/inválida/
+  futura/vencida o estado no operativo hacen que `planTrip` devuelva 0 planes.
+  `paradaPrescriptible` exige fuente no vacía, estado `operativa` y
+  `fechaEvidenciaVigente` (no futura, ≤ 400 días).
+- **Órdenes duplicados/ambiguos → abstención.** `secuenciaAtendidaValida`
+  rechaza `order` repetidos; el nombre de la parada se toma del **registro que
+  coincidió**, no por `.find(order)` (que devolvía otra estación).
+- **Sin calendario verificado no se afirma operación ni salida inmediata.**
+  `route_info`/`schedule` citan «horario publicado», no «opera»;
+  `RouteDetail.describe` avisa ausencia de paradas y de calendario;
+  `calendarioOperaEnFecha` evalúa ventana, día y excepciones en America/Bogota.
+- **TripView revalida.** `tripSummaryStillValid` re-chequea cada tramo contra la
+  evidencia actual antes de dar órdenes; si no valida, muestra el recorrido sin
+  instrucciones.
+- **Diagnóstico valida contenido**, no solo `action`: exige el aviso de
+  incertidumbre cuando no hay paradas y una instrucción clara cuando sí.
+- **8 G/8 T consultables por código** (`findRouteByCode`/`searchRoutes` aceptan
+  el formato número-letra), soporte mínimo sin resolver todo #32.
+
+### Comandos (iteración)
+
+- `pnpm exec tsc --noEmit` → OK. `pnpm test` → **62/62** (antes 47). `pnpm build`
+  → OK. Verificación directa del servidor real (`source: live`, clave de prueba):
+  8 G Terminal→Guatoque devuelve plan verificado con aviso de calendario; H72
+  Calle 127→Portal Usme y Portal Usme→Molinos devuelven recorrido con
+  incertidumbre sin instruir abordaje; `/api/transmilenio` entrega 8 G con
+  sentido corregido, paradas y calendario.
+- `pnpm verificar` con Chrome headless: sigue sin inicializar en este contenedor
+  (crashpad/zygote). Por indicación del coordinador no se insiste con más flags
+  ni se modifica CI; el coordinador lo correrá en su entorno con Chrome.

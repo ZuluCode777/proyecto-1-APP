@@ -1,8 +1,14 @@
+import {
+  paradaCoincideConEstacion,
+  paradaPrescriptible,
+  rutaConParadasVerificadas,
+  secuenciaAtendidaValida,
+} from "@/lib/evidencia"
 import { distanceMeters, type LatLng } from "@/lib/geo"
 import { contentWords, normalize } from "@/lib/text"
-import type { BusRoute, Station, TransmilenioData } from "@/lib/transmilenio"
+import type { BusRoute, ServedStop, Station, TransmilenioData } from "@/lib/transmilenio"
 
-export type { BusRoute, Station, TransmilenioData }
+export type { BusRoute, ServedStop, Station, TransmilenioData }
 
 export type StationWithDistance = Station & { distance: number }
 
@@ -100,12 +106,25 @@ export function findPlaceMentions(text: string, data: TransmilenioData): PlaceMe
     .map((f) => ({ place: f.place, before: t.slice(Math.max(0, f.start - 30), f.start).trim() }))
 }
 
-/** Ruta cuyo código aparece en el texto: "la B23", "ruta h 54", "K86". */
+/**
+ * Ruta cuyo código aparece en el texto: "la B23", "ruta h 54", "K86". También
+ * reconoce códigos con el número primero y una letra, como "8 G" / "8 T", para
+ * poder consultar los dos servicios cuya dirección se reconcilió con GTFS en el
+ * issue #31. No pretende resolver los 16 códigos del issue #32; es el soporte
+ * mínimo para los servicios ya corroborados, que se resuelven contra el índice
+ * del catálogo (sin asumir un formato fijo).
+ */
 export function findRouteByCode(text: string, data: TransmilenioData): BusRoute | undefined {
   const byCode = getIndex(data).byCode
   const t = normalize(text)
+  // Forma habitual: 1-2 letras, número, 0-2 letras ("b23", "h54", "k86").
   for (const match of t.matchAll(/\b([a-z]{1,2})\s?(\d{1,2})([a-z]{0,2})\b/g)) {
     const route = byCode.get(`${match[1]}${match[2]}${match[3]}`)
+    if (route) return route
+  }
+  // Forma número-letra ("8 g", "8 t"): se busca en el índice del catálogo.
+  for (const match of t.matchAll(/\b(\d{1,2})\s?([a-z])\b/g)) {
+    const route = byCode.get(`${match[1]}${match[2]}`)
     if (route) return route
   }
   return undefined
@@ -134,35 +153,36 @@ export function passesThrough(route: BusRoute, place: Place): boolean {
 }
 
 /**
- * Posición de una parada ATENDIDA verificada del lugar en la secuencia del
- * servicio, o -1 si la fuente no confirma que el servicio pare allí. Solo
- * cuenta cuando la parada está operativa; una parada suspendida o sin verificar
- * no habilita el abordaje.
+ * Parada ATENDIDA prescriptible del lugar en la ruta, o `undefined` si la
+ * fuente no confirma que el servicio pare allí con evidencia vigente. Devuelve
+ * el REGISTRO que realmente coincidió (no se busca por `order`, que podría
+ * estar duplicado o ser ambiguo). Solo cuenta cuando la secuencia es coherente
+ * y la parada es prescriptible ahora (fuente, estado y fecha válidos).
  */
-const servedStopAt = (
+const matchServedStop = (
   route: BusRoute,
   place: Place,
   need: "board" | "alight",
-): number => {
+  now: Date,
+): ServedStop | undefined => {
+  if (!secuenciaAtendidaValida(route.servedStops)) return undefined
   for (const stop of route.servedStops) {
-    if (stop.status !== "operativa") continue
+    if (!paradaPrescriptible(stop, now)) continue
     if (need === "board" && !stop.canBoard) continue
     if (need === "alight" && !stop.canAlight) continue
-    if (place.stations.some((s) => s.name === stop.name)) return stop.order
+    const station = place.stations.find((s) => paradaCoincideConEstacion(stop, s))
+    if (station) return stop
   }
-  return -1
+  return undefined
 }
 
-/** Nombre de la parada atendida de un lugar en la ruta, o `undefined`. */
-const servedStopName = (route: BusRoute, place: Place, need: "board" | "alight"): string | undefined => {
-  const order = servedStopAt(route, place, need)
-  if (order < 0) return undefined
-  return route.servedStops.find((s) => s.order === order)?.name
-}
-
-/** ¿El servicio tiene al menos una parada atendida verificada y operativa? */
-export function hasVerifiedServedStops(route: BusRoute): boolean {
-  return route.servedStops.some((s) => s.status === "operativa")
+/**
+ * ¿El servicio tiene paradas atendidas verificadas, utilizables ahora? Delega
+ * en el validador compartido: secuencia coherente y al menos una parada
+ * prescriptible (fuente, estado y fecha válidos). No basta con `status`.
+ */
+export function hasVerifiedServedStops(route: BusRoute, now: Date = new Date()): boolean {
+  return rutaConParadasVerificadas(route, now)
 }
 
 /**
@@ -214,36 +234,40 @@ export type TripPlan = TripLeg[]
 
 /**
  * Transbordo verificado: una estación donde `first` permite descender y
- * `second` permite abordar, con `first` llegando antes de que `second` siga
- * hacia el destino. Devuelve el nombre de la estación y las posiciones, o
- * `undefined` si no hay una conexión respaldada por paradas atendidas.
+ * `second` permite abordar, con `first` llegando después de subir y antes de
+ * que `second` siga hacia el destino. Devuelve el registro de parada de cada
+ * servicio (no se asume igualdad de `order` entre servicios distintos), o
+ * `undefined` si no hay una conexión respaldada por paradas atendidas vigentes.
  */
 function verifiedTransfer(
   first: BusRoute,
-  firstBoardOrder: number,
+  firstBoard: ServedStop,
   second: BusRoute,
-  secondAlightOrder: number,
-): { name: string; firstOrder: number; secondOrder: number } | undefined {
+  secondAlight: ServedStop,
+  now: Date,
+): { firstAlight: ServedStop; secondBoard: ServedStop } | undefined {
   for (const stop of first.servedStops) {
-    if (stop.status !== "operativa" || !stop.canAlight || stop.order <= firstBoardOrder) continue
+    if (!paradaPrescriptible(stop, now) || !stop.canAlight || stop.order <= firstBoard.order) continue
     const match = second.servedStops.find(
-      (s) => s.status === "operativa" && s.canBoard && s.name === stop.name && s.order < secondAlightOrder,
+      (s) => paradaPrescriptible(s, now) && s.canBoard && s.name === stop.name && s.order < secondAlight.order,
     )
-    if (match) return { name: stop.name, firstOrder: stop.order, secondOrder: match.order }
+    if (match) return { firstAlight: stop, secondBoard: match }
   }
   return undefined
 }
 
 /**
  * Planea un VIAJE OPERATIVO de un lugar a otro usando solo PARADAS ATENDIDAS
- * verificadas: primero rutas directas, y si no hay, combinaciones con un
- * transbordo verificado. Devuelve los planes ordenados de menos a más
+ * verificadas y vigentes: primero rutas directas, y si no hay, combinaciones
+ * con un transbordo verificado. Devuelve los planes ordenados de menos a más
  * estaciones recorridas.
  *
  * Nunca convierte una estación cercana al trazado en abordaje: si ningún
- * servicio tiene paradas verificadas (hoy, sin fuente oficial de paradas),
- * devuelve `[]` y el asistente ofrece información de recorrido con
- * incertidumbre en vez de instruir subir o bajar (ver `lib/local-agent.ts`).
+ * servicio tiene paradas verificadas, devuelve `[]` y el asistente ofrece
+ * información de recorrido con incertidumbre en vez de instruir subir o bajar
+ * (ver `lib/local-agent.ts`). La validación de fuente, fecha, estado y
+ * secuencia vive en `lib/evidencia.ts` para que todos los consumidores decidan
+ * igual. `now` permite evaluar la vigencia de la evidencia.
  *
  * ponytail: prueba todos los pares de rutas para el transbordo (124² ≈ 15 000
  * combinaciones), que es instantáneo con los datos troncales. Si algún día se
@@ -253,41 +277,77 @@ export function planTrip(
   { origin, destination }: { origin: Place; destination: Place },
   data: TransmilenioData,
   limit = 3,
+  now: Date = new Date(),
 ): TripPlan[] {
   const direct: TripPlan[] = []
   for (const route of data.routes) {
-    const board = servedStopAt(route, origin, "board")
-    const alight = servedStopAt(route, destination, "alight")
-    if (board >= 0 && alight > board) {
-      const boardName = servedStopName(route, origin, "board")!
-      const alightName = servedStopName(route, destination, "alight")!
-      direct.push([{ route, board: boardName, alight: alightName, stationsRidden: alight - board }])
+    const board = matchServedStop(route, origin, "board", now)
+    const alight = matchServedStop(route, destination, "alight", now)
+    if (board && alight && alight.order > board.order) {
+      direct.push([{ route, board: board.name, alight: alight.name, stationsRidden: alight.order - board.order }])
     }
   }
   if (direct.length > 0) return rank(direct).slice(0, limit)
 
   const transfers: TripPlan[] = []
   const fromOrigin = data.routes
-    .map((route) => ({ route, board: servedStopAt(route, origin, "board") }))
-    .filter((r) => r.board >= 0)
+    .map((route) => ({ route, board: matchServedStop(route, origin, "board", now) }))
+    .filter((r): r is { route: BusRoute; board: ServedStop } => r.board !== undefined)
   const toDestination = data.routes
-    .map((route) => ({ route, alight: servedStopAt(route, destination, "alight") }))
-    .filter((r) => r.alight >= 0)
+    .map((route) => ({ route, alight: matchServedStop(route, destination, "alight", now) }))
+    .filter((r): r is { route: BusRoute; alight: ServedStop } => r.alight !== undefined)
 
   for (const first of fromOrigin) {
     for (const second of toDestination) {
       if (first.route === second.route) continue
-      const transfer = verifiedTransfer(first.route, first.board, second.route, second.alight)
+      const transfer = verifiedTransfer(first.route, first.board, second.route, second.alight, now)
       if (!transfer) continue
-      const boardName = servedStopName(first.route, origin, "board")!
-      const alightName = servedStopName(second.route, destination, "alight")!
       transfers.push([
-        { route: first.route, board: boardName, alight: transfer.name, stationsRidden: transfer.firstOrder - first.board },
-        { route: second.route, board: transfer.name, alight: alightName, stationsRidden: second.alight - transfer.secondOrder },
+        {
+          route: first.route,
+          board: first.board.name,
+          alight: transfer.firstAlight.name,
+          stationsRidden: transfer.firstAlight.order - first.board.order,
+        },
+        {
+          route: second.route,
+          board: transfer.secondBoard.name,
+          alight: second.alight.name,
+          stationsRidden: second.alight.order - transfer.secondBoard.order,
+        },
       ])
     }
   }
   return rank(transfers).slice(0, limit)
+}
+
+/**
+ * Revalida un resumen de viaje (tramos ya serializados) contra el catálogo y
+ * la evidencia ACTUAL, antes de que una pantalla dé órdenes de subir/bajar.
+ * Comprueba que cada tramo use una ruta existente, con paradas de abordaje y
+ * descenso prescriptibles en el sentido correcto. Devuelve `false` si el
+ * resumen viene de un esquema viejo, de otro origen de datos o sin evidencia.
+ */
+export function tripSummaryStillValid(
+  legs: { routeCode: string; board: string; alight: string }[],
+  data: TransmilenioData,
+  now: Date = new Date(),
+): boolean {
+  if (legs.length === 0) return false
+  for (const leg of legs) {
+    const route = data.routes.find((r) => r.code === leg.routeCode)
+    if (!route) return false
+    if (!secuenciaAtendidaValida(route.servedStops)) return false
+    const board = route.servedStops.find(
+      (s) => s.name === leg.board && s.canBoard && paradaPrescriptible(s, now),
+    )
+    const alight = route.servedStops.find(
+      (s) => s.name === leg.alight && s.canAlight && paradaPrescriptible(s, now),
+    )
+    if (!board || !alight) return false
+    if (alight.order <= board.order) return false
+  }
+  return true
 }
 
 const totalStations = (plan: TripPlan) => plan.reduce((sum, leg) => sum + leg.stationsRidden, 0)

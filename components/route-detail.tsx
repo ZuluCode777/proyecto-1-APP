@@ -5,6 +5,7 @@ import { Bus, Clock, Heart, Volume2 } from "lucide-react"
 import { ScreenHeader } from "@/components/screen-header"
 import { TransitMap, type MapMarker } from "@/components/transit-map"
 import { useSpeech } from "@/hooks/use-speech"
+import { calendarioOperaEnFecha, rutaConParadasVerificadas } from "@/lib/evidencia"
 import type { BusRoute, TransmilenioData } from "@/lib/routes"
 
 type RouteDetailProps = {
@@ -15,12 +16,23 @@ type RouteDetailProps = {
   onBack: () => void
 }
 
-const describe = (route: BusRoute) => {
+const describe = (route: BusRoute, now: Date = new Date()) => {
   const sentido =
     route.directionEvidence.agreement === "contradictorio"
       ? `con sentido declarado de ${route.from} hacia ${route.to}, aún sin confirmar porque el orden de las estaciones no coincide`
       : `de ${route.from} hacia ${route.to}`
-  return `Ruta ${route.code}, ${sentido}. Pasa cerca de ${route.stops.length} estaciones. Entre semana opera de ${route.schedule.weekday || "horario no publicado"}.`
+  // Operación: solo se afirma con calendario verificado; el horario textual no.
+  const operacion = route.verifiedCalendar
+    ? calendarioOperaEnFecha(route.verifiedCalendar, now)
+      ? " Según su calendario verificado, hoy opera; confirma el horario antes de salir."
+      : " Según su calendario verificado, hoy no tiene servicio programado."
+    : route.schedule.weekday
+      ? ` Su horario publicado entre semana es ${route.schedule.weekday}, pero no tengo calendario verificado para confirmar que opere ahora.`
+      : " No tengo horario publicado ni calendario verificado."
+  const paradas = rutaConParadasVerificadas(route, now)
+    ? ""
+    : " Aún no tengo confirmado en qué estaciones para, así que no uses el recorrido como paradas de abordaje."
+  return `Ruta ${route.code}, ${sentido}. Su recorrido pasa cerca de ${route.stops.length} estaciones.${paradas}${operacion}`
 }
 
 /** Recorrido de una ruta en el mapa, con sus estaciones y horarios. */
@@ -43,11 +55,13 @@ export function RouteDetail({ route, data, favorite, onToggleFavorite, onBack }:
   )
   const lines = useMemo(() => [{ path: route.path }], [route])
 
-  // Paradas atendidas verificadas, por nombre, para marcarlas en la lista.
-  const verified = useMemo(
-    () => new Set(route.servedStops.filter((s) => s.status === "operativa").map((s) => s.name)),
-    [route],
-  )
+  // Paradas atendidas prescriptibles (fuente/estado/fecha válidos), para marcarlas.
+  const verified = useMemo(() => {
+    const now = new Date()
+    if (!rutaConParadasVerificadas(route, now)) return new Set<string>()
+    return new Set(route.servedStops.filter((s) => s.canBoard || s.canAlight).map((s) => s.name))
+  }, [route])
+  const operaHoy = useMemo(() => calendarioOperaEnFecha(route.verifiedCalendar, new Date()), [route])
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4" aria-label={`Ruta ${route.code}`}>
@@ -92,6 +106,13 @@ export function RouteDetail({ route, data, favorite, onToggleFavorite, onBack }:
         <Clock className="size-6 text-brand-ink" aria-hidden="true" />
         Horario
       </h3>
+      <p className="text-base text-muted-foreground">
+        {route.verifiedCalendar
+          ? operaHoy
+            ? "Según el calendario verificado, hoy opera. Confirma el horario antes de salir."
+            : "Según el calendario verificado, hoy no tiene servicio programado."
+          : "Horario publicado por TransMilenio, no un calendario verificado. No confirma operación ahora."}
+      </p>
       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-lg">
         <dt className="font-bold">Lunes a viernes</dt>
         <dd>{route.schedule.weekday || "No publicado"}</dd>

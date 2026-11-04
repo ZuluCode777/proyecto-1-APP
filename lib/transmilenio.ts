@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { aplicarEvidenciaGtfs } from "@/lib/evidencia-gtfs"
 import { distanceToPath, type LatLng } from "@/lib/geo"
 import { normalize } from "@/lib/text"
 
@@ -77,8 +78,39 @@ export const ServedStopSchema = z.object({
   date: z.string(),
   /** Estado operativo según la fuente. */
   status: ServedStopStatusSchema,
+  /**
+   * Nodo oficial de la estación (GTFS `parent_station` / ArcGIS `cod_nodo`).
+   * Opcional; cuando está, se exige que coincida con el de la estación para no
+   * confundir dos registros con el mismo nombre. No se rellena por proximidad.
+   */
+  nodeId: z.string().optional(),
 })
 export type ServedStop = z.infer<typeof ServedStopSchema>
+
+/**
+ * Calendario VERIFICADO de un servicio, tomado de una fuente con vigencia
+ * (GTFS `calendar` / `calendar_dates`). Sin esto, no se puede afirmar salida
+ * inmediata ni disponibilidad actual; el horario textual no lo reemplaza.
+ */
+export const VerifiedCalendarSchema = z.object({
+  /** Días de la semana que opera, 0 = domingo … 6 = sábado. */
+  weekdays: z.array(z.number().int().min(0).max(6)),
+  /** Inicio de vigencia, AAAA-MM-DD (GTFS `start_date`). */
+  startDate: z.string(),
+  /** Fin de vigencia, AAAA-MM-DD (GTFS `end_date`). */
+  endDate: z.string(),
+  /** Fechas AAAA-MM-DD que agregan servicio (excepción tipo 1). */
+  addedDates: z.array(z.string()).default([]),
+  /** Fechas AAAA-MM-DD que retiran servicio (excepción tipo 2). */
+  removedDates: z.array(z.string()).default([]),
+  /** Zona horaria de la agencia (GTFS `agency_timezone`). */
+  timezone: z.string(),
+  /** Fuente del calendario. */
+  source: z.string(),
+  /** Fecha ISO de la evidencia del calendario. */
+  date: z.string(),
+})
+export type VerifiedCalendar = z.infer<typeof VerifiedCalendarSchema>
 
 /**
  * Cómo se reconcilió el sentido del servicio (`from`/`to`) con el orden de las
@@ -129,6 +161,11 @@ export const BusRouteSchema = z.object({
     verified: false,
     note: "Sentido no reconciliado con una fuente vigente.",
   }),
+  /**
+   * Calendario verificado del servicio, si una fuente con vigencia lo respalda.
+   * Ausente mientras no haya calendario; sin él no se afirma operación actual.
+   */
+  verifiedCalendar: VerifiedCalendarSchema.optional(),
   /** Recorrido como pares [lat, lng], simplificado para dibujarlo. */
   path: z.array(z.tuple([z.number(), z.number()])),
   schedule: z.object({
@@ -305,6 +342,12 @@ export function normalizeTransmilenio(
     })
   }
   routes.sort((a, b) => a.code.localeCompare(b.code, "es", { numeric: true }))
+
+  // Aplica la evidencia GTFS corroborada (8 G/8 T: sentido, paradas y
+  // calendario) tanto a la consulta en vivo como a la copia, para que la
+  // corrección no dependa de qué origen de datos respondió.
+  const nombresEstacion = new Set(stations.map((s) => s.name))
+  aplicarEvidenciaGtfs(routes, nombresEstacion)
 
   return { stations, routes, fetchedAt, source }
 }
