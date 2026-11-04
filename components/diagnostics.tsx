@@ -73,8 +73,8 @@ const CHECKS: Check[] = [
       // Valida el CONTENIDO real de la respuesta (acción, texto y pasos) con el
       // catálogo y el reloj del momento de validar, no solo `action`. Una
       // abstención con «Toma la H72 en Calle 127…» en texto o pasos es insegura
-      // aunque la acción sea `search`; un viaje debe coincidir con la
-      // reconstrucción segura. Si falla, el diagnóstico debe detectarlo.
+      // aunque la acción sea `search`; un viaje requiere un resumen válido,
+      // desde el que la pantalla reconstruye la prosa. Si falla, se detecta.
       const validarContenido = (reply: AgentReply, etiqueta: string) => {
         if (!respuestaSeguraParaMostrar(reply, data, new Date())) {
           throw new Error(`Respuesta insegura en «${etiqueta}»: acción ${reply.action}, texto «${reply.reply}»`)
@@ -90,7 +90,7 @@ const CHECKS: Check[] = [
       validarContenido(incierto, "Portal Usme → Molinos")
 
       // Caso con evidencia GTFS corroborada (8 G): si abre un viaje, su resumen
-      // debe validar Y su texto/pasos coincidir con la reconstrucción segura.
+      // debe validar para reconstruir texto y pasos antes de mostrarlos.
       // Fuera de franja o con evidencia vencida, abstenerse es honesto, pero su
       // texto y pasos tampoco pueden contener imperativos de abordaje.
       const verificado = await ask("cómo llego de Terminal a Guatoque - Veraguas")

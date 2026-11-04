@@ -52,6 +52,9 @@ excepciones y con las horas GTFS que pasan de las 24:00. «Vencido» o
   paradas, franja, máximo un transbordo conectado, conteos coherentes).
 - `respuestaPrescriptivaValida(reply, data, now)` valida el resumen de una
   respuesta; no certifica el texto libre `reply.reply`.
+- `respuestaSeguraParaMostrar` también rechaza órdenes de abordaje en el texto
+  o en los pasos de respuestas informativas; un `search` no basta para certificar
+  una abstención segura.
 - El texto y los pasos prescriptivos se reconstruyen desde el resumen validado
   con la función responsable compartida (`textoViajeDesdeResumen`), no desde la
   prosa recibida. El número exacto de estaciones solo se dice si
@@ -113,13 +116,15 @@ abordar en Calle 127. Evidencia independiente del aviso de 2018.
   abierta; un resumen invalidado se muestra como trazado/información sin
   imperativos.
 - **route-detail**: marca cada parada con `paradasPrescriptibles` (no valida una
-  y marca todas); usa `estadoCalendarioEnFecha` en pantalla y voz (vencido/
+  y marca todas), exige permiso de subir o bajar y renueva la validación cada
+  30 segundos mientras permanece abierto; usa `estadoCalendarioEnFecha` en pantalla y voz (vencido/
   desconocido no dice «no hay servicio»); separa el horario publicado de la
   disponibilidad actual; avisa el sentido sin confirmar también para
   indeterminado/sin verificar; conserva voz automática y botón Escuchar.
 - **diagnostics**: valida el payload real del asistente con el catálogo y
-  `respuestaPrescriptivaValida`; un payload forjado (abordar H72 en Calle 127)
-  debe fallar; fuera de horario puede abstenerse honestamente. No hay parámetro
+  `respuestaSeguraParaMostrar`; rechaza un viaje forjado y una abstención con
+  órdenes de abordaje en texto o pasos. Fuera de horario puede abstenerse
+  honestamente. No hay parámetro
   `now` público en la API ni se congela el reloj productivo; la prueba positiva
   determinista con reloj fijo vive en los tests unitarios.
 
@@ -129,10 +134,17 @@ abordar en Calle 127. Evidencia independiente del aviso de 2018.
 - `pnpm test` → 98 pruebas, 0 fallos (incluye reloj fijo 2026 y 2027, el borde
   de franja, el contenido inseguro de una abstención y los payloads forjados).
 - `pnpm build` → compilación de producción correcta.
-- `pnpm verificar`: **no se ejecutó en este entorno.** El arnés usa Chrome
-  headless y Chrome-for-Testing no inicializa en este contenedor (crashpad/
-  zygote). No se reintenta con flags ni se modifica CI; el coordinador correrá
-  `pnpm verificar` en su host.
+- `pnpm verificar http://127.0.0.1:3218` → **9/9** en el host del coordinador,
+  contra la compilación de producción, con Chrome y clave de prueba. Catálogo
+  en vivo: 153 estaciones y 124 rutas. Micrófono, cámara y ubicación simulados;
+  no constituye una prueba física de accesibilidad ni operación del transporte.
+- Siete regresiones adicionales en Chrome: H72/Calle 127 bloqueado antes de
+  subtítulo/voz; 8 T reconstruido sin conteo no verificado; vencimiento del plan
+  abierto; vencimiento antes de navegar; cierre de franja durante la animación;
+  órdenes ocultas en un `search`; renovación del calendario y las marcas del
+  detalle abierto, sin marcar Calle 187 en 8 T.
+- Revisión independiente final sin hallazgos funcionales. También ejecutó seis
+  casos del diagnóstico real, dos del flujo de animación y seis del núcleo.
 
 ## Límites
 
@@ -146,6 +158,9 @@ abordar en Calle 127. Evidencia independiente del aviso de 2018.
 - Solo 8 G y 8 T tienen evidencia GTFS integrada; ampliar a más servicios es
   aditivo sobre `servedStops`.
 - Calle 53 queda fuera del patrón mapeado por no estar en la capa de estaciones.
+- Las franjas son primera y última salida programadas, no la próxima salida ni
+  una garantía de servicio continuo. En un transbordo ambos abordajes se evalúan
+  contra la hora actual; no se inventan tiempos de viaje ni de llegada.
 - Calle 187 en 8 T conserva evidencia informativa (aparece en el patrón con más
   viajes) pero NO es prescriptible: su `status` es `sin-verificar` con
   `canBoard`/`canAlight` en falso hasta distinguir el patrón, porque hay viajes

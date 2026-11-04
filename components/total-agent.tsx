@@ -35,7 +35,7 @@ const VIAJE_NO_CONFIRMABLE =
 
 /**
  * Deja una respuesta lista para mostrar/hablar/navegar con seguridad. Las
- * acciones que no son de viaje no dan órdenes de abordaje y pasan igual. Una
+ * acciones que no son de viaje se descartan si traen órdenes de abordaje. Una
  * respuesta de viaje se revalida contra el catálogo MÁS RECIENTE y el reloj
  * actual, y su texto y pasos se RECONSTRUYEN desde el resumen validado con la
  * función responsable compartida; nunca se confía en la prosa recibida. Si no
