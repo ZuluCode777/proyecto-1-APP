@@ -1486,9 +1486,13 @@ function repintar({ enfocar = null, respaldo = null } = {}) {
 }
 
 // ---------- Escenarios de tarea: todos empiezan en Inicio ----------
+// «Desconectar en 20 s» pedido desde el panel y aún sin cumplir. Reiniciar lo descarta junto con los
+// temporizadores; aplicar una tarea toma antes su copia y lo vuelve a programar.
+let desconexionPendiente = 0
 function reiniciar({ conservar = true } = {}) {
   for (const id of temporizadores) clearTimeout(id)
   temporizadores.clear()
+  desconexionPendiente = 0
   const variante = E.variante, ajustes = { ...E.ajustes }
   Object.assign(E, estadoInicial())
   if (conservar) { E.variante = variante; E.ajustes = ajustes }
@@ -1509,10 +1513,8 @@ const ESCENARIOS = {
   T9: ['T9 Accesorio desconectado y reconexión', () => { E.permisos.bluetooth = 'concedido'; E.acc.elegido = 'TMV-01'; E.acc.estado = 'sinDeteccion' }],
   T10: ['T10 Lupa con texto al 200 % y modo baja visión', () => { Object.assign(E.ajustes, { texto: 200, bajaVision: true }) }],
 }
-let desconexionPendiente = 0
 function aplicarEscenario(clave) {
   const pendiente = desconexionPendiente
-  desconexionPendiente = 0
   reiniciar()
   ESCENARIOS[clave][1]()
   // Si se pidió «Desconectar en 20 s» antes de aplicar, se vuelve a programar tras reiniciar.

@@ -321,6 +321,19 @@ async (page) => {
     await ev(() => { document.querySelector('#panel').hidden = false })
     return antes[0] === 'sinDeteccion' && antes[1] && despues[0] === 'sinDatos' && /se perdió/.test(despues[1]) && /desconectado/.test(despues[2]) ? true : JSON.stringify({ antes, despues })
   })
+  // Con clics reales de Playwright: «Reiniciar estado» descarta la desconexión pedida antes, aunque luego se aplique T9.
+  await prueba('R3-1: «Desconectar en 20 s», «Reiniciar estado» y aplicar T9 no desconecta a los 20 s', async () => {
+    await ev(() => { const panel = document.querySelector('#panel'); panel.hidden = false; panel.querySelector('details').open = true })
+    await page.click('#panel [data-panel="desconectar-20"]')
+    await page.click('#panel [data-panel="reiniciar"]')
+    await page.selectOption('#panel-escenario', 'T9')
+    await page.click('#panel [data-panel="aplicar-escenario"]')
+    const antes = await ev(() => window.prototipo.E.acc.estado)
+    await esperar(20600)
+    const despues = await ev(() => [window.prototipo.E.acc.estado, window.prototipo.E.avisos.some((a) => a.clave === 'accesorio-desconectado'), document.querySelector('#panel-salida').textContent])
+    await ev(() => window.scrollTo(0, 0))
+    return antes === 'sinDeteccion' && despues[0] === 'sinDeteccion' && !despues[1] && !/desconectado/.test(despues[2]) ? true : JSON.stringify({ antes, despues })
+  })
   for (const v of ['A', 'B']) {
     await prueba(`${v}: los «details» abiertos siguen abiertos tras un evento`, async () => {
       const r = await ev((v) => {
