@@ -105,6 +105,11 @@ Para usar Ollama, copia `.env.example` a `.env.local` y pon el modelo. En la
 máquina con Windows la app usa su propia instancia de Ollama en el puerto
 11435; ver [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md).
 
+`pnpm start` corre en producción y **exige `APP_PASSWORD`** (en `.env.local` o
+`APP_PASSWORD=<clave> pnpm start`): sin ella, toda ruta responde 503. `pnpm
+dev` no la exige. `pnpm verificar` **no lee `.env.local`**: la clave tiene que
+estar en el entorno de la consola, `APP_PASSWORD=<clave> pnpm verificar`.
+
 `http://localhost` es un contexto seguro, así que el micrófono, la cámara y la
 ubicación funcionan en local. **No** funcionan por HTTP simple desde otro
 dispositivo, por ejemplo `http://192.168.1.5:3000`. Para eso se usa Tailscale;

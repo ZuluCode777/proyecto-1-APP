@@ -21,6 +21,16 @@ const CLAVE = "clave-de-prueba"
  * Código del servidor falso que ejecuta `node -e`. Argumentos: puerto, clave, modo.
  * - `ok`: se comporta como la app (401 sin credencial, 200 con la correcta; 413 al
  *   pasar de la cota en `POST /api/agent`).
+ *   Como Next, resuelve la barra final con 308 y `Location` relativo ANTES de
+ *   mirar la credencial.
+ * - `fuga-location-barra`: como `ok`, pero el 308 de `/api/agent/` apunta a un
+ *   destino con host y userinfo. Solo esa ruta falla.
+ * - `fuga-location-doble`: como `ok`, pero el 308 de `//evil.com/` es
+ *   protocolo-relativo (`Location: //evil.com/`). Solo esa ruta falla.
+ * - `fuga-cookie-barra`, `fuga-cookie-doble`: el 308 de esa única ruta incluye
+ *   `Set-Cookie`.
+ * - `estado-barra`, `estado-doble`: esa única ruta responde 301 (con `Location`
+ *   correcto y sin cookie) en vez de 308.
  * - `muere-en-post`: como `ok`, pero termina el proceso al llegar el POST.
  * - `calla-en-get`: acepta la conexión y nunca responde a `GET`.
  * - `calla-en-post`: como `ok`, pero nunca responde al POST.
@@ -35,6 +45,16 @@ if (modo === "falla-pronto") setTimeout(() => process.exit(1), 150)
 else if (modo === "ignora-sigterm") { process.on("SIGTERM", () => {}); setInterval(() => {}, 1000) }
 else {
   http.createServer((req, res) => {
+    if (req.url.endsWith("/") && req.url !== "/") {
+      // Como Next: quita la barra final, salvo en //host/, donde solo colapsa las barras iniciales.
+      const destino = req.url.startsWith("//") ? req.url.replace(/^\\/+/, "/") : req.url.slice(0, -1)
+      const aqui = modo.endsWith(req.url.startsWith("//") ? "-doble" : "-barra")
+      res.statusCode = aqui && modo.startsWith("estado") ? 301 : 308
+      const fuga = req.url.startsWith("//") ? "//evil.com/" : "http://u:p@evil.com" + destino
+      res.setHeader("location", aqui && modo.startsWith("fuga-location") ? fuga : destino)
+      if (aqui && modo.startsWith("fuga-cookie")) res.setHeader("set-cookie", "sesion=1")
+      return res.end(destino)
+    }
     if (modo === "calla-en-get" && req.method === "GET") return
     if (req.method === "POST" && req.headers.authorization === esperada) {
       if (modo === "muere-en-post") process.exit(3)
@@ -97,6 +117,35 @@ test("servidor correcto: devuelve 0 y no deja su proceso vivo", async () => {
   assert.equal(r.codigo, 0, r.errores)
   assert.ok(r.pidHijo !== undefined)
   assert.equal(estaVivo(r.pidHijo), false, "el PID lanzado salió de verdad")
+})
+
+// Cada modo rompe UNA sola comprobación y se fija su mensaje exacto: quitar del
+// script cualquiera de las seis comprobaciones de redirección hace fallar una prueba.
+const FUGAS_DE_REDIRECCION: Record<string, RegExp> = {
+  "fuga-location-barra": /GET \/api\/agent\/ sin credencial: Location/,
+  "fuga-location-doble": /GET \/\/evil\.com\/ sin credencial: Location/,
+  "fuga-cookie-barra": /GET \/api\/agent\/ sin credencial: Set-Cookie/,
+  "fuga-cookie-doble": /GET \/\/evil\.com\/ sin credencial: Set-Cookie/,
+  "estado-barra": /GET \/api\/agent\/ sin credencial: se esperaba 308; fue 301/,
+  "estado-doble": /GET \/\/evil\.com\/ sin credencial: se esperaba 308; fue 301/,
+}
+
+for (const [modo, mensaje] of Object.entries(FUGAS_DE_REDIRECCION)) {
+  test(`redirección defectuosa (${modo}): falla con el mensaje de esa comprobación`, async () => {
+    const r = await ejecutar(modo)
+    assert.equal(r.codigo, 1)
+    assert.match(r.errores, mensaje)
+    assert.equal(estaVivo(r.pidHijo), false)
+  })
+}
+
+test("el mensaje de fallo no imprime userinfo ni valores de Set-Cookie", async () => {
+  const filtrado = await ejecutar("fuga-location-barra")
+  assert.doesNotMatch(filtrado.errores, /u:p@/)
+  assert.match(filtrado.errores, /<redactado>@/)
+  const cookie = await ejecutar("fuga-cookie-doble")
+  assert.doesNotMatch(cookie.errores, /sesion=1/)
+  assert.match(cookie.errores, /<presente>/)
 })
 
 test("sin clave utilizable falla antes de lanzar nada", async () => {
