@@ -14,8 +14,8 @@ Las dos variantes tienen las mismas nueve áreas y los mismos textos:
 
 | Variante | Estructura |
 | --- | --- |
-| **A — Una acción principal** | Inicio en estrella: cada área a un nivel de distancia, con «Volver». Cada pantalla tiene título, una frase de estado, una acción grande y los detalles plegados en «Detalles del estado». La franja de actividad y «La app dijo» van arriba, antes del título. |
-| **B — Pestañas y lista de estados** | Cinco pestañas: Inicio, Viajar, Asistente, Avisos y Más. Cada pantalla lista todos sus estados como filas, con la acción junto a cada fila. La franja de actividad, «La app dijo» y las pestañas van abajo. |
+| **A: Una acción principal** | Inicio en estrella: cada área a un nivel de distancia, con «Volver». Cada pantalla tiene título, una frase de estado, una acción grande y los detalles plegados en «Detalles del estado». La franja de actividad y «La app dijo» van arriba, antes del título. |
+| **B: Pestañas y lista de estados** | Cinco pestañas: Inicio, Viajar, Asistente, Avisos y Más. Cada pantalla lista todos sus estados como filas, con la acción junto a cada fila. La franja de actividad, «La app dijo» y las pestañas van abajo. |
 
 Se descartó una tercera variante de flujo guiado (C en [arquitectura](../../arquitectura-y-experimentos.md), prototipo P2) para respetar el día-persona estimado. Puede añadirse si las sesiones muestran problemas de orientación inicial.
 
@@ -86,7 +86,7 @@ Las filas de B probablemente se leen en VoiceOver como dos paradas (nombre y val
 
 ### Revisión experta
 
-| | A — Una acción principal | B — Pestañas y lista de estados |
+| | A: Una acción principal | B: Pestañas y lista de estados |
 | --- | --- | --- |
 | A favor | Una decisión por pantalla; la acción principal aparece en los primeros pasos. «Detener sesión» queda tres paradas antes del título; «La app dijo», dos. Menos texto que recorrer. | Todo el estado visible a la vez. Las pestañas cambian de área sin volver a Inicio. Patrón conocido de iOS. Cada acción está junto al estado que cambia. |
 | En contra | Los estados quedan plegados: ver todo exige abrir «Detalles del estado». Cambiar de área exige volver a Inicio. | Cancelar y «La app dijo» quedan al final, lejos del título. Las pestañas no crecen con Dynamic Type; iOS lo compensa con el visor de contenido grande. «Más» esconde lupa, ajustes, accesorio y Metro. |

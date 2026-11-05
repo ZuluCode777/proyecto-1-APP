@@ -1,6 +1,6 @@
 # EA-02 (#28): plan de trabajo y reparto
 
-Issue: [#28 — Prototipar rediseño accesible de los flujos principales del iPhone](https://github.com/ZuluCode777/proyecto-1-APP/issues/28), parte de [#26](https://github.com/ZuluCode777/proyecto-1-APP/issues/26). Bloquea a [#43](https://github.com/ZuluCode777/proyecto-1-APP/issues/43). Responsable: A2. Rama: `ea-02-prototipo-accesible`.
+Issue: [#28: Prototipar rediseño accesible de los flujos principales del iPhone](https://github.com/ZuluCode777/proyecto-1-APP/issues/28), parte de [#26](https://github.com/ZuluCode777/proyecto-1-APP/issues/26). Bloquea a [#43](https://github.com/ZuluCode777/proyecto-1-APP/issues/43). Responsable: A2. Rama: `ea-02-prototipo-accesible`.
 
 ## Objetivo
 
