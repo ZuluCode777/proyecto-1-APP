@@ -1,4 +1,7 @@
 import { z } from "zod"
+import { decidirAccesoDeEntorno, respuestaDeDecision } from "@/lib/autenticacion"
+import { leerCuerpoLimitado } from "@/lib/cuerpo-peticion"
+import { claveCliente } from "@/lib/identidad-cliente"
 import { parseIntent, plainReply, runIntent, type AgentContext, type Intent } from "@/lib/local-agent"
 import { OLLAMA_MODEL, ollamaConfigured, ollamaStatus, parseIntentWithOllama } from "@/lib/ollama"
 import { createRateLimiter } from "@/lib/rate-limit"
@@ -7,28 +10,35 @@ import { getTransmilenioData } from "@/lib/transmilenio-data"
 
 export const maxDuration = 30
 
-/** Tamaño máximo del cuerpo de la petición, en caracteres. */
-const MAX_BODY_CHARS = 2_000
+/**
+ * Tamaño máximo del cuerpo de la petición, EN BYTES. EA-10 (#36): es una cota de
+ * bytes aplicada al leer el stream, no de caracteres contados tras acumular todo
+ * el cuerpo. Es independiente del límite de la frase (`MAX_MESSAGE_CHARS`): el
+ * cuerpo se acota antes de interpretar nada.
+ */
+const MAXIMO_BYTES_CUERPO = 4_000
 /** Longitud máxima de la frase que se interpreta. */
 const MAX_MESSAGE_CHARS = 300
-/** Peticiones por IP y por minuto. */
+/** Peticiones por clave y por minuto. */
 const RATE_LIMIT = 20
 const RATE_WINDOW_MS = 60_000
 
 const rateLimit = createRateLimiter({ limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS })
 
 /**
- * Identifica a quien llama para el límite de peticiones.
- *
- * ponytail: confía en `x-forwarded-for`, que solo es fiable detrás de un proxy
- * que lo reescriba (Tailscale serve lo hace). Si algún día se expone el
- * servidor directamente a internet, leer la IP del socket, porque esta
- * cabecera se puede falsificar.
+ * Guardia de acceso HTTP Basic de la ruta. `/api/agent` se excluye del `proxy`
+ * (para que Next no clone su cuerpo y la cota por stream actúe sobre el cuerpo
+ * real), así que GET y POST aplican aquí la MISMA decisión que el `proxy`
+ * (`decidirAccesoDeEntorno`): 401 sin credencial o incorrecta, 503 en producción
+ * sin clave utilizable, y continúa si está permitido. Devuelve la respuesta de
+ * denegación, o `null` si se permite. No es una respuesta del agente: su cuerpo
+ * es texto plano, igual que el del `proxy` (no `AgentReply`).
  */
-function clientKey(req: Request): string {
-  const forwarded = req.headers.get("x-forwarded-for")
-  if (forwarded) return forwarded.split(",")[0].trim()
-  return req.headers.get("x-real-ip") ?? "local"
+function guardarAcceso(req: Request): Response | null {
+  const decision = decidirAccesoDeEntorno({ autorizacion: req.headers.get("authorization") })
+  if (decision.kind === "permitido") return null
+  const { estado, cuerpo, cabeceras } = respuestaDeDecision(decision)
+  return new Response(cuerpo, { status: estado, headers: cabeceras })
 }
 
 /**
@@ -57,14 +67,19 @@ const BodySchema = z.object({
 const answer = (reply: string, status = 200, headers?: HeadersInit) => Response.json(plainReply(reply), { status, headers })
 
 /** Qué motor interpreta las frases, para la pantalla de diagnóstico. */
-export async function GET() {
+export async function GET(req: Request) {
+  const denegado = guardarAcceso(req)
+  if (denegado) return denegado
   if (!ollamaConfigured()) return Response.json({ engine: "reglas" })
   const status = await ollamaStatus()
   return Response.json({ engine: "ollama", model: OLLAMA_MODEL, ...status })
 }
 
 export async function POST(req: Request) {
-  const { allowed, retryAfterSeconds } = rateLimit(clientKey(req))
+  const denegado = guardarAcceso(req)
+  if (denegado) return denegado
+
+  const { allowed, retryAfterSeconds } = rateLimit(claveCliente())
   if (!allowed) {
     return answer("Estás haciendo muchas peticiones seguidas. Espera un momento e inténtalo otra vez.", 429, {
       "Retry-After": String(retryAfterSeconds),
@@ -73,8 +88,14 @@ export async function POST(req: Request) {
 
   let message = ""
   let lectura: AgentContext["position"]
-  const raw = await req.text()
-  if (raw.length > MAX_BODY_CHARS) return answer("Ese mensaje es demasiado largo. Dilo en una frase corta.", 413)
+  // EA-10 (#36): se lee el cuerpo por stream con cota de bytes ANTES de acumular
+  // todo. Un cuerpo por encima del límite corta la lectura y responde 413; un
+  // error o cancelación de la lectura responde 400 sin provocar 500 ni dejar el
+  // stream abierto. La cota es de bytes y es independiente del límite de la frase.
+  const cuerpo = await leerCuerpoLimitado({ cuerpo: req.body, maximoBytes: MAXIMO_BYTES_CUERPO })
+  if (cuerpo.kind === "excedido") return answer("Ese mensaje es demasiado largo. Dilo en una frase corta.", 413)
+  if (cuerpo.kind === "error") return answer("No pude leer tu mensaje. Inténtalo de nuevo.", 400)
+  const raw = cuerpo.texto
   try {
     const body = BodySchema.safeParse(JSON.parse(raw))
     if (body.success) {
