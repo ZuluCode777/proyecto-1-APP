@@ -27,7 +27,14 @@ pnpm build
 pnpm start
 ```
 
-Abre `http://localhost:3000`.
+Antes de `pnpm start`, define `APP_PASSWORD` en `.env.local` o en la misma
+línea (`$env:APP_PASSWORD = "<clave>"; pnpm start`). `pnpm start` corre en
+producción y, sin clave, **toda ruta responde 503**. `pnpm verificar` **no lee
+`.env.local`**: la clave tiene que estar en el entorno de la consola
+(`$env:APP_PASSWORD = "<clave>"; pnpm verificar`).
+
+Abre `http://localhost:3000` (el navegador pide la clave; el usuario puede ser
+cualquiera).
 
 `http://localhost` es un contexto seguro, así que el micrófono, la cámara, la
 ubicación y la brújula funcionan en Chrome de escritorio.
@@ -123,8 +130,8 @@ de administración de Tailscale, en DNS. Sin eso no hay certificado.
 ### Publicarla en internet con Funnel
 
 Para que la abra alguien que no está en la tailnet, por ejemplo el resto del
-grupo, se usa Funnel. **Antes, pon una clave**: sin ella, cualquiera con el
-enlace abre la app y usa la GPU de la máquina con el asistente.
+grupo, se usa Funnel. **Antes, pon una clave**: sin ella la app no sirve nada
+(responde 503), así que no hay nada que publicar.
 
 En `D:\visionaria\.env.local`:
 
@@ -147,14 +154,14 @@ tailscale funnel status
 La dirección es la misma, `https://<máquina>.<tailnet>.ts.net`, ahora abierta a
 internet. Funnel tiene que estar permitido en la política de la tailnet
 (atributo `funnel`); si no, el comando da el enlace para activarlo. Si la app
-arranca sin clave, lo advierte en su salida.
+arranca sin clave, lo advierte en su salida y responde 503 en toda ruta.
 
 La comprobación tiene que hacerse **desde fuera de la tailnet**, por ejemplo
 desde un celular con datos móviles o un equipo sin Tailscale. Desde un equipo
 de la tailnet, el nombre `ts.net` lleva a la dirección interna y la petición
 no pasa por Funnel.
 
-- Sin clave, la app responde 401 y el navegador pide usuario y clave:
+- Sin credencial, la app responde 401 y el navegador pide usuario y clave:
   `curl -I https://<máquina>.<tailnet>.ts.net`
 - Con clave, pasan las nueve pruebas. La clave se escribe sin mostrarla, para
   que no quede en el historial de la consola:

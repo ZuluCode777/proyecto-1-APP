@@ -6,8 +6,12 @@ __v0_jsx-dev-runtime.ts
 .v0-trash/
 .vercel/
 
-# Environment variables
+# Environment variables: `next start` carga también .env y .env.production;
+# ninguno se versiona, salvo .env.example (sin valores reales)
 .env*.local
+.env
+.env.*
+!.env.example
 
 # Common ignores
 node_modules

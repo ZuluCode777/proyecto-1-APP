@@ -111,6 +111,34 @@ test("exceso de peticiones → 429 con Retry-After y contrato AgentReply (identi
   }
 })
 
+test("cabeceras reenviadas falsificadas no compran cuota propia: la 21ª sigue siendo 429", async () => {
+  await conEntorno({ nodeEnv: "production", clave: "secreta" }, async () => {
+    const e = await conEndpoint()
+    try {
+      let ultima: Response | undefined
+      for (let i = 1; i <= 21; i++) {
+        ultima = await e.POST(
+          new Request("http://local/api/agent", {
+            method: "POST",
+            body: JSON.stringify({ message: "hola" }),
+            headers: {
+              authorization: credencialesBasic("u:secreta"),
+              "x-forwarded-for": `203.0.113.${i}`,
+              "x-real-ip": `198.51.100.${i}`,
+            },
+          }),
+        )
+        if (i <= 20) assert.notEqual(ultima.status, 429, `petición ${i} dentro del límite`)
+      }
+      assert.ok(ultima)
+      assert.equal(ultima.status, 429, "una IP inventada por petición no abre cuota nueva")
+      assert.ok(ultima.headers.get("Retry-After"), "incluye Retry-After")
+    } finally {
+      e.restaurar()
+    }
+  })
+})
+
 // ── Guardia HTTP Basic de la ruta (API protegida igual que la UI del proxy) ──
 
 test("producción sin clave utilizable → 503 en GET y POST (no abre la API)", async () => {

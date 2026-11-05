@@ -145,10 +145,36 @@ queda PENDIENTE de EA-14/#40, antes de exponer.
 | ¿Puede un cliente inyectar saltos extra? | Que no muevan el salto de confianza |
 | `x-real-ip`: ¿lo escribe el proxy o el cliente? | No usarlo como identidad si lo puede escribir el cliente |
 
+**Hallazgo medido en Next local (16.3.3, `next start` en loopback; NO es
+Render).** Next solo escribe `x-forwarded-for` cuando la petición no lo trae:
+sin la cabecera, el manejador la ve como `127.0.0.1` (la dirección del socket);
+con `x-forwarded-for: 1.2.3.4, 5.6.7.8` y `x-real-ip: 9.9.9.9` enviados por el
+cliente, el manejador recibe esos mismos valores sin cambios (y sin `x-real-ip`
+enviado, este llega ausente). Por tanto, en el manejador no se distingue la
+dirección del socket de un valor escrito por el cliente, y el número de saltos
+de confianza hay que medirlo en Render (EA-14/#40); no se puede inferir de este
+resultado. Fuente: `node_modules/next/dist/server/base-server.js:612`
+(`req.headers['x-forwarded-for'] ??= …socket.remoteAddress`, Next 16.3.3). La
+medición HTTP fue una sonda ad hoc con una ruta temporal que no se conservó.
+
 **Reversión que suspende la exposición:** mientras `claveCliente()` devuelva la
 clave acotada, toda identidad es conservadora (comportamiento seguro). Combinado
 con el criterio 1 (producción sin clave = 503), la reversión segura suspende la
 exposición.
+
+### Redirecciones sin fuga de credenciales
+
+Medido sobre `next start` real (16.3.3, loopback, no Render): la redirección por
+barra final (308) la resuelve Next ANTES del `proxy` y de la guardia de la ruta.
+`GET /api/agent/` sin credencial → **308** con `location: /api/agent` (relativo,
+sin esquema, host ni userinfo) y sin `set-cookie`; con credencial da lo mismo.
+`GET //evil.com/` → **308** con `Location: /evil.com/`, no una redirección
+protocolo-relativa a otro origen. El código de la app no llama a `redirect()` ni
+a `NextResponse.redirect`, y ningún `fetch` saliente reenvía `Authorization`.
+`scripts/verificar-ea10-http.mjs` comprueba contra el servidor real solo el caso
+SIN credencial (308, `Location` y ausencia de `Set-Cookie`, en ambas rutas; sin
+seguir redirecciones y con ruta cruda para `//evil.com/`). El resultado CON
+credencial salió de una medición ad hoc, no del script.
 
 ### Criterio 5 — alcance demo de una sola instancia y pruebas de helpers tocados
 
@@ -188,8 +214,11 @@ nuevas:
 - `lib/ea10-identidad-cliente.test.ts`: la clave del cliente es siempre la acotada
   común (no se confía en cabeceras). (Sintética; no certifica el proxy.)
 - `lib/ea10-endpoint.test.ts`: endpoint real → 413 (cuerpo grande), 400 (error de
-  lectura, sin 500), 200 válido, 429 + `Retry-After`, y la **guardia Basic en GET
-  y POST** (producción sin clave/vacía/whitespace → 503; con clave: 401 sin
+  lectura, sin 500), 200 válido, 429 + `Retry-After`, **21 peticiones
+  autenticadas con `x-forwarded-for` y `x-real-ip` distintos en cada una: las 20
+  primeras no son 429 y la 21ª sí, con `Retry-After`** (las cabeceras
+  falsificadas no compran cuota propia), y la **guardia Basic en GET y POST**
+  (producción sin clave/vacía/whitespace → 503; con clave: 401 sin
   credencial o incorrecta, acceso con la correcta; desarrollo sin clave permite),
   todos con contrato `AgentReply` en las respuestas de agente. Cada caso carga una
   instancia fresca por import con query (aislamiento del contador sin reset); el
@@ -200,12 +229,20 @@ nuevas:
 - `lib/ea10-proxy-matcher.test.ts`: solo `/api/agent` exacto queda fuera del
   `proxy`; UI, otras APIs, `/api/agentx`, `/api/agent/sub`, `_next/static`,
   `_next/image` y favicon siguen protegidos.
+- `lib/ea10-secretos.test.ts`: `git check-ignore --no-index` confirma que
+  `.env`, `.env.production`, `.env.development`, `.env.local`,
+  `.env.production.local` y `.env-staging.local` están ignorados y que
+  `.env.example` no.
 - `lib/ea10-verificador-http.test.ts`: ciclo de vida del verificador HTTP con un
-  servidor Node falso (no Next): servidor correcto → 0; sin clave utilizable, puerto
-  ocupado (sin lanzar nada ni tocar al ocupante), hijo que falla tras la sonda
-  mientras otro servidor responde 401/413, hijo que muere durante la prueba, hijo
-  que no responde (GET o POST) y recurso estático ausente → falla; y que el PID
-  lanzado queda muerto siempre, incluso si ignora SIGTERM (SIGKILL).
+  servidor Node falso (no Next): servidor correcto → 0; seis modos de
+  redirección defectuosa, cada uno en UNA sola ruta (`Location` con host y
+  userinfo o protocolo-relativo, `Set-Cookie`, 301 en vez de 308) → falla con el
+  mensaje de esa comprobación, sin imprimir userinfo ni cookies; sin clave
+  utilizable, puerto ocupado (sin lanzar nada ni tocar al ocupante), hijo que
+  falla tras la sonda mientras otro servidor responde 401/413, hijo que muere
+  durante la prueba, hijo que no responde (GET o POST) y recurso estático
+  ausente → falla; y que el PID lanzado queda muerto siempre, incluso si ignora
+  SIGTERM (SIGKILL).
 
 **Verificación HTTP local (P1 #2)** con `scripts/verificar-ea10-http.mjs` (fuera
 de `pnpm test`, necesita `pnpm build` previo). Uso, con la clave OBLIGATORIA
@@ -218,7 +255,9 @@ solo ese PID (SIGTERM y, si no sale a tiempo, SIGKILL; espera la salida real).
 Comprueba: `POST /api/agent` con cuerpo `chunked` que supera la cota sin terminar
 de enviarse → **HTTP 413 tras ~4012 bytes** (cota 4000); sin credencial,
 `/api/agent` GET y POST, `/api/transmilenio`, `/` y un JS existente de
-`/_next/static/chunks/` → **401**; el mismo JS con la clave → 200.
+`/_next/static/chunks/` → **401**; el mismo JS con la clave → 200;
+`GET /api/agent/` → 308 con `Location: /api/agent` y sin `Set-Cookie`;
+`GET //evil.com/` → 308 con `Location: /evil.com/`.
 
 **Mutaciones comprobadas** (revertir el arreglo → falla la prueba/verificación →
 restaurar):
@@ -232,14 +271,17 @@ restaurar):
 | Quitar `api/agent` del `matcher` del `proxy` (P1 #2) | la verificación HTTP chunked NO recibe 413 antes de terminar (status 0 tras ~20 KiB): el clon del proxy almacena el cuerpo |
 | Volver a excluir `_next/static` del `matcher` | falla `ea10-proxy-matcher.test.ts` y el verificador HTTP real: `GET /_next/static/chunks/….js sin credencial: se esperaba 401; fue 200` |
 | Verificador con el puerto ocupado por otro servidor que responde 401/413 | sale con 1 antes de lanzar nada (el script anterior salía con 0 si su hijo fallaba por `EADDRINUSE`) |
+| Quitar de `.gitignore` `.env`, `.env.*` y `!.env.example` | falla `ea10-secretos.test.ts` (`.env`/`.env.production` ya no se ignoran) |
+| Servidor falso que filtra en `Location` o `Set-Cookie`, o da 301, en una sola ruta | el verificador sale con 1 y nombra la comprobación; quitar cualquiera de las seis comprobaciones del script hace fallar una prueba |
+| Limitador de `/api/agent` con clave `x-forwarded-for` en vez de `claveCliente()` | falla la prueba de cabeceras falsificadas (la 21ª no es 429) |
 
 ### Puertas sobre el código final (portátil Linux)
 
 - `pnpm exec tsc --noEmit`: salida 0.
-- `pnpm test`: 340/340 correctas, 0 falladas, 0 canceladas.
+- `pnpm test`: 350/350 correctas, 0 falladas, 0 canceladas.
 - `pnpm build`: salida 0 (incluye `ƒ Proxy (Middleware)`); verificador HTTP real
-  sobre ese build: salida 0 con 413 y 401 en todas las rutas, y sin proceso ni
-  puerto residual.
+  sobre ese build: salida 0 con 413, 401 en todas las rutas y las redirecciones
+  308 sin fuga, y sin proceso ni puerto residual.
 - `pnpm verificar http://127.0.0.1:32136`, con autenticación: 9/9 pruebas
   correctas en Chrome. Cámara, micrófono y ubicación usan los dispositivos y
   permisos simulados del verificador; no acredita VoiceOver ni sensores físicos.

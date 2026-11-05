@@ -10,6 +10,10 @@
  *   no almacena su cuerpo) y la cota actúa sobre el cuerpo real.
  * - Sin credencial, la API excluida del `proxy`, otra API, la UI y un recurso
  *   estático existente de Next dan 401; con la clave correcta, 200.
+ * - Redirecciones sin fuga de credenciales: `GET /api/agent/` sin credencial da
+ *   308 (la barra final la resuelve Next ANTES del `proxy` y de la guardia) con
+ *   `Location: /api/agent` relativo y sin `Set-Cookie`; `GET //evil.com/` da 308
+ *   a `/evil.com/`, no a un destino con host. No se siguen redirecciones.
  *
  * No es parte de `pnpm test` (necesita `pnpm build` previo). Uso, desde
  * `visionaria/`, con la clave OBLIGATORIA (el script fuerza `NODE_ENV=production`,
@@ -107,7 +111,7 @@ async function detenerServidor(hijo, graciaMs) {
   await hijo.terminado
 }
 
-/** Petición simple con plazo TOTAL y cancelable; devuelve el código HTTP. */
+/** Petición simple con plazo TOTAL y cancelable; devuelve estado, `location` y `set-cookie`. Sin seguir redirecciones. */
 function consulta({ puerto, metodo = "GET", ruta, autorizacion, plazoMs, senal }) {
   return new Promise((resolver, rechazar) => {
     const plazo = setTimeout(() => req.destroy(new Error(`sin respuesta a ${metodo} ${ruta} en ${plazoMs} ms`)), plazoMs)
@@ -116,7 +120,7 @@ function consulta({ puerto, metodo = "GET", ruta, autorizacion, plazoMs, senal }
       (res) => {
         res.resume()
         clearTimeout(plazo)
-        resolver(res.statusCode)
+        resolver({ estado: res.statusCode, location: res.headers.location, setCookie: res.headers["set-cookie"] })
       },
     )
     req.on("error", (e) => {
@@ -181,7 +185,7 @@ async function esperarServidor({ hijo, puerto, autorizacion, plazoArranqueMs, pl
     if (Date.now() > limite) throw new Error(`el servidor no quedó listo en ${plazoArranqueMs} ms`)
     if (hijo.listo) {
       try {
-        if ((await consulta({ puerto, ruta: "/", autorizacion, plazoMs: plazoPeticionMs, senal })) === 200) return
+        if ((await consulta({ puerto, ruta: "/", autorizacion, plazoMs: plazoPeticionMs, senal })).estado === 200) return
       } catch {
         // aún no atiende: se reintenta hasta el límite
       }
@@ -191,11 +195,15 @@ async function esperarServidor({ hijo, puerto, autorizacion, plazoArranqueMs, pl
 }
 
 /** Exige que `obtenido` sea `esperado`; deja constancia del fallo y lo devuelve. */
-function exigir(salida, descripcion, obtenido, esperado) {
+function exigir(salida, descripcion, obtenido, esperado, formato = String) {
   if (obtenido === esperado) return true
-  salida.error(`FALLO: ${descripcion}: se esperaba ${esperado}; fue ${obtenido}.`)
+  salida.error(`FALLO: ${descripcion}: se esperaba ${formato(esperado)}; fue ${formato(obtenido)}.`)
   return false
 }
+
+// Un `Set-Cookie` o un `user:clave@` filtrados no deben acabar en la consola ni en los registros de CI.
+const formatoCookie = (v) => (v === undefined ? "ausente" : "<presente>")
+const formatoLocation = (v) => String(v).replace(/\/\/[^/@\s]*@/, "//<redactado>@")
 
 /** @param {OpcionesVerificacion} opciones */
 export async function verificar({
@@ -256,11 +264,23 @@ export async function verificar({
             ok = false
             continue
           }
-          ok = exigir(salida, `${metodo} ${ruta} sin credencial`, await consulta({ ...base, metodo, ruta }), 401) && ok
+          ok = exigir(salida, `${metodo} ${ruta} sin credencial`, (await consulta({ ...base, metodo, ruta })).estado, 401) && ok
         }
         if (rutaEstatica) {
-          ok = exigir(salida, `GET ${rutaEstatica} con clave`, await consulta({ ...base, ruta: rutaEstatica, autorizacion }), 200) && ok
+          ok = exigir(salida, `GET ${rutaEstatica} con clave`, (await consulta({ ...base, ruta: rutaEstatica, autorizacion })).estado, 200) && ok
         }
+
+        // 3) Redirecciones sin fuga: la barra final se resuelve antes de la guardia, con `Location`
+        // relativo, sin `Set-Cookie` y sin host (ni `//evil.com/`, que sería un salto a otro origen).
+        const barra = await consulta({ ...base, ruta: "/api/agent/" })
+        ok = exigir(salida, "GET /api/agent/ sin credencial", barra.estado, 308) && ok
+        ok = exigir(salida, "GET /api/agent/ sin credencial: Location", barra.location, "/api/agent", formatoLocation) && ok
+        ok = exigir(salida, "GET /api/agent/ sin credencial: Set-Cookie", barra.setCookie, undefined, formatoCookie) && ok
+        // Ruta cruda: `http.request` con `path` no la normaliza, así que llega `//evil.com/` tal cual.
+        const doble = await consulta({ ...base, ruta: "//evil.com/" })
+        ok = exigir(salida, "GET //evil.com/ sin credencial", doble.estado, 308) && ok
+        ok = exigir(salida, "GET //evil.com/ sin credencial: Location", doble.location, "/evil.com/", formatoLocation) && ok
+        ok = exigir(salida, "GET //evil.com/ sin credencial: Set-Cookie", doble.setCookie, undefined, formatoCookie) && ok
         return ok ? 0 : 1
       })(),
     ])
@@ -272,7 +292,7 @@ export async function verificar({
     cancelar.abort()
     await detenerServidor(hijo, graciaMs)
   }
-  if (codigo === 0) salida.log("OK: 413 sin completar el envío y 401 sin credencial en todas las rutas.")
+  if (codigo === 0) salida.log("OK: 413 sin completar el envío, 401 sin credencial en todas las rutas y redirecciones 308 sin fuga.")
   return { codigo, pidHijo: hijo.proceso.pid }
 }
 

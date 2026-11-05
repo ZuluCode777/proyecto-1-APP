@@ -132,12 +132,17 @@ medio, salvo el mapa base.
 cd ~/"Documents/Intro Ing. Sistemas/Proyecto 1/visionaria"
 pnpm install
 pnpm build
-pnpm start
+APP_PASSWORD=<clave> pnpm start   # o APP_PASSWORD en .env.local
 ```
 
-Chrome → `http://localhost:3000`. `localhost` es un contexto seguro, así que
-funcionan todos los permisos. Si no hay internet, la app usa la copia guardada
-de los datos de TransMilenio; el mapa base no carga, pero todo lo demás sí.
+`pnpm start` corre en producción: sin `APP_PASSWORD`, toda ruta responde 503.
+`pnpm verificar` **no lee `.env.local`**: la clave tiene que estar en el
+entorno de la consola, `APP_PASSWORD=<clave> pnpm verificar`.
+
+Chrome → `http://localhost:3000` (pide la clave; el usuario puede ser
+cualquiera). `localhost` es un contexto seguro, así que funcionan todos los
+permisos. Si no hay internet, la app usa la copia guardada de los datos de
+TransMilenio; el mapa base no carga, pero todo lo demás sí.
 
 Esto solo sirve si ya estaba compilado. Hazlo una vez antes del viernes para
 que el día sea un solo `pnpm start`.
