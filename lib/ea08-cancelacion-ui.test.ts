@@ -10,6 +10,7 @@ import * as localAgent from "./local-agent"
 import * as rutas from "./routes"
 import * as seleccion from "./seleccion-interprete"
 import { TransmilenioDataSchema } from "./transmilenio"
+import * as ubicacion from "./ubicacion"
 
 /**
  * Regresión del issue #34 (EA-08) en la RAMA DE UI real: ejecuta el TSX de
@@ -112,6 +113,7 @@ function compilar(archivo: string, react: object, dobles: Record<string, unknown
     if (nombre === "@/lib/local-agent") return localAgent
     if (nombre === "@/lib/consulta-agente") return consultaAgente
     if (nombre === "@/lib/seleccion-interprete") return seleccion
+    if (nombre === "@/lib/ubicacion") return ubicacion
     if (nombre in dobles) return dobles[nombre]
     if (nombre === "lucide-react" || nombre.startsWith("@/components/") || nombre.startsWith("@/lib/")) {
       return (hijos[nombre] ??= new Proxy({}, { get: () => function Componente() {} }))
@@ -129,6 +131,7 @@ function compilar(archivo: string, react: object, dobles: Record<string, unknown
     Response,
     Event,
     EventTarget,
+    Date,
     SpeechSynthesisUtterance: ventana.SpeechSynthesisUtterance,
     get fetch() { return globalThis.fetch },
     navigator: { geolocation: undefined, vibrate: () => true, permissions: undefined, ...(ventana.navigator as object) },
@@ -528,7 +531,7 @@ test("D: permiso CONCEDIDO acota la posición a 2 s; si no llega, la consulta si
         setTimeout: reloj.setTimeout,
         clearTimeout: reloj.clearTimeout,
         navigator: {
-          geolocation: { getCurrentPosition: () => {} }, // nunca responde la posición
+          geolocation: { watchPosition: () => 1, clearWatch: () => {} }, // nunca responde la posición
           permissions: { query: async () => ({ state: "granted" }) },
           vibrate: () => true,
         },
@@ -570,7 +573,7 @@ test("D: permiso PENDIENTE anuncia «Esperando permiso», es cancelable y no blo
         setTimeout: reloj.setTimeout,
         clearTimeout: reloj.clearTimeout,
         navigator: {
-          geolocation: { getCurrentPosition: () => { getCurrentPositionLlamadas++ } }, // permiso sin responder
+          geolocation: { watchPosition: () => { getCurrentPositionLlamadas++; return 1 }, clearWatch: () => {} }, // permiso sin responder
           permissions: { query: async () => ({ state: "prompt" }) },
           vibrate: () => true,
         },
@@ -628,7 +631,7 @@ test("F: permiso PENDIENTE sin respuesta ni toque → a los 15 s la consulta sig
         setTimeout: reloj.setTimeout,
         clearTimeout: reloj.clearTimeout,
         navigator: {
-          geolocation: { getCurrentPosition: () => {} }, // el permiso nunca se responde
+          geolocation: { watchPosition: () => 1, clearWatch: () => {} }, // el permiso nunca se responde
           permissions: { query: async () => ({ state: "prompt" }) },
           vibrate: () => true,
         },
@@ -687,7 +690,7 @@ test("H1: el prefijo de permiso vencido va sobre el texto saneado, no sobre la p
         setTimeout: reloj.setTimeout,
         clearTimeout: reloj.clearTimeout,
         navigator: {
-          geolocation: { getCurrentPosition: () => {} }, // el permiso nunca se responde
+          geolocation: { watchPosition: () => 1, clearWatch: () => {} }, // el permiso nunca se responde
           permissions: { query: async () => ({ state: "prompt" }) },
           vibrate: () => true,
         },
@@ -733,7 +736,7 @@ test("G: cancelar mientras `permissions.query` está pendiente → no llama getC
         setTimeout: reloj.setTimeout,
         clearTimeout: reloj.clearTimeout,
         navigator: {
-          geolocation: { getCurrentPosition: () => { getCurrentPositionLlamadas++ } },
+          geolocation: { watchPosition: () => { getCurrentPositionLlamadas++; return 1 }, clearWatch: () => {} },
           permissions: { query: () => new Promise((res) => { resolverQuery.fn = res }) },
           vibrate: () => true,
         },
@@ -771,7 +774,7 @@ test("G: permiso DENEGADO → sigue sin coordenada de inmediato, sin leyenda de 
       { "@/hooks/use-speech": dobleVoz(voz, hookVoz()) },
       {
         navigator: {
-          geolocation: { getCurrentPosition: () => { getCurrentPositionLlamadas++ } },
+          geolocation: { watchPosition: () => { getCurrentPositionLlamadas++; return 1 }, clearWatch: () => {} },
           permissions: { query: async () => ({ state: "denied" }) },
           vibrate: () => true,
         },
@@ -813,8 +816,16 @@ test("M16: una frase `unknown` no pide `getCurrentPosition` ni adjunta `position
       {
         navigator: {
           // Concede la posición: así queda en caché (`positionRef`) y la mutación
-          // M16 (adjuntarla para `unknown`) sí la filtraría.
-          geolocation: { getCurrentPosition: (ok: (p: { coords: { latitude: number; longitude: number } }) => void) => { getCurrentPositionLlamadas++; ok({ coords: { latitude: 4.65, longitude: -74.1 } }) } },
+          // M16 (adjuntarla para `unknown`) sí la filtraría. Lectura REAL del
+          // navegador: con `timestamp` (hora de captura) y `accuracy`.
+          geolocation: {
+            watchPosition: (ok: (p: { coords: { latitude: number; longitude: number; accuracy: number }; timestamp: number }) => void) => {
+              getCurrentPositionLlamadas++
+              ok({ coords: { latitude: 4.65, longitude: -74.1, accuracy: 15 }, timestamp: Date.now() })
+              return 1
+            },
+            clearWatch: () => {},
+          },
           permissions: { query: async () => ({ state: "granted" }) },
           vibrate: () => true,
         },
@@ -837,6 +848,72 @@ test("M16: una frase `unknown` no pide `getCurrentPosition` ni adjunta `position
     await preguntar("cuéntame un chiste sobre buses")
     assert.equal(getCurrentPositionLlamadas, 1, "no vuelve a pedir la ubicación para una frase unknown")
     assert.equal(cuerpos[1], undefined, "una frase unknown no adjunta `position`, ni la que está en caché")
+  } finally {
+    globalThis.fetch = fetchOriginal
+  }
+})
+
+// ── EA-07 (#33): origen explícito desconocido no pide ni adjunta la ubicación ──
+
+test("EA-07: «desde Narnia a Ricaurte» no pide ni adjunta ubicación (tampoco con caché) y el respaldo pide aclarar", async () => {
+  ReconocimientoSimulado.instancias = []
+  const hooks = crearHooks()
+  const voz: string[] = []
+  let adquisiciones = 0
+  const cuerpos: Array<unknown> = []
+  const fetchOriginal = globalThis.fetch
+  let servidorCaido = false
+  globalThis.fetch = (async (_u: string, init?: RequestInit) => {
+    if (servidorCaido) throw new Error("sin red")
+    cuerpos.push(JSON.parse(String(init?.body ?? "{}")).position)
+    return new Response(JSON.stringify({ reply: "ok", action: "none", steps: [], engine: "reglas" }))
+  }) as unknown as typeof fetch
+  try {
+    const { TotalAgent } = compilar(
+      "components/total-agent.tsx",
+      hooks,
+      { "@/hooks/use-speech": dobleVoz(voz, hookVoz()) },
+      {
+        navigator: {
+          geolocation: {
+            watchPosition: (ok: (p: { coords: { latitude: number; longitude: number; accuracy: number }; timestamp: number }) => void) => {
+              adquisiciones++
+              ok({ coords: { latitude: 4.65, longitude: -74.1, accuracy: 15 }, timestamp: Date.now() })
+              return 1
+            },
+            clearWatch: () => {},
+          },
+          permissions: { query: async () => ({ state: "granted" }) },
+          vibrate: () => true,
+        },
+      },
+    )
+    const render = () => { hooks.iniciar(); const a = TotalAgent({ data: datos, onAction() {} }); hooks.ejecutarEfectos(); return a }
+    render()
+    const preguntar = async (t: string) => {
+      ;(idEntrada(render()).props.onChange as (e: { target: { value: string } }) => void)({ target: { value: t } })
+      render()
+      ;(formulario(render()).props.onSubmit as (e: { preventDefault: () => void }) => void)({ preventDefault() {} })
+      await asentar()
+    }
+    // Sin caché: no se adquiere ni se envía.
+    await preguntar("cómo llego desde Narnia a Ricaurte")
+    assert.equal(adquisiciones, 0, "origen explícito desconocido no pide la ubicación")
+    assert.equal(cuerpos[0], undefined, "no adjunta `position`")
+    // Con caché (un GPS previo la guarda): tampoco se adjunta.
+    await preguntar("dónde estoy")
+    assert.equal(adquisiciones, 1)
+    assert.ok(cuerpos[1], "el GPS sí la envía")
+    await preguntar("cómo llego desde Barrio Inexistente a Ricaurte")
+    assert.equal(adquisiciones, 1, "no vuelve a pedirla")
+    assert.equal(cuerpos[2], undefined, "no adjunta la caché")
+    // Respaldo local (servidor caído): pide aclarar el origen, sin usar GPS.
+    servidorCaido = true
+    voz.length = 0
+    await preguntar("cómo llego desde Narnia a Ricaurte")
+    assert.equal(adquisiciones, 1)
+    assert.ok(voz.some((t) => /No encontré la estación de origen narnia/.test(t)), "el respaldo pide aclarar el origen")
+    assert.ok(!voz.some((t) => /Usé tu ubicación|Toma la/.test(t)))
   } finally {
     globalThis.fetch = fetchOriginal
   }
@@ -1018,5 +1095,308 @@ test("R5-1: el aviso de privacidad del asistente mantiene su contenido esencial 
     assert.match(t, /escribir en vez de hablar/, "ofrece la alternativa por texto")
   } finally {
     globalThis.fetch = fetchOriginal
+  }
+})
+
+// ── EA-07 (#33) H5: adquisición de ubicación cancelable, dueño único ──
+
+/**
+ * Geolocalización con watchers CANCELABLES y entrega manual de callbacks, para
+ * reproducir la carrera A cancelada / B vigente / A tardía. `watchPosition`
+ * guarda el callback y devuelve un id; `clearWatch` lo retira. `entregar(id,…)`
+ * simula que el navegador llama al callback de ESE watcher.
+ */
+function geoCancelable() {
+  let id = 0
+  const activos = new Map<number, (p: unknown) => void>()
+  // Callbacks que el navegador ya tenía en vuelo: se conservan tras `clearWatch`
+  // para poder ENTREGAR uno cancelado de verdad (no un no-op sobre el mapa).
+  const historicos = new Map<number, (p: unknown) => void>()
+  const posicion = (lat: number, lng: number, accuracy: number, timestamp: number | null | undefined) => ({
+    coords: { latitude: lat, longitude: lng, accuracy },
+    timestamp,
+  })
+  return {
+    api: {
+      watchPosition(ok: (p: unknown) => void) { const n = ++id; activos.set(n, ok); historicos.set(n, ok); return n },
+      clearWatch(n: number) { activos.delete(n) },
+    },
+    get creados() { return id },
+    activo: (n: number) => activos.has(n),
+    entregar(n: number, lat: number, lng: number, accuracy = 10, timestamp: number | null | undefined = Date.now()) {
+      activos.get(n)?.(posicion(lat, lng, accuracy, timestamp))
+    },
+    /** Entrega al callback del watcher `n` AUNQUE ya se haya cancelado (carrera real del navegador). */
+    entregarHistorico(n: number, lat: number, lng: number, accuracy = 10, timestamp: number | null | undefined = Date.now()) {
+      const cb = historicos.get(n)
+      assert.ok(cb, "el callback histórico existe")
+      cb(posicion(lat, lng, accuracy, timestamp))
+    },
+  }
+}
+
+test("H5: A (GPS) cancelada, B (GPS) vigente; la A tardía no corrompe la caché ni se filtra a C", async () => {
+  ReconocimientoSimulado.instancias = []
+  const hooks = crearHooks()
+  const voz: string[] = []
+  const geo = geoCancelable()
+  const cuerpos: Array<{ lat: number; lng: number } | undefined> = []
+  const acciones: unknown[] = []
+  const fetchOriginal = globalThis.fetch
+  globalThis.fetch = (async (_u: string, init?: RequestInit) => {
+    cuerpos.push(JSON.parse(String(init?.body ?? "{}")).position)
+    return new Response(JSON.stringify({ reply: "ok", action: "none", steps: [], engine: "reglas" }))
+  }) as unknown as typeof fetch
+  try {
+    const { TotalAgent } = compilar(
+      "components/total-agent.tsx",
+      hooks,
+      { "@/hooks/use-speech": dobleVoz(voz, hookVoz()) },
+      {
+        navigator: {
+          geolocation: geo.api,
+          permissions: { query: async () => ({ state: "granted" }) },
+          vibrate: () => true,
+        },
+      },
+    )
+    const render = () => { hooks.iniciar(); const a = TotalAgent({ data: datos, onAction: (r: unknown) => acciones.push(r) }); hooks.ejecutarEfectos(); return a }
+    render()
+    const preguntar = (t: string) => {
+      ;(idEntrada(render()).props.onChange as (e: { target: { value: string } }) => void)({ target: { value: t } })
+      render()
+      ;(formulario(render()).props.onSubmit as (e: { preventDefault: () => void }) => void)({ preventDefault() {} })
+    }
+    const cancelarConToque = () => (botonPrincipal(render()).props.onClick as () => void)()
+    // A: arranca y crea el watcher 1; antes de que responda, la persona CANCELA
+    // con un toque (libera busyRef y aborta A).
+    preguntar("dónde estoy")
+    await asentar()
+    const watcherA = geo.creados
+    assert.equal(watcherA, 1, "A creó un watcher")
+    cancelarConToque()
+    await asentar()
+    assert.equal(geo.activo(watcherA), false, "A canceló (clearWatch) su watcher al abortarse")
+    // B: nueva pregunta (busyRef libre tras cancelar). Crea su propio watcher.
+    preguntar("dónde estoy")
+    await asentar()
+    const watcherB = geo.creados
+    assert.equal(watcherB, 2, "B creó su propio watcher")
+    // B responde con SU posición.
+    geo.entregar(watcherB, 4.70, -74.05)
+    await asentar()
+    const vocesAntes = voz.length
+    const accionesAntes = acciones.length
+    const consultasAntes = cuerpos.length
+    // A, ya cancelada, entrega tarde: se llama de VERDAD a su callback (el
+    // navegador pudo tenerlo en vuelo). NO debe sobreescribir la caché ni hablar,
+    // navegar o consultar. Sin la guardia `resuelto` del callback, la caché
+    // quedaría en la posición de A y C la enviaría.
+    assert.equal(geo.activo(watcherA), false, "A ya no es un watcher activo")
+    geo.entregarHistorico(watcherA, 4.60, -74.20)
+    await asentar()
+    assert.equal(voz.length, vocesAntes, "A tardía no habla")
+    assert.equal(acciones.length, accionesAntes, "A tardía no navega")
+    assert.equal(cuerpos.length, consultasAntes, "A tardía no dispara una consulta")
+    // C: reutiliza la caché. Debe ser la de B, no la de A tardía.
+    preguntar("dónde estoy")
+    await asentar()
+    const ultimo = cuerpos[cuerpos.length - 1]
+    assert.ok(ultimo, "C adjunta una posición")
+    assert.equal(ultimo!.lat, 4.70, "C usa la posición de B, no la de A cancelada")
+    assert.equal(ultimo!.lng, -74.05)
+    assert.ok(!cuerpos.some((c) => c && c.lat === 4.60), "ninguna consulta lleva la posición de A")
+  } finally {
+    globalThis.fetch = fetchOriginal
+  }
+})
+
+test("H5: al abortar (pregunta nueva) la adquisición en curso libera su watcher", async () => {
+  ReconocimientoSimulado.instancias = []
+  const hooks = crearHooks()
+  const voz: string[] = []
+  const geo = geoCancelable()
+  const fetchOriginal = globalThis.fetch
+  globalThis.fetch = (async () => new Response(JSON.stringify({ reply: "ok", action: "none", steps: [], engine: "reglas" }))) as unknown as typeof fetch
+  try {
+    const { TotalAgent } = compilar(
+      "components/total-agent.tsx",
+      hooks,
+      { "@/hooks/use-speech": dobleVoz(voz, hookVoz()) },
+      { navigator: { geolocation: geo.api, permissions: { query: async () => ({ state: "granted" }) }, vibrate: () => true } },
+    )
+    const render = () => { hooks.iniciar(); const a = TotalAgent({ data: datos, onAction() {} }); hooks.ejecutarEfectos(); return a }
+    render()
+    const preguntar = (t: string) => {
+      ;(idEntrada(render()).props.onChange as (e: { target: { value: string } }) => void)({ target: { value: t } })
+      render()
+      ;(formulario(render()).props.onSubmit as (e: { preventDefault: () => void }) => void)({ preventDefault() {} })
+    }
+    preguntar("dónde estoy"); await asentar()
+    const w = geo.creados
+    assert.ok(geo.activo(w), "watcher activo durante la adquisición")
+    // Desmontar (salir): aborta y libera el watcher de la adquisición en curso.
+    hooks.desmontar()
+    await asentar()
+    assert.equal(geo.activo(w), false, "salir libera el watcher de la adquisición")
+  } finally {
+    globalThis.fetch = fetchOriginal
+  }
+})
+
+// ── EA-07 (#33) C y A: lecturas nuevas no vigentes y origen manual, por la UI real ──
+
+/**
+ * Monta `TotalAgent` real con geolocalización cancelable, reloj simulado y un
+ * `fetch` que respeta la señal y registra la `position` enviada. Devuelve cómo
+ * preguntar/cancelar y cómo restaurar el `fetch` global.
+ */
+function montarAgenteConGeo(estadoPermiso: "granted" | "prompt" = "granted") {
+  ReconocimientoSimulado.instancias = []
+  const hooks = crearHooks()
+  const voz: string[] = []
+  const reloj = crearReloj()
+  const geo = geoCancelable()
+  const cuerpos: Array<{ lat: number; lng: number } | undefined> = []
+  const fetchOriginal = globalThis.fetch
+  globalThis.fetch = (async (_u: string, init?: RequestInit) => {
+    cuerpos.push(JSON.parse(String(init?.body ?? "{}")).position)
+    return new Response(JSON.stringify({ reply: "ok", action: "none", steps: [], engine: "reglas" }))
+  }) as unknown as typeof fetch
+  const { TotalAgent } = compilar(
+    "components/total-agent.tsx",
+    hooks,
+    { "@/hooks/use-speech": dobleVoz(voz, hookVoz()) },
+    {
+      setTimeout: reloj.setTimeout,
+      clearTimeout: reloj.clearTimeout,
+      navigator: { geolocation: geo.api, permissions: { query: async () => ({ state: estadoPermiso }) }, vibrate: () => true },
+    },
+  )
+  const render = () => { hooks.iniciar(); const a = TotalAgent({ data: datos, onAction() {} }); hooks.ejecutarEfectos(); return a }
+  render()
+  const preguntar = async (t: string) => {
+    ;(idEntrada(render()).props.onChange as (e: { target: { value: string } }) => void)({ target: { value: t } })
+    render()
+    ;(formulario(render()).props.onSubmit as (e: { preventDefault: () => void }) => void)({ preventDefault() {} })
+    await asentar()
+  }
+  const cancelar = () => (botonPrincipal(render()).props.onClick as () => void)()
+  return { geo, reloj, voz, cuerpos, preguntar, cancelar, restaurar: () => { globalThis.fetch = fetchOriginal } }
+}
+
+test("EA-07 C: una lectura NUEVA vencida, futura o sin hora no se cachea ni se envía; se espera una vigente", async () => {
+  const a = montarAgenteConGeo()
+  try {
+    await a.preguntar("dónde estoy")
+    const w = a.geo.creados
+    for (const [nombre, hora] of [["vencida", Date.now() - 60_001], ["sin hora", null], ["futura", Date.now() + 60_000]] as const) {
+      a.geo.entregar(w, 4.10, -74.10, 10, hora)
+      await asentar()
+      assert.equal(a.cuerpos.length, 0, `${nombre}: no consulta ni envía todavía`)
+      assert.ok(a.geo.activo(w), `${nombre}: el watcher sigue esperando una lectura vigente`)
+    }
+    a.geo.entregar(w, 4.70, -74.05, 10) // fresca
+    await asentar()
+    assert.equal(a.cuerpos.length, 1)
+    assert.deepEqual([a.cuerpos[0]?.lat, a.cuerpos[0]?.lng], [4.70, -74.05], "se envía la fresca, no las inválidas previas")
+    assert.equal(a.geo.activo(w), false, "al resolver se libera el watcher")
+  } finally {
+    a.restaurar()
+  }
+})
+
+test("EA-07 C: si solo llegan lecturas no vigentes, vence el plazo de 2 s y la consulta va SIN coordenada", async () => {
+  const a = montarAgenteConGeo()
+  try {
+    await a.preguntar("dónde estoy")
+    const w = a.geo.creados
+    a.geo.entregar(w, 4.10, -74.10, 10, null)
+    a.geo.entregar(w, 4.10, -74.10, 10, Date.now() - 120_000)
+    await asentar()
+    assert.equal(a.cuerpos.length, 0)
+    a.reloj.avanzar(2_100)
+    await asentar()
+    assert.equal(a.cuerpos.length, 1, "no se cuelga: tras el plazo consulta")
+    assert.equal(a.cuerpos[0], undefined, "sin coordenada vencida ni sin hora")
+    assert.equal(a.geo.activo(w), false)
+    assert.equal(a.reloj.pendientes(), 0, "sin temporizadores colgados")
+    // Tampoco quedó cacheada: otra pregunta con GPS vuelve a adquirir.
+    await a.preguntar("dónde estoy")
+    assert.equal(a.geo.creados, 2, "no había lectura vigente en caché")
+  } finally {
+    a.restaurar()
+  }
+})
+
+test("EA-07 C: cancelar tras una lectura inválida libera watcher y temporizador, sin consulta", async () => {
+  const a = montarAgenteConGeo("prompt")
+  try {
+    await a.preguntar("dónde estoy")
+    const w = a.geo.creados
+    a.geo.entregar(w, 4.10, -74.10, 10, Date.now() - 60_001)
+    await asentar()
+    a.cancelar()
+    await asentar()
+    assert.equal(a.geo.activo(w), false, "cancelar libera el watcher")
+    assert.equal(a.reloj.pendientes(), 0, "cancelar limpia el temporizador del permiso")
+    a.reloj.avanzar(20_000)
+    await asentar()
+    assert.equal(a.cuerpos.length, 0, "nada se consulta ni envía tras cancelar")
+  } finally {
+    a.restaurar()
+  }
+})
+
+test("EA-07 A: origen manual (antes/después del destino) no pide ni adjunta GPS, con y sin caché; una referencia actual sí", async () => {
+  const a = montarAgenteConGeo()
+  const manuales = [
+    "cómo llego de Ricaurte a Ricaurte",
+    "desde Ricaurte hacia la estación Ricaurte",
+    "de Ricaurte para Ricaurte",
+    "cómo llego de Ricaurte a Narnia",
+    "desde Ricaurte hasta Narnia",
+    "cómo llego de Narnia a Ricaurte",
+    "cómo llego de Narnia a la estación Ricaurte",
+    "de Narnia hasta la parada Ricaurte",
+    "cómo llego de Narnia para Ricaurte",
+    "de Narnia para la estación Ricaurte",
+    "estoy en Narnia y quiero ir a Ricaurte",
+    "quiero ir a Ricaurte desde Narnia",
+    "desde Narnia a la estación Ricaurte",
+  ]
+  try {
+    // Sin caché: ninguna adquisición ni coordenada.
+    for (const frase of manuales) {
+      await a.preguntar(frase)
+      assert.equal(a.geo.creados, 0, `${frase}: no pide la ubicación`)
+      assert.equal(a.cuerpos[a.cuerpos.length - 1], undefined, `${frase}: no adjunta posición`)
+    }
+    // Referencia genuina a la ubicación actual (con conector): SÍ adquiere y envía.
+    await a.preguntar("cómo llego desde aquí para llegar a Ricaurte")
+    assert.equal(a.geo.creados, 1, "la ubicación actual sí se adquiere")
+    a.geo.entregar(1, 4.70, -74.05, 10)
+    await asentar()
+    assert.deepEqual([a.cuerpos[a.cuerpos.length - 1]?.lat, a.cuerpos[a.cuerpos.length - 1]?.lng], [4.70, -74.05])
+    // Con caché vigente: las formas manuales siguen sin adjuntarla ni readquirirla.
+    const consultas = a.cuerpos.length
+    for (const frase of manuales) {
+      await a.preguntar(frase)
+      assert.equal(a.cuerpos[a.cuerpos.length - 1], undefined, `${frase}: tampoco adjunta la caché`)
+    }
+    assert.equal(a.cuerpos.length, consultas + manuales.length)
+    assert.equal(a.geo.creados, 1)
+    for (const frase of [
+      "cómo llego desde el GPS a Ricaurte",
+      "quiero ir a Ricaurte desde el GPS",
+      "desde donde me encuentro para llegar a Ricaurte",
+      "quiero ir a Ricaurte desde donde me encuentro",
+    ]) {
+      await a.preguntar(frase)
+      assert.deepEqual([a.cuerpos[a.cuerpos.length - 1]?.lat, a.cuerpos[a.cuerpos.length - 1]?.lng], [4.70, -74.05], frase)
+    }
+    assert.equal(a.geo.creados, 1, "las referencias actuales reutilizan solo la caché vigente")
+  } finally {
+    a.restaurar()
   }
 })

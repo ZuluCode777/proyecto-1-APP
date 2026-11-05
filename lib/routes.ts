@@ -84,6 +84,10 @@ export type PlaceMention = {
   place: Place
   /** Palabras normalizadas que van justo antes de la mención. */
   before: string
+  /** Todo el texto normalizado que precede a la mención (para leer un origen no catalogado). */
+  prefix: string
+  /** Todo el texto normalizado que sigue a la mención (para leer «…a X desde Y»). */
+  suffix: string
 }
 
 /** Como `findPlaces`, pero con las palabras que preceden a cada mención. */
@@ -105,7 +109,12 @@ export function findPlaceMentions(text: string, data: TransmilenioData): PlaceMe
 
   return found
     .sort((a, b) => a.start - b.start)
-    .map((f) => ({ place: f.place, before: t.slice(Math.max(0, f.start - 30), f.start).trim() }))
+    .map((f) => ({
+      place: f.place,
+      before: t.slice(Math.max(0, f.start - 30), f.start).trim(),
+      prefix: t.slice(0, f.start).trim(),
+      suffix: t.slice(f.end).trim(),
+    }))
 }
 
 /**

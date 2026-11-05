@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { CheckCircle2, Ear, Loader2, Mic, Send } from "lucide-react"
 import { ESCUCHA_ESPERA_MS, esUltimaLocucion, useSpeech, useVoiceRecognition } from "@/hooks/use-speech"
-import type { LatLng } from "@/lib/geo"
+import { leerPosicionNavegador, ubicacionVigente, type LecturaUbicacion } from "@/lib/ubicacion"
 import { consultarAgente } from "@/lib/consulta-agente"
 import {
   parseIntent,
@@ -117,7 +117,7 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
   const lastAskRef = useRef(0)
   /** Aborta el `fetch` (y la espera de ubicación) al salir, cancelar o preguntar de nuevo. */
   const controladorRef = useRef<AbortController | null>(null)
-  const positionRef = useRef<LatLng | undefined>(undefined)
+  const positionRef = useRef<LecturaUbicacion | undefined>(undefined)
   /**
    * ¿El desmontaje lo provocó la navegación que ordenó la respuesta vigente?
    * Se marca justo antes de `onAction`. Si está puesta, la limpieza NO calla la
@@ -174,15 +174,28 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
    * - `prompt`: anuncia «Esperando permiso…» y espera hasta `UBICACION_PERMISO_ESPERA_MS`
    *   (15 s) o hasta que la persona responda o cancele con un toque. Al vencer,
    *   resuelve SIN coordenada y llama `alVencer` (que marca que debe anteponerse
-   *   el aviso de permiso vencido al texto de la respuesta; ver `askAgent`). La
-   *   petición de posición queda viva para cachearla si se concede más tarde; esa
-   *   pregunta no la usa, la siguiente sí.
+   *   el aviso de permiso vencido al texto de la respuesta; ver `askAgent`). A
+   *   diferencia de EA-08, la adquisición NO queda viva al vencer: se LIBERA con
+   *   `clearWatch` (política #33), para no dejar un watcher pendiente ni cachear
+   *   una posición por un permiso concedido tarde.
    * - `denied` (o aborto antes/durante la consulta de permiso): resuelve SIN
    *   coordenada de inmediato, sin anunciar espera (decisión F/G).
    * Nunca deja la interfaz colgada ni `busyRef` bloqueado.
+   *
+   * EA-07 (#33): la lectura guardada se REUTILIZA solo si sigue fresca
+   * (`ubicacionVigente`); una coordenada vencida no se reenvía. La adquisición es
+   * de UNA TOMA, con `watchPosition` + `clearWatch` para una cancelación
+   * EFECTIVA: al abortar (salir, cancelar o pregunta nueva) o al vencer, se libera
+   * el watcher de verdad, en vez de fingir cancelar un `getCurrentPosition`. El
+   * callback solo escribe la caché/resuelve si la adquisición SIGUE VIVA: un
+   * callback de una adquisición ya cancelada no sobreescribe `positionRef` ni
+   * afecta a otra pregunta (contraejemplo A cancelada/B vigente/A tardía).
    */
-  const obtenerUbicacion = useCallback((señal: AbortSignal, alVencer: () => void): Promise<LatLng | undefined> => {
-    if (positionRef.current) return Promise.resolve(positionRef.current)
+  const obtenerUbicacion = useCallback((señal: AbortSignal, alVencer: () => void): Promise<LecturaUbicacion | undefined> => {
+    const vigente = ubicacionVigente(positionRef.current)
+    if (vigente) return Promise.resolve(vigente)
+    // Una lectura vencida no se reutiliza: se descarta y se intenta renovar.
+    positionRef.current = undefined
     if (señal.aborted || typeof navigator === "undefined" || !navigator.geolocation) return Promise.resolve(undefined)
 
     const permisos = navigator.permissions
@@ -194,12 +207,18 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
       // G: si se canceló/salió mientras la consulta de permiso estaba pendiente,
       // o el permiso está denegado, no se anuncia espera ni se pide la posición.
       if (señal.aborted || estado === "denied") return undefined
-      return new Promise<LatLng | undefined>((resolver) => {
+      return new Promise<LecturaUbicacion | undefined>((resolver) => {
         let resuelto = false
         let temporizador: number | undefined
-        const terminar = (valor: LatLng | undefined, vencioPermiso = false) => {
+        let watchId: number | null = null
+        const liberarWatcher = () => {
+          if (watchId != null && navigator.geolocation) navigator.geolocation.clearWatch(watchId)
+          watchId = null
+        }
+        const terminar = (valor: LecturaUbicacion | undefined, vencioPermiso = false) => {
           if (resuelto) return
           resuelto = true
+          liberarWatcher() // cancelación efectiva de la adquisición
           if (temporizador !== undefined) window.clearTimeout(temporizador)
           señal.removeEventListener("abort", alAbortar)
           if (vencioPermiso) alVencer()
@@ -217,14 +236,30 @@ export function TotalAgent({ data, onAction }: TotalAgentProps) {
           setCaption(SUBTITULO_ESPERANDO_PERMISO)
           temporizador = window.setTimeout(() => terminar(undefined, true), UBICACION_PERMISO_ESPERA_MS)
         }
-        navigator.geolocation.getCurrentPosition(
+        watchId = navigator.geolocation.watchPosition(
           (pos) => {
-            positionRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude }
-            terminar(positionRef.current)
+            // Si esta adquisición ya terminó (cancelada, abortada o vencida), su
+            // callback NO toca la caché ni resuelve: una A cancelada que llega
+            // tarde no puede sobreescribir la posición de B ni filtrarse a C.
+            if (resuelto) {
+              liberarWatcher()
+              return
+            }
+            // Solo una lectura VIGENTE se cachea y resuelve: una vencida, sin hora
+            // o inválida no finaliza la adquisición; se espera otra o el plazo.
+            const lectura = ubicacionVigente(leerPosicionNavegador(pos))
+            if (!lectura) return
+            positionRef.current = lectura
+            terminar(lectura)
           },
-          () => terminar(undefined),
-          { maximumAge: 60_000, timeout: UBICACION_PERMISO_ESPERA_MS },
+          () => {
+            if (resuelto) return
+            terminar(undefined)
+          },
+          { enableHighAccuracy: true, maximumAge: 60_000, timeout: UBICACION_PERMISO_ESPERA_MS },
         )
+        // Un doble/navegador que llamó al callback antes de devolver el id: se libera ya.
+        if (resuelto) liberarWatcher()
       })
     })
   }, [])

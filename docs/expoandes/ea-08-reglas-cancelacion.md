@@ -100,6 +100,9 @@ lógica es pura (`lib/estado-motor.ts`, `mensajeMotor`) y no cambia el JSON de
   no suena raro ni repite la petición. Es cancelable
   con un toque en cualquier momento. La petición de posición queda viva: esa
   pregunta no la usa, la siguiente sí.
+  **Actualización (EA-07 #33):** esta política cambió. La adquisición ahora usa
+  `watchPosition` + `clearWatch` de una toma y se LIBERA al vencer o cancelar, en
+  vez de quedar viva; ver `docs/expoandes/ea-07-gps-precision.md`, §4.
 - **Denegado (`denied`) o aborto durante `permissions.query`** (decisión G):
   resuelve sin coordenada de inmediato, sin anunciar espera ni pedir la posición.
   Se comprueba `señal.aborted` justo tras resolver la consulta de permiso.
@@ -163,7 +166,8 @@ espera de 6 s (con el modelo ≤ 2 s dentro). El peor caso total aproximado es
 **≈ 15 s + 6 s** antes de caer al respaldo local; con el permiso ya concedido,
 ≈ 2 s + 6 s. Son sumas nominales, no mediciones de dispositivo. Si el permiso se
 concede más tarde, esa pregunta no lo usa; la siguiente sí (la posición queda
-cacheada).
+cacheada). **Actualización (EA-07 #33):** la adquisición ya no queda viva tras
+vencer/cancelar; se libera con `clearWatch` (ver `ea-07-gps-precision.md`).
 
 ## Mediciones
 

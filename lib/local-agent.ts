@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { spokenDistance, type LatLng } from "@/lib/geo"
+import { decisionLlegada, ubicacionVigente, type LecturaUbicacion } from "@/lib/ubicacion"
 import { estadoCalendarioEnFecha } from "@/lib/evidencia"
 import {
   findPlaceMentions,
@@ -139,8 +140,14 @@ export function respuestaSeguraParaMostrar(reply: AgentReply, data: Transmilenio
 }
 
 export type AgentContext = {
-  /** Ubicación de la persona, si dio permiso. */
-  position?: LatLng
+  /**
+   * Ubicación de la persona, si dio permiso, CON precisión y hora de captura.
+   * Solo se usa como origen aproximado cuando la frase no trae origen explícito,
+   * y nunca confirma presencia física: la estación más cercana por GPS es una
+   * referencia, no el lugar donde está la persona. Se revalida su frescura aquí
+   * (EA-07, #33): una lectura vencida no se usa.
+   */
+  position?: LecturaUbicacion
   /** Instante actual, para evaluar vigencia de evidencia y calendario. */
   now?: Date
 }
@@ -177,9 +184,54 @@ const STRONG_ORIGIN = /(?:^|\s)(?:desde|saliendo de|salgo de|parto de|estoy en)$
 const WEAK_ORIGIN = /(?:^|\s)(?:de|del)$/
 const DESTINATION = /(?:^|\s)(?:a|al|hacia|hasta|para|llegar a|ir a|voy a|voy para)$/
 
+/**
+ * Origen DECLARADO que no está en el catálogo (EA-07, #33). Se lee la cláusula
+ * de origen con las mismas formas de `STRONG_ORIGIN`/`WEAK_ORIGIN`, antes o
+ * después del destino:
+ *
+ * - fuerte (`desde`, `saliendo de`, `salgo de`, `parto de`, `estoy en`): X llega
+ *   hasta la primera palabra que cierra la cláusula (`CORTE_ORIGEN`: conectores
+ *   de destino, «y», «quiero»…), así «desde aquí para llegar a» deja «aquí».
+ * - débil (`de`/`del`): solo en la forma «de X a|al|hacia|hasta|para Y», con X sin
+ *   palabras de corte, para no tomar «la hora de salida para llegar a…».
+ */
+const ORIGEN_FUERTE = /(?:^|\s)(?:desde|saliendo de|salgo de|parto de|estoy en)\s+(.+)$/
+const ORIGEN_DEBIL = /(?:^|\s)(?:de|del)\s+((?:\S+\s+){0,5}\S+)\s+(?:a|al|hacia|hasta|para)$/
+const CORTE_ORIGEN = /\s(?:y|e|pero|luego|quiero|quisiera|necesito|voy|para|a|al|hacia|hasta|ir|llegar|como|cual|que)(?:\s|$)/
+const RELLENO_INICIAL = /^(?:(?:la|el|los|las|estacion|parada|portal)\s+)+(?:de(?:l)?\s+)?/
+/** Referencias genuinas a la ubicación actual: no son un origen que aclarar. */
+const UBICACION_ACTUAL = /^(?:aqui|aca|ahi|aqui mismo|donde (?:estoy|me encuentro)|mi (?:ubicacion|posicion)(?: actual)?|(?:el )?gps)$/
+
+function sinRellenoFinal(texto: string): string {
+  let resto = ` ${texto}`
+  while (TRAILING_FILLER.test(resto)) resto = resto.replace(TRAILING_FILLER, "")
+  return resto.trim()
+}
+
+/** Limpia la cláusula `resto`; `undefined` si queda vacía o es la ubicación actual. */
+function origenDeclarado(resto: string, exigirSinCorte = false): string | undefined {
+  const texto = ` ${resto}`
+  const recorte = texto.split(CORTE_ORIGEN)[0]
+  if (exigirSinCorte && recorte !== texto) return undefined
+  const origen = `${recorte.trim()} `.replace(RELLENO_INICIAL, "").trim()
+  return origen && !UBICACION_ACTUAL.test(origen) ? origen : undefined
+}
+
+/**
+ * Origen que la persona dijo y NO es una estación del catálogo, para el caso de
+ * UNA sola mención (el destino). Mira antes y después del destino.
+ */
+function origenNoCatalogado(antes: string, despues: string): string | undefined {
+  const fuerteAntes = ORIGEN_FUERTE.exec(antes)
+  if (fuerteAntes) return origenDeclarado(fuerteAntes[1])
+  const debil = ORIGEN_DEBIL.exec(sinRellenoFinal(antes))
+  if (debil) return origenDeclarado(debil[1], true)
+  const fuerteDespues = ORIGEN_FUERTE.exec(despues)
+  return fuerteDespues ? origenDeclarado(fuerteDespues[1]) : undefined
+}
+
 function roleOf(before: string): Role {
-  let rest = ` ${before}`
-  while (TRAILING_FILLER.test(rest)) rest = rest.replace(TRAILING_FILLER, "")
+  const rest = sinRellenoFinal(before)
   if (STRONG_ORIGIN.test(rest)) return "origin"
   if (DESTINATION.test(rest)) return "destination"
   if (WEAK_ORIGIN.test(rest)) return "weak-origin"
@@ -204,7 +256,7 @@ export function parseIntent(text: string, data: TransmilenioData): Intent {
 
   if (hasPhrase(t, FREQUENT)) return { type: "frequent" }
 
-  const mentions = findPlaceMentions(text, data).map((m) => ({ name: m.place.name, role: roleOf(m.before) }))
+  const mentions = findPlaceMentions(text, data).map((m) => ({ name: m.place.name, role: roleOf(m.before), prefix: m.prefix, suffix: m.suffix }))
   if (mentions.length >= 2) {
     const hasDestination = mentions.some((m) => m.role === "destination")
     const origin =
@@ -217,8 +269,19 @@ export function parseIntent(text: string, data: TransmilenioData): Intent {
   }
   if (mentions.length === 1) {
     const [only] = mentions
+    // El índice deduplica lugares: «de Ricaurte a Ricaurte» conserva una mención.
+    if (only.role === "origin" || only.role === "weak-origin") {
+      const destino = /^(?:a|al|hacia|hasta|para)\s+(.+)$/.exec(only.suffix)?.[1]
+      if (destino) return { type: "trip", origin: only.name, destination: resolvePlace(destino, data)?.name ?? destino }
+    }
     // "salgo desde Ricaurte" sin destino: se entiende el origen, falta el destino.
     if (only.role === "origin") return { type: "trip_missing_destination", origin: only.name }
+    // "desde/de Narnia a Ricaurte", "estoy en Narnia y quiero ir a Ricaurte",
+    // "ir a Ricaurte desde Narnia": el origen explícito no está en el catálogo. Se
+    // conserva para que `runIntent` pida aclararlo en vez de reemplazarlo por el
+    // GPS, y para no pedir ni adjuntar la ubicación (EA-07, #33).
+    const desconocido = origenNoCatalogado(only.prefix, only.suffix)
+    if (desconocido) return { type: "trip", origin: desconocido, destination: only.name }
     return { type: "trip", destination: only.name }
   }
 
@@ -435,6 +498,11 @@ function resolverIntent(
   /** Respuesta que no abre ninguna pantalla con datos. */
   const say = (reply: string, action: "none" | "frequent" | "gps" = "none"): AgentReply => ({ reply, action, steps, engine })
 
+  // EA-07 (#33): la posición solo se usa si es evidencia VIGENTE (hora de
+  // captura válida y reciente). Una lectura vencida, futura o sin hora se
+  // descarta aquí, justo antes de resolver el efecto, no solo al recibirla.
+  const posicionVigente = ubicacionVigente(context.position, (context.now ?? new Date()).getTime())
+
   switch (intent.type) {
     case "greeting":
       return say("¡Hola! Soy el asistente de TransMiVoz. Pídeme cómo llegar a una estación, información de una ruta como la B23, o dónde estás.")
@@ -459,8 +527,8 @@ function resolverIntent(
       return say("Estas son tus rutas frecuentes.", "frequent")
 
     case "gps": {
-      if (context.position) {
-        const [nearest] = nearestStations(context.position, data, 1)
+      if (posicionVigente) {
+        const [nearest] = nearestStations(posicionVigente, data, 1)
         if (!nearest) {
           // Catálogo sin estaciones (vacío o aún no cargado): no se inventa una
           // estación cercana; se abre el GPS igual para reintentar.
@@ -511,14 +579,23 @@ function resolverIntent(
       steps.push({ label: `Busqué la estación de destino`, detail: destination.name })
 
       let origin = intent.origin ? resolvePlace(intent.origin, data) : undefined
+      /** ¿El origen se infirió del GPS (no lo dijo la persona)? */
+      let origenPorGps = false
       if (intent.origin && origin) {
         steps.push({ label: "Busqué la estación de origen", detail: origin.name })
-      } else if (!origin && context.position) {
-        const [nearest] = nearestStations(context.position, data, 1)
+      } else if (intent.origin && !origin) {
+        // Origen EXPLÍCITO que no se encontró: NO se reemplaza en silencio por el
+        // GPS. Se pide aclararlo (la persona dijo de dónde sale; respetarlo).
+        return say(
+          `No encontré la estación de origen ${intent.origin}. Dime otro nombre, por ejemplo Ricaurte o Calle 72, o pídeme la ruta sin origen y uso tu ubicación.`,
+        )
+      } else if (!origin && posicionVigente) {
+        const [nearest] = nearestStations(posicionVigente, data, 1)
         // Sin estaciones en el catálogo no se puede usar la ubicación como origen.
         if (nearest) {
           origin = placeOf(nearest, data)
-          steps.push({ label: "Usé tu ubicación", detail: `Estás a ${spokenDistance(nearest.distance)} de ${nearest.name}` })
+          origenPorGps = true
+          steps.push({ label: "Usé tu ubicación como origen aproximado", detail: `La estación más cercana es ${nearest.name}, a ${spokenDistance(nearest.distance)}` })
         }
       }
 
@@ -544,7 +621,25 @@ function resolverIntent(
         }
       }
 
-      if (samePlace(origin, destination)) return say(`Ya estás en ${destination.name}.`)
+      if (samePlace(origin, destination)) {
+        if (!origenPorGps) {
+          // Origen EXPLÍCITO igual al destino: coinciden, sin afirmar presencia.
+          return say(`El origen y el destino que me diste coinciden: ambos son ${destination.name}.`)
+        }
+        // Origen inferido del GPS: la estación más cercana es el destino. Eso
+        // estima CERCANÍA, no confirma que la persona esté en la estación ni que
+        // haya llegado. Se expresa como proximidad estimada, con su límite, y se
+        // ofrece guiar a pie en vez de dar un viaje de cero tramos.
+        const [cercana] = nearestStations(posicionVigente!, data, 1)
+        const prox = decisionLlegada(posicionVigente!, cercana?.distance ?? Infinity)
+        const detalle = prox.llego
+          ? `estás a unos ${spokenDistance(cercana.distance)} del punto de ${destination.name}`
+          : `${destination.name} es la estación más cercana a tu ubicación estimada`
+        return say(
+          `Según tu ubicación, ${detalle}, pero es una estimación y el punto es una referencia aproximada, no un acceso verificado. Si quieres, abro el GPS para una orientación directa aproximada hacia ${destination.name}; no es una ruta peatonal validada.`,
+          "gps",
+        )
+      }
 
       const now = context.now ?? new Date()
       const plans = planTrip({ origin, destination }, data, 3, now)

@@ -34,11 +34,22 @@ function clientKey(req: Request): string {
 /**
  * Cuerpo de la petición. Una ubicación inválida se descarta sin rechazar la
  * pregunta: la persona igual recibe respuesta, solo que sin usar su posición.
+ *
+ * EA-07 (#33): la posición puede traer metadatos OPCIONALES de precisión y hora
+ * (`LecturaUbicacion` del cliente). Se validan de forma compatible: si faltan o
+ * no cuadran, se ignoran (no rompen la petición), pero si la lectura viene con
+ * `hora` y está VENCIDA, el servidor la descarta y responde sin usarla, como si
+ * no se hubiera enviado (no se reutiliza una coordenada vieja).
  */
 const BodySchema = z.object({
   message: z.string().catch(""),
   position: z
-    .object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) })
+    .object({
+      lat: z.number().min(-90).max(90),
+      lng: z.number().min(-180).max(180),
+      precision: z.number().min(0).nullish(),
+      hora: z.number().nonnegative().optional(),
+    })
     .optional()
     .catch(undefined),
 })
@@ -61,14 +72,25 @@ export async function POST(req: Request) {
   }
 
   let message = ""
-  let position: AgentContext["position"]
+  let lectura: AgentContext["position"]
   const raw = await req.text()
   if (raw.length > MAX_BODY_CHARS) return answer("Ese mensaje es demasiado largo. Dilo en una frase corta.", 413)
   try {
     const body = BodySchema.safeParse(JSON.parse(raw))
     if (body.success) {
       message = body.data.message.slice(0, MAX_MESSAGE_CHARS)
-      position = body.data.position
+      const recibida = body.data.position
+      // EA-07 (#33): se conserva la lectura COMPLETA (precisión + hora) para el
+      // contexto; NO se reduce a lat/lng ni se revalida aquí. La vigencia se
+      // comprueba al RESOLVER (en `resolverIntent`, con `now`), después de las
+      // esperas de catálogo y Ollama. Una petición heredada sin `hora` llega con
+      // `hora: null`: no es evidencia fresca, así que no se usará como posición.
+      // Metadatos inválidos (p. ej. `hora` no finita) hacen que el esquema
+      // descarte toda la posición (`.catch`), de forma conservadora: nunca se
+      // trata una lectura de calidad/fecha desconocida como fresca.
+      if (recibida) {
+        lectura = { lat: recibida.lat, lng: recibida.lng, precision: recibida.precision ?? null, hora: recibida.hora ?? null }
+      }
     }
   } catch {
     // JSON inválido: se maneja como mensaje vacío más abajo.
@@ -77,7 +99,6 @@ export async function POST(req: Request) {
   if (!message.trim()) return answer("No te escuché bien. Toca la pantalla e inténtalo de nuevo.")
 
   const data = await getTransmilenioData()
-  const context = { position }
 
   // Hallazgo 15 (EA-08): las REGLAS interpretan primero. Si reconocen la frase,
   // se usan y no se consulta el modelo: responde más rápido y un `unknown` del
@@ -96,5 +117,10 @@ export async function POST(req: Request) {
   }
 
   const { intent, engine } = elegirIntent(intentDeReglas, intentDelModelo)
+  // `now` se fija AQUÍ, tras las esperas de catálogo y Ollama: `resolverIntent`
+  // revalida con él la frescura de la lectura antes de resolver el efecto, así
+  // una lectura que era fresca al llegar pero envejeció durante las esperas ya
+  // no se usa (EA-07, #33).
+  const context: AgentContext = { position: lectura, now: new Date() }
   return Response.json(runIntent(intent, { data, context, engine }))
 }
