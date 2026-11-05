@@ -14,9 +14,14 @@ import {
   type AgentReply,
   type TripLegSummary,
 } from "./local-agent"
+import { intencionUsaUbicacion } from "./seleccion-interprete"
 import { TransmilenioDataSchema } from "./transmilenio"
+import type { LecturaUbicacion } from "./ubicacion"
 
 const data = TransmilenioDataSchema.parse(snapshot)
+
+/** Lectura de ubicación FRESCA (hora = ahora) con precisión dada, para el contexto del agente. */
+const lecturaFresca = (lat: number, lng: number, precision = 20): LecturaUbicacion => ({ lat, lng, precision, hora: Date.now() })
 
 test("entiende frases habituales", () => {
   const cases: [string, string][] = [
@@ -299,10 +304,11 @@ test("sin origen ni ubicación, informa el recorrido del destino con incertidumb
 
 test("con ubicación y sin paradas verificadas, no inventa un abordaje", () => {
   // Frente a la estación Portal Usme, pero el catálogo real no tiene paradas verificadas.
-  const position = { lat: data.stations.find((s) => s.name === "Portal Usme")!.lat, lng: data.stations.find((s) => s.name === "Portal Usme")!.lng }
+  const estacion = data.stations.find((s) => s.name === "Portal Usme")!
+  const position = lecturaFresca(estacion.lat, estacion.lng)
   const reply = interpretCommand("llévame a Molinos", data, { position })
   assert.notEqual(reply.action, "trip")
-  assert.ok(reply.steps.some((s) => s.label === "Usé tu ubicación"))
+  assert.ok(reply.steps.some((s) => s.label === "Usé tu ubicación como origen aproximado"))
   assert.match(reply.reply, /dónde subir o bajar/)
 })
 
@@ -350,9 +356,169 @@ test("«desde» gana aunque el destino se diga primero con «de»", () => {
   })
 })
 
-test("con la ubicación en el destino, dice que ya llegó en vez de dar una vuelta", () => {
+test("con ubicación GPS en el destino, NO afirma presencia: da proximidad estimada", () => {
   const ricaurte = data.stations.find((s) => s.name === "Ricaurte - CL 13")!
-  const reply = interpretCommand("quiero ir a Ricaurte", data, { position: { lat: ricaurte.lat, lng: ricaurte.lng } })
+  // Origen inferido por GPS (la persona no dijo origen) y es la estación más cercana.
+  const reply = interpretCommand("quiero ir a Ricaurte", data, { position: lecturaFresca(ricaurte.lat + 20 / 111_195, ricaurte.lng, 200) })
+  assert.doesNotMatch(reply.reply, /Ya estás en/)
+  assert.match(reply.reply, /estimaci[oó]n|estimada|referencia aproximada/)
+})
+
+test("con ubicación GPS muy cerca y buena precisión, sigue siendo estimación (no llegada)", () => {
+  const ricaurte = data.stations.find((s) => s.name === "Ricaurte - CL 13")!
+  const reply = interpretCommand("quiero ir a Ricaurte", data, { position: lecturaFresca(ricaurte.lat, ricaurte.lng, 10) })
+  assert.doesNotMatch(reply.reply, /Ya estás en|Has llegado/)
+  assert.match(reply.reply, /referencia aproximada|no un acceso verificado/)
+})
+
+test("origen EXPLÍCITO igual al destino dice que coinciden, sin inventar presencia", () => {
+  const reply = runIntent(
+    { type: "trip", origin: "Ricaurte", destination: "Ricaurte" },
+    { data },
+  )
   assert.equal(reply.action, "none")
-  assert.match(reply.reply, /^Ya estás en Ricaurte/)
+  assert.match(reply.reply, /coinciden/)
+  assert.doesNotMatch(reply.reply, /Ya estás en|Has llegado/)
+})
+
+test("origen EXPLÍCITO desconocido NO se reemplaza por el GPS en silencio", () => {
+  const ricaurte = data.stations.find((s) => s.name === "Ricaurte - CL 13")!
+  // Intent con origen explícito que no existe en el catálogo (p. ej. del modelo).
+  const reply = runIntent(
+    { type: "trip", origin: "Narnia", destination: "Ricaurte" },
+    { data, context: { position: lecturaFresca(ricaurte.lat, ricaurte.lng, 10) } },
+  )
+  // No usa el GPS como origen: pide aclarar el origen explícito no encontrado.
+  assert.ok(!reply.steps.some((s) => /ubicaci[oó]n/.test(s.label)), "no infiere origen por GPS")
+  assert.match(reply.reply, /origen/)
+})
+
+test("origen explícito DESCONOCIDO en la frase real se conserva (no desaparece ni usa GPS)", () => {
+  assert.deepEqual(parseIntent("cómo llego desde Barrio Inexistente a Ricaurte", data), {
+    type: "trip",
+    origin: "barrio inexistente",
+    destination: "Ricaurte",
+  })
+  assert.deepEqual(parseIntent("cómo llego desde Narnia a Ricaurte", data), { type: "trip", origin: "narnia", destination: "Ricaurte" })
+  assert.deepEqual(parseIntent("cómo llego desde la estación Narnia hasta Ricaurte", data), {
+    type: "trip",
+    origin: "narnia",
+    destination: "Ricaurte",
+  })
+  // No es una intención que use ubicación: no se pide ni adjunta.
+  assert.equal(intencionUsaUbicacion(parseIntent("cómo llego desde Narnia a Ricaurte", data)), false)
+})
+
+test("origen explícito desconocido: interpretCommand pide aclarar aunque haya GPS vigente", () => {
+  const ricaurte = data.stations.find((s) => s.name === "Ricaurte - CL 13")!
+  const reply = interpretCommand("cómo llego desde Barrio Inexistente a Ricaurte", data, {
+    position: lecturaFresca(ricaurte.lat, ricaurte.lng, 10),
+  })
+  assert.match(reply.reply, /No encontré la estación de origen barrio inexistente/)
+  assert.ok(!reply.steps.some((s) => /ubicaci[oó]n/i.test(s.label)), "no infiere origen por GPS")
+})
+
+test("referencias genuinas a la ubicación actual y frases sin origen siguen usando el GPS", () => {
+  for (const frase of ["cómo llego desde aquí a Ricaurte", "desde mi ubicación actual a Ricaurte", "quiero ir a Ricaurte"]) {
+    assert.deepEqual(parseIntent(frase, data), { type: "trip", destination: "Ricaurte" }, frase)
+    assert.equal(intencionUsaUbicacion(parseIntent(frase, data)), true, frase)
+  }
+})
+
+test("origen manual desconocido con «de», «estoy en» o DESPUÉS del destino se conserva (parser + privacidad + respuesta)", () => {
+  const ricaurte = data.stations.find((s) => s.name === "Ricaurte - CL 13")!
+  const casos: Array<[string, string]> = [
+    ["cómo llego de Narnia a Ricaurte", "narnia"],
+    ["cómo llego de Narnia a la estación Ricaurte", "narnia"],
+    ["de Narnia hasta la parada Ricaurte", "narnia"],
+    ["cómo llego de Narnia para Ricaurte", "narnia"],
+    ["de Narnia para la estación Ricaurte", "narnia"],
+    ["estoy en Narnia y quiero ir a Ricaurte", "narnia"],
+    ["quiero ir a Ricaurte desde Narnia", "narnia"],
+    ["desde Narnia a la estación Ricaurte", "narnia"],
+    ["estoy en la estación Narnia, quiero ir a Ricaurte", "narnia"],
+    ["cómo llego de la estación de Narnia a Ricaurte", "narnia"],
+  ]
+  for (const [frase, origen] of casos) {
+    assert.deepEqual(parseIntent(frase, data), { type: "trip", origin: origen, destination: "Ricaurte" }, frase)
+    assert.equal(intencionUsaUbicacion(parseIntent(frase, data)), false, `${frase}: no pide ni adjunta GPS`)
+    // Con una posición vigente a mano, aclara el origen: no la sustituye en silencio.
+    const reply = interpretCommand(frase, data, { position: lecturaFresca(ricaurte.lat, ricaurte.lng, 10) })
+    assert.match(reply.reply, /No encontré la estación de origen narnia/, frase)
+    assert.ok(!reply.steps.some((s) => /ubicaci[oó]n/i.test(s.label)), `${frase}: no infiere origen por GPS`)
+  }
+})
+
+test("referencias a la ubicación actual con conectores («para llegar a») siguen usando el GPS", () => {
+  const frases = [
+    "cómo llego desde aquí para llegar a Ricaurte",
+    "desde mi ubicación para llegar a Ricaurte",
+    "cómo llego de aquí a Ricaurte",
+    "quiero ir a Ricaurte desde mi ubicación",
+    "desde donde estoy hasta Ricaurte",
+    "dime la hora de salida para llegar a Ricaurte",
+  ]
+  for (const frase of frases) {
+    assert.deepEqual(parseIntent(frase, data), { type: "trip", destination: "Ricaurte" }, frase)
+    assert.equal(intencionUsaUbicacion(parseIntent(frase, data)), true, frase)
+  }
+})
+
+test("origen conocido y orden invertido se conservan", () => {
+  assert.deepEqual(parseIntent("cómo llego desde Ricaurte a Calle 72", data), { type: "trip", origin: "Ricaurte", destination: "Calle 72" })
+  assert.deepEqual(parseIntent("cómo llego a Ricaurte desde Calle 72", data), { type: "trip", origin: "Calle 72", destination: "Ricaurte" })
+  assert.deepEqual(parseIntent("cómo llego de Calle 72 para Ricaurte", data), { type: "trip", origin: "Calle 72", destination: "Ricaurte" })
+})
+
+test("origen y destino repetidos conservan ambos papeles y nunca usan GPS", () => {
+  const ricaurte = data.stations.find((s) => s.name === "Ricaurte - CL 13")!
+  for (const conector of ["a", "al", "hacia", "hasta", "para"]) {
+    for (const inicio of ["de", "desde"]) {
+      const frase = `cómo llego ${inicio} Ricaurte ${conector} la estación Ricaurte`
+      const intent = parseIntent(frase, data)
+      assert.deepEqual(intent, { type: "trip", origin: "Ricaurte", destination: "Ricaurte" }, frase)
+      assert.equal(intencionUsaUbicacion(intent), false, frase)
+      const reply = interpretCommand(frase, data, { position: lecturaFresca(ricaurte.lat, ricaurte.lng, 10) })
+      assert.equal(reply.action, "none", frase)
+      assert.match(reply.reply, /coinciden/, frase)
+      assert.ok(!reply.steps.some((s) => /ubicaci[oó]n/i.test(s.label)), frase)
+    }
+  }
+})
+
+test("origen conocido con destino desconocido pide aclarar el destino sin GPS", () => {
+  for (const frase of ["cómo llego de Ricaurte a Narnia", "desde Ricaurte hasta Narnia"]) {
+    const intent = parseIntent(frase, data)
+    assert.deepEqual(intent, { type: "trip", origin: "Ricaurte", destination: "narnia" }, frase)
+    assert.equal(intencionUsaUbicacion(intent), false, frase)
+    const reply = interpretCommand(frase, data, { position: lecturaFresca(4.7, -74.05, 10) })
+    assert.match(reply.reply, /No encontré la estación narnia/, frase)
+    assert.equal(reply.action, "none", frase)
+    assert.ok(!reply.steps.some((s) => /ubicaci[oó]n/i.test(s.label)), frase)
+  }
+})
+
+test("todas las referencias actuales conservan GPS antes y después del destino y con conectores", () => {
+  const referencias = [
+    "aquí", "acá", "ahí", "aquí mismo", "donde estoy", "donde me encuentro",
+    "mi ubicación", "mi ubicación actual", "mi posición", "mi posición actual", "el GPS",
+  ]
+  for (const referencia of referencias) {
+    for (const frase of [
+      `cómo llego desde ${referencia} a Ricaurte`,
+      `quiero ir a Ricaurte desde ${referencia}`,
+      `desde ${referencia} para llegar a Ricaurte`,
+    ]) {
+      const intent = parseIntent(frase, data)
+      assert.deepEqual(intent, { type: "trip", destination: "Ricaurte" }, frase)
+      assert.equal(intencionUsaUbicacion(intent), true, frase)
+    }
+  }
+})
+
+test("samePlace por GPS no promete una guía a pie ni ruta peatonal validada", () => {
+  const ricaurte = data.stations.find((s) => s.name === "Ricaurte - CL 13")!
+  const reply = interpretCommand("quiero ir a Ricaurte", data, { position: lecturaFresca(ricaurte.lat, ricaurte.lng, 10) })
+  assert.doesNotMatch(reply.reply, /te guío a pie/)
+  assert.match(reply.reply, /orientación directa aproximada.*no es una ruta peatonal validada/)
 })

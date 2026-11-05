@@ -3,6 +3,7 @@ import test from "node:test"
 import { interpretCommand, runIntent } from "./local-agent"
 import { nearestStations, planTrip, searchRoutes, type TransmilenioData } from "./routes"
 import { datosVerificadosDirecto } from "./fixtures-sinteticas"
+import type { LecturaUbicacion } from "./ubicacion"
 
 /**
  * Regresión del issue #32: GPS y viajes se recuperan de un catálogo con CERO
@@ -15,7 +16,10 @@ function catalogoVacio(source: TransmilenioData["source"] = "snapshot"): Transmi
   return { stations: [], routes: [], fetchedAt: "2026-11-04T10:00:00-05:00", source }
 }
 
-const POSICION = { lat: 4.65, lng: -74.1 }
+/** Lectura de ubicación FRESCA respecto a un instante dado (hora = ese instante). */
+const lecturaEn = (lat: number, lng: number, now: Date, precision = 20): LecturaUbicacion => ({ lat, lng, precision, hora: now.getTime() })
+const AHORA_FIJO = new Date("2026-11-04T10:00:00-05:00")
+const POSICION = lecturaEn(4.65, -74.1, AHORA_FIJO)
 
 test("nearestStations y planTrip no lanzan con cero estaciones", () => {
   const vacio = catalogoVacio()
@@ -28,7 +32,7 @@ test("nearestStations y planTrip no lanzan con cero estaciones", () => {
 
 test("el asistente responde al GPS sin estaciones sin lanzar", () => {
   const vacio = catalogoVacio()
-  const reply = runIntent({ type: "gps" }, { data: vacio, context: { position: POSICION } })
+  const reply = runIntent({ type: "gps" }, { data: vacio, context: { position: POSICION, now: AHORA_FIJO } })
   assert.equal(reply.action, "gps", "abre el GPS para reintentar")
   assert.match(reply.reply, /Todavía no tengo las estaciones/)
 })
@@ -37,7 +41,7 @@ test("«donde estoy» por lenguaje natural con catálogo vacío no lanza", () =>
   // Reproducción de corroboración: interpretCommand con catálogo vacío y posición
   // debía arrojar «Cannot read properties of undefined (reading name)».
   const vacio = catalogoVacio()
-  const reply = interpretCommand("donde estoy", vacio, { position: POSICION })
+  const reply = interpretCommand("donde estoy", vacio, { position: POSICION, now: AHORA_FIJO })
   assert.equal(reply.action, "gps")
   assert.match(reply.reply, /Todavía no tengo las estaciones/)
 })
@@ -93,7 +97,7 @@ test("la info de ruta lleva procedencia", () => {
 test("el GPS con estación concreta cita procedencia; abrir el GPS a secas no", () => {
   const fx: TransmilenioData = { ...datosVerificadosDirecto(), source: "live", fetchedAt: "2026-11-04T10:00:00-05:00" }
   // Alfa está en 4.60,-74.08; una posición cercana da estación más cercana.
-  const conEstacion = runIntent({ type: "gps" }, { data: fx, context: { position: { lat: 4.601, lng: -74.08 } } })
+  const conEstacion = runIntent({ type: "gps" }, { data: fx, context: { position: lecturaEn(4.601, -74.08, AHORA_FIJO), now: AHORA_FIJO } })
   assert.equal(conEstacion.action, "gps")
   assert.match(conEstacion.reply, /La estación más cercana es/)
   assert.match(conEstacion.reply, /Datos de TransMilenio consultados el/)

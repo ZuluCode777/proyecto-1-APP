@@ -1,5 +1,5 @@
 import { AgentReplySchema, interpretCommand, plainReply, type AgentReply } from "@/lib/local-agent"
-import type { LatLng } from "@/lib/geo"
+import { ubicacionVigente, type LecturaUbicacion } from "@/lib/ubicacion"
 import type { TransmilenioData } from "@/lib/routes"
 
 /**
@@ -28,8 +28,13 @@ export const ESPERA_MAXIMA_CLIENTE_MS = 6_000
 
 export type ConsultaAgenteOpciones = {
   message: string
-  /** Solo se adjunta si la frase puede usar la ubicación (ver `intencionUsaUbicacion`). */
-  position?: LatLng
+  /**
+   * Lectura de ubicación (con precisión y hora) a adjuntar; solo cuando la
+   * frase puede usarla (ver `intencionUsaUbicacion`). El respaldo local revalida
+   * su frescura con `now()` al resolver, así una lectura que era fresca al
+   * empezar pero envejeció durante la espera de red no se usa (EA-07, #33).
+   */
+  position?: LecturaUbicacion
   /** Catálogo ya cargado para el respaldo local; `null` si aún no hay. */
   data: TransmilenioData | null
   /** Señal externa para abortar (salir, cancelar o pregunta nueva). */
@@ -76,16 +81,22 @@ export async function consultarAgente({
   signal.addEventListener("abort", alCancelar, { once: true })
 
   try {
+    // Frontera de envío (EA-07, #33): justo antes de serializar se aplica la
+    // política compartida; una coordenada vencida, futura o sin hora de captura no
+    // sale del navegador, venga de donde venga.
+    const posicionEnviable = ubicacionVigente(position, now().getTime())
     const res = await implementacionFetch("/api/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, position }),
+      body: JSON.stringify({ message, position: posicionEnviable }),
       signal: temporizador.signal,
     })
     if (!res.ok && res.status !== 429 && res.status !== 413) throw new Error(`HTTP ${res.status}`)
     const json = await res.json()
     const parsed = AgentReplySchema.safeParse(json)
     if (!parsed.success) return respaldoLocal()
+    // La captura puede vencer en tránsito aunque el servidor la resolviera a tiempo.
+    if (res.ok && posicionEnviable && !ubicacionVigente(posicionEnviable, now().getTime())) return respaldoLocal()
     return parsed.data
   } catch {
     // Si quien llamó abortó (salir/cancelar/pregunta nueva), propaga el aborto:
