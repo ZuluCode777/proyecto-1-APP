@@ -8,8 +8,7 @@
  * no era de bytes. Aquí:
  *
  * - Se lee el `ReadableStream` nativo por trozos (`getReader`), contando los
- *   BYTES que llegan. Si se superan `maxBytes`, se corta de inmediato y se
- *   cancela el stream (libera el recurso): no se acumula el cuerpo completo.
+ *   BYTES que llegan. Si se superan `maxBytes`, se corta de inmediato.
  * - No se confía en `Content-Length`: la cota se aplica sobre los bytes REALES
  *   leídos, así una cabecera ausente o mentirosa no evade el límite.
  * - El texto se decodifica con `TextDecoder` sobre los bytes acumulados, de modo
@@ -37,11 +36,33 @@ export type LecturaCuerpo =
   | { kind: "error" }
 
 /**
+ * Libera el lector sin BLOQUEAR la respuesta. No se espera `cancel()`: sobre un
+ * cuerpo clonado/tee'd (p. ej. `ReadableStream.tee()`), `cancel()` de una rama
+ * espera a que la otra también se cancele, y esa espera podría dejar el 413 o el
+ * 400 pendientes para siempre. Por eso se dispara la cancelación y se ignora su
+ * resultado, y se suelta el candado del lector para no retener el stream.
+ */
+function liberarLector(lector: ReadableStreamDefaultReader<Uint8Array>): void {
+  lector.cancel().catch(() => {})
+  try {
+    lector.releaseLock()
+  } catch {
+    // El candado puede estar ya liberado por la cancelación; no es un fallo.
+  }
+}
+
+/**
  * Lee `cuerpo` acumulando como máximo `maxBytes` bytes. Si `cuerpo` es `null`
  * (petición sin cuerpo) devuelve texto vacío. Nunca lanza: los fallos se
- * devuelven como `{ kind: "error" }` tras intentar cancelar el stream.
+ * devuelven como `{ kind: "error" }` tras disparar la liberación del stream.
  */
-export async function leerCuerpoLimitado(cuerpo: ReadableStream<Uint8Array> | null, maxBytes: number): Promise<LecturaCuerpo> {
+export async function leerCuerpoLimitado({
+  cuerpo,
+  maxBytes,
+}: {
+  cuerpo: ReadableStream<Uint8Array> | null
+  maxBytes: number
+}): Promise<LecturaCuerpo> {
   if (!cuerpo) return { kind: "ok", texto: "" }
 
   const lector = cuerpo.getReader()
@@ -55,8 +76,9 @@ export async function leerCuerpoLimitado(cuerpo: ReadableStream<Uint8Array> | nu
       if (!value) continue
       bytes += value.byteLength
       if (bytes > maxBytes) {
-        // Desborde: se corta antes de acumular más y se libera el stream.
-        await lector.cancel().catch(() => {})
+        // Desborde: se corta antes de acumular más y se libera el stream sin
+        // esperar la cancelación, para no dejar el 413 pendiente.
+        liberarLector(lector)
         return { kind: "excedido" }
       }
       trozos.push(value)
@@ -64,17 +86,17 @@ export async function leerCuerpoLimitado(cuerpo: ReadableStream<Uint8Array> | nu
   } catch {
     // Error o cancelación de la lectura: se libera el stream y se reporta sin
     // lanzar, para que el manejador responda 400 y no 500.
-    await lector.cancel().catch(() => {})
+    liberarLector(lector)
     return { kind: "error" }
   }
 
   // Decodifica UTF-8 sobre los bytes completos: un carácter multibyte partido
   // entre trozos se arma correctamente al concatenar antes de decodificar.
   const total = new Uint8Array(bytes)
-  let offset = 0
+  let desplazamiento = 0
   for (const trozo of trozos) {
-    total.set(trozo, offset)
-    offset += trozo.byteLength
+    total.set(trozo, desplazamiento)
+    desplazamiento += trozo.byteLength
   }
   try {
     const texto = new TextDecoder("utf-8", { fatal: false }).decode(total)

@@ -74,3 +74,50 @@ export function decidirAcceso({
   }
   return estaAutorizado(autorizacion, clave) ? { kind: "permitido" } : { kind: "clave-requerida" }
 }
+
+/**
+ * Decide el acceso leyendo el entorno real (`NODE_ENV` y `APP_PASSWORD`) una
+ * sola vez. Es la MISMA guardia que comparten el `proxy` (toda la app/UI) y el
+ * manejador de `/api/agent` (GET y POST): la API se excluye del `proxy` para que
+ * Next no clone ni almacene su cuerpo (ver EA-10 #36, hallazgo del límite de
+ * ingreso), así que debe aplicar aquí la misma protección para no abrir un hueco
+ * de autenticación. El secreto no se registra ni se devuelve en las respuestas.
+ */
+export function decidirAccesoDeEntorno({ autorizacion }: { autorizacion: string | null }): DecisionAcceso {
+  const entorno: EntornoAcceso = process.env.NODE_ENV === "production" ? "produccion" : "desarrollo"
+  return decidirAcceso({ autorizacion, clave: process.env.APP_PASSWORD, entorno })
+}
+
+/**
+ * Forma serializable de una respuesta de acceso DENEGADO (401 o 503), para que
+ * el `proxy` (que devuelve `NextResponse`) y el manejador de la API (que
+ * devuelve `Response`) construyan EXACTAMENTE la misma respuesta sin divergir.
+ * Un `permitido` no produce respuesta aquí (cada llamador continúa a su modo).
+ */
+export type RespuestaAccesoDenegado = {
+  estado: 401 | 503
+  cuerpo: string
+  cabeceras?: Record<string, string>
+}
+
+/**
+ * Traduce una decisión de acceso denegado a su respuesta. Separar la decisión de
+ * su representación evita que proxy y API escriban mensajes o cabeceras
+ * distintos para el mismo caso.
+ */
+export function respuestaDeDecision(decision: Exclude<DecisionAcceso, { kind: "permitido" }>): RespuestaAccesoDenegado {
+  switch (decision.kind) {
+    case "clave-requerida":
+      return {
+        estado: 401,
+        cuerpo: "Hace falta la clave de TransMiVoz.",
+        cabeceras: { "WWW-Authenticate": 'Basic realm="TransMiVoz", charset="UTF-8"' },
+      }
+    case "cerrado-sin-clave":
+      return { estado: 503, cuerpo: "TransMiVoz no está disponible: falta configurar la clave de acceso." }
+    default: {
+      const _exhaustivo: never = decision
+      return _exhaustivo
+    }
+  }
+}

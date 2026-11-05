@@ -1,6 +1,7 @@
 import { z } from "zod"
+import { decidirAccesoDeEntorno, respuestaDeDecision } from "@/lib/autenticacion"
 import { leerCuerpoLimitado } from "@/lib/cuerpo-peticion"
-import { claveLimite, resolverIdentidad } from "@/lib/identidad-cliente"
+import { claveCliente } from "@/lib/identidad-cliente"
 import { parseIntent, plainReply, runIntent, type AgentContext, type Intent } from "@/lib/local-agent"
 import { OLLAMA_MODEL, ollamaConfigured, ollamaStatus, parseIntentWithOllama } from "@/lib/ollama"
 import { createRateLimiter } from "@/lib/rate-limit"
@@ -22,35 +23,22 @@ const MAX_MESSAGE_CHARS = 300
 const RATE_LIMIT = 20
 const RATE_WINDOW_MS = 60_000
 
-let rateLimit = createRateLimiter({ limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS })
+const rateLimit = createRateLimiter({ limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS })
 
 /**
- * Reinicia el contador de peticiones del endpoint. SOLO para pruebas: antes,
- * cada prueba del endpoint fabricaba un `x-forwarded-for` distinto para no
- * compartir cuota entre llamadas. Con la política conservadora de EA-10 (#36) la
- * identidad ya no sale de esa cabecera (todas comparten la clave acotada
- * `sin-verificar`), así que las pruebas reinician el contador entre casos para
- * aislarse, en vez de simular identidades que el servidor no debe creer. No se
- * usa en producción.
+ * Guardia de acceso HTTP Basic de la ruta. `/api/agent` se excluye del `proxy`
+ * (para que Next no clone su cuerpo y la cota por stream actúe sobre el cuerpo
+ * real), así que GET y POST aplican aquí la MISMA decisión que el `proxy`
+ * (`decidirAccesoDeEntorno`): 401 sin credencial o incorrecta, 503 en producción
+ * sin clave utilizable, y continúa si está permitido. Devuelve la respuesta de
+ * denegación, o `null` si se permite. No es una respuesta del agente: su cuerpo
+ * es texto plano, igual que el del `proxy` (no `AgentReply`).
  */
-export function __reiniciarLimitePeticiones() {
-  rateLimit = createRateLimiter({ limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS })
-}
-
-/**
- * Clave de quien llama para el límite de peticiones (EA-10 #36). Resuelve la
- * identidad con la política conservadora de `lib/identidad-cliente.ts`: sin un
- * proxy de confianza COMPROBADO no se confía en `x-forwarded-for`/`x-real-ip`, y
- * todas esas peticiones comparten una clave acotada. La verificación del proxy
- * real de Render queda pendiente de EA-14/#40; hasta entonces este es el
- * comportamiento seguro por defecto.
- */
-function clientKey(req: Request): string {
-  const identidad = resolverIdentidad({
-    forwardedFor: req.headers.get("x-forwarded-for"),
-    realIp: req.headers.get("x-real-ip"),
-  })
-  return claveLimite(identidad)
+function guardarAcceso(req: Request): Response | null {
+  const decision = decidirAccesoDeEntorno({ autorizacion: req.headers.get("authorization") })
+  if (decision.kind === "permitido") return null
+  const { estado, cuerpo, cabeceras } = respuestaDeDecision(decision)
+  return new Response(cuerpo, { status: estado, headers: cabeceras })
 }
 
 /**
@@ -79,14 +67,19 @@ const BodySchema = z.object({
 const answer = (reply: string, status = 200, headers?: HeadersInit) => Response.json(plainReply(reply), { status, headers })
 
 /** Qué motor interpreta las frases, para la pantalla de diagnóstico. */
-export async function GET() {
+export async function GET(req: Request) {
+  const denegado = guardarAcceso(req)
+  if (denegado) return denegado
   if (!ollamaConfigured()) return Response.json({ engine: "reglas" })
   const status = await ollamaStatus()
   return Response.json({ engine: "ollama", model: OLLAMA_MODEL, ...status })
 }
 
 export async function POST(req: Request) {
-  const { allowed, retryAfterSeconds } = rateLimit(clientKey(req))
+  const denegado = guardarAcceso(req)
+  if (denegado) return denegado
+
+  const { allowed, retryAfterSeconds } = rateLimit(claveCliente())
   if (!allowed) {
     return answer("Estás haciendo muchas peticiones seguidas. Espera un momento e inténtalo otra vez.", 429, {
       "Retry-After": String(retryAfterSeconds),
@@ -99,7 +92,7 @@ export async function POST(req: Request) {
   // todo. Un cuerpo por encima del límite corta la lectura y responde 413; un
   // error o cancelación de la lectura responde 400 sin provocar 500 ni dejar el
   // stream abierto. La cota es de bytes y es independiente del límite de la frase.
-  const cuerpo = await leerCuerpoLimitado(req.body, MAX_BODY_BYTES)
+  const cuerpo = await leerCuerpoLimitado({ cuerpo: req.body, maxBytes: MAX_BODY_BYTES })
   if (cuerpo.kind === "excedido") return answer("Ese mensaje es demasiado largo. Dilo en una frase corta.", 413)
   if (cuerpo.kind === "error") return answer("No pude leer tu mensaje. Inténtalo de nuevo.", 400)
   const raw = cuerpo.texto

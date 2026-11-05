@@ -16,6 +16,13 @@ de `createRateLimiter`/`rateLimit`; y el contrato histórico de `estaAutorizado`
 verificadas, sentido, calendario, revalidación antes de texto/voz, catálogo
 recuperable, reglas primero, cancelación).
 
+Incorpora las correcciones de la revisión independiente sobre `a1efaf52`: el
+límite de ingreso real (excluir `/api/agent` del clon del `proxy` y compartir la
+guardia Basic en su manejador), el 413/400 que no queda pendiente por la
+cancelación del stream, la retirada del export de reinicio solo-pruebas y de la
+rama especulativa de proxy confiable, y argumentos de objeto en los helpers
+nuevos.
+
 ## Comportamiento
 
 ### Criterio 1 — HTTP Basic que no deja la app abierta (fallar cerrado)
@@ -45,6 +52,14 @@ las respuestas (el 503 no revela si había clave) ni se compara fuera de
 `estaAutorizado`. `instrumentation.ts` avisa en el arranque de producción cuando
 no hay clave utilizable, sin imprimir el valor.
 
+La decisión y su representación se comparten: `decidirAccesoDeEntorno` lee
+`NODE_ENV`/`APP_PASSWORD` una vez y `respuestaDeDecision` traduce un acceso
+denegado a 401 (con reto `WWW-Authenticate`) o 503. El `proxy` (que devuelve
+`NextResponse`) y el manejador de `/api/agent` (que devuelve `Response`)
+construyen la MISMA respuesta desde esa representación, sin divergir en mensaje ni
+cabeceras. Un 401/503 no es una respuesta del agente: su cuerpo es texto plano,
+igual que el del `proxy`, no `AgentReply`.
+
 ### Criterio 2 — lectura del cuerpo por stream con cota real de bytes
 
 El manejador leía `await req.text()` (acumula TODO antes de medir) y comparaba
@@ -64,6 +79,26 @@ así una cabecera ausente o mentirosa no la evade. El límite de la FRASE
 (`MAX_MESSAGE_CHARS = 300`) sigue siendo independiente y se aplica después. Las
 respuestas públicas conservan el contrato `AgentReply` (413/400 usan `plainReply`).
 
+**413/400 no pendientes por la cancelación (hallazgo P1 #1).** Al desbordar o
+fallar, NO se espera `lector.cancel()`: sobre un cuerpo clonado/`tee()` (como el
+clon del `proxy`), `cancel()` de una rama espera a que la otra también se cancele;
+si esa rama no se consume, esperar bloquearía el 413/400 para siempre. Se dispara
+la cancelación con manejo de rechazo (sin `await`) y se suelta el candado del
+lector, así la respuesta sale de inmediato.
+
+**La cota actúa sobre el cuerpo real, no sobre un clon (hallazgo P1 #2).** En
+Next 16, cuando una ruta pasa por el `proxy`, el servidor CLONA y almacena su
+cuerpo en memoria (hasta `proxyClientMaxBodySize`, 10 MiB por defecto) y espera a
+terminar la carga (`finalize`) ANTES del manejador; la cota de 4000 bytes llegaría
+tarde. Para resolverlo en el ingreso real —sin servidor propio ni dependencias—
+se EXCLUYE `/api/agent` del `proxy` (su `config.matcher`), de modo que Next no
+clona su cuerpo y `leerCuerpoLimitado` lo lee en streaming, cortando en 413 antes
+de recibirlo entero. Para no abrir un hueco de autenticación, el manejador de
+`/api/agent` aplica en GET y POST la MISMA guardia Basic compartida
+(`decidirAccesoDeEntorno`): la protección de toda la app sigue equivalente. La
+exclusión se ancla a la ruta EXACTA (con o sin barra final): variantes como
+`/api/agentx` o `/api/agent/sub` siguen pasando por el `proxy`.
+
 ### Criterio 3 — contador con cota de cardinalidad, no solo expiración
 
 `lib/rate-limit.ts` antes solo limpiaba entradas VENCIDAS al pasar de un tamaño;
@@ -80,57 +115,56 @@ Redis ni se promete cuota global o persistente (alcance demo). La firma de
 
 ### Criterio 4 — identidad del cliente conservadora (proxy pendiente de verificar)
 
-`lib/identidad-cliente.ts` (`resolverIdentidad`) reemplaza la confianza ciega en
-el PRIMER `x-forwarded-for`/`x-real-ip`. Esas cabeceras las puede escribir
+`lib/identidad-cliente.ts` (`claveCliente`) reemplaza la confianza ciega en el
+PRIMER `x-forwarded-for`/`x-real-ip`. Esas cabeceras las puede escribir
 cualquiera; solo son fiables detrás de un proxy que las reescriba de forma
-conocida. Política (hasta verificar el proxy real, EA-14/#40):
+conocida y verificada. Mientras no se haya VERIFICADO el proxy real (EA-14/#40),
+`claveCliente()` devuelve SIEMPRE la clave acotada común (`CLAVE_SIN_VERIFICAR`):
+no se deriva identidad de ninguna cabecera, así nadie obtiene cuota propia
+inventando valores ni infla la cardinalidad, y la cota es conservadora. Es el
+comportamiento acotado cuando no hay identidad validada.
 
-- Por defecto (`saltosConfiables = 0`) NO se confía en ninguna cabecera
-  reenviada: identidad `sin-verificar`, y TODAS esas peticiones comparten UNA
-  clave acotada (`CLAVE_SIN_VERIFICAR`). Así, sin proxy comprobado, nadie obtiene
-  cuota propia inventando cabeceras ni infla la cardinalidad, y la cota es
-  conservadora. Comportamiento acotado cuando no hay identidad validada.
-- Si algún día se declara un proxy de confianza (número de saltos que añade a
-  `x-forwarded-for`), la IP del cliente se toma contando ESE número de saltos
-  desde la DERECHA de la cadena, nunca el primer valor de la izquierda. Si la
-  cadena no cubre la topología declarada, se degrada a `sin-verificar`.
+Siguiendo la revisión, **no se incluye una rama de «proxy confiable»
+configurable** (que antes solo usaban los tests): etiquetar una cadena sin medir
+como IP de confianza sería afirmar algo no verificado. La lectura de la cadena se
+añadirá en EA-14/#40 una vez medida la topología; `lib/identidad-cliente.ts`
+documenta ese punto de extensión.
 
 **No se afirma que Render reescriba ninguna cabecera.** Su verificación real
-queda PENDIENTE de EA-14/#40, antes de exponer. Las pruebas de este criterio son
-sintéticas y no certifican el proxy.
+queda PENDIENTE de EA-14/#40, antes de exponer.
 
-**Matriz/cadena a medir en EA-14/#40** (antes de subir `saltosConfiables`):
+**Matriz/cadena a medir en EA-14/#40** (antes de confiar en cualquier cabecera):
 
 | A medir en el despliegue real | Qué confirmar |
 | --- | --- |
 | ¿Render antepone su salto a `x-forwarded-for`? | Que exista y sea consistente |
-| Nº de proxies de confianza en la ruta hasta la app | Fijar `saltosConfiables` = ese número |
-| ¿Puede un cliente inyectar saltos extra? | Que no muevan el salto contado desde la derecha |
+| Nº de proxies de confianza en la ruta hasta la app | Cuántos saltos añaden |
+| ¿Puede un cliente inyectar saltos extra? | Que no muevan el salto de confianza |
 | `x-real-ip`: ¿lo escribe el proxy o el cliente? | No usarlo como identidad si lo puede escribir el cliente |
 
-**Reversión que suspende la exposición:** mientras `saltosConfiables = 0`, toda
-identidad es acotada (comportamiento seguro). Si una medición resultara dudosa,
-se mantiene en 0 (o se vuelve a 0) y la cuota sigue siendo conservadora; combinado
+**Reversión que suspende la exposición:** mientras `claveCliente()` devuelva la
+clave acotada, toda identidad es conservadora (comportamiento seguro). Combinado
 con el criterio 1 (producción sin clave = 503), la reversión segura suspende la
 exposición.
 
 ### Criterio 5 — alcance demo de una sola instancia y pruebas de helpers tocados
 
-Se conserva la premisa de una sola instancia con contador local (sin Redis). Se
-buscaron todos los llamadores de los helpers tocados: `estaAutorizado`
-(`proxy.ts`, `lib/access.test.ts`), `clientKey`/`rateLimit`/lectura de cuerpo
-(`app/api/agent/route.ts`), y los tests del endpoint real
-(`lib/ea07-asistente-ubicacion.test.ts`, `lib/ea08-reglas-cancelacion.test.ts`).
+Se conserva la premisa de una sola instancia con contador local (sin Redis). El
+contador vuelve a ser `const rateLimit` (no hay export de reinicio en producción).
+Se buscaron todos los llamadores de los helpers tocados: la guardia de acceso
+compartida (`proxy.ts`, `app/api/agent/route.ts`, `lib/access.test.ts`),
+`claveCliente`/`rateLimit`/lectura de cuerpo (`app/api/agent/route.ts`), y los
+tests del endpoint real (`lib/ea07-asistente-ubicacion.test.ts`,
+`lib/ea08-reglas-cancelacion.test.ts`).
 
 `lib/ea08-reglas-cancelacion.test.ts` fabricaba un `x-forwarded-for` distinto por
 petición para no compartir cuota entre pruebas. Con la política conservadora esa
-cabecera ya no es identidad (todo colapsa a `sin-verificar`), así que esa técnica
+cabecera ya no es identidad (todo colapsa a la clave acotada), así que esa técnica
 simulaba identidades que el servidor no debe creer. Se adaptó SIN debilitar la
-cobertura: el endpoint expone `__reiniciarLimitePeticiones()` (solo para pruebas,
-documentado y sin uso en producción) y los tests reinician el contador entre
-casos para aislarse, en vez de inventar cabeceras. Lo mismo en
-`lib/ea07-asistente-ubicacion.test.ts`. El 429 real se cubre aparte
-(`lib/ea10-endpoint.test.ts`) sin ocultar el límite.
+cobertura y SIN un export solo-pruebas: cada caso carga una instancia FRESCA del
+endpoint por import con query distinta (`?caso=…`), el mismo patrón que ya usa
+`lib/transmilenio-data.test.ts`, de modo que cada caso tiene su propio contador.
+El 429 real se cubre aparte (`lib/ea10-endpoint.test.ts`) sin ocultar el límite.
 
 ## Evidencia
 
@@ -138,62 +172,85 @@ Pruebas con `node:test` y reloj/stream/`fetch` simulados, sin dependencias
 nuevas:
 
 - `lib/ea10-autenticacion.test.ts`: `claveUtilizable` (whitespace), fallar
-  cerrado en producción, desarrollo abierto, 401/acceso con clave, y clave válida
-  con espacios no alterada.
+  cerrado en producción, desarrollo abierto, 401/acceso con clave, clave válida
+  con espacios no alterada, `respuestaDeDecision` (401 con reto/503 sin revelar
+  secreto) y `decidirAccesoDeEntorno` leyendo `NODE_ENV`/`APP_PASSWORD` reales.
 - `lib/ea10-cuerpo-peticion.test.ts`: trozos, UTF-8 multibyte partido, cota de
-  bytes (no caracteres), `Content-Length` ignorado, error y cancelación → `error`.
+  bytes (no caracteres), `Content-Length` ignorado, error y cancelación → `error`,
+  y **desborde en una rama de `tee()` con la otra pendiente → 413 no queda colgado**
+  (regresión del P1 #1, con plazo).
 - `lib/ea10-rate-limit-cardinalidad.test.ts`: tope de cardinalidad (429), clave
   conocida no bloqueada por el tope, desalojo solo por expiración, cuota no
   reiniciada por desalojo, aluvión acotado.
-- `lib/ea10-identidad-cliente.test.ts`: sin confianza por defecto, cabeceras
-  inventadas colapsan a una clave, salto correcto desde la derecha con proxy
-  declarado, degradación conservadora. (Sintéticas; no certifican el proxy.)
+- `lib/ea10-identidad-cliente.test.ts`: la clave del cliente es siempre la acotada
+  común (no se confía en cabeceras). (Sintética; no certifica el proxy.)
 - `lib/ea10-endpoint.test.ts`: endpoint real → 413 (cuerpo grande), 400 (error de
-  lectura, sin 500), 200 válido y 429 + `Retry-After`, todos con contrato
-  `AgentReply`.
+  lectura, sin 500), 200 válido, 429 + `Retry-After`, y la **guardia Basic en GET
+  y POST** (producción sin clave/vacía/whitespace → 503; con clave: 401 sin
+  credencial o incorrecta, acceso con la correcta; desarrollo sin clave permite),
+  todos con contrato `AgentReply` en las respuestas de agente. Cada caso carga una
+  instancia fresca por import con query (aislamiento del contador sin reset).
 
-**Mutaciones comprobadas** (revertir el arreglo → falla la prueba que lo cubre →
+**Verificación HTTP local (P1 #2)** con `scripts/verificar-ea10-http.mjs` (fuera
+de `pnpm test`, necesita servidor vivo): arranca `next start` en producción con
+`APP_PASSWORD` y envía a `POST /api/agent` un cuerpo FRAGMENTADO con
+`Transfer-Encoding: chunked` que supera la cota sin terminar de enviarlo.
+Resultado observado: **HTTP 413 tras ~4012 bytes** (cota 4000) sin completar el
+envío. Además, sin credencial: `/api/agent` GET y POST, la UI (`/`) y
+`/api/transmilenio` responden **401** (la exclusión del `proxy` no abre hueco).
+
+**Mutaciones comprobadas** (revertir el arreglo → falla la prueba/verificación →
 restaurar):
 
 | Mutación | Resultado |
 | --- | --- |
 | Producción abierta sin clave (quitar `cerrado-sin-clave`) | falla «producción FALLA CERRADO» |
-| Quitar el corte por bytes en `leerCuerpoLimitado` | la lectura del stream infinito no termina (cuelga): evidencia de que la cota evita el agotamiento de recursos |
+| Quitar el corte por bytes en `leerCuerpoLimitado` | la lectura del stream infinito no termina (cuelga): la cota evita el agotamiento de recursos |
 | Quitar el rechazo por cardinalidad (siempre crear entrada) | fallan 3 de 5 pruebas de cardinalidad |
+| Volver a `await lector.cancel()` (P1 #1) | falla la regresión de `tee()` (el 413 queda pendiente; el plazo lo detecta) |
+| Quitar `api/agent` del `matcher` del `proxy` (P1 #2) | la verificación HTTP chunked NO recibe 413 antes de terminar (status 0 tras ~20 KiB): el clon del proxy almacena el cuerpo |
 
 ### Las cuatro puertas sobre el código final (sandbox Linux)
 
-- `pnpm exec tsc --noEmit`: salida 0.
-- `pnpm test`: **309** pruebas correctas, 0 falladas, **17 canceladas**. Las 17
-  cuelgan en cascada (`cancelledByParent`) de UN fallo PREEXISTENTE y ambiental,
-  no introducido por este trabajo: `AC2 (endpoint real): frase desconocida con
-  modelo colgado…` en `lib/ea08-reglas-cancelacion.test.ts`, que depende de un
-  temporizador de aborto de ~2 s del Ollama simulado y en este sandbox termina
-  como «Promise resolution is still pending but the event loop has already
-  resolved». Se reprodujo en `origin/main` 809ee39 ANTES de cualquier cambio (17
-  canceladas) y aislando el archivo (pass 2, cancelled 17). Los demás tests del
-  endpoint real pasan al ejecutarlos sin ese caso flaky como primero.
-- `pnpm build`: salida 0 (incluye `ƒ Proxy (Middleware)`).
+- `pnpm exec tsc --noEmit`: **salida 0** (código de salida real comprobado).
+- `pnpm test`: **código de salida 1 en el sandbox**, honestamente. 311 pruebas
+  correctas, **0 falladas**, **17 canceladas**. Las 17 cuelgan en cascada
+  (`cancelledByParent`) de UN fallo PREEXISTENTE y ambiental, NO introducido por
+  este trabajo: `AC2 (endpoint real): frase desconocida con modelo colgado…` en
+  `lib/ea08-reglas-cancelacion.test.ts`, que depende de un temporizador de aborto
+  de ~2 s del Ollama simulado y en este sandbox termina como «Promise resolution
+  is still pending but the event loop has already resolved». Se verificó cargando
+  la versión EXACTA de ese archivo en `origin/main` 809ee39 (sin ninguno de mis
+  cambios): también cancela 17 en el sandbox. En el portátil del revisor
+  `pnpm test` pasa 326/326 sobre `a1efaf52`; el fallo es del event loop del
+  sandbox, no del código. No se tocó ese caso para no enmascararlo ni se alteró la
+  CI. Todas las pruebas EA-10 nuevas y las adaptadas (ea07/ea08 fuera del caso
+  flaky) pasan.
+- `pnpm build`: **salida 0** (incluye `ƒ Proxy (Middleware)`; usado también para
+  la verificación HTTP).
 - `pnpm verificar`: **no corre en el sandbox**. Comando: `pnpm verificar`. Error:
   «No encontré Chrome. Indica la ruta con CHROME_PATH.» (salida 2). No hay Chrome
-  ni Chromium instalados ni `pwsh`/`powershell`. No se alteró el script ni la CI
-  para forzar que pase. La verificación de extremo a extremo con navegador real
-  queda pendiente de un entorno con Chrome.
+  ni Chromium ni `pwsh`/`powershell`. No se alteró el script ni la CI. La
+  verificación de extremo a extremo con navegador real y la cobertura de Chrome y
+  PowerShell quedan a cargo de la CI de la coordinación.
 
 ## Límites
 
 - **Proxy real sin verificar.** No se midió si Render (ni ningún proxy) reescribe
-  `x-forwarded-for`. `saltosConfiables = 0` por defecto; la identidad es acotada.
-  Subirlo requiere la medición de EA-14/#40. Las pruebas de identidad son
-  sintéticas y no certifican el proxy.
+  `x-forwarded-for`. `claveCliente()` no deriva identidad de cabeceras; la cuota
+  es conservadora. Confiar en una cabecera requiere la medición de EA-14/#40. La
+  prueba de identidad es sintética y no certifica el proxy.
 - **Cuota local, no global.** El contador es de una sola instancia en memoria. No
   es cuota global ni persistente; un reinicio del proceso la pierde. Sin Redis.
 - **Sin navegador ni PowerShell en el sandbox.** `pnpm verificar` no se ejecutó
   (sin Chrome); no hay `pwsh`. La prueba PowerShell del instalador permanece en
-  CI, intacta.
-- **Fallo preexistente de pruebas.** El caso AC2 «modelo colgado» cuelga en este
-  sandbox por tiempos del event loop; no se tocó para no enmascararlo ni alterar
-  la CI. Queda señalado arriba.
-- **413/400 no probados contra Render.** El comportamiento del cuerpo por stream
-  se probó con streams sintéticos y el endpoint en proceso, no contra el runtime
-  de Render ni con cargas reales de red.
+  CI, intacta. La cobertura con Chrome/PowerShell la aporta la CI de la
+  coordinación.
+- **`pnpm test` sale con código 1 en el sandbox** por el caso AC2 «modelo colgado»
+  preexistente (event loop del sandbox), no por este trabajo; demostrado contra la
+  versión de `origin/main` de ese archivo. En el portátil del revisor pasa
+  326/326 sobre `a1efaf52`.
+- **Verificación HTTP contra `next start` local, no contra Render.** El 413 por
+  cuerpo chunked se probó con el servidor de producción de Next en el sandbox
+  (`scripts/verificar-ea10-http.mjs`), no contra el runtime de Render ni con la
+  topología de proxy real; esa parte sigue pendiente de EA-14/#40.

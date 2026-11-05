@@ -1,10 +1,24 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { pathToFileURL } from "node:url"
 import snapshot from "../data/transmilenio.json" with { type: "json" }
 import { consultarAgente } from "./consulta-agente"
 import { interpretCommand, parseIntent, plainReply, runIntent, type Intent } from "./local-agent"
 import { elegirIntent, intencionConocida, intencionUsaUbicacion, requiereModelo } from "./seleccion-interprete"
 import { TransmilenioDataSchema } from "./transmilenio"
+
+const raiz = pathToFileURL(process.cwd() + "/")
+let contadorCaso = 0
+
+/**
+ * Carga una instancia FRESCA del endpoint (caché de módulo reiniciada por una
+ * query distinta, como en `transmilenio-data.test.ts`). Así cada caso tiene su
+ * propio contador de peticiones y queda aislado sin un export de reinicio solo
+ * para pruebas ni cabeceras de proxy fabricadas.
+ */
+async function cargarEndpointFresco(): Promise<{ POST: (req: Request) => Promise<Response> }> {
+  return import(new URL(`app/api/agent/route.ts?caso=${contadorCaso++}`, raiz).href)
+}
 
 /**
  * Regresión del issue #34 (EA-08): reglas primero, espera máxima de cliente y
@@ -50,17 +64,13 @@ async function conEndpoint(modoModelo: "unknown" | "colgado" | "gps" | "trip-des
     throw new Error("sin red (ArcGIS simulado): usa la copia")
   }) as typeof fetch
 
-  const { POST, __reiniciarLimitePeticiones } = (await import("../app/api/agent/route.ts")) as {
-    POST: (req: Request) => Promise<Response>
-    __reiniciarLimitePeticiones: () => void
-  }
   // EA-10 (#36): la identidad para el límite ya NO sale de `x-forwarded-for` (la
-  // política conservadora no confía en esa cabecera sin un proxy comprobado;
+  // política conservadora no confía en esa cabecera sin un proxy verificado;
   // todas las peticiones comparten la clave acotada `sin-verificar`). Antes cada
   // llamada fabricaba una IP distinta para no compartir cuota entre pruebas; eso
-  // simulaba identidades que el servidor no debe creer. Ahora se reinicia el
-  // contador del endpoint entre casos para aislarlos, sin inventar cabeceras.
-  __reiniciarLimitePeticiones()
+  // simulaba identidades que el servidor no debe creer. Ahora cada caso carga una
+  // instancia fresca del endpoint (contador propio), sin inventar cabeceras.
+  const { POST } = await cargarEndpointFresco()
   const preguntar = async (message: string, position?: { lat: number; lng: number }) => {
     const res = await POST(
       new Request("http://localhost/api/agent", {

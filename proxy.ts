@@ -1,41 +1,37 @@
 import { NextResponse, type NextRequest } from "next/server"
-import { decidirAcceso, type EntornoAcceso } from "@/lib/autenticacion"
+import { decidirAccesoDeEntorno, respuestaDeDecision } from "@/lib/autenticacion"
 
 /**
- * Pide la clave de la app con HTTP Basic en toda petición. Protege la app cuando
- * se publica con Tailscale Funnel o un proxy equivalente.
+ * Pide la clave de la app con HTTP Basic. Protege la app cuando se publica con
+ * Tailscale Funnel o un proxy equivalente.
  *
- * EA-10 (#36): con secreto configurado, responde 401 sin credencial o con
- * credencial incorrecta y deja pasar la correcta. Sin secreto utilizable
- * (ausente, vacío o solo espacios) la app NO queda abierta en producción: se
- * falla cerrado con 503 y no se sirve. En desarrollo se conserva el acceso sin
- * clave. El secreto solo vive en el entorno; aquí no se registra ni se incluye
- * en las respuestas.
+ * EA-10 (#36): con secreto configurado responde 401 sin credencial o con
+ * credencial incorrecta y deja pasar la correcta; sin secreto utilizable
+ * (ausente, vacío o solo espacios) la app NO queda abierta en producción (503).
+ *
+ * `/api/agent` se EXCLUYE de este `proxy` (ver `config.matcher`): en Next 16 el
+ * `proxy` hace que el servidor clone y almacene en memoria el cuerpo de la
+ * petición para poder leerlo dos veces, esperando a terminar la carga antes del
+ * manejador; eso vaciaría la cota de bytes por stream de `/api/agent`. Para que
+ * la cota actúe sobre el cuerpo real, esa ruta no pasa por aquí y aplica la
+ * MISMA guardia de acceso dentro de su manejador (`decidirAccesoDeEntorno`), así
+ * la protección de toda la app sigue siendo equivalente.
  */
 export function proxy(solicitud: NextRequest) {
-  const entorno: EntornoAcceso = process.env.NODE_ENV === "production" ? "produccion" : "desarrollo"
-  const decision = decidirAcceso({
-    autorizacion: solicitud.headers.get("authorization"),
-    clave: process.env.APP_PASSWORD,
-    entorno,
-  })
+  const decision = decidirAccesoDeEntorno({ autorizacion: solicitud.headers.get("authorization") })
+  if (decision.kind === "permitido") return NextResponse.next()
 
-  switch (decision.kind) {
-    case "permitido":
-      return NextResponse.next()
-    case "clave-requerida":
-      return new NextResponse("Hace falta la clave de TransMiVoz.", {
-        status: 401,
-        headers: { "WWW-Authenticate": 'Basic realm="TransMiVoz", charset="UTF-8"' },
-      })
-    case "cerrado-sin-clave":
-      // Producción sin secreto utilizable: no se expone la app sin clave.
-      return new NextResponse("TransMiVoz no está disponible: falta configurar la clave de acceso.", {
-        status: 503,
-      })
-    default: {
-      const _exhaustivo: never = decision
-      return _exhaustivo
-    }
-  }
+  const { estado, cuerpo, cabeceras } = respuestaDeDecision(decision)
+  return new NextResponse(cuerpo, { status: estado, headers: cabeceras })
+}
+
+/**
+ * Rutas que pasan por el `proxy`: TODAS salvo EXACTAMENTE `/api/agent` (con o sin
+ * barra final) y los recursos estáticos internos de Next. La exclusión se ancla
+ * a esa ruta exacta —no a un prefijo— para no abrir un hueco: variantes como
+ * `/api/agentx` o `/api/agent/sub` SÍ pasan por el `proxy`. `/api/agent` se
+ * excluye para que su cuerpo no se clone; su manejador aplica la misma guardia.
+ */
+export const config = {
+  matcher: ["/((?!api/agent(?:/)?(?:\\?.*)?$|_next/static|_next/image|favicon.ico).*)"],
 }
