@@ -66,7 +66,7 @@ igual que el del `proxy`, no `AgentReply`.
 El manejador leía `await req.text()` (acumula TODO antes de medir) y comparaba
 `.length` en unidades UTF-16, no bytes. Ahora `lib/cuerpo-peticion.ts`
 (`leerCuerpoLimitado`) lee el `ReadableStream` nativo por trozos con `getReader`,
-cuenta BYTES y, al superar `MAX_BODY_BYTES` (4000), corta y cancela el stream
+cuenta BYTES y, al superar `MAXIMO_BYTES_CUERPO` (4000), corta y cancela el stream
 antes de seguir acumulando. Devuelve una unión discriminada:
 
 - `ok` → el texto decodificado en UTF-8 (un carácter multibyte partido entre
@@ -240,8 +240,13 @@ restaurar):
 - `pnpm build`: salida 0 (incluye `ƒ Proxy (Middleware)`); verificador HTTP real
   sobre ese build: salida 0 con 413 y 401 en todas las rutas, y sin proceso ni
   puerto residual.
-- `pnpm verificar` (Chrome real) y la prueba PowerShell del instalador no se
-  ejecutaron en esta pasada; las cubre la coordinación y la integración continua.
+- `pnpm verificar http://127.0.0.1:32136`, con autenticación: 9/9 pruebas
+  correctas en Chrome. Cámara, micrófono y ubicación usan los dispositivos y
+  permisos simulados del verificador; no acredita VoiceOver ni sensores físicos.
+- Comprobación HTTP adicional: en producción con clave vacía o solo espacios,
+  API GET/POST, UI, catálogo y recurso estático existente devuelven 503.
+- La prueba PowerShell del instalador se conserva en la integración continua;
+  el portátil no tiene `pwsh` y no se accedió a Windows.
 
 ## Límites
 

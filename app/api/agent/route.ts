@@ -16,7 +16,7 @@ export const maxDuration = 30
  * el cuerpo. Es independiente del límite de la frase (`MAX_MESSAGE_CHARS`): el
  * cuerpo se acota antes de interpretar nada.
  */
-const MAX_BODY_BYTES = 4_000
+const MAXIMO_BYTES_CUERPO = 4_000
 /** Longitud máxima de la frase que se interpreta. */
 const MAX_MESSAGE_CHARS = 300
 /** Peticiones por clave y por minuto. */
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
   // todo. Un cuerpo por encima del límite corta la lectura y responde 413; un
   // error o cancelación de la lectura responde 400 sin provocar 500 ni dejar el
   // stream abierto. La cota es de bytes y es independiente del límite de la frase.
-  const cuerpo = await leerCuerpoLimitado({ cuerpo: req.body, maxBytes: MAX_BODY_BYTES })
+  const cuerpo = await leerCuerpoLimitado({ cuerpo: req.body, maximoBytes: MAXIMO_BYTES_CUERPO })
   if (cuerpo.kind === "excedido") return answer("Ese mensaje es demasiado largo. Dilo en una frase corta.", 413)
   if (cuerpo.kind === "error") return answer("No pude leer tu mensaje. Inténtalo de nuevo.", 400)
   const raw = cuerpo.texto

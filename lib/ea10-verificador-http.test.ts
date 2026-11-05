@@ -1,6 +1,5 @@
 import assert from "node:assert/strict"
 import http from "node:http"
-import type { AddressInfo } from "node:net"
 import test from "node:test"
 import { verificar } from "../scripts/verificar-ea10-http.mjs"
 
@@ -50,13 +49,19 @@ else {
 }
 `
 
+function puertoDelServidor(servidor: ReturnType<typeof http.createServer>): number {
+  const direccion = servidor.address()
+  assert.ok(direccion !== null && typeof direccion !== "string", "el servidor debe escuchar por TCP")
+  return direccion.port
+}
+
 /** Puerto libre de loopback. */
 async function puertoDisponible(): Promise<number> {
   const servidor = http.createServer()
   await new Promise<void>((r) => servidor.listen(0, "127.0.0.1", r))
-  const { port } = servidor.address() as AddressInfo
+  const puerto = puertoDelServidor(servidor)
   await new Promise<void>((r) => servidor.close(() => r()))
-  return port
+  return puerto
 }
 
 function estaVivo(pid: number | undefined): boolean {
@@ -111,9 +116,9 @@ test("puerto ocupado: falla sin lanzar nada y sin tocar al ocupante (que sigue v
     res.end()
   })
   await new Promise<void>((r) => ocupante.listen(0, "127.0.0.1", r))
-  const { port } = ocupante.address() as AddressInfo
+  const puerto = puertoDelServidor(ocupante)
   try {
-    const r = await ejecutar("ok", { puerto: port })
+    const r = await ejecutar("ok", { puerto })
     assert.equal(r.codigo, 1)
     assert.equal(r.pidHijo, undefined, "no se lanzó ningún proceso")
     assert.match(r.errores, /ocupado/)
@@ -130,10 +135,10 @@ test("el hijo falla por puerto ocupado DESPUÉS de la sonda: otro servidor respo
     res.end()
   })
   await new Promise<void>((r) => ocupante.listen(0, "127.0.0.1", r))
-  const { port } = ocupante.address() as AddressInfo
+  const puerto = puertoDelServidor(ocupante)
   try {
     // La sonda se simula libre para reproducir la carrera entre sonda y arranque.
-    const r = await ejecutar("falla-pronto", { puerto: port, comprobarPuerto: async () => true })
+    const r = await ejecutar("falla-pronto", { puerto, comprobarPuerto: async () => true })
     assert.equal(r.codigo, 1, "no acepta las respuestas del servidor ajeno")
     assert.match(r.errores, /terminó antes de tiempo/)
     assert.equal(estaVivo(r.pidHijo), false)

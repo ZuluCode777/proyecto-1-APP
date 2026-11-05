@@ -8,7 +8,7 @@
  * no era de bytes. Aquí:
  *
  * - Se lee el `ReadableStream` nativo por trozos (`getReader`), contando los
- *   BYTES que llegan. Si se superan `maxBytes`, se corta de inmediato.
+ *   BYTES que llegan. Si se superan `maximoBytes`, se corta de inmediato.
  * - No se confía en `Content-Length`: la cota se aplica sobre los bytes REALES
  *   leídos, así una cabecera ausente o mentirosa no evade el límite.
  * - El texto se decodifica con `TextDecoder` sobre los bytes acumulados, de modo
@@ -27,7 +27,7 @@
  * manejador no pueda confundir un cuerpo válido con uno desbordado o fallido.
  *
  * - `ok`: el cuerpo cabe en la cota; `texto` es el cuerpo decodificado (UTF-8).
- * - `excedido`: se superó `maxBytes`; corresponde responder 413.
+ * - `excedido`: se superó `maximoBytes`; corresponde responder 413.
  * - `error`: la lectura falló o se canceló; corresponde responder 400.
  */
 export type LecturaCuerpo =
@@ -52,16 +52,16 @@ function liberarLector(lector: ReadableStreamDefaultReader<Uint8Array>): void {
 }
 
 /**
- * Lee `cuerpo` acumulando como máximo `maxBytes` bytes. Si `cuerpo` es `null`
+ * Lee `cuerpo` acumulando como máximo `maximoBytes` bytes. Si `cuerpo` es `null`
  * (petición sin cuerpo) devuelve texto vacío. Nunca lanza: los fallos se
  * devuelven como `{ kind: "error" }` tras disparar la liberación del stream.
  */
 export async function leerCuerpoLimitado({
   cuerpo,
-  maxBytes,
+  maximoBytes,
 }: {
   cuerpo: ReadableStream<Uint8Array> | null
-  maxBytes: number
+  maximoBytes: number
 }): Promise<LecturaCuerpo> {
   if (!cuerpo) return { kind: "ok", texto: "" }
 
@@ -75,7 +75,7 @@ export async function leerCuerpoLimitado({
       if (done) break
       if (!value) continue
       bytes += value.byteLength
-      if (bytes > maxBytes) {
+      if (bytes > maximoBytes) {
         // Desborde: se corta antes de acumular más y se libera el stream sin
         // esperar la cancelación, para no dejar el 413 pendiente.
         liberarLector(lector)

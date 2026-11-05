@@ -33,12 +33,12 @@ async function conPlazo<T>(promesa: Promise<T>, ms: number, mensaje: string): Pr
 }
 
 test("cuerpo nulo (sin body) devuelve texto vacío", async () => {
-  const r = await leerCuerpoLimitado({ cuerpo: null, maxBytes: 100 })
+  const r = await leerCuerpoLimitado({ cuerpo: null, maximoBytes: 100 })
   assert.deepEqual(r, { kind: "ok", texto: "" })
 })
 
 test("cuerpo dentro de la cota se arma desde varios trozos", async () => {
-  const r = await leerCuerpoLimitado({ cuerpo: streamDe([codificar("hola "), codificar("mundo")]), maxBytes: 100 })
+  const r = await leerCuerpoLimitado({ cuerpo: streamDe([codificar("hola "), codificar("mundo")]), maximoBytes: 100 })
   assert.equal(r.kind, "ok")
   assert.equal(r.kind === "ok" && r.texto, "hola mundo")
 })
@@ -47,7 +47,7 @@ test("UTF-8 multibyte partido entre dos trozos se decodifica bien", async () => 
   // «ñ» son dos bytes (0xC3 0xB1); se parten entre trozos.
   const bytes = codificar("niño")
   const corte = bytes.indexOf(0xc3) + 1 // justo en medio de la «ñ»
-  const r = await leerCuerpoLimitado({ cuerpo: streamDe([bytes.slice(0, corte), bytes.slice(corte)]), maxBytes: 100 })
+  const r = await leerCuerpoLimitado({ cuerpo: streamDe([bytes.slice(0, corte), bytes.slice(corte)]), maximoBytes: 100 })
   assert.equal(r.kind, "ok")
   assert.equal(r.kind === "ok" && r.texto, "niño")
 })
@@ -61,7 +61,7 @@ test("desborde: se supera la cota de BYTES y se corta (413), aunque haya más po
     },
     cancel() {},
   })
-  const r = await leerCuerpoLimitado({ cuerpo: stream, maxBytes: 25 })
+  const r = await leerCuerpoLimitado({ cuerpo: stream, maximoBytes: 25 })
   assert.equal(r.kind, "excedido")
   // No se leyó indefinidamente: con cota de 25 bastan ~3 trozos para cortar.
   assert.ok(trozosLeidos <= 4, `se cortó pronto (${trozosLeidos} trozos)`)
@@ -71,14 +71,14 @@ test("la cota es de BYTES, no de caracteres: un multibyte largo puede exceder co
   // 10 emojis = 40 bytes (4 bytes cada uno) pero 20 unidades UTF-16 / 10 code points.
   const texto = "😀".repeat(10)
   assert.ok(texto.length < 40, "en caracteres UTF-16 es menor que en bytes")
-  const r = await leerCuerpoLimitado({ cuerpo: streamDe([codificar(texto)]), maxBytes: 30 })
+  const r = await leerCuerpoLimitado({ cuerpo: streamDe([codificar(texto)]), maximoBytes: 30 })
   assert.equal(r.kind, "excedido")
 })
 
 test("no se confía en Content-Length: la cota se aplica a los bytes REALES leídos", async () => {
   // El stream entrega más bytes de los que una cabecera mentirosa declararía;
   // `leerCuerpoLimitado` no mira cabeceras, solo los bytes que llegan.
-  const r = await leerCuerpoLimitado({ cuerpo: streamDe([codificar("x".repeat(50))]), maxBytes: 10 })
+  const r = await leerCuerpoLimitado({ cuerpo: streamDe([codificar("x".repeat(50))]), maximoBytes: 10 })
   assert.equal(r.kind, "excedido")
 })
 
@@ -88,7 +88,7 @@ test("error de lectura se reporta como error (400), no lanza ni se queda colgado
       throw new Error("fallo de lectura")
     },
   })
-  const r = await leerCuerpoLimitado({ cuerpo: stream, maxBytes: 100 })
+  const r = await leerCuerpoLimitado({ cuerpo: stream, maximoBytes: 100 })
   assert.equal(r.kind, "error")
 })
 
@@ -99,7 +99,7 @@ test("cancelación del stream (error asíncrono) se reporta como error, no lanza
       controlador.error(new Error("abortado"))
     },
   })
-  const r = await leerCuerpoLimitado({ cuerpo: stream, maxBytes: 100 })
+  const r = await leerCuerpoLimitado({ cuerpo: stream, maximoBytes: 100 })
   assert.equal(r.kind, "error")
 })
 
@@ -115,6 +115,6 @@ test("desborde en una rama de tee() con la OTRA rama pendiente NO deja el 413 co
     },
   })
   const [rama1, _rama2] = fuente.tee()
-  const r = await conPlazo(leerCuerpoLimitado({ cuerpo: rama1, maxBytes: 25 }), 1_000, "el 413 no debe quedar pendiente por el tee")
+  const r = await conPlazo(leerCuerpoLimitado({ cuerpo: rama1, maximoBytes: 25 }), 1_000, "el 413 no debe quedar pendiente por el tee")
   assert.equal(r.kind, "excedido")
 })
