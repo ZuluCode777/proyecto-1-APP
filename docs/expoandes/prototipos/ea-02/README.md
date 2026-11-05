@@ -38,6 +38,8 @@
 
 Debajo del iPhone simulado, con estilo distinto para no confundirlo con el diseño. Permite cambiar de variante y de tarea, simular servidor caído, 401, 429, tiempo de espera, error 5xx o catálogo en copia guardada, evidencia vencida, hora fuera de horario, anuncio de ejemplo, calidad y permiso de la ubicación, mediciones y desconexión del accesorio, y la salida de audio. «Comprobar accesibilidad de la pantalla» mide la pantalla actual: tamaño de controles, nombres, contraste, desbordes, palabras partidas y estados sin palabra.
 
+El selector de variantes es un panel debajo del iPhone simulado, no una barra flotante inferior, y no responde a las flechas ← y →. Es a propósito: en un prototipo de accesibilidad las flechas chocan con la navegación por teclado y VoiceOver que se evalúa, y una barra fija tapa contenido en las pruebas al 200 % y 310 %.
+
 ## Áreas
 
 Inicio, Rutas y viaje, Metro (escenario futuro), Ubicación y orientación, Asistente, Avisos, Accesorio, Ajustes y ayuda, y Lupa. En B también existe «Más».

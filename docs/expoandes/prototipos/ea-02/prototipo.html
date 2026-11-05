@@ -341,9 +341,12 @@ function decir(texto, { urgente = false } = {}) {
   setTimeout(() => { region.textContent = texto }, 50)
   if (E.ajustes.vozApp && 'speechSynthesis' in window) {
     speechSynthesis.cancel()
-    const frase = new SpeechSynthesisUtterance(texto)
-    frase.lang = 'es-CO'
-    speechSynthesis.speak(frase)
+    // Sin salida de audio confirmada (o con la escucha interrumpida) no se habla: queda el texto y la región viva.
+    if (E.audio !== 'sin-salida' && E.audio !== 'interrumpido') {
+      const frase = new SpeechSynthesisUtterance(texto)
+      frase.lang = 'es-CO'
+      speechSynthesis.speak(frase)
+    }
   }
 }
 
@@ -1524,7 +1527,7 @@ function aplicarEscenario(clave) {
 }
 
 // ---------- Panel del facilitador ----------
-const NOMBRES_VARIANTE = { A: 'A — Una acción principal', B: 'B — Pestañas y lista de estados' }
+const NOMBRES_VARIANTE = { A: 'A: Una acción principal', B: 'B: Pestañas y lista de estados' }
 function cambiarVariante(v) {
   const actual = pantalla()
   E.variante = v

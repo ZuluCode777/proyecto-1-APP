@@ -8,7 +8,7 @@
 
 ## Versión evaluada
 
-[Prototipo](prototipo.html) versión 0.2, rama `ea-02-prototipo-accesible`. Las cifras de este documento corresponden al archivo con SHA-256 `ebd495eb3c4a26c4e6442f23ece9803c200180dbe1aa09fac8199a2ef33983de` (compruébalo con `sha256sum prototipo.html`). La versión 0.1 cubre los commits `3d3d381` a `359d078`; la 0.2, las correcciones de la revisión del PR #58.
+[Prototipo](prototipo.html) versión 0.2, rama `ea-02-prototipo-accesible`. Las cifras de este documento corresponden al archivo con SHA-256 `24cf8352368a8d5b46098090a1c90c4e1318f0692f60c27b0fd42f3c0b4bab66` (compruébalo con `sha256sum prototipo.html`). La versión 0.1 cubre los commits `3d3d381` a `359d078`; la 0.2, las correcciones de la revisión del PR #58.
 
 Las dos variantes tienen las mismas nueve áreas y los mismos textos:
 
@@ -31,7 +31,7 @@ Todo se ejecutó en HeadlessChrome 151.0.7922.10 en Linux, con ventana de 390×8
    - un único título y el foco en él (en las 375 combinaciones sin diálogo abierto).
 
    También cuenta palabras partidas y mide las franjas fijas.
-2. **Invariantes** (`invariantes.js`). 65 pruebas de comportamiento con temporizadores reales: cancelaciones y respuestas tardías, foco, desplazamiento y «details» tras un evento (también con el vencimiento a 3 s y el fin de la búsqueda de ubicación, midiendo texto que se ve), secuencia de T9 del guion y «Reiniciar estado» del panel, vencimiento de datos, ubicación sin llegada ni distancia falsa, abordaje solo verificado, procedencia y «Actualizar datos», Metro, paridad de frases de seguridad entre A y B, permisos en T1, T4 y T6, Escape y teclado. Aparte devuelve dos mediciones (`datos`): pulsaciones de Tab en T2.
+2. **Invariantes** (`invariantes.js`). 66 pruebas de comportamiento con temporizadores reales: cancelaciones y respuestas tardías, foco, desplazamiento y «details» tras un evento (también con el vencimiento a 3 s y el fin de la búsqueda de ubicación, midiendo texto que se ve), secuencia de T9 del guion y «Reiniciar estado» del panel, vencimiento de datos, ubicación sin llegada ni distancia falsa, abordaje solo verificado, procedencia y «Actualizar datos», Metro, paridad de frases de seguridad entre A y B, permisos en T1, T4 y T6, voz de la app sin salida de audio, Escape y teclado. Aparte devuelve dos mediciones (`datos`): pulsaciones de Tab en T2.
 3. **Teclado.** Una prueba completa T2 solo con Tab, Enter y escritura en cada variante, y comprueba que no hay `tabindex` positivos.
 4. **Recorrido de tareas** (`tareas.js`). Diez tareas en ambas variantes. Cuenta los deslizamientos de VoiceOver necesarios para llegar a cada objetivo desde el foco actual, y las activaciones (toque doble). Si el texto buscado aparece en dos lugares, por ejemplo en el resultado y en «La app dijo», se toma el más cercano. Es una aproximación lineal: VoiceOver real agrupa algunos elementos de otra forma, y el rotor de encabezados o el toque con cuatro dedos acortan los recorridos.
 5. **Revisión experta** de las capturas en [capturas/](capturas/) y del árbol de accesibilidad. Además hubo una revisión independiente del código y los documentos; sus hallazgos se corrigieron (ver «Cambios»).
@@ -46,7 +46,7 @@ Todo se ejecutó en HeadlessChrome 151.0.7922.10 en Linux, con ventana de 390×8
 | Desborde horizontal | Ninguno, también al 310 %. |
 | Estado comunicado solo por color | Ninguno. Todo estado con color lleva palabra («Urgente:», «Importante:»…) e ícono. |
 | Foco en el título al entrar en pantalla | 375/375 combinaciones sin diálogo. Con diálogo, el foco va a su título. |
-| Invariantes de comportamiento | **65/65.** |
+| Invariantes de comportamiento | **66/66.** |
 | Teclado | T2 completa con 5 pulsaciones de Tab en A y 11 en B (mediciones, no pruebas). No hay `tabindex` positivos. |
 | Red, guardado, errores | Cero peticiones de red y cero errores de JavaScript. El código no usa almacenamiento, cookies ni red. |
 | Palabras partidas | Ninguna al 100 y al 200 %. Al 310 %, con Noto Sans: 31 palabras en 24 de 39 pantallas (A) y 29 en 24 de 40 (B), por ejemplo «programación» o «desactualizada». **Depende de la fuente:** la revisión del PR midió 5 en 5 de 35 (A) y 5 en 5 de 36 (B) con Chrome 156 en Fedora, sobre la versión 0.1. Pasa con palabras más anchas que la línea; iOS también las corta en AX5. |
@@ -121,6 +121,7 @@ Las filas de B probablemente se leen en VoiceOver como dos paradas (nombre y val
 | **Segunda revisión del PR #58.** El ancla de lectura podía ser un bloque debajo de la ventana, y entonces el texto visible subía (B, 200 %, Accesorio). La desconexión de T9 se perdía al aplicar la tarea. La procedencia en vivo no usaba la plantilla del backend. | El ancla solo usa bloques visibles y se alinea el primero que sigue igual; pruebas con texto visible y temporizadores reales. «Desconectar en 20 s» sobrevive a aplicar la tarea. Procedencia con la plantilla de `procedenciaCatalogo()`. La respuesta de llegada del asistente queda como propuesta para A1. |
 | **Tercera revisión del PR #58.** «Reiniciar estado» no descartaba «Desconectar en 20 s», y aplicar una tarea después la volvía a programar. | Reiniciar descarta la desconexión pedida. Pedirla y luego aplicar la tarea, como dice el guion, sigue funcionando. Prueba con clics reales y temporizador de 20 s. |
 
+| **Quinta revisión del PR #58.** Con la voz de la app activada y el audio en «Auriculares desconectados», un aviso urgente se pronunciaba igual, contra la spec §5. Los nombres de variante del panel llevaban raya. | `decir()` no llama a `speechSynthesis.speak()` con audio `sin-salida` o `interrumpido` y cancela lo que sonaba; quedan el texto visible y las regiones vivas. Nueva invariante (66 en total) que falla con el prototipo anterior. Nombres «A: Una acción principal» y «B: Pestañas y lista de estados». |
 
 ## Recomendación provisional
 

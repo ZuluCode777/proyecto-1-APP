@@ -527,5 +527,35 @@ async (page) => {
     const r = await ev(() => [document.title, document.activeElement.dataset.id])
     return /Inicio$/.test(r[0]) && r[1] === 'nav-ajustes' ? true : r.join(' / ')
   })
+  await prueba('R5-2: con voz de la app y audio «sin-salida», un aviso urgente no llama a speak y sí deja el texto y la región viva', async () => {
+    const malos = []
+    for (const v of ['A', 'B']) {
+      await ev((v) => {
+        const P = window.prototipo
+        P.preparar('inicio-activa', { variante: v })
+        window.__speak = 0
+        speechSynthesis.speak = () => { window.__speak++ }
+        P.E.ajustes.vozApp = true
+        P.CAMPOS_PANEL.audio('sin-salida')
+        window.__speak = 0
+        P.ACCIONES_PANEL.desconectar()
+      }, v)
+      await esperar(120)
+      const r = await ev(() => [window.__speak, window.prototipo.E.voz.texto, document.querySelector('#anuncio-urgente').textContent, !!window.prototipo.E.voz.urgente])
+      if (r[0] !== 0) malos.push(`${v}: speak llamado ${r[0]} veces`)
+      if (!/Se perdió la conexión con el accesorio/.test(r[1]) || !/Se perdió la conexión con el accesorio/.test(r[2]) || !r[3]) malos.push(`${v}: texto o región viva sin aviso ${JSON.stringify(r)}`)
+      // Control: con auriculares conectados la voz de la app sí habla.
+      await ev((v) => {
+        const P = window.prototipo
+        P.preparar('inicio-activa', { variante: v })
+        window.__speak = 0
+        P.E.ajustes.vozApp = true
+        P.ACCIONES_PANEL.desconectar()
+      }, v)
+      const habla = await ev(() => window.__speak)
+      if (habla !== 1) malos.push(`${v}: con auriculares speak fue ${habla}, esperaba 1`)
+    }
+    return malos.length ? malos.join(', ') : true
+  })
   return { pruebas: resultados.length, aprobadas: resultados.filter((r) => r.ok).length, resultados, datos, errores }
 }
