@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { estaAutorizado } from "./access"
+import { conEntorno } from "./ea10-entorno-pruebas"
 import { claveUtilizable, decidirAcceso, decidirAccesoDeEntorno, respuestaDeDecision } from "./autenticacion"
 
 /**
@@ -12,13 +13,6 @@ import { claveUtilizable, decidirAcceso, decidirAccesoDeEntorno, respuestaDeDeci
  */
 
 const credencialesBasic = (credenciales: string) => `Basic ${Buffer.from(credenciales).toString("base64")}`
-
-/** Fija o borra una variable de entorno en pruebas (NODE_ENV es de solo lectura en los tipos). */
-function fijarEnv(nombre: string, valor: string | undefined): void {
-  const entorno = process.env as Record<string, string | undefined>
-  if (valor === undefined) delete entorno[nombre]
-  else entorno[nombre] = valor
-}
 
 test("claveUtilizable: ausente, vacía o solo espacios NO es utilizable", () => {
   assert.equal(claveUtilizable(undefined), false)
@@ -88,23 +82,33 @@ test("respuestaDeDecision: 401 con reto Basic y 503 sin reto; cuerpos sin revela
   assert.doesNotMatch(r401.cuerpo + r503.cuerpo, /APP_PASSWORD|secreta|clave=/)
 })
 
-test("decidirAccesoDeEntorno lee NODE_ENV y APP_PASSWORD reales (misma guardia que el proxy)", () => {
-  const envPrevio = process.env.NODE_ENV
+test("decidirAccesoDeEntorno lee NODE_ENV y APP_PASSWORD reales (misma guardia que el proxy)", async () => {
+  const decidir = (autorizacion: string | null) => decidirAccesoDeEntorno({ autorizacion }).kind
+  await conEntorno({ nodeEnv: "production", clave: undefined }, () => {
+    assert.equal(decidir(null), "cerrado-sin-clave")
+  })
+  await conEntorno({ nodeEnv: "production", clave: "   " }, () => {
+    assert.equal(decidir(null), "cerrado-sin-clave", "whitespace = sin clave")
+  })
+  await conEntorno({ nodeEnv: "production", clave: "secreta" }, () => {
+    assert.equal(decidir(null), "clave-requerida")
+    assert.equal(decidir(credencialesBasic("u:secreta")), "permitido")
+  })
+  await conEntorno({ nodeEnv: "development", clave: undefined }, () => {
+    assert.equal(decidir(null), "permitido", "desarrollo sin clave permite")
+  })
+})
+
+test("conEntorno restaura NODE_ENV y APP_PASSWORD aunque el cuerpo falle", async () => {
+  const nodeEnvPrevio = process.env.NODE_ENV
   const clavePrevia = process.env.APP_PASSWORD
-  try {
-    fijarEnv("NODE_ENV", "production")
-    fijarEnv("APP_PASSWORD", undefined)
-    assert.equal(decidirAccesoDeEntorno({ autorizacion: null }).kind, "cerrado-sin-clave")
-    fijarEnv("APP_PASSWORD", "   ")
-    assert.equal(decidirAccesoDeEntorno({ autorizacion: null }).kind, "cerrado-sin-clave", "whitespace = sin clave")
-    fijarEnv("APP_PASSWORD", "secreta")
-    assert.equal(decidirAccesoDeEntorno({ autorizacion: null }).kind, "clave-requerida")
-    assert.equal(decidirAccesoDeEntorno({ autorizacion: credencialesBasic("u:secreta") }).kind, "permitido")
-    fijarEnv("NODE_ENV", "development")
-    fijarEnv("APP_PASSWORD", undefined)
-    assert.equal(decidirAccesoDeEntorno({ autorizacion: null }).kind, "permitido", "desarrollo sin clave permite")
-  } finally {
-    fijarEnv("NODE_ENV", envPrevio)
-    fijarEnv("APP_PASSWORD", clavePrevia)
-  }
+  await assert.rejects(
+    conEntorno({ nodeEnv: "production", clave: "temporal" }, () => {
+      assert.equal(process.env.APP_PASSWORD, "temporal")
+      throw new Error("fallo del cuerpo")
+    }),
+    /fallo del cuerpo/,
+  )
+  assert.equal(process.env.NODE_ENV, nodeEnvPrevio)
+  assert.equal(process.env.APP_PASSWORD, clavePrevia)
 })

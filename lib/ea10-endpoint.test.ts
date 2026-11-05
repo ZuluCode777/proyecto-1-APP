@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
-import test from "node:test"
+import test, { mock } from "node:test"
 import { pathToFileURL } from "node:url"
+import { conEntorno } from "./ea10-entorno-pruebas"
 import { AgentReplySchema } from "./local-agent"
 
 /**
@@ -20,53 +21,23 @@ import { AgentReplySchema } from "./local-agent"
 const raiz = pathToFileURL(process.cwd() + "/")
 let contadorCaso = 0
 
-type Endpoint = {
-  GET: (req: Request) => Promise<Response>
-  POST: (req: Request) => Promise<Response>
-}
-
 /**
  * Carga una instancia FRESCA del endpoint (query distinta reinicia la caché de
  * módulo, como en `transmilenio-data.test.ts`), con la red externa simulada
  * caída. Cada caso tiene su propio contador de peticiones, sin un export de
  * reinicio solo para pruebas.
  */
-async function conEndpoint(): Promise<Endpoint & { restaurar: () => void }> {
-  const fetchOriginal = globalThis.fetch
-  globalThis.fetch = (async () => {
+async function conEndpoint() {
+  const fetchSimulado = mock.method(globalThis, "fetch", async () => {
     throw new Error("sin red (prueba EA-10): usa la copia")
-  }) as unknown as typeof fetch
-  const modulo = (await import(new URL(`app/api/agent/route.ts?caso=${contadorCaso++}`, raiz).href)) as Endpoint
-  const restaurar = () => {
-    globalThis.fetch = fetchOriginal
-  }
-  return { GET: modulo.GET, POST: modulo.POST, restaurar }
+  })
+  const modulo: typeof import("../app/api/agent/route") = await import(
+    new URL(`app/api/agent/route.ts?caso=${contadorCaso++}`, raiz).href
+  )
+  return { GET: modulo.GET, POST: modulo.POST, restaurar: () => fetchSimulado.mock.restore() }
 }
 
 const credencialesBasic = (credenciales: string) => `Basic ${Buffer.from(credenciales).toString("base64")}`
-
-/** Fija `NODE_ENV`/`APP_PASSWORD` para un caso y los restaura al terminar. */
-function fijarEnv(nombre: string, valor: string | undefined): void {
-  const entorno = process.env as Record<string, string | undefined>
-  if (valor === undefined) delete entorno[nombre]
-  else entorno[nombre] = valor
-}
-
-async function conEntorno(
-  { nodeEnv, clave }: { nodeEnv: string | undefined; clave: string | undefined },
-  cuerpo: () => Promise<void>,
-): Promise<void> {
-  const envPrevio = process.env.NODE_ENV
-  const clavePrevia = process.env.APP_PASSWORD
-  fijarEnv("NODE_ENV", nodeEnv)
-  fijarEnv("APP_PASSWORD", clave)
-  try {
-    await cuerpo()
-  } finally {
-    fijarEnv("NODE_ENV", envPrevio)
-    fijarEnv("APP_PASSWORD", clavePrevia)
-  }
-}
 
 const peticion = (metodo: "GET" | "POST", autorizacion?: string) =>
   new Request("http://local/api/agent", {

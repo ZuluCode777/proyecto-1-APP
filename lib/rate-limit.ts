@@ -27,7 +27,7 @@ export type RateLimitOptions = {
    * Máximo de claves distintas recordadas a la vez. Al alcanzarlo, una clave
    * nueva se rechaza (tras purgar las vencidas) en vez de hacer crecer el mapa.
    */
-  maxKeys?: number
+  maximoClaves?: number
   /** Reloj inyectable para poder probar la ventana sin esperar. */
   now?: () => number
 }
@@ -46,7 +46,7 @@ export type ResultadoLimite =
 /** Tope de claves recordadas a la vez por defecto. */
 const MAX_TRACKED_KEYS = 5000
 
-export function createRateLimiter({ limit, windowMs, maxKeys = MAX_TRACKED_KEYS, now = Date.now }: RateLimitOptions) {
+export function createRateLimiter({ limit, windowMs, maximoClaves = MAX_TRACKED_KEYS, now = Date.now }: RateLimitOptions) {
   const hits = new Map<string, Entry>()
 
   /** Elimina las entradas ya vencidas; devuelve el `reset` más próximo restante. */
@@ -68,9 +68,9 @@ export function createRateLimiter({ limit, windowMs, maxKeys = MAX_TRACKED_KEYS,
       // se purgan las vencidas: recuperar espacio por expiración es legítimo y no
       // reinicia ninguna cuota activa. Si aun así sigue lleno, se rechaza la clave
       // nueva por cardinalidad SIN desalojar una entrada activa.
-      if (!hits.has(key) && hits.size >= maxKeys) {
+      if (!hits.has(key) && hits.size >= maximoClaves) {
         const proximo = purgarVencidasYProximoReset(time)
-        if (hits.size >= maxKeys) {
+        if (hits.size >= maximoClaves) {
           const retryAfterSeconds = Number.isFinite(proximo) ? Math.max(1, Math.ceil((proximo - time) / 1000)) : 1
           return { allowed: false, retryAfterSeconds, motivo: "cardinalidad" }
         }

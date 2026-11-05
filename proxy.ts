@@ -27,11 +27,11 @@ export function proxy(solicitud: NextRequest) {
 
 /**
  * Rutas que pasan por el `proxy`: TODAS salvo EXACTAMENTE `/api/agent` (con o sin
- * barra final) y los recursos estáticos internos de Next. La exclusión se ancla
- * a esa ruta exacta —no a un prefijo— para no abrir un hueco: variantes como
- * `/api/agentx` o `/api/agent/sub` SÍ pasan por el `proxy`. `/api/agent` se
- * excluye para que su cuerpo no se clone; su manejador aplica la misma guardia.
+ * barra final). Antes de EA-10 el `proxy` protegía también `/_next/static`,
+ * `/_next/image` y el favicon; esa protección se conserva a propósito. La
+ * exclusión se ancla a la ruta exacta —no a un prefijo— para no abrir un hueco:
+ * `/api/agentx` o `/api/agent/sub` SÍ pasan por el `proxy`.
  */
 export const config = {
-  matcher: ["/((?!api/agent(?:/)?(?:\\?.*)?$|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!api/agent(?:/)?$).*)"],
 }

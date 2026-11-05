@@ -11,7 +11,7 @@ import { createRateLimiter } from "./rate-limit"
  */
 
 test("al llegar al tope de claves, una clave NUEVA se rechaza por cardinalidad (no crece sin límite)", () => {
-  const rateLimit = createRateLimiter({ limit: 100, windowMs: 60_000, maxKeys: 3, now: () => 0 })
+  const rateLimit = createRateLimiter({ limit: 100, windowMs: 60_000, maximoClaves: 3, now: () => 0 })
   assert.equal(rateLimit("a").allowed, true)
   assert.equal(rateLimit("b").allowed, true)
   assert.equal(rateLimit("c").allowed, true)
@@ -23,7 +23,7 @@ test("al llegar al tope de claves, una clave NUEVA se rechaza por cardinalidad (
 })
 
 test("una clave YA conocida sigue contando aunque el mapa esté lleno (no la bloquea la cardinalidad)", () => {
-  const rateLimit = createRateLimiter({ limit: 2, windowMs: 60_000, maxKeys: 2, now: () => 0 })
+  const rateLimit = createRateLimiter({ limit: 2, windowMs: 60_000, maximoClaves: 2, now: () => 0 })
   assert.equal(rateLimit("a").allowed, true)
   assert.equal(rateLimit("b").allowed, true) // mapa lleno
   // «a» ya está en el mapa: su segunda petición cuenta normalmente.
@@ -36,7 +36,7 @@ test("una clave YA conocida sigue contando aunque el mapa esté lleno (no la blo
 
 test("el desalojo solo libera claves VENCIDAS; al vencer la ventana entra una clave nueva", () => {
   let reloj = 0
-  const rateLimit = createRateLimiter({ limit: 100, windowMs: 1_000, maxKeys: 2, now: () => reloj })
+  const rateLimit = createRateLimiter({ limit: 100, windowMs: 1_000, maximoClaves: 2, now: () => reloj })
   assert.equal(rateLimit("a").allowed, true)
   assert.equal(rateLimit("b").allowed, true)
   assert.equal(rateLimit("c").allowed, false, "mapa lleno con claves frescas: se rechaza") // cardinalidad
@@ -48,8 +48,8 @@ test("el desalojo solo libera claves VENCIDAS; al vencer la ventana entra una cl
 
 test("una clave bloqueada por su ventana NO reinicia su cuota por desalojo: sigue bloqueada hasta vencer", () => {
   let reloj = 0
-  // maxKeys alto para que la cardinalidad no intervenga: se prueba solo la ventana.
-  const rateLimit = createRateLimiter({ limit: 1, windowMs: 10_000, maxKeys: 1000, now: () => reloj })
+  // maximoClaves alto para que la cardinalidad no intervenga: se prueba solo la ventana.
+  const rateLimit = createRateLimiter({ limit: 1, windowMs: 10_000, maximoClaves: 1000, now: () => reloj })
   assert.equal(rateLimit("a").allowed, true)
   assert.equal(rateLimit("a").allowed, false, "excede su ventana")
 
@@ -65,13 +65,13 @@ test("una clave bloqueada por su ventana NO reinicia su cuota por desalojo: sigu
 })
 
 test("aluvión de claves nuevas dentro de la ventana NO crece sin límite (se rechaza el exceso)", () => {
-  const rateLimit = createRateLimiter({ limit: 100, windowMs: 60_000, maxKeys: 10, now: () => 0 })
+  const rateLimit = createRateLimiter({ limit: 100, windowMs: 60_000, maximoClaves: 10, now: () => 0 })
   let permitidas = 0
   let rechazadas = 0
   for (let i = 0; i < 1000; i++) {
     if (rateLimit(`clave-${i}`).allowed) permitidas++
     else rechazadas++
   }
-  assert.equal(permitidas, 10, "solo caben maxKeys claves distintas en la ventana")
+  assert.equal(permitidas, 10, "solo caben maximoClaves claves distintas en la ventana")
   assert.equal(rechazadas, 990, "el resto se rechaza por cardinalidad")
 })

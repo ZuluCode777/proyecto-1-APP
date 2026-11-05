@@ -1,8 +1,7 @@
 # EA-10 (#36): acotar recursos y verificar autenticación antes de exponer
 
 Rama `ea-10-recursos-autenticacion`, desde `origin/main` 809ee39 (con EA-05 a
-EA-08 fusionados). Implementado con Kiro CLI en Linux, para revisión
-independiente (especificación y estándares). No se modificaron la copia operativa
+EA-08 fusionados). No se modificaron la copia operativa
 (`data/transmilenio.json`), los workflows, las configuraciones de producción, el
 script de verificación (`scripts/verificar.mjs`) ni la prueba PowerShell del
 instalador (`test/verificar-servicios.ps1`). No se accedió a Windows, SSH, Ollama
@@ -16,12 +15,14 @@ de `createRateLimiter`/`rateLimit`; y el contrato histórico de `estaAutorizado`
 verificadas, sentido, calendario, revalidación antes de texto/voz, catálogo
 recuperable, reglas primero, cancelación).
 
-Incorpora las correcciones de la revisión independiente sobre `a1efaf52`: el
-límite de ingreso real (excluir `/api/agent` del clon del `proxy` y compartir la
-guardia Basic en su manejador), el 413/400 que no queda pendiente por la
-cancelación del stream, la retirada del export de reinicio solo-pruebas y de la
-rama especulativa de proxy confiable, y argumentos de objeto en los helpers
-nuevos.
+Incorpora las correcciones de dos revisiones independientes: el límite de
+ingreso real (excluir `/api/agent` del clon del `proxy` y compartir la guardia
+Basic en su manejador), el 413/400 que no queda pendiente por la cancelación del
+stream, la retirada del export de reinicio solo-pruebas y de la rama especulativa
+de proxy confiable, la protección que el `proxy` ya daba a los recursos estáticos
+de Next (se conserva), un verificador HTTP cuyo ciclo de vida no puede dar un
+falso verde, la opción nueva del contador en español (`maximoClaves`) y
+argumentos de objeto en los helpers nuevos.
 
 ## Comportamiento
 
@@ -97,14 +98,16 @@ de recibirlo entero. Para no abrir un hueco de autenticación, el manejador de
 `/api/agent` aplica en GET y POST la MISMA guardia Basic compartida
 (`decidirAccesoDeEntorno`): la protección de toda la app sigue equivalente. La
 exclusión se ancla a la ruta EXACTA (con o sin barra final): variantes como
-`/api/agentx` o `/api/agent/sub` siguen pasando por el `proxy`.
+`/api/agentx` o `/api/agent/sub` siguen pasando por el `proxy`. El `matcher` NO
+excluye `_next/static`, `_next/image` ni el favicon: antes de EA-10 toda petición
+pedía clave, y eso se conserva (un JS compilado existente sin credencial da 401).
 
 ### Criterio 3 — contador con cota de cardinalidad, no solo expiración
 
 `lib/rate-limit.ts` antes solo limpiaba entradas VENCIDAS al pasar de un tamaño;
 un aluvión de claves NUEVAS dentro de la ventana (p. ej. una cabecera de proxy
 inventada por petición) hacía crecer el mapa sin tope, porque no había nada
-vencido que limpiar. Ahora, al alcanzar `maxKeys` (5000 por defecto), una clave
+vencido que limpiar. Ahora, al alcanzar `maximoClaves` (5000 por defecto), una clave
 NUEVA se rechaza con **429** y `Retry-After` (`motivo: "cardinalidad"`), tras
 purgar primero las vencidas (recuperar espacio por expiración es legítimo). Nunca
 se desaloja una entrada ACTIVA, de modo que un rechazo no se puede «reiniciar»
@@ -189,15 +192,33 @@ nuevas:
   y POST** (producción sin clave/vacía/whitespace → 503; con clave: 401 sin
   credencial o incorrecta, acceso con la correcta; desarrollo sin clave permite),
   todos con contrato `AgentReply` en las respuestas de agente. Cada caso carga una
-  instancia fresca por import con query (aislamiento del contador sin reset).
+  instancia fresca por import con query (aislamiento del contador sin reset); el
+  tipo de los manejadores sale del módulo real, sin interfaz duplicada ni cast.
+- `lib/ea10-entorno-pruebas.ts` (`conEntorno`): fija `NODE_ENV`/`APP_PASSWORD` y los
+  restaura aunque el cuerpo falle; lo usan las pruebas de autenticación y de
+  endpoint (cubierto en `ea10-autenticacion.test.ts`).
+- `lib/ea10-proxy-matcher.test.ts`: solo `/api/agent` exacto queda fuera del
+  `proxy`; UI, otras APIs, `/api/agentx`, `/api/agent/sub`, `_next/static`,
+  `_next/image` y favicon siguen protegidos.
+- `lib/ea10-verificador-http.test.ts`: ciclo de vida del verificador HTTP con un
+  servidor Node falso (no Next): servidor correcto → 0; sin clave utilizable, puerto
+  ocupado (sin lanzar nada ni tocar al ocupante), hijo que falla tras la sonda
+  mientras otro servidor responde 401/413, hijo que muere durante la prueba, hijo
+  que no responde (GET o POST) y recurso estático ausente → falla; y que el PID
+  lanzado queda muerto siempre, incluso si ignora SIGTERM (SIGKILL).
 
 **Verificación HTTP local (P1 #2)** con `scripts/verificar-ea10-http.mjs` (fuera
-de `pnpm test`, necesita servidor vivo): arranca `next start` en producción con
-`APP_PASSWORD` y envía a `POST /api/agent` un cuerpo FRAGMENTADO con
-`Transfer-Encoding: chunked` que supera la cota sin terminar de enviarlo.
-Resultado observado: **HTTP 413 tras ~4012 bytes** (cota 4000) sin completar el
-envío. Además, sin credencial: `/api/agent` GET y POST, la UI (`/`) y
-`/api/transmilenio` responden **401** (la exclusión del `proxy` no abre hueco).
+de `pnpm test`, necesita `pnpm build` previo). Uso, con la clave OBLIGATORIA
+porque el script fuerza producción: `APP_PASSWORD=… node
+scripts/verificar-ea10-http.mjs` (puerto con `PUERTO_EA10`, 3218 por defecto).
+Escucha solo en 127.0.0.1, no arranca si el puerto está ocupado, da por válido el
+servidor únicamente si el proceso que lanzó imprime su señal de listo y sigue
+vivo durante toda la prueba, acota cada petición con plazo y al terminar detiene
+solo ese PID (SIGTERM y, si no sale a tiempo, SIGKILL; espera la salida real).
+Comprueba: `POST /api/agent` con cuerpo `chunked` que supera la cota sin terminar
+de enviarse → **HTTP 413 tras ~4012 bytes** (cota 4000); sin credencial,
+`/api/agent` GET y POST, `/api/transmilenio`, `/` y un JS existente de
+`/_next/static/chunks/` → **401**; el mismo JS con la clave → 200.
 
 **Mutaciones comprobadas** (revertir el arreglo → falla la prueba/verificación →
 restaurar):
@@ -209,30 +230,18 @@ restaurar):
 | Quitar el rechazo por cardinalidad (siempre crear entrada) | fallan 3 de 5 pruebas de cardinalidad |
 | Volver a `await lector.cancel()` (P1 #1) | falla la regresión de `tee()` (el 413 queda pendiente; el plazo lo detecta) |
 | Quitar `api/agent` del `matcher` del `proxy` (P1 #2) | la verificación HTTP chunked NO recibe 413 antes de terminar (status 0 tras ~20 KiB): el clon del proxy almacena el cuerpo |
+| Volver a excluir `_next/static` del `matcher` | falla `ea10-proxy-matcher.test.ts` y el verificador HTTP real: `GET /_next/static/chunks/….js sin credencial: se esperaba 401; fue 200` |
+| Verificador con el puerto ocupado por otro servidor que responde 401/413 | sale con 1 antes de lanzar nada (el script anterior salía con 0 si su hijo fallaba por `EADDRINUSE`) |
 
-### Las cuatro puertas sobre el código final (sandbox Linux)
+### Puertas sobre el código final (portátil Linux)
 
-- `pnpm exec tsc --noEmit`: **salida 0** (código de salida real comprobado).
-- `pnpm test`: **código de salida 1 en el sandbox**, honestamente. 311 pruebas
-  correctas, **0 falladas**, **17 canceladas**. Las 17 cuelgan en cascada
-  (`cancelledByParent`) de UN fallo PREEXISTENTE y ambiental, NO introducido por
-  este trabajo: `AC2 (endpoint real): frase desconocida con modelo colgado…` en
-  `lib/ea08-reglas-cancelacion.test.ts`, que depende de un temporizador de aborto
-  de ~2 s del Ollama simulado y en este sandbox termina como «Promise resolution
-  is still pending but the event loop has already resolved». Se verificó cargando
-  la versión EXACTA de ese archivo en `origin/main` 809ee39 (sin ninguno de mis
-  cambios): también cancela 17 en el sandbox. En el portátil del revisor
-  `pnpm test` pasa 326/326 sobre `a1efaf52`; el fallo es del event loop del
-  sandbox, no del código. No se tocó ese caso para no enmascararlo ni se alteró la
-  CI. Todas las pruebas EA-10 nuevas y las adaptadas (ea07/ea08 fuera del caso
-  flaky) pasan.
-- `pnpm build`: **salida 0** (incluye `ƒ Proxy (Middleware)`; usado también para
-  la verificación HTTP).
-- `pnpm verificar`: **no corre en el sandbox**. Comando: `pnpm verificar`. Error:
-  «No encontré Chrome. Indica la ruta con CHROME_PATH.» (salida 2). No hay Chrome
-  ni Chromium ni `pwsh`/`powershell`. No se alteró el script ni la CI. La
-  verificación de extremo a extremo con navegador real y la cobertura de Chrome y
-  PowerShell quedan a cargo de la CI de la coordinación.
+- `pnpm exec tsc --noEmit`: salida 0.
+- `pnpm test`: 340/340 correctas, 0 falladas, 0 canceladas.
+- `pnpm build`: salida 0 (incluye `ƒ Proxy (Middleware)`); verificador HTTP real
+  sobre ese build: salida 0 con 413 y 401 en todas las rutas, y sin proceso ni
+  puerto residual.
+- `pnpm verificar` (Chrome real) y la prueba PowerShell del instalador no se
+  ejecutaron en esta pasada; las cubre la coordinación y la integración continua.
 
 ## Límites
 
@@ -242,15 +251,10 @@ restaurar):
   prueba de identidad es sintética y no certifica el proxy.
 - **Cuota local, no global.** El contador es de una sola instancia en memoria. No
   es cuota global ni persistente; un reinicio del proceso la pierde. Sin Redis.
-- **Sin navegador ni PowerShell en el sandbox.** `pnpm verificar` no se ejecutó
-  (sin Chrome); no hay `pwsh`. La prueba PowerShell del instalador permanece en
-  CI, intacta. La cobertura con Chrome/PowerShell la aporta la CI de la
-  coordinación.
-- **`pnpm test` sale con código 1 en el sandbox** por el caso AC2 «modelo colgado»
-  preexistente (event loop del sandbox), no por este trabajo; demostrado contra la
-  versión de `origin/main` de ese archivo. En el portátil del revisor pasa
-  326/326 sobre `a1efaf52`.
 - **Verificación HTTP contra `next start` local, no contra Render.** El 413 por
-  cuerpo chunked se probó con el servidor de producción de Next en el sandbox
+  cuerpo chunked se probó con el servidor de producción de Next en loopback
   (`scripts/verificar-ea10-http.mjs`), no contra el runtime de Render ni con la
   topología de proxy real; esa parte sigue pendiente de EA-14/#40.
+- **El verificador reconoce a su servidor por la línea «Ready in»/«Local:» de
+  Next.** Si una versión futura de Next cambia ese texto, el script fallará por
+  plazo (falla cerrado, no da un falso verde) y habrá que ajustar `senalListo`.
