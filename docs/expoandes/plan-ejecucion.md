@@ -4,7 +4,7 @@ Estado: **revisión e investigación terminadas; trabajo de producto planificado
 
 ## Decisiones y restricciones confirmadas
 
-El equipo tiene cinco personas: **A1/A2 en aplicación, H1/H2/H3 en hardware**. El equipo no tiene Mac ni Xcode hasta el miércoles 11 de noviembre de 2026 (confirmado el 5 de noviembre); iPhone indicado entre 16 y 18, modelo y versiones por confirmar. Nicolás y Jacobo llevan aplicación; María Paula, Antonia y Esteban, hardware. Nicolás realiza compras con presupuesto informado de COP 150.000–200.000 y Jacobo opera Kiro. El reparto de especialidades y la dedicación sin horas cuantificadas constan en [acta de EA-01](acta-alcance-capacidad.md). No hay ESP32 ni radar comprados según la última confirmación; suministro debe resolverse en Bogotá. El 17 de noviembre es fecha de feria, no fecha inferida del documento académico. Experiencia Swift y acceso de distribución siguen pendientes; no se asumen jornadas completas ni dispositivos adicionales.
+El equipo tiene cinco personas: **A1/A2 en aplicación, H1/H2/H3 en hardware**. El equipo no tiene Mac ni Xcode hasta el miércoles 11 de noviembre de 2026 (confirmado el 5 de noviembre). iPhone indicado entre 16 y 18, modelo y versiones por confirmar. Nicolás y Jacobo llevan aplicación; María Paula, Antonia y Esteban, hardware. Nicolás realiza compras con presupuesto informado de COP 150.000–200.000 y Jacobo opera Kiro. El reparto de especialidades y la dedicación sin horas cuantificadas constan en [acta de EA-01](acta-alcance-capacidad.md). No hay ESP32 ni radar comprados según la última confirmación; suministro debe resolverse en Bogotá. El 17 de noviembre es fecha de feria, no fecha inferida del documento académico. Experiencia Swift y acceso de distribución siguen pendientes; no se asumen jornadas completas ni dispositivos adicionales.
 
 Las metas físicas son **G1: obstáculos estáticos, G2: objetivos móviles y G3: zonas interiores**. Enlace BLE, estados, validez de datos y audio por auriculares del iPhone son condiciones compartidas. Dirección/posición métrica solo se prometen cuando hardware y ensayos concretos las acrediten. «Sin detección» nunca significa «camino libre».
 
@@ -14,7 +14,9 @@ Las metas físicas son **G1: obstáculos estáticos, G2: objetivos móviles y G3
 
 **Siguen sin Mac:** las sesiones con usuarios de EA-02 #28 (iPhone con Safari y cualquier computador en la misma Wi-Fi), el carril de backend de A1 (EA-10 #36, EA-13 #39, EA-14 #40), los carriles de hardware (EA-03 #29, EA-04 #30, EA-11 #37, EA-12 #38, EA-16 #42 y el lado hardware de EA-18 #44) y EA-23 #49.
 
-**CI de macOS, responsable A1.** El repositorio es público, así que los runners de macOS alojados por GitHub, con Xcode y el Simulator de iOS, son gratuitos. A1 abre un issue y un PR para un job que compile el proyecto SwiftUI y ejecute en el Simulator las pruebas unitarias y la auditoría automática de accesibilidad en cada PR. Así el código SwiftUI se escribe y compila antes del 11 de noviembre; el Mac solo hace falta para el iPhone real (instalación, BLE, VoiceOver, audio). El Simulator no demuestra VoiceOver, BLE ni audio real.
+**CI de macOS, responsable A1.** El repositorio es público, así que los runners de macOS alojados por GitHub, con Xcode y el Simulator de iOS, son gratuitos. A1 abre un issue y un PR para un job que compile el proyecto SwiftUI y ejecute en el Simulator las pruebas unitarias y la auditoría automática de accesibilidad en cada PR. Así el código SwiftUI se escribe y compila antes del 11 de noviembre. El Mac solo hace falta para el iPhone real (instalación, BLE, VoiceOver, audio). El Simulator no demuestra VoiceOver, BLE ni audio real.
+
+**Ventanas solapadas.** Entre el 11 y el 16 de noviembre, las ventanas de las tareas iPhone que dependen unas de otras se solapan a propósito, en la cadena EA-15, EA-17, EA-19, EA-20. El código de una tarea se prepara y se compila en CI antes de que cierre su bloqueador. Su integración y sus pruebas en el iPhone real esperan a que ese bloqueador esté cerrado.
 
 **BLE sin iPhone.** Hasta el 11 de noviembre, hardware prueba el contrato de EA-04 desde el portátil o un teléfono Android (por ejemplo `bluetoothctl` o nRF Connect).
 
@@ -87,7 +89,7 @@ Frontera inicial: EA-01, EA-02, EA-03, EA-04, EA-05, EA-06, EA-07, EA-08 y EA-10
 | Carril | Secuencia orientativa y coordinación |
 | --- | --- |
 | A1, backend | EA-05 → EA-06/EA-08 → EA-10/EA-13 → EA-14, más el job de CI de macOS (issue nuevo) esta semana. Kiro puede preparar PR acotados; normalizador, endpoint y planificador requieren merges serializados. |
-| A2, iPhone/UX | Hasta el 11 nov: sesiones de EA-02, revisión de consumidor de EA-04 y código SwiftUI compilado en CI. Desde el 11 nov: EA-09 → EA-15 → EA-17 → EA-19 → EA-20. EA-07 puede prepararse como PR independiente. |
+| A2, iPhone/UX | Hasta el 11 nov: sesiones de EA-02, revisión de consumidor de EA-04 y código SwiftUI compilado en CI. Desde el 11 nov: preparar en paralelo y integrar en el iPhone en el orden EA-09 → EA-15 → EA-17 → EA-19 → EA-20. EA-07 puede prepararse como PR independiente. |
 | H1, suministro/interior | EA-03 inmediata; preparar escenario EA-18 mientras H2/H3 trabajan. Reserva apoyo para registro de EA-16 y evidencia académica. |
 | H2, radar | EA-11 → EA-16, con versiones/perfiles y blancos medidos; no ocupar a la vez mismo banco en pruebas de enlace. |
 | H3, firmware/enlace | EA-04 → EA-12 → EA-15 con A2; apoyar EA-18 en ventana acordada. Congelar contrato antes de implementaciones incompatibles. Hasta el 11 nov, pruebas BLE desde portátil o Android. |
