@@ -50,16 +50,22 @@ async function conEndpoint(modoModelo: "unknown" | "colgado" | "gps" | "trip-des
     throw new Error("sin red (ArcGIS simulado): usa la copia")
   }) as typeof fetch
 
-  const { POST } = (await import("../app/api/agent/route.ts")) as {
+  const { POST, __reiniciarLimitePeticiones } = (await import("../app/api/agent/route.ts")) as {
     POST: (req: Request) => Promise<Response>
+    __reiniciarLimitePeticiones: () => void
   }
+  // EA-10 (#36): la identidad para el límite ya NO sale de `x-forwarded-for` (la
+  // política conservadora no confía en esa cabecera sin un proxy comprobado;
+  // todas las peticiones comparten la clave acotada `sin-verificar`). Antes cada
+  // llamada fabricaba una IP distinta para no compartir cuota entre pruebas; eso
+  // simulaba identidades que el servidor no debe creer. Ahora se reinicia el
+  // contador del endpoint entre casos para aislarlos, sin inventar cabeceras.
+  __reiniciarLimitePeticiones()
   const preguntar = async (message: string, position?: { lat: number; lng: number }) => {
     const res = await POST(
       new Request("http://localhost/api/agent", {
         method: "POST",
         body: JSON.stringify({ message, position }),
-        // IP distinta por llamada: evita el límite de peticiones entre pruebas.
-        headers: { "x-forwarded-for": `10.0.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}` },
       }),
     )
     return res.json()

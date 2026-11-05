@@ -1,4 +1,6 @@
 import { z } from "zod"
+import { leerCuerpoLimitado } from "@/lib/cuerpo-peticion"
+import { claveLimite, resolverIdentidad } from "@/lib/identidad-cliente"
 import { parseIntent, plainReply, runIntent, type AgentContext, type Intent } from "@/lib/local-agent"
 import { OLLAMA_MODEL, ollamaConfigured, ollamaStatus, parseIntentWithOllama } from "@/lib/ollama"
 import { createRateLimiter } from "@/lib/rate-limit"
@@ -7,28 +9,48 @@ import { getTransmilenioData } from "@/lib/transmilenio-data"
 
 export const maxDuration = 30
 
-/** Tamaño máximo del cuerpo de la petición, en caracteres. */
-const MAX_BODY_CHARS = 2_000
+/**
+ * Tamaño máximo del cuerpo de la petición, EN BYTES. EA-10 (#36): es una cota de
+ * bytes aplicada al leer el stream, no de caracteres contados tras acumular todo
+ * el cuerpo. Es independiente del límite de la frase (`MAX_MESSAGE_CHARS`): el
+ * cuerpo se acota antes de interpretar nada.
+ */
+const MAX_BODY_BYTES = 4_000
 /** Longitud máxima de la frase que se interpreta. */
 const MAX_MESSAGE_CHARS = 300
-/** Peticiones por IP y por minuto. */
+/** Peticiones por clave y por minuto. */
 const RATE_LIMIT = 20
 const RATE_WINDOW_MS = 60_000
 
-const rateLimit = createRateLimiter({ limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS })
+let rateLimit = createRateLimiter({ limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS })
 
 /**
- * Identifica a quien llama para el límite de peticiones.
- *
- * ponytail: confía en `x-forwarded-for`, que solo es fiable detrás de un proxy
- * que lo reescriba (Tailscale serve lo hace). Si algún día se expone el
- * servidor directamente a internet, leer la IP del socket, porque esta
- * cabecera se puede falsificar.
+ * Reinicia el contador de peticiones del endpoint. SOLO para pruebas: antes,
+ * cada prueba del endpoint fabricaba un `x-forwarded-for` distinto para no
+ * compartir cuota entre llamadas. Con la política conservadora de EA-10 (#36) la
+ * identidad ya no sale de esa cabecera (todas comparten la clave acotada
+ * `sin-verificar`), así que las pruebas reinician el contador entre casos para
+ * aislarse, en vez de simular identidades que el servidor no debe creer. No se
+ * usa en producción.
+ */
+export function __reiniciarLimitePeticiones() {
+  rateLimit = createRateLimiter({ limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS })
+}
+
+/**
+ * Clave de quien llama para el límite de peticiones (EA-10 #36). Resuelve la
+ * identidad con la política conservadora de `lib/identidad-cliente.ts`: sin un
+ * proxy de confianza COMPROBADO no se confía en `x-forwarded-for`/`x-real-ip`, y
+ * todas esas peticiones comparten una clave acotada. La verificación del proxy
+ * real de Render queda pendiente de EA-14/#40; hasta entonces este es el
+ * comportamiento seguro por defecto.
  */
 function clientKey(req: Request): string {
-  const forwarded = req.headers.get("x-forwarded-for")
-  if (forwarded) return forwarded.split(",")[0].trim()
-  return req.headers.get("x-real-ip") ?? "local"
+  const identidad = resolverIdentidad({
+    forwardedFor: req.headers.get("x-forwarded-for"),
+    realIp: req.headers.get("x-real-ip"),
+  })
+  return claveLimite(identidad)
 }
 
 /**
@@ -73,8 +95,14 @@ export async function POST(req: Request) {
 
   let message = ""
   let lectura: AgentContext["position"]
-  const raw = await req.text()
-  if (raw.length > MAX_BODY_CHARS) return answer("Ese mensaje es demasiado largo. Dilo en una frase corta.", 413)
+  // EA-10 (#36): se lee el cuerpo por stream con cota de bytes ANTES de acumular
+  // todo. Un cuerpo por encima del límite corta la lectura y responde 413; un
+  // error o cancelación de la lectura responde 400 sin provocar 500 ni dejar el
+  // stream abierto. La cota es de bytes y es independiente del límite de la frase.
+  const cuerpo = await leerCuerpoLimitado(req.body, MAX_BODY_BYTES)
+  if (cuerpo.kind === "excedido") return answer("Ese mensaje es demasiado largo. Dilo en una frase corta.", 413)
+  if (cuerpo.kind === "error") return answer("No pude leer tu mensaje. Inténtalo de nuevo.", 400)
+  const raw = cuerpo.texto
   try {
     const body = BodySchema.safeParse(JSON.parse(raw))
     if (body.success) {

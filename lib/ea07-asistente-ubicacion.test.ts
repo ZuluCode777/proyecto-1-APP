@@ -138,7 +138,10 @@ test("vencer la ubicación durante HTTP no oculta límites 429 ni rechazos 413",
 // ── POST real: red simulada caída → catálogo de la copia; sin network real ──
 
 test("POST real: 'quiero ir a Ricaurte' con GPS cercano NO responde 'Ya estás en'", async () => {
-  const { POST } = await import("../app/api/agent/route")
+  const { POST, __reiniciarLimitePeticiones } = await import("../app/api/agent/route")
+  // EA-10 (#36): identidad acotada compartida (`sin-verificar`). Se reinicia el
+  // contador para aislar este caso del resto, sin fabricar cabeceras de proxy.
+  __reiniciarLimitePeticiones()
   const fetchOriginal = globalThis.fetch
   // Fuerza que el servidor use la copia guardada (sin red real a TransMilenio).
   globalThis.fetch = (async () => { throw new Error("sin red (prueba)") }) as unknown as typeof fetch
@@ -156,7 +159,10 @@ test("POST real: 'quiero ir a Ricaurte' con GPS cercano NO responde 'Ya estás e
 })
 
 test("POST real: forma HEREDADA (solo lat/lng, sin hora) no se trata como evidencia fresca", async () => {
-  const { POST } = await import("../app/api/agent/route")
+  const { POST, __reiniciarLimitePeticiones } = await import("../app/api/agent/route")
+  // EA-10 (#36): identidad acotada compartida (`sin-verificar`). Se reinicia el
+  // contador para aislar este caso del resto, sin fabricar cabeceras de proxy.
+  __reiniciarLimitePeticiones()
   const fetchOriginal = globalThis.fetch
   globalThis.fetch = (async () => { throw new Error("sin red (prueba)") }) as unknown as typeof fetch
   try {
@@ -171,7 +177,10 @@ test("POST real: forma HEREDADA (solo lat/lng, sin hora) no se trata como eviden
 })
 
 test("POST real: metadatos inválidos (hora no finita) descartan la posición, no rompen la petición", async () => {
-  const { POST } = await import("../app/api/agent/route")
+  const { POST, __reiniciarLimitePeticiones } = await import("../app/api/agent/route")
+  // EA-10 (#36): identidad acotada compartida (`sin-verificar`). Se reinicia el
+  // contador para aislar este caso del resto, sin fabricar cabeceras de proxy.
+  __reiniciarLimitePeticiones()
   const fetchOriginal = globalThis.fetch
   globalThis.fetch = (async () => { throw new Error("sin red (prueba)") }) as unknown as typeof fetch
   try {
@@ -186,7 +195,10 @@ test("POST real: metadatos inválidos (hora no finita) descartan la posición, n
 })
 
 test("POST real: «desde Narnia a Ricaurte» pide aclarar el origen aunque llegue una posición vigente", async () => {
-  const { POST } = await import("../app/api/agent/route")
+  const { POST, __reiniciarLimitePeticiones } = await import("../app/api/agent/route")
+  // EA-10 (#36): identidad acotada compartida (`sin-verificar`). Se reinicia el
+  // contador para aislar este caso del resto, sin fabricar cabeceras de proxy.
+  __reiniciarLimitePeticiones()
   const fetchOriginal = globalThis.fetch
   globalThis.fetch = (async () => { throw new Error("sin red (prueba)") }) as unknown as typeof fetch
   try {
@@ -237,7 +249,10 @@ test("consultarAgente NO envía una posición vencida, sin hora o futura; una fr
 })
 
 test("POST real: «estoy en Narnia y quiero ir a Ricaurte» y «a Ricaurte desde Narnia» piden aclarar aunque llegue una posición vigente", async () => {
-  const { POST } = await import("../app/api/agent/route")
+  const { POST, __reiniciarLimitePeticiones } = await import("../app/api/agent/route")
+  // EA-10 (#36): identidad acotada compartida (`sin-verificar`). Se reinicia el
+  // contador para aislar este caso del resto, sin fabricar cabeceras de proxy.
+  __reiniciarLimitePeticiones()
   const fetchOriginal = globalThis.fetch
   globalThis.fetch = (async () => { throw new Error("sin red (prueba)") }) as unknown as typeof fetch
   try {
