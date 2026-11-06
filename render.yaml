@@ -1,0 +1,39 @@
+# Blueprint de Render para la demostración de ExpoAndes (EA-14, #40).
+#
+# Un solo servicio web Node gratuito con las reglas del asistente: sin Ollama,
+# sin disco, base de datos, worker ni cron. Guía de uso, adopción del servicio
+# manual existente y reversión: docs/RENDER.md. Esta configuración todavía NO
+# se ha aplicado ni medido en Render (ver docs/expoandes/ea-14-render-free.md).
+#
+# `repo` y `branch` se omiten a propósito: Render usa el repositorio que contiene
+# este archivo y su rama por defecto. Tampoco se fija `region`, `healthCheckPath`
+# ni `domains`: la salud es la comprobación TCP por defecto, porque `/` y la API
+# piden clave (HTTP Basic) y responderían 401.
+services:
+  - type: web
+    # Nombre distinto del servicio manual que ya existe (transmivoz.onrender.com).
+    # Crear un Blueprint con un nombre que coincida hace que Render cree copias
+    # con sufijo en vez de adoptar el servicio; ver docs/RENDER.md.
+    name: transmivoz-expoandes
+    runtime: node
+    plan: free
+    # Despliegue solo a mano desde el panel: ningún push despliega por sí solo.
+    # Entre comillas: YAML 1.1 lee `off` sin comillas como booleano falso.
+    autoDeployTrigger: "off"
+    # Corepack toma la versión de pnpm de `packageManager` en package.json.
+    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm build
+    # Render define PORT en tiempo de ejecución; el servidor debe escuchar en 0.0.0.0.
+    startCommand: corepack pnpm start -H 0.0.0.0 -p "$PORT"
+    envVars:
+      # Mismo major que la integración continua (.github/workflows/ci.yml). Se
+      # fija la versión exacta porque el valor por defecto de Render depende de
+      # la fecha de creación del servicio.
+      - key: NODE_VERSION
+        value: "24.22.1"
+      # Vacío: el asistente usa solo las reglas y no contacta a Ollama.
+      - key: OLLAMA_MODEL
+        value: ""
+      # La clave de acceso (HTTP Basic) la escribe el dueño en el panel de Render.
+      # Nunca se versiona. Sin clave utilizable, la app responde 503.
+      - key: APP_PASSWORD
+        sync: false
