@@ -65,8 +65,8 @@ function leerCgroup(lector: Lector, plataforma: string) {
     actualBytes: aBytes(leer(lector, rutas.actual)),
     picoBytes: aBytes(leer(lector, rutas.pico)),
     limiteBytes,
-    // `max` (v2) o el tope enorme de v1 = sin límite; `null` aquí significa que no se pudo leer.
-    sinLimite: limiteTexto === null ? null : limiteBytes === null,
+    // Solo `max` (v2) o un decimal enorme (tope de v1) = sin límite; ilegible o malformado = `null`.
+    sinLimite: limiteTexto === null ? null : limiteTexto === "max" ? true : /^\d+$/.test(limiteTexto) ? limiteBytes === null : null,
     limiteIgual512MiB: limiteBytes === null ? null : limiteBytes === LIMITE_512_MIB,
   }
 }

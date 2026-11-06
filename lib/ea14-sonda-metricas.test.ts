@@ -16,11 +16,14 @@ function falso(archivos: Record<string, string>) {
 }
 
 test("proceso: Node real, cifras no negativas y maxRSS convertido a bytes", () => {
+  // maxRSS (KiB) es monótono: el pico en bytes cae entre dos muestras ×1024 tomadas alrededor de la llamada.
+  const antesKiB = process.resourceUsage().maxRSS
   const { proceso } = metricasDeMemoria(falso({}).lector, "linux")
+  const despuesKiB = process.resourceUsage().maxRSS
   assert.equal(proceso.node, process.versions.node)
   assert.ok(proceso.rssBytes > 0 && proceso.maxRssBytes > 0)
   assert.ok(proceso.uptimeSegundos >= 0)
-  assert.equal(proceso.maxRssBytes % 1024, 0)
+  assert.ok(proceso.maxRssBytes >= antesKiB * 1024 && proceso.maxRssBytes <= despuesKiB * 1024)
 })
 
 test("cgroup v2: actual, pico y límite de 512 MiB; solo lee rutas de la lista cerrada", () => {
@@ -86,6 +89,14 @@ test("contenido no numérico no produce NaN ni cifras falsas", () => {
   const { cgroup } = metricasDeMemoria(lector, "linux")
   assert.equal(cgroup.picoBytes, null)
   assert.equal(cgroup.limiteBytes, null)
+  assert.equal(cgroup.sinLimite, null)
+  // Límite basura o vacío: ni "sin límite" ni acotado, solo `null`.
+  for (const limite of ["abc", "", "\n", "1.5", "-1"]) {
+    const { cgroup: c } = metricasDeMemoria(falso({ [RUTAS.v2.actual]: "7", [RUTAS.v2.limite]: limite }).lector, "linux")
+    assert.equal(c.sinLimite, null, JSON.stringify(limite))
+    assert.equal(c.limiteBytes, null, JSON.stringify(limite))
+    assert.equal(c.limiteIgual512MiB, null, JSON.stringify(limite))
+  }
 })
 
 test("pnpm: versión leída del user agent; ausente → null", () => {
