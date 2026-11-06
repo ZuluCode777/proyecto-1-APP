@@ -12,7 +12,7 @@ import { crearPeticion, medir, percentil, validarBase } from "../scripts/medir-r
 const CLAVE = "clave-secreta-de-prueba"
 const BASIC = "Basic " + Buffer.from("u:" + CLAVE).toString("base64")
 
-type Solicitud = { metodo?: string; ruta: string; autorizacion?: string; cuerpo?: string }
+type Solicitud = { metodo?: string; ruta: string; autorizacion?: string; cuerpo?: string; plazo?: number }
 type Respuesta = { estado: number; ms: number; retryAfter: string | null; texto: string }
 const respuesta = (estado: number, texto = "", retryAfter: string | null = null): Respuesta => ({ estado, ms: 100, retryAfter, texto })
 
@@ -142,7 +142,11 @@ test("limite: un 429 sin Retry-After falla (un solo servidor con estado que sí 
 
 test("despertar: informa el tiempo del primer 200 y falla si no responde 200", async () => {
   const bien = captura()
-  assert.equal(await medir({ modo: "despertar", base: "x", clave: CLAVE, peticion: servidor(), salida: bien.salida }), 0)
+  const correcto = servidor()
+  const plazos: (number | undefined)[] = []
+  const peticion = async (s: Solicitud) => (plazos.push(s.plazo), correcto(s))
+  assert.equal(await medir({ modo: "despertar", base: "x", clave: CLAVE, peticion, salida: bien.salida }), 0)
+  assert.deepEqual(plazos, [120_000], "una sola petición con plazo de 120 s (arranque en frío), no el de 20 s")
   assert.ok(bien.lineas.some((l) => l.includes("Primera petición") && l.includes("más de 15 min sin tráfico") && l.includes("HTTP 200")))
   assert.ok(!bien.lineas.some((l) => l.startsWith("Arranque en frío")), "no afirma «frío» sin saber cuánto reposó")
   const mal = captura()
