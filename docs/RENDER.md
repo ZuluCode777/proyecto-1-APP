@@ -7,7 +7,9 @@ depende de la máquina con Windows. La configuración está en
 [`docs/expoandes/ea-14-render-free.md`](expoandes/ea-14-render-free.md).
 
 Esta guía no despliega nada por sí sola. Ninguno de sus pasos toca la máquina
-con Windows ni el origen actual (`desktop-oa6r547.taila37867.ts.net`).
+con Windows ni el origen actual (`desktop-oa6r547.taila37867.ts.net`). Despliega
+una revisión que ya incluya esta preparación (por ejemplo HSTS en
+`next.config.mjs`) en la rama que el servicio tenga configurada.
 
 ## Antes de activar
 
@@ -32,7 +34,9 @@ en el nombre. Por eso hay dos caminos y conviene decidir uno antes de tocar nada
 
 **Camino A. Conservar el servicio manual** (`transmivoz.onrender.com`). Es el
 que ya tiene la dirección conocida. No crees un Blueprint: usa `render.yaml`
-como lista de comprobación y alinea los ajustes del servicio a mano.
+como lista de comprobación y alinea los ajustes del servicio a mano. Este
+repositorio no ha inspeccionado esos ajustes: revísalos uno por uno, no supongas
+que ya coinciden.
 
 | Ajuste en el panel | Valor |
 | --- | --- |
@@ -56,8 +60,8 @@ de `render.yaml` es distinto del servicio manual a propósito, así no hay
 colisión. Su origen será otro (`transmivoz-expoandes.onrender.com`), con otro
 `localStorage`.
 
-1. Espera a que el PR que añade `render.yaml` esté fusionado. Luego, *New >
-   Blueprint*, conecta este repositorio y elige la rama `main`.
+1. *New > Blueprint*, conecta este repositorio y elige una rama que ya
+   contenga `render.yaml`.
 2. Lee la lista de cambios. Debe mostrar un solo servicio web `free` y ningún
    aviso de coincidencia con recursos existentes. Si aparece uno, cancela.
 3. Escribe `APP_PASSWORD` cuando Render la pida. Solo la pide en la creación;
@@ -76,21 +80,29 @@ archivo no borra el servicio: se borra a mano en el panel.
    registro de compilación. Si `corepack pnpm` falla, no cambies la versión de
    pnpm del repositorio: reporta el error.
 3. Con la clave en el entorno (no como argumento), corre las comprobaciones
-   desde el portátil. Solo viaja la clave, por HTTPS, a ese origen:
+   desde el portátil. Solo viaja la clave, por HTTPS, a ese origen. Empieza por
+   `despertar`: tiene plazo de 120 s y espera el arranque. Los demás modos
+   tienen plazo de 20 s por petición y un servicio dormido (cerca de un minuto)
+   los haría fallar por el reposo, no por la app. No sigas hasta que dé 200.
 
    ```bash
    export RENDER_URL=https://transmivoz.onrender.com
    read -rs APP_PASSWORD && export APP_PASSWORD
+   node scripts/medir-render.mjs despertar
    node scripts/medir-render.mjs credenciales
    pnpm verificar "$RENDER_URL"
    ```
 
-   `credenciales` comprueba 401 sin clave y con clave errónea, 200 con la
-   correcta, 413 con cuerpo grande y motor «reglas». `pnpm verificar` abre
-   Chrome contra el servicio y responde la petición de clave con `APP_PASSWORD`.
+   `credenciales` comprueba 401 sin clave y con clave errónea en `/`, en GET y
+   POST de `/api/agent` y en `/api/transmilenio`; 200 con la correcta en `/` y
+   en GET `/api/agent`; 413 con cuerpo grande y motor «reglas». El 200 del
+   catálogo con clave lo comprueba `latencia`. `pnpm verificar` abre Chrome
+   contra el servicio y responde la petición de clave con `APP_PASSWORD`.
 4. Registra los resultados siguiendo la tabla del informe de EA-14. Los modos
    `latencia`, `despertar` y `limite` están descritos en la cabecera de
-   `scripts/medir-render.mjs`. `limite` gasta el cupo compartido de 20
+   `scripts/medir-render.mjs`. El tiempo de `despertar` solo cuenta como
+   arranque en frío si el servicio llevaba más de 15 minutos sin tráfico; si
+   estaba despierto es una medición en caliente y no se anota como frío. `limite` gasta el cupo compartido de 20
    peticiones por minuto: hazlo aparte y sin público.
 
 ## Revertir

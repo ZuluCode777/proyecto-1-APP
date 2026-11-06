@@ -11,17 +11,25 @@
  *   RENDER_URL=https://transmivoz.onrender.com APP_PASSWORD=… node scripts/medir-render.mjs <modo>
  *
  * Modos:
- *   credenciales  Sin credencial, con clave errónea y con la correcta; 413 por
- *                 cuerpo grande y motor «reglas». Gasta 1 de los 20 POST por minuto.
+ *   credenciales  401 sin credencial y con clave errónea en `/`, GET y POST
+ *                 /api/agent y GET /api/transmilenio; 200 con la correcta en `/` y
+ *                 GET /api/agent; 413 por cuerpo grande y motor «reglas». El 200 del
+ *                 catálogo con clave lo exige `latencia`, que ya lo pide. Solo el
+ *                 POST de 413 gasta cupo: 1 de los 20 por minuto (el 401 no gasta).
  *   latencia [n]  Catálogo (marca si vino «live» o «snapshot») y, ya en caliente,
  *                 n lecturas de GET /api/agent (red + Render, sin datos) y n de
  *                 POST /api/agent (reglas + catálogo en caché), espaciadas para
  *                 no pasar de 20/min. Por defecto n = 30 (unos 100 s).
- *   despertar     Una sola petición con plazo de 120 s para medir el arranque
- *                 en frío. Ejecútalo solo tras más de 15 min sin tráfico; no
- *                 envíes tráfico artificial para dormirlo ni para evitarlo.
+ *   despertar     Una sola petición con plazo de 120 s. Es arranque en frío solo si
+ *                 el servicio llevaba más de 15 min sin tráfico; si no, es una
+ *                 medición en caliente y no se registra como frío. No envíes
+ *                 tráfico artificial para dormirlo ni para evitarlo.
  *   limite        Hasta 25 POST seguidos hasta recibir 429. Gasta el cupo
  *                 COMPARTIDO de la instancia: hazlo en un ensayo aparte.
+ *
+ * Corre `despertar` primero y espera su 200: los demás modos tienen plazo de 20 s
+ * por petición y un arranque en frío (cerca de 60 s, sin garantía) los haría
+ * fallar por el reposo, no por la app.
  *
  * Código de salida 0 solo si todo lo comprobado se cumple. Mide tiempos, no los
  * juzga: p50/p95 y memoria se comparan a mano con el objetivo del informe.
@@ -85,10 +93,17 @@ function campo(texto, nombre) {
 
 async function credenciales({ peticion, clave, salida }) {
   const buena = basic(clave)
+  const mala = basic("clave-incorrecta-ea14")
+  // `/api/agent` no pasa por el proxy: su propia guardia debe comprobarse aparte, en GET y en POST.
   const casos = [
     ["GET / sin credencial", { ruta: "/" }, 401],
-    ["GET / con clave errónea", { ruta: "/", autorizacion: basic("clave-incorrecta-ea14") }, 401],
+    ["GET / con clave errónea", { ruta: "/", autorizacion: mala }, 401],
+    ["GET /api/agent sin credencial", { ruta: "/api/agent" }, 401],
+    ["GET /api/agent con clave errónea", { ruta: "/api/agent", autorizacion: mala }, 401],
     ["POST /api/agent sin credencial", post(undefined), 401],
+    ["POST /api/agent con clave errónea", post(mala), 401],
+    ["GET /api/transmilenio sin credencial", { ruta: "/api/transmilenio" }, 401],
+    ["GET /api/transmilenio con clave errónea", { ruta: "/api/transmilenio", autorizacion: mala }, 401],
     ["GET / con la clave correcta", { ruta: "/", autorizacion: buena }, 200],
     ["POST /api/agent con cuerpo de 5000 bytes", post(buena, "a".repeat(5000)), 413],
   ]
@@ -132,7 +147,7 @@ async function latencia({ peticion, clave, n, salida, esperar }) {
 
 async function despertar({ peticion, clave, salida }) {
   const r = await peticion({ ruta: "/api/agent", autorizacion: basic(clave), plazo: 120_000 })
-  salida.log(`Arranque en frío: HTTP ${r.estado}, ${ms(r.ms)}, motor ${campo(r.texto, "engine") ?? "desconocido"}.`)
+  salida.log(`Primera petición (arranque en frío solo si hubo más de 15 min sin tráfico): HTTP ${r.estado}, ${ms(r.ms)}, motor ${campo(r.texto, "engine") ?? "desconocido"}.`)
   return r.estado === 200
 }
 
@@ -141,8 +156,9 @@ async function limite({ peticion, clave, salida }) {
   for (let i = 1; i <= 25; i++) {
     const r = await peticion(post(buena))
     if (r.estado === 429) {
-      salida.log(`OK    429 en la petición ${i}, Retry-After ${r.retryAfter ?? "ausente"}.`)
-      return r.retryAfter !== null
+      const conCabecera = r.retryAfter !== null
+      salida.log(`${conCabecera ? "OK   " : "FALLO"} 429 en la petición ${i}, Retry-After ${r.retryAfter ?? "ausente"}.`)
+      return conCabecera
     }
     if (r.estado !== 200) {
       salida.error(`FALLO petición ${i}: HTTP ${r.estado}.`)
@@ -171,7 +187,7 @@ const MODOS = { credenciales, latencia, despertar, limite }
  * @param {OpcionesMedir} opciones
  */
 export async function medir({ modo, base, clave, n = 30, peticion = crearPeticion({ base }), esperar = dormir, salida = console }) {
-  if (!MODOS[modo]) {
+  if (!Object.hasOwn(MODOS, modo)) {
     salida.error(`FALLO: modo desconocido. Usa: ${Object.keys(MODOS).join(", ")}.`)
     return 1
   }

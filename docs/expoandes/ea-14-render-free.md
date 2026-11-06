@@ -7,6 +7,11 @@ Render, no se accedió a Windows, a la API de Render ni a ninguna clave. No se
 añadieron dependencias ni se tocaron el lockfile, los workflows, el instalador ni
 la prueba PowerShell.
 
+Al 2026-11-06 ya existe un servicio manual en `https://transmivoz.onrender.com`.
+Esta rama no lo tocó, no lo desplegó ni lo midió; sus ajustes reales no están
+verificados hasta que el titular de la cuenta los inspeccione y los alinee con
+`docs/RENDER.md` (Camino A).
+
 Hay configuración reproducible, una guía para el titular de la cuenta
 ([`docs/RENDER.md`](../RENDER.md)) y una herramienta de medición. **Ningún
 criterio de rendimiento está cerrado:** todo lo que dependa de Render real
@@ -18,7 +23,7 @@ figura como pendiente y ninguna prueba local se presenta como medición de Rende
 | --- | --- |
 | `render.yaml` | Un web Node `free`, despliegue manual, Node 24.22.1, `pnpm install --frozen-lockfile`, `next build`, `next start -H 0.0.0.0 -p "$PORT"`, `OLLAMA_MODEL` vacío, `APP_PASSWORD` con `sync: false`. Sin disco, base de datos, worker, cron, Docker ni ruta de salud HTTP (comprobación TCP por omisión). |
 | `docs/RENDER.md` | Cómo activar, adoptar o crear el servicio sin duplicarlo, desplegar, comprobar y revertir. |
-| `scripts/medir-render.mjs` | Mediciones en vivo por HTTPS: credenciales, latencia, arranque en frío, 429. La clave solo sale del entorno. |
+| `scripts/medir-render.mjs` | Mediciones en vivo por HTTPS: credenciales (`/`, `/api/agent` GET y POST, `/api/transmilenio`), latencia, primera petición tras reposo, 429. La clave solo sale del entorno. |
 | `next.config.mjs` | `Strict-Transport-Security: max-age=15552000` en todas las rutas. |
 | `lib/ea14-render.test.ts`, `lib/ea14-medir-render.test.ts` | Guardas de `render.yaml` y HSTS; lógica del script de medición con respuestas simuladas. |
 
@@ -93,7 +98,7 @@ El portátil usa Node 26.13.0; la integración continua y Render usan Node 24. N
 de esto es una medición de Render.
 
 - `pnpm exec tsc --noEmit`: salida 0.
-- `pnpm test`: 366 de 366 correctas (350 existentes + 16 nuevas).
+- `pnpm test`: 371 de 371 correctas (350 existentes + 21 nuevas).
 - `pnpm build`: salida 0.
 - `pnpm verificar` contra `next start` propio con clave de prueba: 9 de 9
   correctas en Chrome (permisos simulados; no acredita accesibilidad ni sensores).
@@ -101,20 +106,28 @@ de esto es una medición de Render.
   las rutas, redirecciones 308 sin fuga).
 - `corepack pnpm start -H 127.0.0.1 -p "$PORT"`: `corepack pnpm --version` da
   12.3.4 y el servidor responde 401 sin clave y 200 con ella.
-- `scripts/medir-render.mjs`: sus cuatro modos se ejecutaron contra un servidor
-  HTTPS falso con certificado autofirmado, solo para comprobar el cliente (HTTPS
-  obligatorio, sin seguir redirecciones, sin clave en la salida). No dicen nada
-  del servicio real.
+- `scripts/medir-render.mjs`: en la primera versión, sus cuatro modos se
+  ejecutaron contra un servidor HTTPS falso con certificado autofirmado, solo para
+  comprobar el cliente. La revisión posterior (matriz de 401 completa, modos
+  heredados de `Object`, orden de `despertar`) se prueba solo con las pruebas
+  unitarias. Nada de esto dice algo del servicio real. La prueba de que
+  `crearPeticion` no sigue redirecciones usa HTTP de loopback dentro de la
+  prueba; el script de línea de comandos sigue exigiendo HTTPS.
 - La prueba PowerShell del instalador no se corrió: el portátil no tiene `pwsh`.
   El archivo no cambió y la integración continua la ejecuta.
 
 Mutaciones de las guardas nuevas, cada una hace fallar su prueba: `off` sin
 comillas, `plan: starter`, `APP_PASSWORD` con valor, `--no-frozen-lockfile`,
 `NODE_VERSION` sin versión exacta y `includeSubDomains` en HSTS.
+En `scripts/medir-render.mjs`, cada mutación hace fallar su prueba: despacho de
+modos con `MODOS[modo]` (acepta `toString`), quitar los casos 401 de la API,
+devolver verdadero ante un 429 sin `Retry-After` y `redirect: "follow"`.
 
 ## Pendiente en vivo (titular de la cuenta)
 
-Cada fila se cierra solo con una medición en el servicio real, anotando fecha,
+Si el servicio puede estar dormido, el primer comando es `despertar` y se espera
+su 200: los demás modos tienen plazo de 20 s por petición. Cada fila se cierra
+solo con una medición en el servicio real, anotando fecha,
 commit, región y versiones efectivas de Node y pnpm. No guardes en el registro la
 clave, la cabecera `Authorization` ni direcciones IP de personas.
 
@@ -122,12 +135,12 @@ clave, la cabecera `Authorization` ni direcciones IP de personas.
 | --- | --- | --- | --- |
 | 1 | Cuenta, cuota y costo cero antes de activar | *Billing* y *Included usage*: plan Hobby, ningún recurso de pago, medio de pago o no | Pendiente |
 | 2 | Build y arranque con Node 24, pnpm 12.3.4 y lockfile congelado | Registro de compilación; `corepack pnpm` funciona; escucha en `$PORT` | Pendiente |
-| 3 | Matriz de credenciales y motor «reglas» | `node scripts/medir-render.mjs credenciales` y `pnpm verificar "$RENDER_URL"` | Pendiente |
+| 3 | Matriz de credenciales y motor «reglas» | Tras `despertar`: `node scripts/medir-render.mjs credenciales` (401 sin clave y con clave errónea en `/`, `/api/agent` GET y POST, `/api/transmilenio`; 200 con la correcta en `/` y `/api/agent`; 413; motor) y `pnpm verificar "$RENDER_URL"`. El 200 del catálogo con clave sale de la fila 7 | Pendiente |
 | 4 | Salud TCP | El despliegue pasa a *Live* sin `healthCheckPath` y sigue sano | Pendiente |
 | 5 | Cadena de proxy y resistencia a suplantación | Requiere ver las cabeceras que llegan al servidor, lo que esta rama no incluye: hace falta una sonda temporal aparte (no se fusiona). Medir saltos de confianza, si un cliente puede inyectar saltos en `x-forwarded-for` y quién escribe `x-real-ip` (matriz de EA-10) | Pendiente |
 | 6 | RAM pico y errores frente a 512 MB y 400 MB propuestos | *Metrics > Memory* durante arranque, 30 peticiones en caliente, renovación del catálogo y la prueba 429. Un build exitoso no demuestra que quepa | Pendiente |
 | 7 | p50 y p95 en caliente, separados de la red y de ArcGIS | `node scripts/medir-render.mjs latencia 30`: informa el catálogo aparte, `GET /api/agent` (red y Render, sin datos) y `POST /api/agent` (reglas, catálogo en caché) | Pendiente |
-| 8 | Primer arranque tras reposo | Tras más de 15 min sin tráfico, `node scripts/medir-render.mjs despertar`; repetir varias veces. Sin pings | Pendiente |
+| 8 | Primer arranque tras reposo | Tras más de 15 min sin tráfico, `node scripts/medir-render.mjs despertar` (plazo 120 s); repetir varias veces. Con menos reposo es una medición en caliente, no arranque en frío. Sin pings | Pendiente |
 | 9 | 429 y que un reinicio reinicie el contador | `node scripts/medir-render.mjs limite` en ensayo aparte; luego *Restart* y repetir un POST | Pendiente |
 | 10 | Fuente caída y copia fechada | Solo con una caída real de ArcGIS: `source: "snapshot"` y fecha visible en `/api/transmilenio`. La dirección de ArcGIS está fija en el código, así que no se puede provocar desde Render sin cambiarlo | Pendiente |
 | 11 | Reinicio conserva la copia | Tras *Restart*, `/api/transmilenio` responde con catálogo (en vivo o copia fechada) | Pendiente |

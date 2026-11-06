@@ -2,8 +2,8 @@
 #
 # Un solo servicio web Node gratuito con las reglas del asistente: sin Ollama,
 # sin disco, base de datos, worker ni cron. Guía de uso, adopción del servicio
-# manual existente y reversión: docs/RENDER.md. Esta configuración todavía NO
-# se ha aplicado ni medido en Render (ver docs/expoandes/ea-14-render-free.md).
+# manual existente y reversión: docs/RENDER.md. Estado y mediciones:
+# docs/expoandes/ea-14-render-free.md.
 #
 # `repo` y `branch` se omiten a propósito: Render usa el repositorio que contiene
 # este archivo y su rama por defecto. Tampoco se fija `region`, `healthCheckPath`
