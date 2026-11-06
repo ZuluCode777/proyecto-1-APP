@@ -13,6 +13,7 @@ Comenzar por [plan de ejecución](plan-ejecucion.md), que identifica prioridades
 | [Hardware e iOS](investigacion-hardware-ios.md) | ESP32, radar externo, Bluetooth/audio, alternativas iPhone, alimentación y propuesta BLE. |
 | [Compra en Bogotá](compras-bogota.md) | Candidatos comerciales, precios observados y comprobaciones previas; ninguna reserva o compra. |
 | [Arquitectura y experimentos](arquitectura-y-experimentos.md) | Comparación SwiftUI/Capacitor y núcleo local propuesto, propiedad, contratos y experimentos aún pendientes. |
+| [Plan de firmware](plan-firmware.md) | Hardware comprado el 6/11 (ESP32-S3-N16R8 y SEN0395), qué mide el radar, diseño del firmware, ensayos de banco y calendario. |
 | [Puertas de hardware](puertas-hardware.md) | Criterios propuestos para estáticos, móviles e interior; medidas de audio/enlace y ruta crítica. |
 | [Enunciado, rúbrica y correcciones](lectura-rubrica.md) | Doce criterios, enunciado ExpoAndes y reconciliación del 3/11: trabajo reutilizable, comentarios de evaluación, afiche/stand, CANVAS y pendientes. |
 | [Corroboración](corroboracion.md) | Pruebas observadas, fuentes contrastadas, datos confirmados y lo que permanece pendiente. |
