@@ -286,7 +286,7 @@ Decisiones tomadas al congelar. Ninguna cambia la distribución de bytes de §8.
 | Trama real del SEN0395 y salud ante desconexión | H2 (B1) | Captura de UART cruda. |
 | Enlace cifrado y autenticado real, y qué evidencia lo afirma en iOS | H3 (EA-12) | Prueba con la placa y el iPhone. |
 | Transporte Core Bluetooth que use `SesionProximidad` | A2 (EA-11/EA-12) | Código y prueba en el iPhone desde el 11/11. |
-| Swift en Xcode con la app (Swift en macOS de CI ya verde) | A1 / A2 | El job de CI pasó en `97b7e819` ([ejecución](https://github.com/ZuluCode777/proyecto-1-APP/actions/runs/42345095722): 1054 comprobaciones de C++ + 7 pruebas de Swift en macOS). Falta integrarlo en Xcode con la app. |
+| Apertura manual del proyecto en Xcode (CI del paquete y la app ya verde) | A1 / A2 | El job de CI pasó en `97b7e819` ([ejecución](https://github.com/ZuluCode777/proyecto-1-APP/actions/runs/42345095722): 1054 comprobaciones de C++ + 7 pruebas de Swift en macOS). La integración en la app ya se comprobó en la [ejecución iOS](https://github.com/ZuluCode777/proyecto-1-APP/actions/runs/42345095644); falta abrir el proyecto a mano en Xcode. |
 | Pines, cableado y firmware de placa | H3 (EA-12) | `firmware/README.md` una vez recibida la placa. |
 
 Este trabajo **no cierra el issue #30**: deja el contrato congelado y verificable por software; la evidencia física sigue pendiente.
