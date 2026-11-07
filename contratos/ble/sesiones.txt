@@ -1,0 +1,1034 @@
+# Escenarios de sesión del contrato BLE v1.0 (EA-04). Sintéticos: no prueban radar ni enlace físico.
+# Generados con struct.pack de Python. Tiempos: ms de un reloj monotónico del cliente (t).
+# Cabecera: escenario <id> | politica exigir|permitirSinMITM | modo real|simulada | elegido <accesorio>
+# Acciones (todas con "=> resultado" opcional):
+#   conectar <t> <accesorio> <nivelEnlace> | info <t> <hex|-> decod=<ok|código>
+#   referencia <t0> <t1> <hex|-> decod=... | entrega <t> <hex|-> decod=...
+#   evaluar <t> | reanudar <t> | desconectar <t>
+# Comprobaciones: estado <etiqueta> | perdidas <n> | cota <ms> | autenticado si|no | simulada si|no
+#   | recalibrar <t> si|no
+# decod= lo comprueban Swift y C++ con el mismo contexto de Información (última "info" con decod=ok).
+
+
+escenario activacion-sin-blanco-y-presencia
+# Sin blanco nunca es camino libre; presencia sin distancia ni azimut (SEN0395).
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+autenticado si
+simulada no
+cota 70
+perdidas 0
+recalibrar 1040 no
+entrega 1150 01030b0044332211ec130000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+cota 70
+entrega 1250 01010c004433221150140000ffff00801400ff00 decod=ok => aceptado
+estado sinBlanco
+
+escenario objetivo-distancia-y-azimut
+# Radar con capacidades 7: objetivo, solo distancia, presencia.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100070088776655000102026400f40164007017 decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 2000 2020 010101008877665564000000ffff00801400ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 2120 010f020088776655c8000000b00448f41400ff00 decod=ok => aceptado
+estado objetivo:1200:-3000
+cota 40
+entrega 2220 01070300887766552c010000dc0500801400ff00 decod=ok => aceptado
+estado objetivo:1500:-
+entrega 2320 010304008877665590010000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+
+escenario fallo-radar-y-recuperacion
+# Salud distinta de 0 no es sin blanco; tras el fallo nunca se reutiliza el último resultado.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01030b0044332211ec130000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+entrega 1250 01000c004433221150140000ffff0080ffffff02 decod=ok => aceptado
+estado radarNoDisponible:2
+entrega 1350 01000d0044332211b4140000ffff00801e00ff00 decod=ok => aceptado
+estado sinDatos:sinResultado
+entrega 1450 01000e004433221118150000ffff0080ffffff01 decod=ok => aceptado
+estado radarNoDisponible:1
+entrega 1550 01010f00443322117c150000ffff00801400ff00 decod=ok => aceptado
+estado sinBlanco
+
+escenario simulacion-no-entra-en-sesion-real
+# Trama simulada en sesión real: rechazo.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01230b0044332211ec130000ffff00801400ff00 decod=ok => rechazado:simulacionNoCoincide
+estado rechazada:simulacionNoCoincide
+entrega 1250 01010c004433221150140000ffff00801400ff00 decod=ok => descartado:sesionNoActiva
+estado rechazada:simulacionNoCoincide
+
+escenario simulacion-referencia-en-sesion-real
+# Referencia simulada en sesión real: rechazo.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+referencia 1000 1040 01210a004433221188130000ffff00801e00ff00 decod=ok => rechazado:simulacionNoCoincide
+estado rechazada:simulacionNoCoincide
+
+escenario sesion-simulada-aislada
+# Sesión de demostración: solo tramas simuladas; las reales se rechazan.
+politica exigir
+modo simulada
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01210a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+simulada si
+entrega 1150 01230b0044332211ec130000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+simulada si
+entrega 1250 01030c004433221150140000ffff00801400ff00 decod=ok => rechazado:simulacionNoCoincide
+estado rechazada:simulacionNoCoincide
+
+escenario reinicio-del-accesorio
+# Otro identificador de arranque: invalida todo y obliga a releer Información.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01030b0044332211ec130000ffff00801400ff00 decod=ok => aceptado
+entrega 1350 01010000ddccbbaa64000000ffff00801400ff00 decod=ok => descartado:arranqueDistinto
+estado esperandoInformacion
+entrega 1450 01010c004433221150140000ffff00801400ff00 decod=ok => descartado:sesionNoActiva
+info 1500 01000000ddccbbaa000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+entrega 1550 01010100ddccbbaac8000000ffff00801400ff00 decod=ok => descartado:sinReferencia
+referencia 2000 2030 01010000ddccbbaa64000000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+perdidas 0
+
+escenario repeticion-orden-y-salto
+# Repetida y anterior se descartan; el salto se acepta y cuenta pérdidas.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01030b0044332211ec130000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+entrega 1160 01010b0044332211ec130000ffff00801400ff00 decod=ok => descartado:secuenciaRepetida
+estado presencia
+entrega 1170 01010a004433221188130000ffff00801400ff00 decod=ok => descartado:secuenciaAnterior
+entrega 1350 01010d0044332211b4140000ffff00801400ff00 decod=ok => aceptado
+estado sinBlanco
+perdidas 1
+entrega 1360 01030c004433221150140000ffff00801400ff00 decod=ok => descartado:secuenciaAnterior
+estado sinBlanco
+entrega 1450 010316004433221118150000ffff00801400ff00 decod=ok => aceptado
+perdidas 9
+estado presencia
+
+escenario vuelta-de-secuencia
+# Contador de 16 bits cruza 65535 a 0.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 0101feff4433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 0103ffff44332211ec130000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+entrega 1250 010100004433221150140000ffff00801400ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1350 0103010044332211b4140000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+perdidas 0
+entrega 1360 0101ffff44332211ec130000ffff00801400ff00 decod=ok => descartado:secuenciaAnterior
+estado presencia
+
+escenario limite-de-media-vuelta-de-secuencia
+# Diferencia 32767 se acepta; 32768 es anterior.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 010100004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 0103ff7f44332211ec130000ffff00801400ff00 decod=ok => aceptado
+perdidas 32766
+entrega 1250 0101ffff4433221150140000ffff00801400ff00 decod=ok => descartado:secuenciaAnterior
+entrega 1350 0101feff44332211b4140000ffff00801400ff00 decod=ok => aceptado
+estado sinBlanco
+
+escenario vuelta-del-reloj-del-accesorio
+# El instante de emisión (32 bits) cruza 2^32.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a0044332211a0ffffffffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01030b004433221104000000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+cota 70
+entrega 1250 01010c004433221168000000ffff00801400ff00 decod=ok => aceptado
+estado sinBlanco
+
+escenario emision-anterior-a-la-referencia
+# Secuencia nueva pero emitida antes de la referencia: se descarta.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01030b0044332211a00f0000ffff00801400ff00 decod=ok => descartado:emisionAnteriorAReferencia
+estado sinBlanco
+entrega 1250 01030c004433221150140000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+
+escenario reloj-del-accesorio-retrocede
+# Secuencia nueva pero instante menor que el de la trama aceptada anterior.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1250 01030b004433221150140000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+entrega 1260 01010c0044332211ec130000ffff00801400ff00 decod=ok => descartado:relojRetrocede
+estado presencia
+
+escenario dato-vencido-por-retraso-ble
+# Cota = max(0,(t-t0)-delta)+edad; se rechaza si cota+20 > 500.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1700 01030b0044332211ec130000ffff00801400ff00 decod=ok => descartado:vencida
+estado sinDatos:vencido
+entrega 1760 01010c0044332211b4140000ffff00801400ff00 decod=ok => aceptado
+estado sinBlanco
+cota 480
+entrega 1861 01030d004433221118150000ffff00801400ff00 decod=ok => descartado:vencida
+estado sinDatos:vencido
+entrega 2000 01030e0044332211e0150000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+
+escenario dato-vencido-por-edad-del-radar
+# La edad del radar entra en la cota: 480 pasa, 481 no.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1100 01030b0044332211ec130000ffff0080e001ff00 decod=ok => aceptado
+estado presencia
+cota 480
+entrega 1200 01030c004433221150140000ffff0080e101ff00 decod=ok => descartado:vencida
+estado sinDatos:vencido
+entrega 1300 01010d0044332211b4140000ffff00801400ff00 decod=ok => aceptado
+estado sinBlanco
+
+escenario caducidad-por-tiempo-de-recepcion
+# Más de 500 ms sin trama aceptada: sinDatos; el latido del enlace vale también con un fallo de radar (sin cota de resultado) y no repite el último estado.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01000b0044332211ec130000ffff0080ffffff02 decod=ok => aceptado
+estado radarNoDisponible:2
+evaluar 1650
+estado radarNoDisponible:2
+evaluar 1651
+estado sinDatos:sinRecepcion
+entrega 2000 01030c00443322110c170000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+
+escenario cota-vigente-vence-al-evaluar
+# La cota aceptada sigue corriendo con el tiempo: 480 + 1 + 20 > 500 vence aunque no hayan pasado 500 ms.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1100 01030b0044332211ec130000ffff0080e001ff00 decod=ok => aceptado
+estado presencia
+cota 480
+evaluar 1100
+estado presencia
+evaluar 1101
+estado sinDatos:vencido
+entrega 1200 01030c004433221150140000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+
+escenario cota-vigente-borde-exacto-sin-blanco
+# Sano sin detección también caduca por la cota: 400 + 80 + 20 = 500 vale; 81 ms no.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1100 01010b0044332211ec130000ffff00809001ff00 decod=ok => aceptado
+estado sinBlanco
+cota 400
+evaluar 1180
+estado sinBlanco
+evaluar 1181
+estado sinDatos:vencido
+
+escenario cota-vigente-objetivo-vence-al-evaluar
+# Un objetivo no se repite cuando su cota aceptada más el tiempo transcurrido supera el límite.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100070088776655000102026400f40164007017 decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 2000 2020 010101008877665564000000ffff00801400ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 2120 010f020088776655dc000000b00448f42c01ff00 decod=ok => aceptado
+estado objetivo:1200:-3000
+cota 300
+evaluar 2300
+estado objetivo:1200:-3000
+evaluar 2301
+estado sinDatos:vencido
+
+escenario silencio-largo-con-resultado-vigente
+# Más de 500 ms sin trama aceptada sigue siendo sinRecepcion aunque el resultado fuera vigente.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01030b0044332211ec130000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+cota 70
+evaluar 1700
+estado sinDatos:sinRecepcion
+
+escenario referencia-lenta
+# Lectura de referencia de más de 200 ms no activa la sesión.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+recalibrar 500 si
+referencia 1000 1201 01010a004433221188130000ffff00801e00ff00 decod=ok => descartado:lecturaReferenciaLenta
+estado sincronizando
+referencia 2000 1999 01010a004433221188130000ffff00801e00ff00 decod=ok => descartado:lecturaReferenciaInvalida
+estado sincronizando
+referencia 2000 2200 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+cota 230
+
+escenario notificacion-antes-de-referencia
+# Sin referencia temporal no hay avisos.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+entrega 100 0103050044332211e8030000ffff00801400ff00 decod=ok => descartado:sinReferencia
+estado sincronizando
+
+escenario reconexion-crea-sesion-nueva
+# Tras reconectar no se reproducen mediciones anteriores ni previas a la referencia.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01030b0044332211ec130000ffff00801400ff00 decod=ok => aceptado
+desconectar 2000
+estado desconectada
+entrega 2100 01030c004433221150140000ffff00801400ff00 decod=ok => descartado:sesionNoActiva
+conectar 3000 acc-1 cifradoAutenticado => aceptado
+info 3010 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+entrega 3500 01030c004433221150140000ffff00801400ff00 decod=ok => descartado:sinReferencia
+referencia 4000 4030 010114004433221128230000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+perdidas 0
+entrega 4100 01030c004433221150140000ffff00801400ff00 decod=ok => descartado:secuenciaAnterior
+estado sinBlanco
+entrega 4110 01030b0044332211ec130000ffff00801400ff00 decod=ok => descartado:secuenciaAnterior
+entrega 4120 0103150044332211401f0000ffff00801400ff00 decod=ok => descartado:emisionAnteriorAReferencia
+estado sinBlanco
+entrega 4150 01031600443322118c230000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+
+escenario reanudar-desde-suspension
+# Al reanudar se invalida todo y se sincroniza antes de avisar.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01030b0044332211ec130000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+reanudar 5000
+estado sincronizando
+recalibrar 5001 si
+entrega 5010 01030c004433221150140000ffff00801400ff00 decod=ok => descartado:sinReferencia
+referencia 5100 5130 01011e0044332211204e0000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+perdidas 18
+
+escenario reanudar-conserva-la-secuencia
+# La suspensión invalida el ancla temporal, no la secuencia: repetida y anterior no pueden ser la primera referencia.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+entrega 1150 01030b0044332211ec130000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+reanudar 5000
+estado sincronizando
+referencia 5100 5130 01030b0044332211ec130000ffff00801400ff00 decod=ok => descartado:secuenciaRepetida
+estado sincronizando
+recalibrar 5131 si
+referencia 5100 5130 01010a004433221188130000ffff00801e00ff00 decod=ok => descartado:secuenciaAnterior
+estado sincronizando
+entrega 5140 01030c004433221150140000ffff00801400ff00 decod=ok => descartado:sinReferencia
+referencia 5300 5330 01030c004433221150140000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+cota 50
+perdidas 0
+recalibrar 5331 no
+entrega 5400 01030b0044332211ec130000ffff00801400ff00 decod=ok => descartado:secuenciaAnterior
+estado presencia
+
+escenario reanudar-cruza-vuelta-de-secuencia
+# Tras reanudar, la vuelta válida 65535 a 0 fija el ancla; 65535 y 65534 siguen siendo repetida y anterior.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+referencia 1000 1040 0101feff4433221188130000ffff00801e00ff00 decod=ok => aceptado
+entrega 1150 0103ffff44332211ec130000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+reanudar 5000
+referencia 5100 5130 0103ffff44332211ec130000ffff00801400ff00 decod=ok => descartado:secuenciaRepetida
+referencia 5100 5130 0101feff4433221188130000ffff00801e00ff00 decod=ok => descartado:secuenciaAnterior
+estado sincronizando
+referencia 5200 5230 010300004433221150140000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+cota 50
+perdidas 0
+entrega 5300 0103ffff44332211ec130000ffff00801400ff00 decod=ok => descartado:secuenciaAnterior
+estado presencia
+
+escenario reanudar-y-reconexion-permiten-base-nueva
+# Una conexión nueva es una sesión de secuencia nueva: la misma trama que reanudar descartó vuelve a ser válida.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+entrega 1150 01030b0044332211ec130000ffff00801400ff00 decod=ok => aceptado
+reanudar 5000
+referencia 5100 5130 01030b0044332211ec130000ffff00801400ff00 decod=ok => descartado:secuenciaRepetida
+desconectar 5200
+estado desconectada
+conectar 6000 acc-1 cifradoAutenticado => aceptado
+info 6010 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+referencia 6100 6130 01030b0044332211ec130000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+cota 50
+perdidas 0
+
+escenario reanudar-y-arranque-distinto-permiten-base-nueva
+# Otro identificador de arranque reinicia la secuencia aunque la sesión viniera de reanudar.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+entrega 1150 01030b0044332211ec130000ffff00801400ff00 decod=ok => aceptado
+reanudar 5000
+referencia 5100 5130 01010000ddccbbaa64000000ffff00801e00ff00 decod=ok => descartado:arranqueDistinto
+estado esperandoInformacion
+info 5200 01000000ddccbbaa000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+referencia 5300 5330 01030b00ddccbbaaec130000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+cota 50
+perdidas 0
+
+escenario recalibracion-de-referencia
+# Referencia nueva cada 30 s; una referencia con secuencia anterior se descarta.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+recalibrar 31040 no
+recalibrar 31041 si
+referencia 31100 31130 0101320044332211409c0000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+recalibrar 31131 no
+entrega 31230 0103330044332211a49c0000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+cota 50
+referencia 31300 31320 010128004433221128a00000ffff00801e00ff00 decod=ok => descartado:secuenciaAnterior
+estado presencia
+
+escenario recalibracion-con-reloj-que-retrocede
+# Una referencia con secuencia nueva pero emisión menor que la última trama aceptada se descarta sin tocar nada.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1200 01030b004433221150140000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+referencia 1300 1340 01010c0044332211ec130000ffff00801e00ff00 decod=ok => descartado:relojRetrocede
+estado presencia
+perdidas 0
+recalibrar 31040 no
+recalibrar 31041 si
+entrega 1400 01030c004433221118150000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+cota 20
+perdidas 0
+
+escenario recalibracion-anterior-a-la-referencia
+# Una referencia emitida antes de la referencia vigente se descarta sin tocar nada.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+referencia 1300 1340 01030b004433221124130000ffff00801e00ff00 decod=ok => descartado:emisionAnteriorAReferencia
+estado sinBlanco
+perdidas 0
+recalibrar 31041 si
+entrega 1400 01030b004433221118150000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+perdidas 0
+
+escenario recalibracion-cruza-vuelta-del-reloj
+# Control: la recalibración válida cruza 2^32 (módulo) y una referencia anterior a la nueva se descarta también tras la vuelta.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a0044332211a0ffffffffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01030b004433221104000000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+referencia 31100 31130 01010c004433221152750000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+cota 60
+perdidas 0
+entrega 31230 01030d0044332211b6750000ffff00801400ff00 decod=ok => aceptado
+estado presencia
+cota 50
+referencia 31300 31320 01010e0044332211f0ffffffffff00801e00ff00 decod=ok => descartado:emisionAnteriorAReferencia
+estado presencia
+perdidas 0
+
+escenario referencia-con-arranque-distinto
+# La referencia también valida el identificador de arranque.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+referencia 1000 1040 01010a00ddccbbaa88130000ffff00801e00ff00 decod=ok => descartado:arranqueDistinto
+estado esperandoInformacion
+
+escenario autenticacion-sinCifrar-exigir
+# Fail-closed: el nivel de enlace lo declara el transporte; fixture no prueba enlace físico.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 sinCifrar => rechazado:enlaceNoAutenticado
+estado rechazada:enlaceNoAutenticado
+autenticado no
+info 10 0100000044332211000100016400f4010000b80b decod=ok => descartado:estadoIncorrecto
+estado rechazada:enlaceNoAutenticado
+
+escenario autenticacion-desconocido-exigir
+# Fail-closed: el nivel de enlace lo declara el transporte; fixture no prueba enlace físico.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 desconocido => rechazado:enlaceNoAutenticado
+estado rechazada:enlaceNoAutenticado
+autenticado no
+info 10 0100000044332211000100016400f4010000b80b decod=ok => descartado:estadoIncorrecto
+estado rechazada:enlaceNoAutenticado
+
+escenario autenticacion-cifradoSinAutenticar-exigir
+# Fail-closed: el nivel de enlace lo declara el transporte; fixture no prueba enlace físico.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoSinAutenticar => rechazado:enlaceNoAutenticado
+estado rechazada:enlaceNoAutenticado
+autenticado no
+info 10 0100000044332211000100016400f4010000b80b decod=ok => descartado:estadoIncorrecto
+estado rechazada:enlaceNoAutenticado
+
+escenario autenticacion-sinCifrar-permitirSinMITM
+# Fail-closed: el nivel de enlace lo declara el transporte; fixture no prueba enlace físico.
+politica permitirSinMITM
+modo real
+elegido acc-1
+conectar 0 acc-1 sinCifrar => rechazado:enlaceNoAutenticado
+estado rechazada:enlaceNoAutenticado
+autenticado no
+info 10 0100000044332211000100016400f4010000b80b decod=ok => descartado:estadoIncorrecto
+estado rechazada:enlaceNoAutenticado
+
+escenario autenticacion-desconocido-permitirSinMITM
+# Fail-closed: el nivel de enlace lo declara el transporte; fixture no prueba enlace físico.
+politica permitirSinMITM
+modo real
+elegido acc-1
+conectar 0 acc-1 desconocido => rechazado:enlaceNoAutenticado
+estado rechazada:enlaceNoAutenticado
+autenticado no
+info 10 0100000044332211000100016400f4010000b80b decod=ok => descartado:estadoIncorrecto
+estado rechazada:enlaceNoAutenticado
+
+escenario autenticacion-asociacion-sin-mitm-declarada
+# Política explícita de banco: asociación cifrada sin MITM; sesión marcada no autenticada.
+politica permitirSinMITM
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoSinAutenticar => aceptado
+autenticado no
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+autenticado no
+
+escenario autenticacion-cifrado-autenticado
+# Único nivel autenticado.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+autenticado si
+
+escenario accesorio-no-elegido
+# Solo se enlaza al accesorio elegido por la persona.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-2 cifradoAutenticado => rechazado:accesorioNoElegido
+estado rechazada:accesorioNoElegido
+autenticado no
+conectar 100 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+autenticado si
+
+escenario informacion-antes-de-conectar
+# Sin conexión no se acepta Información.
+politica exigir
+modo real
+elegido acc-1
+estado desconectada
+info 10 0100000044332211000100016400f4010000b80b decod=ok => descartado:estadoIncorrecto
+estado desconectada
+referencia 10 20 010101004433221100000000ffff00801e00ff00 decod=ok => descartado:estadoIncorrecto
+estado desconectada
+
+escenario informacion-invalida-version-mayor-2
+# Información incompatible: se rechaza de forma accesible, sin negociar.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+info 10 0200000044332211000100016400f4010000b80b decod=versionIncompatible => rechazado:informacionInvalida:versionIncompatible
+estado rechazada:informacionInvalida:versionIncompatible
+
+escenario informacion-invalida-version-menor-1
+# Información incompatible: se rechaza de forma accesible, sin negociar.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+info 10 0101000044332211000100016400f4010000b80b decod=versionIncompatible => rechazado:informacionInvalida:versionIncompatible
+estado rechazada:informacionInvalida:versionIncompatible
+
+escenario informacion-invalida-longitud-19
+# Información incompatible: se rechaza de forma accesible, sin negociar.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+info 10 0100000044332211000100016400f4010000b8 decod=longitudIncorrecta => rechazado:informacionInvalida:longitudIncorrecta
+estado rechazada:informacionInvalida:longitudIncorrecta
+
+escenario informacion-invalida-caducidad-1000
+# Información incompatible: se rechaza de forma accesible, sin negociar.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+info 10 0100000044332211000100016400e8030000b80b decod=caducidadInvalida => rechazado:informacionInvalida:caducidadInvalida
+estado rechazada:informacionInvalida:caducidadInvalida
+
+escenario informacion-invalida-capacidad-reservada
+# Información incompatible: se rechaza de forma accesible, sin negociar.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+info 10 0100080044332211000100016400f4010000b80b decod=bitsReservados => rechazado:informacionInvalida:bitsReservados
+estado rechazada:informacionInvalida:bitsReservados
+
+escenario informacion-invalida-perfil-4
+# Información incompatible: se rechaza de forma accesible, sin negociar.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+info 10 0100000044332211000100046400f4010000b80b decod=perfilInvalido => rechazado:informacionInvalida:perfilInvalido
+estado rechazada:informacionInvalida:perfilInvalido
+
+escenario informacion-invalida-periodo-0
+# Información incompatible: se rechaza de forma accesible, sin negociar.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+info 10 0100000044332211000100010000f4010000b80b decod=periodoInvalido => rechazado:informacionInvalida:periodoInvalido
+estado rechazada:informacionInvalida:periodoInvalido
+
+escenario informacion-invalida-limites-invertidos
+# Información incompatible: se rechaza de forma accesible, sin negociar.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+info 10 0100000044332211000100016400f401b80b6400 decod=limitesInvalidos => rechazado:informacionInvalida:limitesInvalidos
+estado rechazada:informacionInvalida:limitesInvalidos
+
+escenario informacion-perfil-desconocido
+# Perfil 0 decodifica pero impide activar la sesión.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+info 10 0100000044332211000100006400f4010000b80b decod=ok => rechazado:perfilDesconocido
+estado rechazada:perfilDesconocido
+
+escenario medicion-invalida-longitud-19
+# Trama que viola el contrato: la sesión se rechaza y no reutiliza el estado previo.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01010b0044332211ec130000ffff00801400ff decod=longitudIncorrecta => rechazado:medicionInvalida:longitudIncorrecta
+estado rechazada:medicionInvalida:longitudIncorrecta
+entrega 1250 01010c004433221150140000ffff00801400ff00 decod=ok => descartado:sesionNoActiva
+conectar 2000 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+
+escenario medicion-invalida-longitud-21
+# Trama que viola el contrato: la sesión se rechaza y no reutiliza el estado previo.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01010b0044332211ec130000ffff00801400ff0000 decod=longitudIncorrecta => rechazado:medicionInvalida:longitudIncorrecta
+estado rechazada:medicionInvalida:longitudIncorrecta
+entrega 1250 01010c004433221150140000ffff00801400ff00 decod=ok => descartado:sesionNoActiva
+conectar 2000 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+
+escenario medicion-invalida-version-2
+# Trama que viola el contrato: la sesión se rechaza y no reutiliza el estado previo.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 02010b0044332211ec130000ffff00801400ff00 decod=versionIncompatible => rechazado:medicionInvalida:versionIncompatible
+estado rechazada:medicionInvalida:versionIncompatible
+entrega 1250 01010c004433221150140000ffff00801400ff00 decod=ok => descartado:sesionNoActiva
+conectar 2000 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+
+escenario medicion-invalida-bit-reservado
+# Trama que viola el contrato: la sesión se rechaza y no reutiliza el estado previo.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01410b0044332211ec130000ffff00801400ff00 decod=bitsReservados => rechazado:medicionInvalida:bitsReservados
+estado rechazada:medicionInvalida:bitsReservados
+entrega 1250 01010c004433221150140000ffff00801400ff00 decod=ok => descartado:sesionNoActiva
+conectar 2000 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+
+escenario medicion-invalida-salud-7
+# Trama que viola el contrato: la sesión se rechaza y no reutiliza el estado previo.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01000b0044332211ec130000ffff0080ffffff07 decod=saludInvalida => rechazado:medicionInvalida:saludInvalida
+estado rechazada:medicionInvalida:saludInvalida
+entrega 1250 01010c004433221150140000ffff00801400ff00 decod=ok => descartado:sesionNoActiva
+conectar 2000 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+
+escenario medicion-invalida-banderas-incoherentes
+# Trama que viola el contrato: la sesión se rechaza y no reutiliza el estado previo.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01020b0044332211ec130000ffff00801400ff00 decod=banderasIncoherentes => rechazado:medicionInvalida:banderasIncoherentes
+estado rechazada:medicionInvalida:banderasIncoherentes
+entrega 1250 01010c004433221150140000ffff00801400ff00 decod=ok => descartado:sesionNoActiva
+conectar 2000 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+
+escenario medicion-invalida-distancia-cero-sin-bandera
+# Trama que viola el contrato: la sesión se rechaza y no reutiliza el estado previo.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01010b0044332211ec130000000000801400ff00 decod=centinelaInconsistente => rechazado:medicionInvalida:centinelaInconsistente
+estado rechazada:medicionInvalida:centinelaInconsistente
+entrega 1250 01010c004433221150140000ffff00801400ff00 decod=ok => descartado:sesionNoActiva
+conectar 2000 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+
+escenario medicion-invalida-distancia-sin-capacidad
+# Trama que viola el contrato: la sesión se rechaza y no reutiliza el estado previo.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100000044332211000100016400f4010000b80b decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a004433221188130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01070b0044332211ec130000b00400801400ff00 decod=capacidadInconsistente => rechazado:medicionInvalida:capacidadInconsistente
+estado rechazada:medicionInvalida:capacidadInconsistente
+entrega 1250 01010c004433221150140000ffff00801400ff00 decod=ok => descartado:sesionNoActiva
+conectar 2000 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+
+escenario medicion-invalida-distancia-fuera-de-rango
+# Trama que viola el contrato: la sesión se rechaza y no reutiliza el estado previo.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100070088776655000102026400f40164007017 decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a008877665588130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 01070b0088776655ec130000581b00801400ff00 decod=valorFueraDeRango => rechazado:medicionInvalida:valorFueraDeRango
+estado rechazada:medicionInvalida:valorFueraDeRango
+entrega 1250 01010c008877665550140000ffff00801400ff00 decod=ok => descartado:sesionNoActiva
+conectar 2000 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+
+escenario medicion-invalida-azimut-fuera-de-rango
+# Trama que viola el contrato: la sesión se rechaza y no reutiliza el estado previo.
+politica exigir
+modo real
+elegido acc-1
+conectar 0 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
+info 10 0100070088776655000102026400f40164007017 decod=ok => aceptado
+estado sincronizando
+recalibrar 11 si
+referencia 1000 1040 01010a008877665588130000ffff00801e00ff00 decod=ok => aceptado
+estado sinBlanco
+entrega 1150 010f0b0088776655ec130000b0041c251400ff00 decod=valorFueraDeRango => rechazado:medicionInvalida:valorFueraDeRango
+estado rechazada:medicionInvalida:valorFueraDeRango
+entrega 1250 01010c008877665550140000ffff00801400ff00 decod=ok => descartado:sesionNoActiva
+conectar 2000 acc-1 cifradoAutenticado => aceptado
+estado esperandoInformacion
