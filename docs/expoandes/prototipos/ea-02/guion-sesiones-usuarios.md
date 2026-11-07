@@ -2,6 +2,8 @@
 
 Para A2 y el equipo. Las sesiones requieren personas, consentimiento y facilitación, y no se pueden hacer desde el sandbox. Si no hay participantes, la decisión se registra como «revisión experta provisional» y la validación con usuarios queda pendiente.
 
+A2 decidió el 7/11/2026 hacer las pruebas con usuarios cuando la app esté desarrollada en Xcode, no con este prototipo. Este guion se escribió para el prototipo; las direcciones y el panel del facilitador no existen en la app.
+
 ## Antes de la sesión
 
 - **Participantes:** personas ciegas o con baja visión que acepten participar. Registrar solo un código (P1, P2…), nunca nombres, teléfonos, voz ni fotos de la cara.

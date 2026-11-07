@@ -7,7 +7,7 @@
 | [prototipo.html](prototipo.html) | El prototipo, con las variantes A y B y un panel para el facilitador. |
 | [plan-de-trabajo.md](plan-de-trabajo.md) | Pasos, quién hace cada uno y qué no se puede hacer en el sandbox. |
 | [especificacion-accesibilidad.md](especificacion-accesibilidad.md) | Lectura y foco, Dynamic Type, controles, contraste, audio, baja visión, cancelación, permisos y avisos. |
-| [evaluacion-y-decision.md](evaluacion-y-decision.md) | Pregunta, versión, mediciones, comparación, cambios, recomendación provisional y decisión pendiente. |
+| [evaluacion-y-decision.md](evaluacion-y-decision.md) | Pregunta, versión, mediciones, comparación, cambios, recomendación provisional y decisión de A2: variante B con ajustes. |
 | [guion-sesiones-usuarios.md](guion-sesiones-usuarios.md) | Consentimiento, tareas y registro para sesiones con participantes. |
 | [comprobaciones/](comprobaciones/) | Guiones de Playwright usados para medir. |
 | [capturas/](capturas/) | Siete capturas de Chromium a 390×844. No prueban VoiceOver. |
@@ -51,4 +51,4 @@ Inicio, Rutas y viaje, Metro (escenario futuro), Ubicación y orientación, Asis
 - Las capturas y el árbol de Chromium no prueban VoiceOver. El prototipo tampoco es la app terminada.
 - El orden de lectura de Safari para iOS puede diferir del de SwiftUI.
 - Safari no aplica el tamaño de texto del iPhone al prototipo: se elige con `texto=`.
-- Al decidir, la variante ganadora se reescribe en SwiftUI en #43; el HTML no pasa a producción.
+- A2 eligió la variante B. Se reescribe en SwiftUI en #43 con los ajustes de la [evaluación](evaluacion-y-decision.md); el HTML no pasa a producción.

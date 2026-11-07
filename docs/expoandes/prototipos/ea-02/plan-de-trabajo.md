@@ -30,12 +30,12 @@ Estado: **hecho**, **en curso** o **pendiente**. «Kiro» es el agente en el san
 | 7 | Preparar guion de sesiones con usuarios y tabla de registro sin datos identificables. | Kiro | Hecho, en [guion de sesiones](guion-sesiones-usuarios.md) |
 | 8 | Registrar recomendación provisional, cambios de diseño y límites. | Kiro | Hecho, en evaluación |
 | 9 | Revisión independiente del diff; corregir sus hallazgos y volver a revisar. | Kiro | Hecho, ver cambios en evaluación |
-| 9b | Abrir PR en español hacia `main`, con revisión limpia e integración continua en verde. **No fusionar.** | Kiro | En curso |
-| 10 | Abrir el prototipo en Safari de iPhone con VoiceOver y recorrer las tareas en ambas variantes. | Agente con Mac o A2 | Pendiente |
-| 11 | Probar tamaños de Dynamic Type reales, Negrita, Aumentar contraste y Reducir movimiento en el iPhone. | Agente con Mac o A2 | Pendiente |
-| 12 | Sesiones con personas ciegas y de baja visión, con consentimiento. Si no hay participantes, la validación sigue pendiente. | A2 con el equipo | Pendiente |
-| 13 | Elegir variante (o combinación) y registrar la decisión en la evaluación y en #28. | A2 | Pendiente |
-| 14 | Fusionar el PR cuando A2 lo indique. | A2 | Pendiente |
+| 9b | Abrir PR en español hacia `main`, con revisión limpia e integración continua en verde. Sin fusionar hasta que A2 lo indique. | Kiro | Hecho, [PR #58](https://github.com/ZuluCode777/proyecto-1-APP/pull/58) |
+| 10 | Abrir el prototipo en Safari de iPhone con VoiceOver y recorrer las tareas en ambas variantes. | Agente con Mac | Pendiente. A2 no puede revisar las funciones del iPhone. |
+| 11 | Probar tamaños de Dynamic Type reales, Negrita, Aumentar contraste y Reducir movimiento en el iPhone. | Agente con Mac | Pendiente. A2 no puede revisar las funciones del iPhone. |
+| 12 | Sesiones con personas ciegas y de baja visión, con consentimiento. Si no hay participantes, la validación sigue pendiente. | A2 con el equipo | Pendiente. Se harán cuando la app esté desarrollada en Xcode, no con este prototipo. |
+| 13 | Elegir variante (o combinación) y registrar la decisión en la evaluación y en #28. | A2 | Hecho el 7/11/2026: variante B con ajustes, en la [evaluación](evaluacion-y-decision.md) y en el PR #58. Falta anotarla en #28. |
+| 14 | Fusionar el PR cuando A2 lo indique. | A2 | A2 pidió fusionar el 7/11/2026; Kiro lo fusiona por ese pedido. |
 
 ## Qué no se puede hacer en el sandbox
 
@@ -43,20 +43,24 @@ El sandbox es Linux, sin Mac, Xcode, simulador de iOS ni iPhone. Su red solo lle
 
 | Trabajo | Motivo | Queda para |
 | --- | --- | --- |
-| Recorrido con VoiceOver real (Safari o app nativa) | No hay iPhone ni macOS. El árbol de accesibilidad de Chromium no es VoiceOver. | Agente con Mac o A2, paso 10 |
-| Dynamic Type, Negrita, Aumentar contraste, Reducir movimiento e Invertir colores reales | Son ajustes de iOS. El prototipo solo simula el tamaño de texto. | Agente con Mac o A2, paso 11 |
+| Recorrido con VoiceOver real (Safari o app nativa) | No hay iPhone ni macOS. El árbol de accesibilidad de Chromium no es VoiceOver. | Agente con Mac, paso 10 |
+| Dynamic Type, Negrita, Aumentar contraste, Reducir movimiento e Invertir colores reales | Son ajustes de iOS. El prototipo solo simula el tamaño de texto. | Agente con Mac, paso 11 |
 | Prototipo SwiftUI o prueba en simulador | SwiftUI y el simulador solo existen en macOS. | #35 y #43 |
 | Audio real: VoiceOver y voz de la app a la vez, auriculares, llamadas | Sin dispositivo ni salida de audio. | #35, #41 y experimento X2 |
 | Bluetooth, accesorio, GPS y cámara reales | Sin hardware. El prototipo los simula y lo indica en pantalla. | #35, #41 y #33 |
-| Sesiones con usuarios | Requieren personas, consentimiento y facilitación. | A2, paso 12 |
-| Elección final de la variante | Decisión humana (`ready-for-human`). | A2, paso 13 |
+| Sesiones con usuarios | Requieren personas, consentimiento y facilitación. | A2, paso 12, con la app de Xcode |
+| Elección final de la variante | Decisión humana (`ready-for-human`). | A2, paso 13. Hecho: variante B. |
 | `pnpm install`, `tsc`, `pnpm test`, `pnpm build`, `pnpm verificar` locales | El registro de npm está bloqueado. El cambio no toca código de la app; la integración continua del PR los ejecuta. | Integración continua |
 | Percepción del contraste por personas con baja visión | El sandbox solo calcula cocientes. | Paso 12 |
 
 ## Reglas de trabajo
 
 - Trabajar solo en `ea-02-prototipo-accesible`. Nunca hacer commit ni push a `main`.
-- Todo cambio llega a `main` mediante PR revisado. Ningún agente fusiona; solo A2 decide cuándo.
+- Todo cambio llega a `main` mediante PR revisado. Ningún agente fusiona por su cuenta; solo A2 decide cuándo.
 - Antes de retomar, releer #28 y sus comentarios, y comprobar que nadie más trabaja en el issue o la rama.
 - No presentar capturas o el árbol de Chromium como prueba de VoiceOver, ni el prototipo como app terminada.
 - No registrar secretos ni datos personales de participantes.
+
+## Prototipo en `main`
+
+La skill `prototype` pide que el prototipo viva en una rama desechable fuera de `main`. A2 pidió fusionar el PR #58 completo, así que `prototipo.html` entra a `main` como excepción deliberada. Queda como registro de la decisión y no pasa a producción, porque las vistas se escriben en SwiftUI en #43.

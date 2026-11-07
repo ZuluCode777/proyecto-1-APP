@@ -1,6 +1,6 @@
 # EA-02 (#28): evaluación y decisión
 
-**Estado: revisión experta provisional.** Ninguna persona ciega o con baja visión ha probado el prototipo y no hubo recorrido con VoiceOver real. La validación con usuarios y la elección final siguen pendientes de A2 ([plan de trabajo](plan-de-trabajo.md), pasos 10 a 13).
+**Estado: revisión experta provisional, con decisión de A2.** Ninguna persona ciega o con baja visión ha probado el prototipo y no hubo recorrido con VoiceOver real. El 7/11/2026 A2 eligió la variante B con los ajustes de [«Decisión»](#decisión). Las pruebas con usuarios se harán cuando la app esté desarrollada en Xcode ([plan de trabajo](plan-de-trabajo.md), pasos 10 a 12).
 
 ## Pregunta
 
@@ -126,17 +126,28 @@ Las filas de B probablemente se leen en VoiceOver como dos paradas (nombre y val
 
 **A como base**, por menos recorrido en las diez tareas, cancelación a tres paradas del título y más espacio útil con texto grande. Conviene probar con usuarios una combinación: la jerarquía de A con una barra de pestañas como la de B, para cambiar de área sin volver a Inicio. La franja de actividad y «La app dijo» se mantendrían arriba.
 
-Esta recomendación sale de mediciones automáticas y revisión experta. No sustituye las sesiones con usuarios ni el recorrido con VoiceOver en iPhone.
+Esta recomendación sale de mediciones automáticas y revisión experta. No sustituye las sesiones con usuarios ni el recorrido con VoiceOver en iPhone. A2 eligió B en lugar de A (ver «Decisión»).
 
 ## Decisión
 
 | Campo | Valor |
 | --- | --- |
-| Decisión | **Pendiente de A2.** |
+| Decisión | **B: Pestañas y lista de estados**, con los ajustes de abajo. A2 la prefiere por orden y estética. |
 | Opciones | A, B o combinación A + pestañas. |
-| Validación con usuarios | Pendiente. Muestra: ninguna todavía. |
-| Fecha | Pendiente |
-| Consecuencia para #43 | Las vistas SwiftUI de #43 siguen la variante elegida y la [especificación de accesibilidad](especificacion-accesibilidad.md). |
+| Validación con usuarios | No se hizo con el prototipo. Las pruebas con usuarios se harán cuando la app esté desarrollada en Xcode. Muestra: ninguna todavía. |
+| Pruebas en iPhone | A2 no puede revisar las funciones del iPhone: VoiceOver, Dynamic Type y ajustes de accesibilidad de iOS. Quedan para un agente o una persona con Mac e iPhone ([plan](plan-de-trabajo.md), pasos 10 y 11). |
+| Fecha | 7/11/2026 |
+| Consecuencia para #43 | Las vistas SwiftUI de #43 siguen la variante B, los ajustes de A2 y la [especificación de accesibilidad](especificacion-accesibilidad.md). |
+
+### Ajustes pedidos por A2
+
+1. **Opciones más grandes.** Aumentar un poco el tamaño de las opciones de B.
+2. **Barra de pestañas más grande.** Botones más altos y texto más grande en la barra de abajo. A2 lo ve adecuado porque el asistente también puede guiar a la persona por la app.
+3. **Considerar que «Avisos» también esté en «Más».** Hoy la barra tiene cinco pestañas: Inicio, Viajar, Asistente, Avisos y Más. Si Avisos sale de la barra, las cuatro pestañas restantes pueden ser más anchas. A cambio se pierde el número de avisos activos que muestra la pestaña («Avisos 2»), y #43 tendría que mostrarlo de otra forma, sobre todo para los avisos urgentes.
+4. **No poner todas las herramientas en una sola fila.** En A todas las herramientas van seguidas, y recorrerlas puede ser molesto para personas con discapacidad visual parcial. B no lo hace en la barra, y esa ventaja se conserva.
+5. **Repartir los botones de «Más».** «Más» tiene el problema del punto 4. Sus opciones (Ubicación y orientación, Accesorio, Metro, Lupa, Ajustes y ayuda, Emergencia) van en fila y dejan pantalla libre. Hay que usar ese espacio con botones más grandes y más separados.
+
+Costos de B que siguen vigentes (ver «Comparación A y B»): cancelar y «La app dijo» quedan al final, lejos del título, y en Inicio con una sesión activa las franjas fijas ocupan el 23 % de la pantalla con texto al 100 %. Una barra más grande aumenta esa franja fija, así que #43 debe medirla también con texto al 200 y 310 %.
 
 ## Límites
 
