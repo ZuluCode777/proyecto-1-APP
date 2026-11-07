@@ -20,6 +20,7 @@ Uso:
     python3 firmware/herramientas/analizar_captura.py captura.csv
     python3 firmware/herramientas/analizar_captura.py --autoprueba
 """
+import math
 import statistics
 import struct
 import sys
@@ -47,6 +48,8 @@ def decodificar(datos):
 
 
 def leer(lineas):
+    """Devuelve (filas, invalidas). Descarta tiempos no finitos o menores que el
+    de la última fila aceptada (iguales sí valen)."""
     filas, invalidas = [], []
     for n, linea in enumerate(lineas, 1):
         linea = linea.strip()
@@ -54,7 +57,12 @@ def leer(lineas):
             continue
         try:
             t, hexa = linea.split(",", 1)
-            filas.append((float(t), decodificar(bytes.fromhex(hexa.strip().replace(" ", "")))))
+            t = float(t)
+            if not math.isfinite(t):
+                raise ValueError(f"t_host_ms no finito ({t})")
+            if filas and t < filas[-1][0]:
+                raise ValueError(f"t_host_ms retrocede ({t} < {filas[-1][0]})")
+            filas.append((t, decodificar(bytes.fromhex(hexa.strip().replace(" ", "")))))
         except ValueError as e:
             invalidas.append((n, str(e)))
     return filas, invalidas
@@ -69,9 +77,15 @@ def analizar(filas):
     """Devuelve las líneas del informe."""
     if len(filas) < 2:
         return ["Muy pocas filas para analizar."]
+    tiempos = [f[0] for f in filas]
+    if not all(math.isfinite(t) for t in tiempos) or any(b < a for a, b in zip(tiempos, tiempos[1:])):
+        raise ValueError("t_host_ms debe ser finito y no decreciente")
     out = []
     duracion = (filas[-1][0] - filas[0][0]) / 1000
-    out.append(f"filas: {len(filas)} en {duracion:.1f} s ({len(filas) / duracion:.2f} por segundo)")
+    if duracion > 0:
+        out.append(f"filas: {len(filas)} en {duracion:.1f} s ({len(filas) / duracion:.2f} por segundo)")
+    else:
+        out.append(f"filas: {len(filas)} en 0.0 s (frecuencia no calculable: mismo t_host_ms)")
 
     # Un arranque distinto parte la captura: la secuencia y el reloj vuelven a empezar.
     tramos, actual = [], [filas[0]]
@@ -143,6 +157,33 @@ def autoprueba():
         raise AssertionError("debía rechazar 19 bytes")
     _, malas = leer(["0,zz", "1," + trama(1, 1).hex()])
     assert len(malas) == 1
+
+    # Mismo t_host_ms en todas las filas: informe sin frecuencia ni ZeroDivisionError.
+    mismas = [(5.0, decodificar(trama(i, 1000 + i * 100))) for i in range(2)]
+    texto = "\n".join(analizar(mismas))
+    assert "frecuencia no calculable" in texto and "por segundo" not in texto, texto
+    # nan, inf y retroceso: leer los descarta; analizar los rechaza.
+    t0, t1 = trama(1, 1000).hex(), trama(2, 1100).hex()
+    for malo in ("nan", "inf", "-inf"):
+        filas_, malas = leer([f"0,{t0}", f"{malo},{t1}"])
+        assert len(filas_) == 1 and len(malas) == 1, (malo, malas)
+        try:
+            analizar([(0.0, decodificar(trama(1, 1000))), (float(malo), decodificar(trama(2, 1100)))])
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"analizar debía rechazar {malo}")
+    filas_, malas = leer([f"100,{t0}", f"50,{t1}", f"100,{t1}"])
+    assert len(filas_) == 2 and len(malas) == 1 and malas[0][0] == 2, (filas_, malas)
+    try:
+        analizar([(100.0, decodificar(trama(1, 1000))), (50.0, decodificar(trama(2, 1100)))])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("analizar debía rechazar un retroceso")
+    # Captura válida: frecuencia calculada.
+    valida = [(i * 100.0, decodificar(trama(i, 1000 + i * 100))) for i in range(5)]
+    assert "5 en 0.4 s (12.50 por segundo)" in "\n".join(analizar(valida))
     print("autoprueba: ok")
 
 
@@ -153,11 +194,15 @@ def main(argv):
     if len(argv) != 2:
         print(__doc__)
         return 2
-    with open(argv[1], encoding="utf-8") as f:
-        filas, malas = leer(f)
-    for n, motivo in malas:
-        print(f"línea {n}: descartada ({motivo})")
-    print("\n".join(analizar(filas)))
+    try:
+        with open(argv[1], encoding="utf-8") as f:
+            filas, malas = leer(f)
+        for n, motivo in malas:
+            print(f"línea {n}: descartada ({motivo})")
+        print("\n".join(analizar(filas)))
+    except (OSError, UnicodeDecodeError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
     return 0
 
 

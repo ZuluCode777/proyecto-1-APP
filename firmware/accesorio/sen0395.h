@@ -10,7 +10,7 @@
 // provisional hasta el ensayo B2 y no acredita nada (contrato-ble.md, §7).
 //
 // Portátil: sin Arduino.h, sin bloqueos, sin excepciones y sin memoria
-// dinámica (todo el estado vive en el objeto, 168 bytes en x86-64). El llamador pasa
+// dinámica (todo el estado vive en el objeto, 176 bytes en x86-64). El llamador pasa
 // bytes ya leídos de la UART y el reloj monotónico en ms (uint32_t, con
 // vuelta módulo 2^32 correcta). Ver docs/expoandes/ea-11-radar.md.
 #ifndef VISIONARIA_SEN0395_H
@@ -124,7 +124,11 @@ class Interprete {
   // configuración desde sensorStop. NUNCA conserva un resultado anterior; la
   // recuperación exige una observación íntegra NUEVA tras la estabilización.
   // Úsalo tras reiniciar o desconectar el radar. Una configuración fallida no
-  // se reintenta sola (cada saveCfg escribe la flash del sensor).
+  // se reintenta sola: quien reintenta es enlace_radar.h (SupervisorRadar), con
+  // espera creciente. `guardar_en_flash = false` omite saveCfg: aplica rango y
+  // latencia solo en la RAM del sensor, sin gastar ciclos de su flash. El
+  // arranque de la placa usa true (una escritura por arranque); toda recuperación
+  // posterior usa false.
   // Purga: tras un fallo por timeout, o si se reinicia con una orden en vuelo,
   // la primera orden nueva se retiene hasta que pasen respuesta_max_ms desde que
   // venció el plazo de la orden vieja (en total, >= 2 x respuesta_max_ms desde
@@ -134,7 +138,7 @@ class Interprete {
   // de su orden no se distingue de la de la orden nueva; B1 mide la latencia
   // real de cada orden y fija un plazo que lo haga imposible. El llamador debe
   // además vaciar la UART al reiniciar.
-  void reiniciar();
+  void reiniciar(bool guardar_en_flash = true);
 
   // --- Salida: órdenes hacia el radar ---------------------------------------
   // Copia la orden pendiente (con "\r\n") a destino y devuelve su longitud.
@@ -171,6 +175,16 @@ class Interprete {
   // recibir otra trama renueva la edad: consultar entrada() o reemitir por BLE
   // nunca la rejuvenece.
   size_t procesar(const uint8_t* datos, size_t n, uint32_t ahora_ms);
+
+  // El llamador PERDIÓ bytes de la UART (descartó un trozo que no pudo fechar, o
+  // el controlador de la UART avisó de un desborde). Lo que el intérprete tenga
+  // a medias deja de valer: la línea parcial se borra (no se une con lo que
+  // llegue después) y, en operación, el resultado anterior deja de valer (salud
+  // 3, contada como `Larga`) hasta una trama íntegra NUEVA; el plazo del latido
+  // no se renueva. Durante la configuración un `Done` perdido vence por timeout.
+  // No fabrica ni restaura ninguna trama. Llámalo antes del procesar() de ese
+  // ciclo.
+  void perder_entrada(uint32_t ahora_ms);
 
   // --- Consulta ---------------------------------------------------------------
   // Entrada para ble::EmisorSintetico::generar(). Avanza el tiempo (caducidad,
@@ -212,6 +226,7 @@ class Interprete {
   Configuracion cfg_;
   Contadores cont_;
 
+  bool guardar_ = true;  // false: la configuración se aplica sin saveCfg (paso 3)
   Fase fase_ = Fase::Configurando;
   MotivoFallo motivo_ = MotivoFallo::Ninguno;
   uint8_t paso_ = 0;

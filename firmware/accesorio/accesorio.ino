@@ -1,8 +1,9 @@
 // Accesorio de proximidad Visionaria: ESP32-S3 + radar SEN0395 + BLE (EA-12).
 //
 // Une los módulos portátiles (trama_ble, emisor_sintetico, sen0395,
-// enlace_accesorio) con el hardware. Contrato: docs/expoandes/contrato-ble.md
-// (v1.0). Diseño, seguridad y límites: docs/expoandes/ea-12-ble.md.
+// enlace_accesorio, enlace_radar, puerta_ble) con el hardware. Contrato:
+// docs/expoandes/contrato-ble.md (v1.0). Diseño, seguridad y límites:
+// docs/expoandes/ea-12-ble.md.
 //
 // Nada de hardware se habilita sin una selección humana: los pines y la clave
 // salen de macros que fija quien prepara el accesorio (configuracion_local.h,
@@ -10,18 +11,37 @@
 // ni BLE. Ningún pin de este repositorio está probado en la placa.
 //
 // Núcleo Arduino de Espressif con NimBLE (esp32:esp32 3.3.12, placa esp32s3).
+//
+// La biblioteca BLE de Arduino solo ARRANCA el stack (BLEDevice::init). El GAP
+// (anuncio, conexión, emparejamiento), el GATT (servicio, lecturas, notificación)
+// y el almacén de vínculos son de este sketch, sobre la API nativa de NimBLE: la
+// biblioteca no ve las lecturas ni las notificaciones (no hay valor guardado que
+// pueda quedar viejo ni compartirse entre hilos), no imprime la clave y no puede
+// persistir un vínculo no autorizado. Las decisiones están en puerta_ble.h, que
+// las pruebas del portátil ejecutan.
 
 #include <Arduino.h>
 #include <BLEDevice.h>
-#include <BLESecurity.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
 #include <Preferences.h>
 #include <esp_random.h>
+#include <host/ble_gap.h>
+#include <host/ble_gatt.h>
+#include <host/ble_hs.h>
+#include <host/ble_hs_id.h>
+#include <host/ble_hs_mbuf.h>
+#include <host/ble_sm.h>
 #include <host/ble_store.h>
+#include <nimble/nimble_npl.h>
+#include <nimble/nimble_port.h>
+#include <services/gap/ble_svc_gap.h>
+#include <services/gatt/ble_svc_gatt.h>
+
+#include <atomic>
 
 #include "emisor_sintetico.h"
 #include "enlace_accesorio.h"
+#include "enlace_radar.h"
+#include "puerta_ble.h"
 #include "sen0395.h"
 #include "trama_ble.h"
 
@@ -83,46 +103,65 @@ constexpr bool kSimulacion = false;
 constexpr const char* kNombre = "Visionaria";
 #endif
 
+
 // --- Contrato -----------------------------------------------------------------
 
 constexpr const char* kUuidServicio = "e13a0000-76b8-4fb0-9d2b-8c4f8d8a7e31";
 constexpr const char* kUuidInformacion = "e13a0001-76b8-4fb0-9d2b-8c4f8d8a7e31";
 constexpr const char* kUuidMedicion = "e13a0002-76b8-4fb0-9d2b-8c4f8d8a7e31";
+static_assert(puerta::uuid128_le(kUuidServicio).valido && puerta::uuid128_le(kUuidInformacion).valido &&
+                  puerta::uuid128_le(kUuidMedicion).valido,
+              "UUID del contrato mal escrito");
+
+// Los valores que puerta_ble.h repite para no depender de NimBLE son los del stack.
+static_assert(puerta::kAttAutenticacionInsuficiente == BLE_ATT_ERR_INSUFFICIENT_AUTHEN, "código ATT distinto del de NimBLE");
+static_assert(puerta::kAttInesperado == BLE_ATT_ERR_UNLIKELY, "código ATT distinto del de NimBLE");
+static_assert(puerta::kAccionClaveEnPantalla == BLE_SM_IOACT_DISP, "acción de emparejamiento distinta de la de NimBLE");
+static_assert(puerta::kObjetoClaveNuestra == BLE_STORE_OBJ_TYPE_OUR_SEC, "tipo de almacén distinto del de NimBLE");
+static_assert(puerta::kObjetoClaveDelPar == BLE_STORE_OBJ_TYPE_PEER_SEC, "tipo de almacén distinto del de NimBLE");
 
 constexpr uint32_t kBaudios = sen0395::kBaudios;
 constexpr uint32_t kPeriodoCicloMs = 2;
 constexpr uint32_t kPeriodoEstadoMs = 5000;
+constexpr uint32_t kPeriodoAnuncioMs = 250;  // entre intentos de volver a anunciar
 
 // --- Estado compartido (lo tocan loop() y las tareas del stack BLE) ---------------
 // Todo lo de este bloque se protege con g_cerrojo. millis() se lee DENTRO del
-// cerrojo para que el reloj que ve el intérprete nunca decrezca.
+// cerrojo para que el reloj que ve el intérprete nunca decrezca. El cerrojo es
+// recursivo. Solo la entrega de una notificación lo conserva hasta el envío, para
+// que la revocación física no se intercale. El callback del almacén solo lee
+// atómicos y NOTIFY_TX no toma el cerrojo: no invierten el orden de los cerrojos.
+// Cortar, consultar el enlace, borrar vínculos y anunciar se hacen sin él. Lo que debe ser UNA
+// operación respecto a los eventos del stack (notificar, borrar vínculos) no se
+// hace en el loop sino en el hilo del host de NimBLE, por su cola de eventos
+// (más abajo): ahí no se intercalan cambios de cifrado, suscripciones ni
+// desconexiones. Los contadores que toca ese hilo son atómicos.
 
 SemaphoreHandle_t g_cerrojo = nullptr;
 
 struct Cerrojo {
-  Cerrojo() { xSemaphoreTake(g_cerrojo, portMAX_DELAY); }
-  ~Cerrojo() { xSemaphoreGive(g_cerrojo); }
+  Cerrojo() { xSemaphoreTakeRecursive(g_cerrojo, portMAX_DELAY); }
+  ~Cerrojo() { xSemaphoreGiveRecursive(g_cerrojo); }
   Cerrojo(const Cerrojo&) = delete;
   Cerrojo& operator=(const Cerrojo&) = delete;
 };
 
 sen0395::Interprete g_radar;
+radar::SupervisorRadar g_supervisor;
+radar::EstadoUart g_uart_estado;
+std::atomic<bool> g_perdida_uart{false};  // la pone la tarea de eventos de la UART
 ble::Informacion g_info;
-// Hasta iniciar_ble() lleva una Información inválida: generar() falla y no sale ninguna trama.
-ble::EmisorSintetico g_emisor{ble::Informacion(), kSimulacion};
-enlace::SesionEnlace g_sesion;
-enlace::VentanaAlta g_ventana;
+puerta::PuertaBle g_puerta(kRadarHabilitado ? &g_radar : nullptr, kSimulacion, kClave);
 enlace::Boton g_boton;
 
-BLEServer* g_servidor = nullptr;
-BLECharacteristic* g_medicion = nullptr;
 bool g_ble_activo = false;
+uint16_t g_val_medicion = 0;  // manejador del valor de Medición, que asigna NimBLE
 
-uint32_t g_bytes_descartados = 0;
-
-uint32_t g_notificaciones = 0;
+std::atomic<uint32_t> g_notificaciones{0};  // los incrementa el hilo del host
 uint32_t g_lecturas = 0;
+std::atomic<uint32_t> g_vinculos_rechazados{0};  // los incrementa el callback del almacén
 uint32_t g_ultimo_estado_ms = 0;
+uint32_t g_ultimo_anuncio_ms = 0;
 
 // --- Utilidades -----------------------------------------------------------------
 
@@ -137,123 +176,356 @@ enlace::EstadoSeguridad estado_de(const ble_gap_conn_desc* d) {
   return s;
 }
 
-// Lectura en vivo del stack: el enlace sigue cifrado, autenticado y vinculado.
-bool enlace_protegido_en_vivo(uint16_t conexion) {
+// Estado EN VIVO del enlace según el stack. Se consulta SIN el cerrojo.
+bool estado_en_vivo(uint16_t conexion, enlace::EstadoSeguridad* s) {
   ble_gap_conn_desc d;
-  return ble_gap_conn_find(conexion, &d) == 0 && enlace::seguridad_suficiente(estado_de(&d));
+  if (ble_gap_conn_find(conexion, &d) != 0) return false;
+  *s = estado_de(&d);
+  return true;
 }
 
-void cortar(uint16_t conexion) {
-  if (g_servidor != nullptr) g_servidor->disconnect(conexion);
+void cortar(uint16_t conexion) { ble_gap_terminate(conexion, BLE_ERR_REM_USER_CONN_TERM); }
+
+// --- Operaciones en el hilo del host -----------------------------------------------------
+// ble_gatts_notify_custom() y ble_store_clear() no comprueban nada de la sesión: el
+// transporte nativo solo mira el manejador. Lo que importa es QUÉ eventos pueden
+// ocurrir entre la comprobación de la sesión y la acción. Los cambios de cifrado,
+// las suscripciones, las desconexiones y la reutilización de un manejador los
+// procesa la tarea del host de NimBLE, una a una. Por eso la notificación y el
+// borrado de vínculos se ejecutan COMO eventos de esa misma cola
+// (nimble_port_get_dflt_eventq): entre el primer paso y el último de cada uno
+// no se intercala ninguno de ellos. El loop solo los pide.
+
+// Lo que puerta_ble.h pide del stack, sobre NimBLE y FreeRTOS.
+class StackNimble : public puerta::PuertoStack {
+ public:
+  void tomar() override { xSemaphoreTakeRecursive(g_cerrojo, portMAX_DELAY); }
+  void soltar() override { xSemaphoreGiveRecursive(g_cerrojo); }
+  uint32_t ahora() override { return millis(); }
+  bool estado_enlace(uint16_t conexion, enlace::EstadoSeguridad* s) override { return estado_en_vivo(conexion, s); }
+  bool enviar(uint16_t conexion, const uint8_t trama[ble::kLongitudTrama]) override {
+    os_mbuf* om = ble_hs_mbuf_from_flat(trama, ble::kLongitudTrama);
+    if (om == nullptr) return false;
+    if (ble_gatts_notify_custom(conexion, g_val_medicion, om) != 0) return false;  // consume `om` siempre
+    ++g_notificaciones;
+    return true;
+  }
+  void cortar(uint16_t conexion) override { ble_gap_terminate(conexion, BLE_ERR_REM_USER_CONN_TERM); }
+  bool borrar_vinculos() override { return ble_store_clear() == 0; }
+};
+StackNimble g_stack;
+
+ble_npl_event g_evento_notificar;
+ble_npl_event g_evento_borrar;
+std::atomic<bool> g_notificar_pedido{false};
+std::atomic<bool> g_borrar_pedido{false};
+
+// Se ejecutan en el hilo del host. El indicador se baja AL EMPEZAR: una petición
+// que llegue durante la ejecución encola otra, y las repetidas se funden en una.
+void evento_notificar(ble_npl_event*) {
+  g_notificar_pedido.store(false);
+  {
+    Cerrojo c;
+    // La configuración SMP la modifica su propio hilo; el loop solo cambia la ventana.
+    ble_hs_cfg.sm_oob_data_flag = g_puerta.vetar_negociacion(millis());
+  }
+  g_puerta.atender_notificacion(g_stack);
 }
 
-// Con el alta cerrada, el emparejamiento falla porque la clave que usa el stack
-// es aleatoria y nadie la conoce; con el alta abierta es la clave provisionada.
-void aplicar_clave_alta(bool abierta) {
-  if (abierta) {
-    BLESecurity::setPassKey(true, kClave);
+void evento_borrar(ble_npl_event*) {
+  g_borrar_pedido.store(false);
+  if (g_puerta.atender_borrado(g_stack)) {
+    Serial.println("Vínculos borrados; sesión revocada hasta desconectar");
+  } else {
+    Serial.println("Borrado de vínculos falló; BLE bloqueado. Repite la pulsación de borrado");
+  }
+}
+
+// Desde el loop (cualquier tarea): encola el evento en el hilo del host.
+void pedir_en_el_host(ble_npl_event* evento, std::atomic<bool>& pedido) {
+  if (!pedido.exchange(true)) ble_npl_eventq_put(nimble_port_get_dflt_eventq(), evento);
+}
+
+// --- UART del radar -------------------------------------------------------------------
+
+// Adaptador de Serial1 para enlace_radar.h.
+class UartArduino : public radar::PuertoUart {
+ public:
+  uint32_t ahora() override { return millis(); }
+  int disponibles() override { return Serial1.available(); }
+  int leer() override { return Serial1.read(); }
+  size_t escribibles() override {
+    const int n = Serial1.availableForWrite();
+    return n > 0 ? static_cast<size_t>(n) : 0;
+  }
+  size_t escribir(const uint8_t* datos, size_t n) override { return Serial1.write(datos, n); }
+  bool perdida_del_controlador() override { return g_perdida_uart.exchange(false); }
+};
+UartArduino g_uart;
+
+// Lee la UART, entrega los bytes al intérprete y envía su orden pendiente; luego
+// vigila la salud para reiniciar su configuración si hace falta. Se ejecuta en
+// cada ciclo, haya o no cliente BLE, esté o no autorizado: el radar sigue
+// adquiriendo y diagnosticándose sin suscripción y sin BLE. Con el cerrojo
+// tomado. Las reglas (qué se descarta, cuándo se reinicia) están en
+// enlace_radar.h y las ejecutan las pruebas del portátil.
+void atender_radar() {
+  if (!kRadarHabilitado) return;
+  radar::atender_uart(g_radar, g_uart, g_uart_estado);
+  if (g_supervisor.vigilar(g_radar, g_uart)) {
+    Serial.println("Radar: sin latido o configuración fallida; se reaplica la configuración (sin escribir su flash)");
+  }
+}
+
+void iniciar_radar() {
+#if defined(VISIONARIA_PIN_RADAR_RX)
+  Serial1.begin(kBaudios, SERIAL_8N1, VISIONARIA_PIN_RADAR_RX, VISIONARIA_PIN_RADAR_TX);
+  // Un desborde del controlador de la UART avisa a la lectura: lo perdido no se une con lo siguiente.
+  Serial1.onReceiveError([](hardwareSerial_error_t) { g_perdida_uart.store(true); });
+  // Nada que haya quedado en el búfer antes de arrancar vale como observación.
+  while (Serial1.available() > 0) Serial1.read();
+  g_perdida_uart.store(false);
+  g_radar.reiniciar(true);  // el arranque guarda la configuración (una vez); las recuperaciones, no
+#endif
+}
+
+// --- GATT nativo --------------------------------------------------------------------------
+
+ble_uuid128_t g_uuid_servicio;
+ble_uuid128_t g_uuid_informacion;
+ble_uuid128_t g_uuid_medicion;
+ble_gatt_chr_def g_caracteristicas[3];
+ble_gatt_svc_def g_servicios[2];
+
+void fijar_uuid(ble_uuid128_t* destino, const char* texto) {
+  destino->u.type = BLE_UUID_TYPE_128;
+  const puerta::Uuid128 u = puerta::uuid128_le(texto);
+  memcpy(destino->value, u.le, sizeof(destino->value));
+}
+
+int escribir_en_respuesta(os_mbuf* om, const uint8_t* trama) {
+  return os_mbuf_append(om, trama, ble::kLongitudTrama) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+}
+
+// Información: 20 bytes inmutables desde el arranque. Los permisos de la
+// característica exigen enlace cifrado y autenticado.
+int acceso_informacion(uint16_t, uint16_t, ble_gatt_access_ctxt* ctxt, void*) {
+  if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) return BLE_ATT_ERR_UNLIKELY;
+  return escribir_en_respuesta(ctxt->om, g_puerta.trama_informacion());
+}
+
+// Medición: NimBLE llama aquí en CADA lectura (simple, larga, de varias
+// características); no hay otro camino ni valor guardado. Cada llamada genera una
+// trama nueva para la conexión actual, con el enlace protegido consultado en vivo.
+int acceso_medicion(uint16_t conexion, uint16_t, ble_gatt_access_ctxt* ctxt, void*) {
+  if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR || conexion == BLE_HS_CONN_HANDLE_NONE) return BLE_ATT_ERR_UNLIKELY;
+  enlace::EstadoSeguridad vivo;
+  const bool hay = estado_en_vivo(conexion, &vivo);
+  uint8_t trama[ble::kLongitudTrama];
+  int rc;
+  {
+    Cerrojo c;
+    rc = g_puerta.leer_medicion(conexion, hay, vivo, millis(), trama);
+    if (rc == puerta::kAttOk) ++g_lecturas;
+  }
+  if (rc != puerta::kAttOk) return rc;
+  return escribir_en_respuesta(ctxt->om, trama);
+}
+
+bool registrar_gatt() {
+  fijar_uuid(&g_uuid_servicio, kUuidServicio);
+  fijar_uuid(&g_uuid_informacion, kUuidInformacion);
+  fijar_uuid(&g_uuid_medicion, kUuidMedicion);
+  memset(g_caracteristicas, 0, sizeof(g_caracteristicas));
+  memset(g_servicios, 0, sizeof(g_servicios));
+
+  // Lectura solo con enlace cifrado y autenticado (MITM) y clave de 16 bytes. No
+  // hay escritura alguna: la única es el CCCD, que NimBLE añade por ser Notify, y
+  // también exige enlace cifrado y autenticado.
+  const ble_gatt_chr_flags lectura_protegida = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN;
+  g_caracteristicas[0].uuid = &g_uuid_informacion.u;
+  g_caracteristicas[0].access_cb = acceso_informacion;
+  g_caracteristicas[0].flags = lectura_protegida;
+  g_caracteristicas[0].min_key_size = enlace::kTamanoClaveMinimo;
+  g_caracteristicas[1].uuid = &g_uuid_medicion.u;
+  g_caracteristicas[1].access_cb = acceso_medicion;
+  g_caracteristicas[1].flags = lectura_protegida | BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_NOTIFY_INDICATE_ENC |
+                               BLE_GATT_CHR_F_NOTIFY_INDICATE_AUTHEN;
+  g_caracteristicas[1].min_key_size = enlace::kTamanoClaveMinimo;
+  g_caracteristicas[1].val_handle = &g_val_medicion;
+  // g_caracteristicas[2] queda a cero: fin de la lista.
+
+  g_servicios[0].type = BLE_GATT_SVC_TYPE_PRIMARY;
+  g_servicios[0].uuid = &g_uuid_servicio.u;
+  g_servicios[0].characteristics = g_caracteristicas;
+  // g_servicios[1] queda a cero: fin de la lista.
+
+  ble_gatts_reset();
+  ble_svc_gap_init();
+  ble_svc_gatt_init();
+  if (ble_gatts_count_cfg(g_servicios) != 0 || ble_gatts_add_svcs(g_servicios) != 0 || ble_gatts_start() != 0) return false;
+  // ble_svc_gap_init() restablece el nombre: se fija después de iniciar el GATT.
+  return ble_svc_gap_device_name_set(kNombre) == 0;
+}
+
+// --- Vínculos ------------------------------------------------------------------------------
+
+ble_store_write_fn* g_escribir_original = nullptr;
+
+// Compuerta del almacén de vínculos: lo que el stack negocie, solo se persiste si
+// está autenticado, es LESC, de 16 bytes y de un emparejamiento autorizado por la
+// alta física de ESTA conexión que nadie revocó (PuertaBle::persistir_vinculo).
+// Va ANTES de la flash. No toma el cerrojo de la aplicación: puede correr con locks
+// del stack tomados y el loop llama al stack con el cerrojo suelto, no al revés.
+int escribir_vinculo(int tipo, const union ble_store_value* valor) {
+  const bool clave = tipo == BLE_STORE_OBJ_TYPE_OUR_SEC || tipo == BLE_STORE_OBJ_TYPE_PEER_SEC;
+  // La revocación también veta escrituras del CCCD y del resto del almacén.
+  if (!g_puerta.persistir_vinculo(tipo, clave && valor->sec.authenticated, clave && valor->sec.sc,
+                                clave ? valor->sec.key_size : 0)) {
+    ++g_vinculos_rechazados;
+    return BLE_HS_EREJECT;
+  }
+  return g_escribir_original(tipo, valor);
+}
+
+// --- Eventos GAP (hilo del stack) ------------------------------------------------------------
+
+void anunciar();
+
+int evento_gap(ble_gap_event* ev, void*) {
+  switch (ev->type) {
+    case BLE_GAP_EVENT_CONNECT: {
+      if (ev->connect.status != 0) return 0;  // falló: loop() vuelve a anunciar
+      bool aceptada;
+      {
+        Cerrojo c;
+        aceptada = g_puerta.al_conectar(ev->connect.conn_handle, millis());
+      }
+      if (aceptada) {
+        Serial.println("BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos");
+      } else {
+        Serial.println("BLE: segundo cliente rechazado; un solo cliente a la vez");
+        cortar(ev->connect.conn_handle);
+      }
+      return 0;
+    }
+
+    case BLE_GAP_EVENT_DISCONNECT: {
+      Cerrojo c;
+      if (g_puerta.al_desconectar(ev->disconnect.conn.conn_handle)) Serial.println("BLE: conexión terminada");
+      return 0;
+    }
+
+    case BLE_GAP_EVENT_ENC_CHANGE: {
+      const uint16_t conexion = ev->enc_change.conn_handle;
+      enlace::EstadoSeguridad s;
+      const bool hay = estado_en_vivo(conexion, &s);
+      puerta::AccionGap accion;
+      {
+        Cerrojo c;
+        accion = g_puerta.al_cambiar_cifrado(conexion, hay ? ev->enc_change.status : -1, s);
+      }
+      if (accion == puerta::AccionGap::Cortar) {
+        Serial.println("BLE: enlace sin protección suficiente; se corta");
+        cortar(conexion);
+      } else {
+        Serial.println("BLE: enlace cifrado, autenticado y vinculado");
+      }
+      return 0;
+    }
+
+    case BLE_GAP_EVENT_SUBSCRIBE: {
+      if (ev->subscribe.attr_handle != g_val_medicion) return 0;
+      enlace::EstadoSeguridad s;
+      const uint16_t conexion = ev->subscribe.conn_handle;
+      const bool hay = estado_en_vivo(conexion, &s);
+      Cerrojo c;
+      // Suscribir sin cifrado, autenticación y vínculo no sirve: se ignora y la
+      // gracia de seguridad corta la conexión (contrato §5.1).
+      if (!hay) return 0;
+      if (g_puerta.al_suscribir(conexion, ev->subscribe.cur_notify != 0, s)) {
+        Serial.println(ev->subscribe.cur_notify ? "BLE: suscrito a Medición" : "BLE: suscripción retirada");
+      }
+      return 0;
+    }
+
+    case BLE_GAP_EVENT_PASSKEY_ACTION: {
+      const uint16_t conexion = ev->passkey.conn_handle;
+      uint32_t clave = 0;
+      puerta::AccionClave accion;
+      {
+        Cerrojo c;
+        accion = g_puerta.al_pedir_clave(ev->passkey.params.action, conexion, millis(), &clave);
+      }
+      if (accion == puerta::AccionClave::Inyectar) {
+        ble_sm_io io;
+        memset(&io, 0, sizeof(io));
+        io.action = BLE_SM_IOACT_DISP;
+        io.passkey = clave;
+        const int rc = ble_sm_inject_io(conexion, &io);
+        clave = 0;
+        io.passkey = 0;
+        if (rc != 0) cortar(conexion);
+      } else {
+        Serial.println("BLE: emparejamiento rechazado (sin ventana de alta o acción no admitida)");
+        cortar(conexion);
+      }
+      return 0;
+    }
+
+    case BLE_GAP_EVENT_REPEAT_PAIRING: {
+      // Un par vinculado quiere emparejar de nuevo. Solo con la ventana de alta
+      // abierta se sustituye su vínculo; fuera de ella se conserva y se corta.
+      const uint16_t conexion = ev->repeat_pairing.conn_handle;
+      bool permitir;
+      {
+        Cerrojo c;
+        permitir = g_puerta.reemparejar_permitido(millis());
+      }
+      ble_gap_conn_desc d;
+      if (!permitir || ble_gap_conn_find(conexion, &d) != 0) {
+        Serial.println("BLE: re-emparejamiento rechazado; el vínculo se conserva");
+        cortar(conexion);
+        return BLE_GAP_REPEAT_PAIRING_IGNORE;
+      }
+      ble_store_util_delete_peer(&d.peer_id_addr);
+      return BLE_GAP_REPEAT_PAIRING_RETRY;
+    }
+
+    default:
+      return 0;
+  }
+}
+
+// Anuncio del servicio. Se llama sin el cerrojo.
+void anunciar() {
+  if (ble_gap_adv_active()) return;
+  ble_hs_adv_fields campos;
+  memset(&campos, 0, sizeof(campos));
+  campos.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
+  campos.uuids128 = &g_uuid_servicio;
+  campos.num_uuids128 = 1;
+  campos.uuids128_is_complete = 1;
+  ble_hs_adv_fields respuesta;
+  memset(&respuesta, 0, sizeof(respuesta));
+  respuesta.name = reinterpret_cast<const uint8_t*>(kNombre);
+  respuesta.name_len = static_cast<uint8_t>(strlen(kNombre));
+  respuesta.name_is_complete = 1;
+  uint8_t propia;
+  if (ble_gap_adv_set_fields(&campos) != 0 || ble_gap_adv_rsp_set_fields(&respuesta) != 0 ||
+      ble_hs_id_infer_auto(0, &propia) != 0) {
     return;
   }
-  uint32_t cerrada;
-  do {
-    cerrada = esp_random() % (enlace::kClaveMaxima + 1);
-  } while (cerrada == kClave || cerrada == 0);
-  BLESecurity::setPassKey(true, cerrada);
+  ble_gap_adv_params parametros;
+  memset(&parametros, 0, sizeof(parametros));
+  parametros.conn_mode = BLE_GAP_CONN_MODE_UND;
+  parametros.disc_mode = BLE_GAP_DISC_MODE_GEN;
+  ble_gap_adv_start(propia, nullptr, BLE_HS_FOREVER, &parametros, evento_gap, nullptr);
 }
-
-// Presencia del radar para esta lectura. La edad es la real de la UART: ni se
-// rejuvenece al consultarla ni se conserva de otra conexión.
-ble::EntradaRadar fuente(uint32_t ahora) {
-  if (kSimulacion) return enlace::entrada_simulada(ahora);
-  if (kRadarHabilitado) return g_radar.entrada(ahora);
-  return enlace::entrada_montaje_no_validado();
-}
-
-// Genera una trama NUEVA (secuencia e instante propios) para una lectura o una
-// notificación. Llamar con el cerrojo tomado y `ahora` leído dentro de él.
-bool generar_medicion(uint32_t ahora, uint8_t trama[ble::kLongitudTrama]) {
-  const ble::EntradaRadar e = enlace::entrada_para_sesion(fuente(ahora), g_sesion.t_conexion_ms(), ahora);
-  return g_emisor.generar(ahora, e, trama) == ble::Error::Ninguno;
-}
-
-// --- Callbacks del stack -----------------------------------------------------------
-
-class CallbacksServidor : public BLEServerCallbacks {
-  void onConnect(BLEServer*, ble_gap_conn_desc* d) override {
-    Cerrojo c;
-    g_sesion.conectar(d->conn_handle, millis());
-    Serial.println("BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos");
-  }
-  void onDisconnect(BLEServer*, ble_gap_conn_desc*) override {
-    Cerrojo c;
-    g_sesion.desconectar();
-    Serial.println("BLE: conexión terminada");
-  }
-};
-
-class CallbacksMedicion : public BLECharacteristicCallbacks {
-  // Toda lectura genera una trama fresca: nunca se devuelve la última notificada.
-  void onRead(BLECharacteristic* ch, ble_gap_conn_desc* d) override {
-    Cerrojo c;
-    uint8_t trama[ble::kLongitudTrama];
-    if (g_sesion.conectada() && d->conn_handle == g_sesion.id_conexion() && generar_medicion(millis(), trama)) {
-      ch->setValue(trama, ble::kLongitudTrama);
-      ++g_lecturas;
-    } else {
-      ch->setValue(trama, 0);  // longitud 0: el cliente la rechaza; falla cerrado
-    }
-  }
-  // La única escritura posible es el CCCD, que el stack entrega aquí como suscripción
-  // (también la que restaura de un vínculo al reconectar).
-  void onSubscribe(BLECharacteristic*, ble_gap_conn_desc* d, uint16_t valor) override {
-    Cerrojo c;
-    if (!g_sesion.conectada() || d->conn_handle != g_sesion.id_conexion()) return;
-    const bool protegida = enlace::seguridad_suficiente(estado_de(d));
-    g_sesion.marcar_protegida(protegida);
-    if (!protegida) {
-      // Suscribir sin cifrado, autenticación y vínculo no sirve: se ignora y la
-      // gracia de seguridad corta la conexión. El cliente debe leer Información
-      // (que fuerza el emparejamiento) antes de suscribirse (contrato §5.1).
-      Serial.println("BLE: suscripción ignorada, enlace sin proteger");
-      return;
-    }
-    if (g_sesion.fijar_suscripcion((valor & 1) != 0)) {
-      Serial.println((valor & 1) ? "BLE: suscrito a Medición" : "BLE: suscripción retirada");
-    }
-  }
-};
-
-class CallbacksSeguridad : public BLESecurityCallbacks {
-  void onAuthenticationComplete(ble_gap_conn_desc* d, int estado) override {
-    Cerrojo c;
-    const bool ok = estado == 0 && enlace::seguridad_suficiente(estado_de(d));
-    if (g_sesion.conectada() && d->conn_handle == g_sesion.id_conexion()) g_sesion.marcar_protegida(ok);
-    if (ok) {
-      g_ventana.cerrar();  // un alta, un emparejamiento
-      Serial.println("BLE: enlace cifrado, autenticado y vinculado");
-    } else {
-      Serial.println("BLE: enlace sin protección suficiente; se corta");
-      cortar(d->conn_handle);
-    }
-  }
-  bool onSecurityRequest() override {
-    Cerrojo c;
-    return g_ventana.abierta(millis());
-  }
-  // No se usa la comparación numérica ni la entrada de clave: IO solo-pantalla.
-  bool onConfirmPIN(uint32_t) override { return false; }
-  uint32_t onPassKeyRequest() override { return esp_random() % (enlace::kClaveMaxima + 1); }
-};
-
-CallbacksServidor g_cb_servidor;
-CallbacksMedicion g_cb_medicion;
-CallbacksSeguridad g_cb_seguridad;
 
 // --- Arranque del BLE --------------------------------------------------------------
 
 bool iniciar_ble() {
-  BLEDevice::init(kNombre);
-
   // Identificador de arranque aleatorio y distinto del anterior (el anterior se
   // guarda en NVS). Si la fuente no lo logra, no se arranca el BLE.
   Preferences prefs;
@@ -270,44 +542,43 @@ bool iniciar_ble() {
 
   const uint16_t minima = kRadarHabilitado ? g_radar.ventana_minima_mm() : 0;
   const uint16_t maxima = kRadarHabilitado ? g_radar.ventana_maxima_mm() : 3000;
-  if (!enlace::informacion_sen0395(id, minima, maxima, &g_info)) {
+  if (!enlace::informacion_sen0395(id, minima, maxima, &g_info) || !g_puerta.iniciar(g_info)) {
     Serial.println("BLE: Información inválida; no se inicia");
     return false;
   }
-  g_emisor = ble::EmisorSintetico(g_info, kSimulacion);
 
-  // Seguridad en el stack: emparejamiento seguro (LESC) con MITM por clave
-  // mostrada (IO solo-pantalla; nunca Just Works) y vínculo. El alta cierra la
-  // clave real: con la ventana cerrada el stack usa una aleatoria.
-  BLESecurity::setCapability(ESP_IO_CAP_OUT);
-  BLESecurity::setAuthenticationMode(true, true, true);
-  BLESecurity::setInitEncryptionKey();
-  BLESecurity::setRespEncryptionKey();
+  // La biblioteca solo arranca el stack. Desde aquí, todo es nativo.
+  if (!BLEDevice::init(kNombre)) return false;
+
+  // Seguridad: emparejamiento seguro (LESC) con MITM por clave mostrada (IO
+  // solo-pantalla) y vínculo. La clave solo se entrega con la ventana de alta
+  // abierta (puerta_ble.h); con ella cerrada, además, se declaran datos OOB para
+  // que el stack no negocie Just Works. Lo que se negocie igualmente solo se
+  // persiste si está autenticado (escribir_vinculo) y se corta si no protege
+  // (BLE_GAP_EVENT_ENC_CHANGE).
+  ble_hs_cfg.sm_io_cap = BLE_HS_IO_DISPLAY_ONLY;
+  ble_hs_cfg.sm_bonding = 1;
+  ble_hs_cfg.sm_mitm = 1;
+  ble_hs_cfg.sm_sc = 1;
   ble_hs_cfg.sm_sc_only = 1;
-  aplicar_clave_alta(false);
-  BLEDevice::setSecurityCallbacks(&g_cb_seguridad);
+  ble_hs_cfg.sm_oob_data_flag = 1;  // ventana cerrada hasta que el botón la abra
+  ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+  ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+  g_escribir_original = ble_hs_cfg.store_write_cb;
+  if (g_escribir_original == nullptr) {
+    Serial.println("BLE: sin almacén de vínculos; no se inicia");
+    return false;
+  }
+  ble_hs_cfg.store_write_cb = escribir_vinculo;
 
-  g_servidor = BLEDevice::createServer();
-  g_servidor->setCallbacks(&g_cb_servidor);
-  BLEService* servicio = g_servidor->createService(kUuidServicio);
+  ble_npl_event_init(&g_evento_notificar, evento_notificar, nullptr);
+  ble_npl_event_init(&g_evento_borrar, evento_borrar, nullptr);
 
-  // Lectura solo con enlace cifrado y autenticado (MITM). No hay escritura
-  // alguna: la única es el CCCD, que genera el stack por ser Notify.
-  const uint32_t lectura_protegida =
-      BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_READ_ENC | BLECharacteristic::PROPERTY_READ_AUTHEN;
-  BLECharacteristic* informacion = servicio->createCharacteristic(kUuidInformacion, lectura_protegida);
-  uint8_t trama[ble::kLongitudTrama];
-  if (ble::codificar_informacion(g_info, trama) != ble::Error::Ninguno) return false;
-  informacion->setValue(trama, ble::kLongitudTrama);
-
-  g_medicion = servicio->createCharacteristic(kUuidMedicion, lectura_protegida | BLECharacteristic::PROPERTY_NOTIFY);
-  g_medicion->setCallbacks(&g_cb_medicion);
-
-  servicio->start();
-  BLEAdvertising* anuncio = BLEDevice::getAdvertising();
-  anuncio->addServiceUUID(kUuidServicio);
-  anuncio->setScanResponse(true);
-  BLEDevice::startAdvertising();
+  if (!registrar_gatt()) {
+    Serial.println("BLE: no se pudo registrar el servicio; no se inicia");
+    return false;
+  }
+  anunciar();
 
   Serial.printf("BLE: %s listo, contrato %u.%u, firmware %u.%u.%u, arranque %08lx\n", kNombre, g_info.version_mayor,
                 g_info.version_menor, g_info.firmware_mayor, g_info.firmware_menor, g_info.firmware_revision,
@@ -315,127 +586,90 @@ bool iniciar_ble() {
   return true;
 }
 
-// --- Radar --------------------------------------------------------------------------
+// --- Ciclo BLE (loop) -------------------------------------------------------------------------
 
-// Lee la UART, entrega los bytes al intérprete y envía su orden pendiente. Se
-// ejecuta en cada ciclo, haya o no cliente BLE, esté o no autorizado: el radar
-// sigue adquiriendo y diagnosticándose sin suscripción y sin BLE. Con el
-// cerrojo tomado.
-//
-// Los bytes se fechan al leerlos. Si en la UART esperan más que un trozo
-// (kMaxBytesPorLlamada), lo que sobra es un retraso de más de un ciclo y no
-// se puede fechar con verdad: se descarta entero en vez de entregarlo como si
-// fuera reciente. Perder esas tramas es seguro (llegan otras en ~1 s; a lo
-// sumo queda una línea partida que se cuenta como inválida); rejuvenecerlas no.
-void atender_radar() {
-  if (!kRadarHabilitado) return;
-  uint8_t bytes[sen0395::kMaxBytesPorLlamada];
-  size_t n = 0;
-  while (n < sizeof(bytes) && Serial1.available() > 0) {
-    const int b = Serial1.read();
-    if (b < 0) break;
-    bytes[n++] = static_cast<uint8_t>(b);
-  }
-  if (Serial1.available() > 0) {
-    // Hay más de un trozo esperando: nada de esto se entrega.
-    while (Serial1.read() >= 0) ++g_bytes_descartados;
-    g_bytes_descartados += n;
-    n = 0;
-  }
-  g_radar.procesar(bytes, n, millis());  // también con n == 0: marca la lectura
-  uint8_t orden[sen0395::kLongitudOrdenMax];
-  const size_t largo = g_radar.salida_pendiente(orden, sizeof(orden));
-  if (largo > 0 && static_cast<size_t>(Serial1.availableForWrite()) >= largo && Serial1.write(orden, largo) == largo) {
-    g_radar.salida_enviada(millis());
-  }
-}
-
-void iniciar_radar() {
-#if defined(VISIONARIA_PIN_RADAR_RX)
-  Serial1.begin(kBaudios, SERIAL_8N1, VISIONARIA_PIN_RADAR_RX, VISIONARIA_PIN_RADAR_TX);
-  // Nada que haya quedado en el búfer antes de arrancar vale como observación.
-  while (Serial1.available() > 0) Serial1.read();
-  g_radar.reiniciar();
-#endif
-}
-
-// --- Botón y ventana de alta ----------------------------------------------------------
-
-void atender_boton_y_ventana(uint32_t ahora) {
-  if (kBotonHabilitado) {
+// Decide con el cerrojo y actúa sin él.
+void ciclo_ble() {
+  enlace::AccionBoton boton = enlace::AccionBoton::Ninguna;
+  enlace::Transicion transicion = enlace::Transicion::SinCambio;
+  bool conectada = false;
+  bool cortar_sesion = false;
+  uint16_t conexion = 0;
+  uint16_t id_sesion = 0;
+  {
+    Cerrojo c;
+    const uint32_t ahora = millis();
 #if defined(VISIONARIA_PIN_BOTON)
-    switch (g_boton.muestrear(digitalRead(VISIONARIA_PIN_BOTON) == LOW, ahora)) {
-      case enlace::AccionBoton::AbrirAlta:
-        g_ventana.abrir(ahora);
-        Serial.println("Alta: ventana abierta 60 s");
-        break;
-      case enlace::AccionBoton::BorrarVinculos:
-        g_ventana.cerrar();
-        ble_store_clear();
-        if (g_sesion.conectada()) cortar(g_sesion.id_conexion());
-        Serial.println("Vínculos borrados; ventana de alta cerrada");
-        break;
-      case enlace::AccionBoton::Ninguna:
-        break;
-    }
+    boton = g_boton.muestrear(digitalRead(VISIONARIA_PIN_BOTON) == LOW, ahora);
 #endif
+    if (boton == enlace::AccionBoton::AbrirAlta) {
+      g_puerta.ventana().abrir(ahora);
+    } else if (boton == enlace::AccionBoton::BorrarVinculos) {
+      // Revoca YA (ventana, autorización de emparejar, sesión); el hilo del host
+      // corta y vacía el almacén después, y lo que un emparejamiento en vuelo
+      // intente escribir mientras tanto o después se rechaza.
+      g_puerta.revocar_sesion();
+    }
+    transicion = g_puerta.actualizar_ventana(ahora);
+    conectada = g_puerta.sesion().conectada();
+    id_sesion = g_puerta.sesion().id_conexion();
+    if (!cortar_sesion && g_puerta.gracia_vencida(ahora, &conexion)) {
+      Serial.println("BLE: enlace sin proteger pasado el plazo; se corta");
+      cortar_sesion = true;
+    }
   }
-  switch (g_ventana.actualizar(ahora)) {
-    case enlace::Transicion::Abrio:
-      aplicar_clave_alta(true);
-      break;
-    case enlace::Transicion::Cerro:
-      aplicar_clave_alta(false);
-      Serial.println("Alta: ventana cerrada");
-      break;
-    case enlace::Transicion::SinCambio:
-      break;
+
+  if (boton == enlace::AccionBoton::AbrirAlta) Serial.println("Alta: ventana abierta 60 s");
+  if (transicion == enlace::Transicion::Cerro) Serial.println("Alta: ventana cerrada");
+  if (boton == enlace::AccionBoton::BorrarVinculos) {
+    Serial.println("Borrado de vínculos pedido; ventana de alta cerrada, sesión revocada");
+    pedir_en_el_host(&g_evento_borrar, g_borrar_pedido);
   }
-}
+  // También sin conexión: abrir o cerrar la ventana actualiza SMP en el hilo del host.
+  pedir_en_el_host(&g_evento_notificar, g_notificar_pedido);
+  if (cortar_sesion) cortar(conexion);
 
-// --- Notificaciones --------------------------------------------------------------------
-
-void atender_notificaciones(uint32_t ahora) {
-  if (!g_sesion.conectada()) {
-    if (g_servidor->getConnectedCount() == 0 && !BLEDevice::getAdvertising()->isAdvertising()) {
-      BLEDevice::startAdvertising();  // un solo cliente a la vez: se anuncia solo sin conexión
+  if (conectada) {
+    // Si el stack ya no conoce la conexión (se perdió su evento de desconexión), la
+    // sesión se cierra: si no, el siguiente cliente se rechazaría como «segundo».
+    ble_gap_conn_desc d;
+    if (ble_gap_conn_find(id_sesion, &d) != 0) {
+      Cerrojo c;
+      g_puerta.al_desconectar(id_sesion);
+      conectada = false;
+    }
+  }
+  if (!conectada) {
+    // Un solo cliente a la vez: se anuncia solo sin conexión.
+    const uint32_t ahora = millis();
+    if (ahora - g_ultimo_anuncio_ms >= kPeriodoAnuncioMs) {
+      g_ultimo_anuncio_ms = ahora;
+      anunciar();
     }
     return;
   }
-  if (g_sesion.vencio_gracia(ahora)) {
-    Serial.println("BLE: enlace sin proteger pasado el plazo; se corta");
-    cortar(g_sesion.id_conexion());
-    return;
-  }
-  if (!g_sesion.suscrita() || !g_sesion.debe_notificar(ahora)) return;
-  if (!enlace_protegido_en_vivo(g_sesion.id_conexion())) {
-    g_sesion.marcar_protegida(false);
-    cortar(g_sesion.id_conexion());
-    return;
-  }
-  uint8_t trama[ble::kLongitudTrama];
-  if (!generar_medicion(ahora, trama)) return;
-  g_medicion->setValue(trama, ble::kLongitudTrama);
-  g_medicion->notify();
-  ++g_notificaciones;
+
+  // La notificación ya está pedida: el host consulta enlace, sesión y ritmo al ejecutarla.
 }
 
 void imprimir_estado(uint32_t ahora) {
   if (ahora - g_ultimo_estado_ms < kPeriodoEstadoMs) return;
   g_ultimo_estado_ms = ahora;
-  Serial.printf("estado t=%lu radar=%s salud=%u fase=%u conectada=%d suscrita=%d alta=%lu notif=%lu lecturas=%lu\n",
+  Serial.printf("estado t=%lu radar=%s salud=%u fase=%u conectada=%d suscrita=%d alta=%lu notif=%lu lecturas=%lu rechazados=%lu\n",
                 static_cast<unsigned long>(ahora), kSimulacion ? "simulado" : (kRadarHabilitado ? "real" : "sin-pines"),
                 kSimulacion ? 0 : (kRadarHabilitado ? g_radar.salud(ahora) : 6),
-                kRadarHabilitado ? static_cast<unsigned>(g_radar.fase()) : 0u, g_sesion.conectada(), g_sesion.suscrita(),
-                static_cast<unsigned long>(g_ventana.restante_ms(ahora)), static_cast<unsigned long>(g_notificaciones),
-                static_cast<unsigned long>(g_lecturas));
+                kRadarHabilitado ? static_cast<unsigned>(g_radar.fase()) : 0u, g_puerta.sesion().conectada(),
+                g_puerta.sesion().suscrita(), static_cast<unsigned long>(g_puerta.ventana().restante_ms(ahora)),
+                static_cast<unsigned long>(g_notificaciones.load()), static_cast<unsigned long>(g_lecturas),
+                static_cast<unsigned long>(g_vinculos_rechazados.load()));
   if (kRadarHabilitado) {
     const sen0395::Contadores& k = g_radar.contadores();
-    Serial.printf("uart validas=%lu parciales=%lu largas=%lu otras=%lu ignoradas=%lu errores=%lu timeouts=%lu descartados=%lu\n",
+    Serial.printf("uart validas=%lu parciales=%lu largas=%lu otras=%lu ignoradas=%lu errores=%lu timeouts=%lu descartados=%lu perdidas=%lu reintentos=%lu\n",
                   static_cast<unsigned long>(k.tramas_validas), static_cast<unsigned long>(k.invalidas_parciales),
                   static_cast<unsigned long>(k.invalidas_largas), static_cast<unsigned long>(k.invalidas_otras),
                   static_cast<unsigned long>(k.lineas_ignoradas), static_cast<unsigned long>(k.errores_radar),
-                  static_cast<unsigned long>(k.timeouts_orden), static_cast<unsigned long>(g_bytes_descartados));
+                  static_cast<unsigned long>(k.timeouts_orden), static_cast<unsigned long>(g_uart_estado.bytes_descartados),
+                  static_cast<unsigned long>(g_uart_estado.perdidas), static_cast<unsigned long>(g_supervisor.reintentos()));
   }
 }
 
@@ -443,7 +677,7 @@ void imprimir_estado(uint32_t ahora) {
 
 void setup() {
   Serial.begin(115200);
-  g_cerrojo = xSemaphoreCreateMutex();
+  g_cerrojo = xSemaphoreCreateRecursiveMutex();
   Serial.printf("Accesorio Visionaria, firmware %u.%u.%u, contrato %u.%u, modo %s\n", enlace::kFirmwareMayor,
                 enlace::kFirmwareMenor, enlace::kFirmwareRevision, ble::kVersionMayor, ble::kVersionMenor,
                 kSimulacion ? "SIMULACIÓN" : "real");
@@ -469,13 +703,11 @@ void setup() {
 
 void loop() {
   delay(kPeriodoCicloMs);
-  Cerrojo c;
-  atender_radar();
-  // Después de la UART: el reloj que ve el intérprete no debe decrecer.
-  const uint32_t ahora = millis();
-  if (g_ble_activo) {
-    atender_boton_y_ventana(ahora);
-    atender_notificaciones(ahora);
+  {
+    Cerrojo c;
+    atender_radar();
   }
-  imprimir_estado(ahora);
+  if (g_ble_activo) ciclo_ble();
+  Cerrojo c;
+  imprimir_estado(millis());
 }

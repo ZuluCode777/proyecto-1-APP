@@ -37,7 +37,7 @@ jobs:
       - name: Pruebas del codificador, del emisor sintético y del intérprete del radar
         run: make -C firmware probar
 
-      - name: Pruebas de sesión, alta y seguridad del enlace (EA-12)
+      - name: Pruebas del enlace (EA-12) - sesión, GAP/GATT, radar y guardia del sketch
         run: bash firmware/pruebas/probar_enlace.sh
 
       - name: Autoprueba del analizador de capturas
@@ -111,11 +111,63 @@ jobs:
           done
           echo "::add-mask::$clave"
 
+          # Gate del binario: el sketch no puede volver al envoltorio BLE de Arduino
+          # (que imprimía la clave, no veía las lecturas de varias características y
+          # compartía un valor entre hilos) ni dejar la clave de esta ejecución como
+          # texto. La clave nunca se escribe en el registro.
+          # Busca una cadena en las cadenas imprimibles del binario SIN tubería: con
+          # pipefail, `strings | grep -q` pierde el acierto (grep sale al primer
+          # resultado, strings muere por SIGPIPE con 141 y el `if` lo toma por falso).
+          # Las cadenas van a un archivo temporal fuera de evidencia/ y se borra, y la
+          # cadena buscada no se imprime.
+          binario_contiene() { # archivo cadena
+            local cadenas rc=0
+            cadenas=$(mktemp)
+            strings -a "$1" > "$cadenas"
+            grep -qF -- "$2" "$cadenas" || rc=$?
+            rm -f "$cadenas"
+            [ "$rc" -le 1 ] || { echo "::error::falló la búsqueda de cadenas (grep $rc)"; exit 1; }
+            return "$rc"
+          }
+          # Autoprueba del gate con un binario SINTÉTICO: el marcador está al principio
+          # de una salida grande de `strings` (varios MB, mucho más que el búfer de una
+          # tubería), que es donde la forma anterior fallaba. Positivo y ausencia.
+          fixture=$(mktemp)
+          { printf 'MARCADOR-SINTETICO-DEL-GATE\n'; awk 'BEGIN { for (i = 0; i < 200000; i++) print "relleno sintetico del gate numero " i }'; } > "$fixture"
+          binario_contiene "$fixture" "MARCADOR-SINTETICO-DEL-GATE" || { echo "::error::el gate de cadenas no detecta un marcador presente"; exit 1; }
+          if binario_contiene "$fixture" "MARCADOR-AUSENTE-DEL-GATE"; then
+            echo "::error::el gate de cadenas da un acierto falso"; exit 1
+          fi
+          rm -f "$fixture"
+
+          verificar_elf() { # elf clave con_ble(1: la configuración arranca el BLE)
+            elf="$1"; clave_ejecucion="$2"; con_ble="$3"
+            nm_s3=$(ls "$HOME"/.arduino15/packages/esp32/tools/esp-x32/*/bin/xtensa-esp32s3-elf-nm | head -1)
+            "$nm_s3" -C "$elf" > simbolos.txt
+            if grep -E "BLEDevice::createServer|BLEServer::BLEServer|BLEDevice::setSecurityCallbacks|BLESecurityCallbacks|BLEServerCallbacks" simbolos.txt; then
+              echo "::error::el binario enlaza el envoltorio BLE de Arduino (servidor o callbacks de seguridad)"; exit 1
+            fi
+            for simbolo in acceso_medicion escribir_vinculo evento_gap evento_notificar evento_borrar; do
+              if [ "$con_ble" = 1 ] && ! grep -q "$simbolo" simbolos.txt; then
+                echo "::error::falta $simbolo en el binario: el GATT o la seguridad nativos no están"; exit 1
+              fi
+            done
+            for mensaje in "Passkey: " "passkey: %" "Using default passkey"; do
+              if binario_contiene "$elf" "$mensaje"; then
+                echo "::error::el binario contiene un mensaje que imprime la clave de emparejamiento"; exit 1
+              fi
+            done
+            if [ -n "$clave_ejecucion" ] && binario_contiene "$elf" "$clave_ejecucion"; then
+              echo "::error::la clave de la ejecución aparece como texto en el binario"; exit 1
+            fi
+          }
+
           compilar() { # etiqueta banderas...
             etiqueta="$1"; shift
             echo "== $etiqueta" | tee -a evidencia/compilacion.txt
             salida=$(mktemp)
-            if ! arduino-cli compile --fqbn "$FQBN" --warnings all \
+            destino=$(mktemp -d)
+            if ! arduino-cli compile --fqbn "$FQBN" --warnings all --output-dir "$destino" \
                  --build-property "compiler.cpp.extra_flags=$*" firmware/accesorio > "$salida" 2>&1; then
               cat "$salida"; exit 1
             fi
@@ -123,6 +175,9 @@ jobs:
             grep -E "Sketch uses|Global variables" "$salida"
             # Ninguna advertencia propia: las del núcleo de Espressif no se evalúan aquí.
             if grep -E "firmware/accesorio/.*warning" "$salida"; then exit 1; fi
+            con_ble=0
+            case "$*" in *VISIONARIA_CLAVE_ENLACE*) con_ble=1 ;; esac
+            verificar_elf "$destino/accesorio.ino.elf" "$clave" "$con_ble"
           }
           debe_fallar() { # etiqueta banderas...
             etiqueta="$1"; shift

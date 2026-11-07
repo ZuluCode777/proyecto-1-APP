@@ -172,8 +172,10 @@ class SesionEnlace {
   bool suscrita() const { return conectada_ && protegida_ && suscrita_; }
 
   // true como máximo una vez por periodo: la primera tras suscribirse sale de
-  // inmediato y las siguientes cada kPeriodoNotificacionMs sin acumular
-  // retraso. Tras un hueco largo no recupera lo perdido en ráfaga.
+  // inmediato y cada envío fija el siguiente a ahora_ms + kPeriodoNotificacionMs,
+  // así que dos envíos nunca quedan a menos de ese periodo. El ritmo real
+  // depende del ciclo del llamador (con ciclos de 7 ms, cada 105 ms) y tras un
+  // hueco largo no recupera lo perdido en ráfaga.
   bool debe_notificar(uint32_t ahora_ms);
 
   // true si el enlace sigue sin protegerse pasado kGraciaSeguridadMs; el

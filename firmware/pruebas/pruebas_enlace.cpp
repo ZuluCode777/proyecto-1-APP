@@ -3,6 +3,7 @@
 // pines. No prueban el stack BLE, la UART ni el radar; el cifrado, la
 // autenticación y el vínculo reales solo se prueban con la placa y un iPhone.
 // Uso: pruebas_enlace
+#include <initializer_list>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -412,23 +413,26 @@ void prueba_ritmo() {
   const int n = contar(&s, 0, 10000);
   EXIGIR(n == 100);
 
-  // Ciclos de 7 ms: nunca más de una por periodo ni menos de ~una cada 105 ms.
-  SesionEnlace t;
-  t.conectar(1, 0);
-  t.marcar_protegida(true);
-  t.fijar_suscripcion(true);
-  uint32_t ultima = 0;
-  bool hubo = false;
-  int total = 0;
-  for (uint32_t ms = 0; ms < 20000; ms += 7) {
-    if (t.debe_notificar(ms)) {
-      if (hubo) EXIGIR(ms - ultima >= 91);  // sin ráfagas, sin acumular retraso
-      hubo = true;
-      ultima = ms;
-      ++total;
+  // Ciclos de 7 ms: separación real >= 100 ms (aquí 105) y ~190 en 20 s.
+  // Barrido de pasos: ningún paso produce dos envíos a menos de 100 ms.
+  for (uint32_t paso : {1u, 7u, 33u, 50u, 99u, 150u}) {
+    SesionEnlace t;
+    t.conectar(1, 0);
+    t.marcar_protegida(true);
+    t.fijar_suscripcion(true);
+    uint32_t ultima = 0;
+    bool hubo = false;
+    int total = 0;
+    for (uint32_t ms = 0; ms < 20000; ms += paso) {
+      if (t.debe_notificar(ms)) {
+        if (hubo) EXIGIR(ms - ultima >= kPeriodoNotificacionMs);  // nunca más de una cada 100 ms
+        hubo = true;
+        ultima = ms;
+        ++total;
+      }
     }
+    if (paso == 7) EXIGIR(total >= 150 && total <= 200);
   }
-  EXIGIR(total >= 150 && total <= 200);
 
   // Un bloqueo de 2 s no se recupera en ráfaga: una sola notificación después.
   SesionEnlace u;
@@ -440,6 +444,17 @@ void prueba_ritmo() {
   EXIGIR(!u.debe_notificar(2000));
   EXIGIR(!u.debe_notificar(2050));
   EXIGIR(u.debe_notificar(2100));
+
+  // Ciclo irregular 0, 150, 200: el envío de 150 empuja el siguiente a 250.
+  SesionEnlace w;
+  w.conectar(1, 0);
+  w.marcar_protegida(true);
+  w.fijar_suscripcion(true);
+  EXIGIR(w.debe_notificar(0));
+  EXIGIR(w.debe_notificar(150));
+  EXIGIR(!w.debe_notificar(200));
+  EXIGIR(!w.debe_notificar(249));
+  EXIGIR(w.debe_notificar(250));
 
   // Vuelta del reloj de 32 bits en medio del ritmo.
   SesionEnlace v;

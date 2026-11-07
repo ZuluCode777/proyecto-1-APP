@@ -173,9 +173,8 @@ bool SesionEnlace::debe_notificar(uint32_t ahora_ms) {
     return true;
   }
   if (!alcanzado(ahora_ms, proxima_)) return false;
-  proxima_ += kPeriodoNotificacionMs;
-  // Si ya se perdió más de un periodo, no se recupera en ráfaga.
-  if (alcanzado(ahora_ms, proxima_)) proxima_ = ahora_ms + kPeriodoNotificacionMs;
+  // Siempre desde el envío real: separación mínima kPeriodoNotificacionMs, sin ráfagas.
+  proxima_ = ahora_ms + kPeriodoNotificacionMs;
   return true;
 }
 

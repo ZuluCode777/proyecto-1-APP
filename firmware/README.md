@@ -1,13 +1,15 @@
 # Firmware del accesorio (ESP32-S3-N16R8 y SEN0395)
 
-Estado al **7 de noviembre de 2026**: hay el **núcleo portátil del contrato BLE v1.0** (EA-04), el **intérprete de la UART del SEN0395** (EA-11), y el **sketch con servicio BLE, seguridad y alta** (EA-12), todos probados en el portátil y el sketch **compilado** para ESP32-S3. **No hay ensayo de banco**: nadie ha cargado el firmware en la placa, energizado el radar, leído su UART real ni emparejado un iPhone. Compilar no prueba nada de eso. Diseño: [plan-firmware.md](../docs/expoandes/plan-firmware.md); contrato: [contrato-ble.md](../docs/expoandes/contrato-ble.md); radar: [ea-11-radar.md](../docs/expoandes/ea-11-radar.md); BLE, seguridad y guion de banco: [ea-12-ble.md](../docs/expoandes/ea-12-ble.md).
+Estado al **7 de noviembre de 2026**: hay el **núcleo portátil del contrato BLE v1.0** (EA-04), el **intérprete de la UART del SEN0395** con su recuperación (EA-11), y el **sketch con servicio BLE, seguridad y alta** sobre NimBLE nativo (EA-12), todos probados en el portátil y el sketch **compilado** para ESP32-S3. **No hay ensayo de banco**: nadie ha cargado el firmware en la placa, energizado el radar, leído su UART real ni emparejado un iPhone. Compilar no prueba nada de eso. Diseño: [plan-firmware.md](../docs/expoandes/plan-firmware.md); contrato: [contrato-ble.md](../docs/expoandes/contrato-ble.md); radar: [ea-11-radar.md](../docs/expoandes/ea-11-radar.md); BLE, seguridad y guion de banco: [ea-12-ble.md](../docs/expoandes/ea-12-ble.md).
 
 ## Qué hay
 
 ```text
 firmware/
   accesorio/
-    accesorio.ino            sketch: UART, GPIO, BLE (NimBLE), alta y notificaciones
+    accesorio.ino            sketch: UART, GPIO y BLE sobre la API nativa de NimBLE (GAP, GATT, vínculos)
+    puerta_ble.h/.cpp        política de emparejamiento, vínculos, revocación, lectura y notificación (portátil)
+    enlace_radar.h/.cpp      lectura de la UART, pérdida de bytes y recuperación del radar (portátil)
     enlace_accesorio.h/.cpp  sesión, ventana de alta, botón, ritmo, pines y clave (portátil)
     sen0395.h/.cpp           intérprete de $JYBSS y de las órdenes del radar (EA-11, portátil)
     trama_ble.h/.cpp         Información y Medición de 20 bytes: codifica, decodifica
@@ -21,7 +23,9 @@ firmware/
     pruebas.cpp              vectores de ../contratos/ble/ (EA-04)
     pruebas_sen0395.cpp      intérprete del radar (EA-11)
     pruebas_enlace.cpp       sesión, alta y seguridad (EA-12)
-    probar_enlace.sh         compila y ejecuta pruebas_enlace
+    pruebas_puerta_ble.cpp   política de GAP/GATT con el intérprete real del radar (EA-12)
+    pruebas_radar_integracion.cpp  desborde de la UART y recuperación del radar (EA-11 y EA-12)
+    probar_enlace.sh         compila y ejecuta las tres suites de EA-12 y la guardia del sketch
   Makefile                   make probar
 ```
 
@@ -30,16 +34,16 @@ Los módulos portátiles **no incluyen `Arduino.h`**, no usan excepciones ni mem
 ## Probar en el portátil
 
 ```bash
-make -C firmware probar                 # EA-04 (1054) y EA-11 (475): vectores y parser
-bash firmware/pruebas/probar_enlace.sh  # EA-12: sesión, alta, botón, ritmo, pines, seguridad
+make -C firmware probar                 # EA-04 (1054) y EA-11 (594): vectores y parser
+bash firmware/pruebas/probar_enlace.sh  # EA-12: enlace (21 203), política BLE (488), radar (1 019 106) y guardia del sketch
 python3 firmware/herramientas/analizar_captura.py --autoprueba
 ```
 
-Necesitan `g++` con C++17 (`-Wall -Wextra -Werror -pedantic`) y Python 3. Salida esperada: `N comprobaciones, 0 fallos`. Los vectores de EA-04 los ejecuta también Swift ([`ios/ContratoBLE`](../ios/ContratoBLE/README.md)). CI: [contrato-ble.yml](../.github/workflows/contrato-ble.yml). Son lógica y tramas escritas a mano: no prueban NimBLE, cifrado, UART ni radar.
+Necesitan `g++` con C++17 (`-Wall -Wextra -Werror -pedantic`) y Python 3. Salida esperada: `N comprobaciones, 0 fallos`. Los vectores de EA-04 los ejecuta también Swift ([`ios/ContratoBLE`](../ios/ContratoBLE/README.md)). CI: [contrato-ble.yml](../.github/workflows/contrato-ble.yml). Son lógica y tramas escritas a mano, con el intérprete real del radar y un doble mínimo de la UART y del stack: no prueban NimBLE (que llame a los ganchos, el emparejamiento, el cifrado), la UART real ni el radar. El job `sketch` de CI añade un gate sobre el binario: sin el envoltorio BLE de Arduino y sin cadenas que impriman la clave (la búsqueda de cadenas se autoprueba con un binario sintético). La notificación y el borrado de vínculos corren como eventos de la tarea del host de NimBLE; la serialización se revisó contra su fuente. Falta ejecutar el enlace en banco.
 
 ## Compilar el sketch
 
-Herramientas fijadas: `arduino-cli` **1.5.1** y núcleo `esp32:esp32` **3.3.12** (comprobado en el índice oficial el 7/11/2026), placa `esp32s3` con `FlashSize=16M`, stack **NimBLE** incluido en el núcleo (sin bibliotecas nuevas).
+Herramientas fijadas: `arduino-cli` **1.5.1** y núcleo `esp32:esp32` **3.3.12** (comprobado en el índice oficial el 7/11/2026), placa `esp32s3` con `FlashSize=16M`, stack **NimBLE** incluido en el núcleo (sin bibliotecas nuevas). La biblioteca BLE de Arduino solo arranca el stack; el GAP, el GATT y el almacén de vínculos son del sketch, sobre la API nativa de NimBLE.
 
 ```bash
 URL=https://espressif.github.io/arduino-esp32/package_esp32_index.json
@@ -79,7 +83,7 @@ La edad de una fuente a 1 Hz (UART del SEN0395) supera 500 ms durante cerca de l
 
 ## Pendiente
 
-- **Todo lo físico:** cargar la placa, B0/B1/B2, emparejamiento con un iPhone, reconexión, reinicios, frecuencia, pérdida, consumo y latencia. Guion en [ea-12-ble.md](../docs/expoandes/ea-12-ble.md#guion-de-banco-pendiente-lo-ejecuta-h3-con-h1).
+- **Todo lo físico:** cargar la placa, B0/B1/B2, emparejamiento con un iPhone (incluido el rechazo de Just Works, el re-emparejamiento fuera de la ventana y la restauración del vínculo), reconexión, reinicios del radar y de la placa, frecuencia, pérdida, consumo y latencia. Guion en [ea-12-ble.md](../docs/expoandes/ea-12-ble.md#guion-de-banco-pendiente-lo-ejecuta-h3-con-h1).
 - **Pines y cableado:** los fija quien reciba la placa, en `configuracion_local.h`.
 - **Herramientas:** el sketch ya compila con Arduino; H3 confirma Arduino frente a ESP-IDF al revisar el PR.
 - **Core Bluetooth y evidencia de enlace autenticado en iOS:** EA-15.

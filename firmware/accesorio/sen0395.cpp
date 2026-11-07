@@ -7,6 +7,8 @@ namespace sen0395 {
 
 namespace {
 
+constexpr uint8_t kPasoGuardar = 3;  // saveCfg
+
 const char kTramaPresencia[] = "$JYBSS,1, , , *";
 const char kTramaNadie[] = "$JYBSS,0, , , *";
 
@@ -75,8 +77,9 @@ Interprete::Interprete(const Configuracion& cfg) : cfg_(cfg) {
   cont_.reinicios = 0;  // la construcción no es un reinicio
 }
 
-void Interprete::reiniciar() {
+void Interprete::reiniciar(bool guardar_en_flash) {
   ++cont_.reinicios;
+  guardar_ = guardar_en_flash;
   // Una respuesta tardía de la orden vieja no debe confirmar la nueva. Con la
   // orden en vuelo, la purga empieza cuando venza su plazo (en avanzar()), como
   // tras un timeout: así dura >= 2 x respuesta_max_ms desde su envío.
@@ -210,6 +213,7 @@ void Interprete::linea_completa(uint32_t ahora_ms, uint32_t sello_ms) {
       } else if (igual(l, n, "Done")) {
         esperando_ = false;
         ++paso_;
+        if (!guardar_ && paso_ == kPasoGuardar) ++paso_;
         if (paso_ >= kPasosConfiguracion) {
           fase_ = Fase::Estabilizando;
           t_estab_ = ahora_ms;  // los 5 s cuentan desde el Done de sensorStart
@@ -289,6 +293,13 @@ size_t Interprete::procesar(const uint8_t* datos, size_t n, uint32_t ahora_ms) {
     }
   }
   return n;
+}
+
+void Interprete::perder_entrada(uint32_t ahora_ms) {
+  avanzar(ahora_ms);
+  largo_ = 0;
+  descartando_ = false;
+  marcar_malo(Malo::Invalida, CausaInvalida::Larga);
 }
 
 uint8_t Interprete::salud_actual(uint32_t ahora_ms) const {

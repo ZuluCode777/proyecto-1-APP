@@ -13,11 +13,13 @@ El contrato manda: [contrato-ble.md](contrato-ble.md) (v1.0, congelado) y su [§
 
 ## API (`namespace visionaria::sen0395`)
 
-Portátil: sin `Arduino.h`, sin bloqueo, excepciones ni memoria dinámica (168 bytes de estado en x86-64). Recibe bytes ya leídos y la hora como `uint32_t` en ms con vuelta módulo 2³²; reutiliza `ble::EntradaRadar` de `emisor_sintetico.h`.
+Portátil: sin `Arduino.h`, sin bloqueo, excepciones ni memoria dinámica (176 bytes de estado en x86-64). Recibe bytes ya leídos y la hora como `uint32_t` en ms con vuelta módulo 2³²; reutiliza `ble::EntradaRadar` de `emisor_sintetico.h`.
 
 ```cpp
 Interprete radar;                       // o Interprete(Configuracion)
-radar.reiniciar();                      // vuelve a configurar; descarta todo resultado
+radar.reiniciar();                      // vuelve a configurar (con saveCfg); descarta todo resultado
+radar.reiniciar(false);                 // igual, pero SIN saveCfg: recuperaciones que no gastan la flash del sensor
+radar.perder_entrada(ahora_ms);         // el llamador perdió bytes de la UART: borra línea parcial y resultado
 
 size_t salida_pendiente(uint8_t* dst, size_t cap) const;  // orden con "\r\n"; 0 si nada
 void   salida_enviada(uint32_t ahora_ms);                 // solo si se escribió ENTERA
@@ -30,29 +32,28 @@ const Contadores& contadores();
 uint16_t ventana_minima_mm(); uint16_t ventana_maxima_mm();  // para ble::Informacion
 ```
 
-`Configuracion` (valores por defecto): ventana `0..20` (índices de 15 cm = 0 a 3 m), `latencia_deteccion = 100`, `latencia_desaparicion = 400` (unidades de 25 ms; son los valores de fábrica y **no** el mínimo estable, que decide B2), `estabilizacion_ms = 5000` (nunca menos), `respuesta_max_ms = 2000`. `configuracion_valida()` rechaza ventana vacía o > 127, estabilización < 5000 ms o > 2³¹ − 1 ms, y plazo de respuesta 0 o > 2³¹ − 1 ms (`kPlazoMaxMs`). Los plazos de estabilización y purga vencen con `ahora − inicio ≥ plazo` en módulo 2³²: aun si se consulta mucho después del vencimiento, la transición ocurre (el máximo admitido no bloquea nada). A cambio, `ahora_ms` no debe decrecer: un reloj atrás se lee como mucho tiempo transcurrido y adelanta el vencimiento, nunca lo retrasa; el intérprete queda entonces en salud `6` sin enviar nada.
+`Configuracion` (valores por defecto): ventana `0..20` (índices de 15 cm = 0 a 3 m), `latencia_deteccion = 100`, `latencia_desaparicion = 400` (unidades de 25 ms; son los valores de fábrica y **no** el mínimo estable, que decide B2), `estabilizacion_ms = 5000` (nunca menos), `respuesta_max_ms = 2000`. `configuracion_valida()` rechaza ventana vacía o > 127, estabilización < 5000 ms o > 2³¹ − 1 ms, y plazo de respuesta 0 o > 2³¹ − 1 ms (`kPlazoMaxMs`). Los plazos de estabilización y purga vencen con `ahora − inicio ≥ plazo` en módulo 2³²: aun si se consulta mucho después del vencimiento, la transición ocurre (el máximo admitido no bloquea nada). A cambio, `ahora_ms` no debe decrecer: un reloj atrás se lee como mucho tiempo transcurrido y adelanta el vencimiento, nunca lo retrasa. El intérprete **no detecta** el retroceso (la salud `6` es solo para una configuración rechazada): un reloj que retrocede puede caducar el resultado o vencer una orden antes de tiempo, y el llamador debe entregar un reloj monotónico.
 
 ### Ciclo que debe seguir EA-12
 
+El ciclo no se escribe a mano: lo hace `atender_uart()` de `enlace_radar.h`, que el sketch llama en cada vuelta del `loop`. No copies un bucle propio de lectura: descartar con `n = 0` sin avisar deja en el intérprete una línea a medias que se une con lo que llegue después y fabrica una trama válida falsa (un `SinBlanco` que nadie midió).
+
 ```cpp
-// cada ciclo (≈100 ms):
-uint8_t buf[sen0395::kMaxBytesPorLlamada];
-size_t n = leer_sin_bloquear(Serial1, buf, sizeof(buf));   // lo que haya, hasta 256 B
-if (Serial1.available() > 0) { vaciar(Serial1); n = 0; }   // quedó más de un trozo: se descarta TODO
-radar.procesar(buf, n, millis());                           // SIEMPRE, también con n == 0
-uint8_t orden[sen0395::kLongitudOrdenMax];
-size_t m = radar.salida_pendiente(orden, sizeof(orden));
-if (m > 0 && Serial1.availableForWrite() >= (int)m) {       // escribir entera o no confirmar
-  Serial1.write(orden, m);
-  radar.salida_enviada(millis());
-}
+radar::EstadoUart estado;      // uno por UART, el mismo en todos los ciclos
+radar::SupervisorRadar vigilante;
+// cada ciclo del loop (2 ms; las notificaciones BLE van a 100 ms), con un PuertoUart que implementa el sketch sobre Serial1:
+radar::atender_uart(radar, puerto, estado);   // lee, avisa pérdidas, envía la orden pendiente
+vigilante.vigilar(radar, puerto);             // recupera un radar caído o callado
 emisor.generar(millis(), radar.entrada(millis()), trama);   // salud != 0 sale como fallo
 ```
 
-- `procesar` **nunca deja resto**. Con `n ≤ 256` procesa los `n` bytes y devuelve `n`. Con `n > 256` **descarta la oferta entera** en O(1), sin leer un solo byte, y devuelve `n`: es la cantidad *descartada*, no procesada, y el llamador **no debe reofrecerla** (reofrecer parte de ella sería partir un bloque cuya fecha ya no se conoce). El trabajo leído por llamada está acotado a 256 B, pero el retorno puede ser mayor. Ni la trama ni el `Done` dentro de lo descartado valen. El intérprete falla seguro: pierde la línea parcial en curso; en operación el resultado anterior deja de valer (salud `3`, contada como `Larga`) y recupera con una trama íntegra **nueva**, sin renovar el plazo del latido (2500 ms desde la última trama válida); en configuración un `Done` perdido vence por timeout (salud `4`). `atender_radar()` de EA-12 ya cumple esto: ofrece siempre ≤ 256 B y descarta el desborde de la UART. `datos == nullptr` devuelve 0 y no cambia nada. La API es nueva en este PR; no hay otro consumidor.
+`atender_uart()` lee a lo sumo 256 B, llama a `procesar` **siempre** (también con `n == 0`) y envía la orden de `salida_pendiente()` solo si cabe entera (`salida_enviada()` solo tras escribirla entera). Si en la UART queda más de un trozo, o el controlador avisó de un desborde (consultado al empezar y otra vez tras la lectura y el drenaje, antes de entregar nada al parser: `onReceiveError` corre en otra tarea), **nada** de lo leído en el ciclo se entrega: drena hasta `kMaxDrenajePorCiclo` (4096) bytes y avisa con `perder_entrada()`. Si el drenaje no alcanza a vaciar la UART, `EstadoUart::drenando` queda activo y los ciclos siguientes descartan **todo** lo que haya (aunque sean 17 B con una trama válida y un `Done`) hasta ver la UART vacía, y no envían ninguna orden mientras tanto: esa cola es anterior y no se puede fechar con verdad.
+
+- `procesar` **nunca deja resto**. Con `n ≤ 256` procesa los `n` bytes y devuelve `n`. Con `n > 256` **descarta la oferta entera** en O(1), sin leer un solo byte, y devuelve `n`: es la cantidad *descartada*, no procesada, y el llamador **no debe reofrecerla** (reofrecer parte de ella sería partir un bloque cuya fecha ya no se conoce). El trabajo leído por llamada está acotado a 256 B, pero el retorno puede ser mayor. Ni la trama ni el `Done` dentro de lo descartado valen. El intérprete falla seguro: pierde la línea parcial en curso; en operación el resultado anterior deja de valer (salud `3`, contada como `Larga`) y recupera con una trama íntegra **nueva**, sin renovar el plazo del latido (2500 ms desde la última trama válida); en configuración un `Done` perdido vence por timeout (salud `4`). `atender_uart()` de EA-12 (`enlace_radar.h`) ya cumple esto: ofrece siempre ≤ 256 B, descarta el desborde de la UART (también el resto que un drenaje acotado deja para el ciclo siguiente) y avisa con `perder_entrada()`. `datos == nullptr` devuelve 0 y no cambia nada. La API es nueva en este PR; no hay otro consumidor.
 - Llamar `procesar` en **cada** ciclo importa: el intérprete deduce de ello cuándo se leyó la UART por última vez. Si pasan más de 250 ms entre llamadas, los bytes pudieron esperar en el búfer, y sus tramas se fechan en la llamada anterior (más viejas, nunca más jóvenes). Así un bucle bloqueado no hace pasar tramas atrasadas por recientes.
-- `reiniciar()` (tras reiniciar o desconectar el radar) no conserva nada. EA-12 debe además vaciar la UART.
-- Un fallo de configuración (`Error` o timeout) **no se reintenta solo**: cada `saveCfg` escribe la flash del sensor. EA-12 decide cuándo llamar `reiniciar()`.
+- `reiniciar()` (tras reiniciar o desconectar el radar) no conserva nada. EA-12 debe además vaciar la UART: `SupervisorRadar` lo hace antes de reiniciar y, si la purga acotada no la deja vacía, espera al ciclo siguiente.
+- `perder_entrada()` es el aviso de que se **perdieron** bytes de la UART (se descartó un trozo que no se pudo fechar, o el controlador notó un desborde). Borra la línea parcial, para que no se una con lo que llegue después, e invalida el resultado en operación (salud `3`, contada como `Larga`) hasta una trama íntegra **nueva**; no fabrica ni restaura ninguna trama ni renueva el plazo del latido.
+- Un fallo de configuración (`Error` o timeout) **no se reintenta solo** dentro del intérprete: cada `saveCfg` escribe la flash del sensor. Quien reintenta es el `SupervisorRadar` de EA-12 (`enlace_radar.h`), con espera creciente y `reiniciar(false)`, que omite `saveCfg`: el arranque de la placa guarda la configuración una vez y las recuperaciones solo la aplican en la RAM del sensor.
 - Información BLE: capacidades `0`, perfil `1`, y la ventana de `ventana_minima_mm()`/`ventana_maxima_mm()` (describe la ventana de presencia, no una distancia medida).
 
 ## Secuencia de configuración
@@ -101,7 +102,7 @@ Los **5 s** (mínimo) se cuentan desde el `Done` de `sensorStart`, nunca desde q
 make -C firmware probar
 ```
 
-Ejecuta, con `-Wall -Wextra -Werror -pedantic`, los vectores de EA-04 (sin cambios: `1054 comprobaciones, 0 fallos`) y `pruebas_sen0395.cpp` (`594 comprobaciones, 0 fallos`, sintéticas). Cubren: órdenes exactas y orden; configuración inválida; estabilización y primer latido; tramas 0/1 y edad con el emisor; byte a byte y terminadores; 13 formas inválidas con recuperación; línea larga en 64/65 bytes y fragmentada; fragmentos sin terminador; `Error` en operación; caducidad 2500/2501 y desconexión; vuelta del reloj (estabilización, latido, caducidad y timeout de orden); `Done` duplicado, adelantado, tardío y parcial previo; timeout 2000/2001 ms; reinicio sin resultado antiguo; purga tras timeout y con la orden en vuelo (frontera de 2 × plazo, reinicios repetidos); hueco de lectura; oferta mayor que 256 B descartada entera con retorno `n` (O(1), con trama, `Done`, `Error` y mezcla dentro, con línea parcial previa, en operación y en configuración) y recuperación con una trama íntegra nueva; UART simulada con el recorte de `atender_radar()` (≤ 256 B); ruido y `Error` periódicos que no ocultan el timeout; plazos máximos de configuración (estabilización y purga consultadas en plazo − 1, plazo, plazo + 1 y saltándose el umbral; hueco de 2³¹ ms); ausencia de `Objetivo`; contadores. La corrida con ASan/UBSan no se hizo: las bibliotecas no están instaladas en este equipo.
+Ejecuta, con `-Wall -Wextra -Werror -pedantic`, los vectores de EA-04 (sin cambios: `1054 comprobaciones, 0 fallos`) y `pruebas_sen0395.cpp` (`594 comprobaciones, 0 fallos`, sintéticas). Cubren: órdenes exactas y orden; configuración inválida; estabilización y primer latido; tramas 0/1 y edad con el emisor; byte a byte y terminadores; 13 formas inválidas con recuperación; línea larga en 64/65 bytes y fragmentada; fragmentos sin terminador; `Error` en operación; caducidad 2500/2501 y desconexión; vuelta del reloj (estabilización, latido, caducidad y timeout de orden); `Done` duplicado, adelantado, tardío y parcial previo; timeout 2000/2001 ms; reinicio sin resultado antiguo; purga tras timeout y con la orden en vuelo (frontera de 2 × plazo, reinicios repetidos); hueco de lectura; oferta mayor que 256 B descartada entera con retorno `n` (O(1), con trama, `Done`, `Error` y mezcla dentro, con línea parcial previa, en operación y en configuración) y recuperación con una trama íntegra nueva; UART simulada con el recorte de `atender_uart()` (≤ 256 B); ruido y `Error` periódicos que no ocultan el timeout; plazos máximos de configuración (estabilización y purga consultadas en plazo − 1, plazo, plazo + 1 y saltándose el umbral; hueco de 2³¹ ms); ausencia de `Objetivo`; contadores. La corrida con ASan/UBSan no se hizo: las bibliotecas no están instaladas en este equipo.
 
 ## Qué NO se probó
 
