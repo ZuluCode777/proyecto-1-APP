@@ -6,8 +6,6 @@ Actualización: **6 de noviembre de 2026**. Feria: **17 de noviembre**. Este doc
 
 El 6/11 Nicolás confirmó que el equipo **compró** una placa **ESP32-S3-N16R8** (16 MB de flash, 8 MB de PSRAM octal) y un radar **DFRobot SEN0395** de 24 GHz. Con eso queda elegido el hardware de EA-03 ([#29](https://github.com/ZuluCode777/proyecto-1-APP/issues/29)). La frase «ningún componente comprado» de los informes del 2/11 deja de valer; esos informes se conservan como evidencia histórica.
 
-Falta registrar (H1, al abrir el banco): comercio, precio y cantidad de cada pieza; modelo exacto de la placa (DevKitC-1 de Espressif o compatible), puente USB-serie, revisión y serigrafía del módulo.
-
 ## Qué entrega el SEN0395
 
 Datos de la [wiki de DFRobot](https://wiki.dfrobot.com/mmWave_Radar_Human_Presence_Detection_SKU_SEN0395), consultada el 6/11/2026:
@@ -39,7 +37,7 @@ Hay una diferencia con nuestro uso. En el garaje el sensor está fijo y el blanc
 
 ## Consecuencias para metas y contrato
 
-**Metas físicas.** G2 (objetivos móviles) se ensaya como presencia dentro de una ventana, no como distancia. G1 (obstáculos estáticos) queda **pendiente** hasta B4 y B5. Si ambos fallan, G1 se registra como fallida con este sensor y el equipo decide si agrega el sensor óptico de [compras](compras-bogota.md) (VL53L1X, hasta 4 m). Eso exige aprobar un diseño multimodal y presupuesto, y no se presenta como detección por mmWave.
+**Metas físicas.** G2 (objetivos móviles) se ensaya como presencia dentro de una ventana, no como distancia. G1 (obstáculos estáticos) queda **pendiente** hasta B4 y B5. Si ambos fallan, G1 se registra como fallida con este sensor y el equipo decide si agrega el sensor óptico de [compras](compras-bogota.md) (VL53L1X, hasta 4 m). Eso exige aprobar un diseño multimodal y presupuesto, y no se presenta como detección por mmWave. El 6/11 [Electronilab](https://electronilab.co/tienda/vl53l1x-sensor-de-distancia-tiempo-de-vuelo-30mm-a-4000mm/) (Bogotá) mostraba el VL53L1X a $31.900 con «Últimas 2 uds»; Sigma no lo lista.
 
 **Contrato BLE v1.0** ([§8 del informe](investigacion-hardware-ios.md#8-contrato-ble-propuesto-versión-10)). El SEN0395 cabe en los 20 bytes sin cambiar su distribución:
 
@@ -51,20 +49,31 @@ Hay una diferencia con nuestro uso. En el garaje el sensor está fijo y el blanc
 1. Leer el pin GPIO2 del sensor cada 100 ms, si B2 muestra que cambia antes que la trama. La UART queda para órdenes, diagnóstico y salud.
 2. Publicar una v1.1 con caducidad mayor para el perfil de presencia. Requiere cambiar el decodificador del iPhone (A2).
 
+**Recomendación: opción 1.** Mantiene la v1.0 sin tocar el iPhone y usa la señal más reciente que da el sensor. Si B2 muestra que el pin no cambia antes que la trama, la opción 2 tampoco mejora el aviso: solo haría aceptar datos más viejos, y el requisito de retardo queda incumplido con este sensor. Un pin quieto en bajo no distingue «nadie» de «sensor caído», así que la trama UART sigue como latido: sin trama válida en 2,5 s, salud `2` aunque el pin diga otra cosa.
+
 **Retardo de aviso.** Con el retardo por defecto de 2,5 s al detectar, la meta de p95 ≤ 300 ms del sensor al sonido no se cumple. El firmware baja `outputLatency` al mínimo que B2 muestre estable. Si ni así se cumple, el requisito queda incumplido y se declara.
 
 ## Conexión eléctrica
 
-Comprobar antes de energizar (ensayo B0). Nada de esto está medido:
+Ninguna fuente consultada publica el nivel lógico de la UART ni del GPIO2 del SEN0395, y el equipo no tiene multímetro. Los GPIO del ESP32-S3 admiten como máximo VDD + 0,3 V (3,6 V); un TX de 5 V puede dañarlos.
 
-- Alimentar el SEN0395 desde el pin de 5 V de la placa (USB), nunca desde 3V3: su mínimo es 3,6 V. Masa común.
-- Con el sensor alimentado y sin conectar al ESP32, medir con multímetro la tensión en reposo de su TX. Los GPIO del ESP32-S3 son de 3,3 V y no toleran 5 V. Si TX supera 3,3 V, poner divisor resistivo o adaptador de niveles.
-- Comprobar que el TX de 3,3 V del ESP32 basta para el RX del sensor: enviar `sensorStop` y recibir `Done`.
+- **Primera conexión: sensor alimentado desde 3V3**, como en el [ejemplo de DFRobot para FireBeetle ESP32](https://wiki.dfrobot.com/sen0395/docs/21401), que conecta VCC a 3V3 y TX/RX directo a pines del ESP32. Alimentado a 3,3 V, el sensor no puede sacar más de 3,3 V por sus pines, así que el ESP32 no corre riesgo. Masa común.
+- 3,3 V queda por debajo de los 3,6–5 V de la ficha. B0 y B1 comprueban que así responde `Done`, envía tramas válidas y aguanta 30 min sin reinicios.
+- Si falla con 3,3 V, pasar a 5 V solo después de medir su TX. Sin multímetro: llevar el TX a una entrada ADC1 del ESP32 a través de dos resistencias iguales (por ejemplo, 10 kΩ en serie y 10 kΩ a masa) y leer con `analogReadMilliVolts()`. La línea en reposo queda en alto; tomar el máximo de un segundo de lecturas. Un TX de 5 V se lee como unos 2,5 V y uno de 3,3 V como unos 1,65 V; ambos son seguros para la entrada. Si el TX es de 5 V, dejar un divisor en la línea de recepción (por ejemplo, 1 kΩ en serie y 2 kΩ a masa). También sirve un multímetro prestado de un laboratorio de la universidad.
 - Usar un UART libre (UART1) y una entrada digital para el GPIO2 del sensor. Evitar GPIO0, 3, 45 y 46 (pines de arranque), 19 y 20 (USB), 43 y 44 (consola UART0) y 35 a 37 (PSRAM octal en módulos R8). Fijar los pines en `firmware/README.md` según la serigrafía de la placa recibida.
 
 ## Diseño del firmware
 
-**Herramientas (propuesta).** Núcleo Arduino para ESP32 (`esp32:esp32`) con `arduino-cli`, con la versión exacta fijada en `firmware/README.md`. Los ejemplos de DFRobot son Arduino, y el equipo de hardware compila y carga sin instalar ESP-IDF. H3 confirma o cambia a ESP-IDF en el primer PR. No se usa la biblioteca `DFRobot_mmWave_Radar`: el protocolo son unas pocas órdenes de texto y una trama, y un intérprete propio se prueba en el portátil sin placa.
+**Herramientas (propuesta).** Núcleo Arduino de Espressif (`esp32:esp32`) con `arduino-cli`. Espressif declara el ESP32-S3 soportado y estable; la versión vigente es 3.3.12 (18/9/2026, sobre ESP-IDF 5.5.5). Placa `esp32s3` («ESP32S3 Dev Module») con `FlashSize=16M`; la PSRAM no hace falta y queda desactivada. La biblioteca BLE del núcleo usa NimBLE en el S3 y no requiere dependencias externas. Los ejemplos de DFRobot son Arduino, y el equipo de hardware compila y carga sin instalar ESP-IDF. H3 confirma o cambia a ESP-IDF en el primer PR.
+
+```bash
+URL=https://espressif.github.io/arduino-esp32/package_esp32_index.json
+arduino-cli core update-index --additional-urls "$URL"
+arduino-cli core install esp32:esp32@3.3.12 --additional-urls "$URL"
+arduino-cli compile --fqbn esp32:esp32:esp32s3:FlashSize=16M firmware/accesorio
+```
+
+No se usa la biblioteca `DFRobot_mmWave_Radar`: el protocolo son unas pocas órdenes de texto y una trama, y un intérprete propio se prueba en el portátil sin placa.
 
 Estructura propuesta:
 
@@ -86,7 +95,7 @@ firmware/
 
 1. **Arranque.** Genera un identificador de arranque aleatorio. Envía `sensorStop`, `detRangeCfg`, `outputLatency`, `saveCfg` y `sensorStart`, y exige `Done` en cada uno; si alguno falla, salud `4`. Mientras el sensor se estabiliza (al menos 5 s; B1 lo mide), salud `1`. Guardar la configuración en cada arranque escribe la flash del sensor; con decenas de arranques no importa.
 2. **Lectura.** Lee la UART sin bloquear y acepta solo `$JYBSS,0, , , *` y `$JYBSS,1, , , *` completas. Trama parcial o desconocida: salud `3`. Sin trama válida durante 2,5 s: salud `2`. Tras un fallo nunca reutiliza el último resultado.
-3. **Emisión.** Cada 100 ms codifica Medición y notifica, también sin presencia o con fallo, con secuencia, instante y edad del resultado. Información se fija al arrancar.
+3. **Emisión.** Cada 100 ms toma la presencia (del pin GPIO2 si EA-04 adopta la opción 1), codifica Medición y notifica, también sin presencia o con fallo, con secuencia, instante y edad del resultado. Información se fija al arrancar.
 4. **Enlace.** Servicio y UUID de §8.1. Lectura y suscripción solo con enlace cifrado. Alta con el botón BOOT (GPIO0, que puede leerse después del arranque) durante 60 s y clave fija del accesorio, según EA-12. Si la placa solo logra emparejamiento sin protección MITM, se declara ese límite.
 5. **Simulación.** Una opción de compilación genera presencia sintética con el bit 5 activo, para que A2 pruebe el iPhone sin radar. La compilación de feria la deja apagada.
 
@@ -98,7 +107,7 @@ firmware/
 
 | Ensayo | Qué mide y qué decide |
 | --- | --- |
-| B0 eléctrico | Nivel del TX del sensor, consumo, 30 min sin reinicios con BLE activo. Habilita conectar la UART. |
+| B0 eléctrico | Sensor a 3,3 V: responde `Done`, envía tramas y aguanta 30 min sin reinicios con BLE activo. Si falla, medir el TX con el ADC antes de pasar a 5 V. |
 | B1 tramas | 10 min de UART cruda: formato real, frecuencia, tiempo hasta la primera trama al encender y tras `sensorStart`, respuesta al desconectar. |
 | B2 retardo | Persona entra y sale de la ventana sobre marcas en el piso. Retardo del GPIO2 y de la trama con `outputLatency` mínimo, y si el pin cambia antes que la trama. Decide el conflicto de caducidad. |
 | B3 borde de ventana | Ventanas de 1,5 m y 3 m; persona camina hacia el sensor, 30 recorridos por ventana. Distancia real a la que cambia la detección. Es el equivalente medido del sensor de parqueo. |
@@ -124,14 +133,14 @@ El trabajo cabe en los issues existentes; no hace falta abrir otros. Con una sol
 
 ## Pendientes
 
-- Datos de compra de la sección «Decisión de hardware».
-- EA-04: semántica de la ventana y caducidad.
+- EA-04: semántica de la ventana y caducidad (recomendada: opción 1).
 - G1: decisión del 9/11 con B4 y B5.
 - Herramientas: Arduino o ESP-IDF, confirmado por H3 en el primer PR de firmware.
 
 ## Fuentes
 
-- DFRobot, [mmWave Radar Human Presence Detection, SKU SEN0395](https://wiki.dfrobot.com/mmWave_Radar_Human_Presence_Detection_SKU_SEN0395), con sus páginas de referencia y ejemplo Arduino. Sin fecha editorial; consulta 6/11/2026.
+- DFRobot, [mmWave Radar Human Presence Detection, SKU SEN0395](https://wiki.dfrobot.com/mmWave_Radar_Human_Presence_Detection_SKU_SEN0395), con sus páginas de referencia y ejemplos para Arduino UNO y FireBeetle ESP32. Sin fecha editorial; consulta 6/11/2026.
+- Espressif, [Arduino-ESP32: Getting Started](https://docs.espressif.com/projects/arduino-esp32/en/latest/getting_started.html), [Installing](https://docs.espressif.com/projects/arduino-esp32/en/latest/installing.html), [versión 3.3.12](https://github.com/espressif/arduino-esp32/releases/tag/3.3.12) y su `boards.txt`; consulta 6/11/2026.
 - seanconway, [Parking Assist with SEN0395 mmWave Radar](https://community.dfrobot.com/makelog-313340.html), DFRobot Community, 3/7/2023; consulta 6/11/2026.
 - Espressif, [ESP32-S3 Series Datasheet](https://documentation.espressif.com/esp32_s3_datasheet_en.pdf), versión 2.2: pines de arranque GPIO0, 3, 45 y 46; entrada alta máxima VDD + 0,3 V. Consulta 6/11/2026.
 - Espressif, [ESP32-S3-WROOM-1/1U Datasheet](https://documentation.espressif.com/esp32-s3-wroom-1_wroom-1u_datasheet_en.pdf), versión 1.8: USB en IO19/IO20, UART0 en GPIO43/GPIO44 e IO35–IO37 ocupados por la PSRAM octal. Consulta 6/11/2026.

@@ -18,7 +18,7 @@ Base: [plan de ejecución](plan-ejecucion.md) y [confirmaciones y límites](corr
 
 Actualización del 3/11: Nicolás confirmó en conversación los integrantes, compromiso de dedicación, rango presupuestal, responsable de compra y operador de Kiro. Las versiones de Apple siguen sin comprobarse.
 
-Actualización del 6/11: Nicolás confirmó la compra de una placa ESP32-S3-N16R8 y un radar DFRobot SEN0395. Faltan comercio, costo total y cantidades; ver [plan de firmware](plan-firmware.md).
+Actualización del 6/11: Nicolás confirmó la compra de una placa ESP32-S3-N16R8 y un radar DFRobot SEN0395; ver [plan de firmware](plan-firmware.md).
 
 ## Responsables y capacidad
 
