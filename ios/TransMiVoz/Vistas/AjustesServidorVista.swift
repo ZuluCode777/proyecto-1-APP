@@ -27,9 +27,10 @@ struct AjustesServidorVista: View {
                         .frame(minHeight: 44)
                         .accessibilityIdentifier("interruptor-recordar")
                 } header: {
-                    Text("Servidor de transporte")
+                    Text("Servidor de transporte").foregroundStyle(.textoSecundario)
                 } footer: {
                     Text("Solo se aceptan direcciones https://. La clave se envía únicamente a este servidor. Si no activas el Llavero, la clave se olvida al cerrar la app.")
+                        .foregroundStyle(.textoSecundario)
                 }
 
                 Section {
@@ -41,16 +42,19 @@ struct AjustesServidorVista: View {
                         .accessibilityIdentifier("boton-olvidar")
                 }
 
-                Section("Estado") {
+                Section {
                     Text(modelo.resumen).accessibilityIdentifier("resumen-ajustes")
                     if let mensaje = modelo.mensaje {
                         Label(mensaje.texto, systemImage: mensaje.esError ? "exclamationmark.triangle" : "checkmark.circle")
                             .accessibilityIdentifier("mensaje-ajustes")
                     }
+                } header: {
+                    Text("Estado").foregroundStyle(.textoSecundario)
                 }
             }
             .navigationTitle("Servidor")
             .navigationBarTitleDisplayMode(.inline)
+            .bordeInferiorLegible()
             .onChange(of: modelo.mensaje) { _, nuevo in
                 if let nuevo { AccessibilityNotification.Announcement(nuevo.texto).post() }
             }

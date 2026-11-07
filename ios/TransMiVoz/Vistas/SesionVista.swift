@@ -41,12 +41,13 @@ struct SesionVista: View {
 
                     Text("Esta pantalla no necesita internet ni el servidor de transporte.")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.textoSecundario)
                 }
                 .padding(16)
             }
             .navigationTitle("Sesión")
             .navigationBarTitleDisplayMode(.inline)
+            .bordeInferiorLegible()
             .onChange(of: modelo.estado) { _, nuevo in
                 if modelo.activa { AccessibilityNotification.Announcement(TextoEstadoSesion.descripcion(nuevo)).post() }
             }

@@ -11,6 +11,7 @@ struct ConsultaVista: View {
     let avisoModoPruebas: Bool
 
     @AccessibilityFocusState private var foco: ZonaFocoConsulta?
+    @FocusState private var campoEnfocado: Bool
 
     var body: some View {
         NavigationStack {
@@ -20,7 +21,7 @@ struct ConsultaVista: View {
 
                     Text(resumenServidor)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.textoSecundario)
                         .accessibilityIdentifier("resumen-servidor")
 
                     Text("Escribe una pregunta de transporte. El texto se envía al servidor configurado; no se envía tu ubicación.")
@@ -30,19 +31,20 @@ struct ConsultaVista: View {
                         .lineLimit(1...5)
                         .textFieldStyle(.roundedBorder)
                         .frame(minHeight: 44)
+                        .focused($campoEnfocado)
                         .submitLabel(.send)
-                        .onSubmit { modelo.enviar() }
+                        .onSubmit { enviar() }
                         .accessibilityLabel("Pregunta de transporte")
                         .accessibilityHint("Máximo \(EntradaConsulta.maximoCaracteres) caracteres.")
                         .accessibilityIdentifier("campo-pregunta")
 
                     Text("\(modelo.texto.utf16.count) de \(EntradaConsulta.maximoCaracteres) caracteres")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.textoSecundario)
                         .accessibilityIdentifier("contador-caracteres")
 
                     HStack(spacing: 12) {
-                        Button("Enviar") { modelo.enviar() }
+                        Button("Enviar") { enviar() }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.large)
                             .frame(minHeight: 44)
@@ -57,13 +59,14 @@ struct ConsultaVista: View {
                         }
                     }
 
-                    ResultadoConsultaVista(modelo: modelo, foco: $foco)
+                    ResultadoConsultaVista(modelo: modelo, foco: $foco, alReintentar: reintentar)
                 }
                 .padding(16)
             }
             .navigationTitle("Consulta")
             .navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.interactively)
+            .bordeInferiorLegible()
             .onChange(of: modelo.estado) { _, nuevo in
                 anunciar(nuevo)
             }
@@ -71,6 +74,17 @@ struct ConsultaVista: View {
         // `TabView` conserva el modelo al cambiar de pestaña: una consulta lenta no
         // debe terminar fuera de pantalla (arquitectura §7). Solo cancela la vigente.
         .onDisappear { modelo.cancelar() }
+    }
+
+    /// Cierra el teclado antes de enviar: si no, tapa el resultado y la barra de pestañas.
+    private func enviar() {
+        campoEnfocado = false
+        modelo.enviar()
+    }
+
+    private func reintentar() {
+        campoEnfocado = false
+        modelo.reintentar()
     }
 
     /// Un anuncio por cambio de estado; el foco pasa al resultado una sola vez.
@@ -91,6 +105,7 @@ struct ConsultaVista: View {
 private struct ResultadoConsultaVista: View {
     let modelo: ConsultaModelo
     var foco: AccessibilityFocusState<ZonaFocoConsulta?>.Binding
+    let alReintentar: () -> Void
 
     var body: some View {
         switch modelo.estado {
@@ -108,9 +123,9 @@ private struct ResultadoConsultaVista: View {
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityFocused(foco, equals: .resultado)
                 Text(error.mensaje).accessibilityIdentifier("mensaje-error")
-                Text(error.recuperacion).foregroundStyle(.secondary)
+                Text(error.recuperacion).foregroundStyle(.textoSecundario)
                 if error.admiteReintento && modelo.ultimoTextoEnviado != nil {
-                    Button("Reintentar") { modelo.reintentar() }
+                    Button("Reintentar") { alReintentar() }
                         .buttonStyle(.bordered)
                         .controlSize(.large)
                         .frame(minHeight: 44)
@@ -125,7 +140,7 @@ private struct ResultadoConsultaVista: View {
                     .accessibilityFocused(foco, equals: .resultado)
                 Text("No se mostrará ninguna respuesta de esa pregunta.")
                 if modelo.ultimoTextoEnviado != nil {
-                    Button("Reintentar") { modelo.reintentar() }
+                    Button("Reintentar") { alReintentar() }
                         .buttonStyle(.bordered)
                         .controlSize(.large)
                         .frame(minHeight: 44)
@@ -169,9 +184,8 @@ private struct RespuestaVista: View {
             }
             Text("Interpretada con: \(respuesta.motor.rawValue)")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.textoSecundario)
         }
-        .accessibilityIdentifier("bloque-respuesta")
     }
 
     private var esViaje: Bool {
@@ -183,8 +197,8 @@ private struct RespuestaVista: View {
         switch respuesta.accion {
         case .busqueda(let estacion): Text("Estación: \(estacion)")
         case .ruta(let codigo): Text("Ruta: \(codigo)")
-        case .gps: Text("El servidor sugiere usar la ubicación. Esta versión no la implementa.").foregroundStyle(.secondary)
-        case .frecuentes: Text("El servidor sugiere los favoritos. Esta versión no los implementa.").foregroundStyle(.secondary)
+        case .gps: Text("El servidor sugiere usar la ubicación. Esta versión no la implementa.").foregroundStyle(.textoSecundario)
+        case .frecuentes: Text("El servidor sugiere los favoritos. Esta versión no los implementa.").foregroundStyle(.textoSecundario)
         case .ninguna, .viaje: EmptyView()
         }
     }

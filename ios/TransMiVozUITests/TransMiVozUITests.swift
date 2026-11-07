@@ -1,5 +1,29 @@
 import XCTest
 
+/// Auditoría real de accesibilidad (todos los tipos, sin excluir ninguno). Reúne TODOS los
+/// problemas y los adjunta como texto + captura antes de fallar, para que el resultado
+/// diga qué elemento falló (en Xcode, sin handler, solo se ve el primero y sin elemento).
+/// No ignora nada: si hay un problema, la prueba falla.
+private func auditar(_ app: XCUIApplication, _ contexto: String, testCase: XCTestCase, file: StaticString = #filePath, line: UInt = #line) throws {
+    var problemas: [String] = []
+    try app.performAccessibilityAudit { problema in
+        let elemento = problema.element
+        problemas.append("[\(problema.auditType)] \(problema.compactDescription) | \(problema.detailedDescription) | "
+            + "id=«\(elemento?.identifier ?? "?")» etiqueta=«\(elemento?.label ?? "?")» marco=\(elemento.map { "\($0.frame)" } ?? "?")")
+        return true  // solo para seguir reuniendo; abajo se falla con todos
+    }
+    guard !problemas.isEmpty else { return }
+    let texto = XCTAttachment(string: problemas.joined(separator: "\n"))
+    texto.name = "auditoria-\(contexto)-problemas"
+    texto.lifetime = .keepAlways
+    testCase.add(texto)
+    let captura = XCTAttachment(screenshot: app.screenshot())
+    captura.name = "auditoria-\(contexto)-pantalla"
+    captura.lifetime = .keepAlways
+    testCase.add(captura)
+    XCTFail("Auditoría de accesibilidad (\(contexto)): \(problemas.count) problema(s):\n" + problemas.joined(separator: "\n"), file: file, line: line)
+}
+
 /// Recorridos de interfaz en el Simulator, SIN red ni servidor: la app se lanza
 /// con `-PRUEBAS_UI_SIMULADAS` (solo existe en compilaciones de depuración) y
 /// responde con un cliente simulado. Demuestran el comportamiento de la
@@ -33,8 +57,9 @@ final class TransMiVozUITests: XCTestCase {
         XCTAssertTrue(campo.waitForExistence(timeout: 10))
         campo.tap()
         campo.typeText(texto)
-        let enviar = elemento("boton-enviar")
-        enviar.tap()
+        elemento("boton-enviar").tap()
+        // Enviar cierra el teclado: si no, tapa el resultado y la barra de pestañas.
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "El teclado debe cerrarse al enviar")
     }
 
     private func esperarTexto(_ etiqueta: String, timeout: TimeInterval = 10, file: StaticString = #filePath, line: UInt = #line) {
@@ -94,6 +119,7 @@ final class TransMiVozUITests: XCTestCase {
         esperarTexto("No hay conexión con el servidor.")
         XCTAssertTrue(elemento("boton-reintentar").exists)
         abrirPestana("Sesión")
+        XCTAssertTrue(elemento("boton-sesion").waitForExistence(timeout: 10), "la pestaña Sesión no se abrió")
         XCTAssertTrue(elemento("boton-sesion").isHittable)
     }
 
@@ -148,25 +174,25 @@ final class TransMiVozUITests: XCTestCase {
     func testAuditoriaAccesibilidadSesion() throws {
         abrirPestana("Sesión")
         XCTAssertTrue(elemento("boton-sesion").waitForExistence(timeout: 10))
-        try app.performAccessibilityAudit()
+        try auditar(app, "sesion", testCase: self)
     }
 
     func testAuditoriaAccesibilidadConsultaConRespuesta() throws {
         preguntar("hola")
         esperarTexto("[SIMULADO] Respuesta de prueba para: hola")
-        try app.performAccessibilityAudit()
+        try auditar(app, "consulta-respuesta", testCase: self)
     }
 
     func testAuditoriaAccesibilidadConsultaConError() throws {
         preguntar("error429")
         esperarTexto("Demasiadas peticiones seguidas (429). Espera 3 s antes de reintentar.")
-        try app.performAccessibilityAudit()
+        try auditar(app, "consulta-error", testCase: self)
     }
 
     func testAuditoriaAccesibilidadServidor() throws {
         abrirPestana("Servidor")
         XCTAssertTrue(elemento("campo-origen").waitForExistence(timeout: 10))
-        try app.performAccessibilityAudit()
+        try auditar(app, "servidor", testCase: self)
     }
 }
 
@@ -184,7 +210,7 @@ final class TransMiVozTextoGrandeUITests: XCTestCase {
             let pestana = app.tabBars.buttons[nombre]
             XCTAssertTrue(pestana.waitForExistence(timeout: 10))
             pestana.tap()
-            try app.performAccessibilityAudit()
+            try auditar(app, "texto-muy-grande-\(nombre)", testCase: self)
         }
     }
 }
