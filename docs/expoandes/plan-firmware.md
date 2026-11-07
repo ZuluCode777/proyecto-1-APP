@@ -37,7 +37,11 @@ Hay una diferencia con nuestro uso. En el garaje el sensor está fijo y el blanc
 
 ## Consecuencias para metas y contrato
 
-**Metas físicas.** G2 (objetivos móviles) se ensaya como presencia dentro de una ventana, no como distancia. G1 (obstáculos estáticos) queda **pendiente** hasta B4 y B5. Si ambos fallan, G1 se registra como fallida con este sensor y el equipo decide si agrega el sensor óptico de [compras](compras-bogota.md) (VL53L1X, hasta 4 m). Eso exige aprobar un diseño multimodal y presupuesto, y no se presenta como detección por mmWave. El 6/11 [Electronilab](https://electronilab.co/tienda/vl53l1x-sensor-de-distancia-tiempo-de-vuelo-30mm-a-4000mm/) (Bogotá) mostraba el VL53L1X a $31.900 con «Últimas 2 uds»; Sigma no lo lista.
+**Metas físicas.** G2 (objetivos móviles) se ensaya como presencia dentro de una ventana, no como distancia. G1 (obstáculos estáticos) queda **pendiente** hasta B4 y B5.
+
+Mantener G1 con el SEN0395 significa, en el mejor caso, que B5 muestra que caminar hacia una pared o un poste activa «algo a menos de X m» con pocas falsas alarmas del suelo. G1 pasa entonces a ser un aviso de cercanía mientras se camina. Ni en ese caso entrega el sensor un número de distancia, una dirección ni la detección de una pared con la persona quieta.
+
+Si B4 y B5 fallan, G1 se registra en la feria como no lograda con este sensor; la [rúbrica](lectura-rubrica.md) no exige radar. El equipo decide entonces si agrega el sensor óptico de [compras](compras-bogota.md) (VL53L1X, hasta 4 m). Eso exige aprobar un diseño multimodal y presupuesto, y no se presenta como detección por mmWave. El 6/11 [Electronilab](https://electronilab.co/tienda/vl53l1x-sensor-de-distancia-tiempo-de-vuelo-30mm-a-4000mm/) (Bogotá) mostraba el VL53L1X a $31.900 con «Últimas 2 uds» y entrega el mismo día en Bogotá; Sigma no lo lista, y Mercado Libre y Vistronica no pudieron consultarse. Con dos unidades en existencia, si el equipo quiere ese respaldo conviene comprarlo antes de la decisión del 9/11.
 
 **Contrato BLE v1.0** ([§8 del informe](investigacion-hardware-ios.md#8-contrato-ble-propuesto-versión-10)). El SEN0395 cabe en los 20 bytes sin cambiar su distribución:
 
