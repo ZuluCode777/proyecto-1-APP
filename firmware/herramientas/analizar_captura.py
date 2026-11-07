@@ -83,7 +83,7 @@ def analizar(filas):
     out = []
     duracion = (filas[-1][0] - filas[0][0]) / 1000
     if duracion > 0:
-        out.append(f"filas: {len(filas)} en {duracion:.1f} s ({len(filas) / duracion:.2f} por segundo)")
+        out.append(f"filas: {len(filas)} en {duracion:.1f} s ({(len(filas) - 1) / duracion:.2f} por segundo)")
     else:
         out.append(f"filas: {len(filas)} en 0.0 s (frecuencia no calculable: mismo t_host_ms)")
 
@@ -183,7 +183,8 @@ def autoprueba():
         raise AssertionError("analizar debía rechazar un retroceso")
     # Captura válida: frecuencia calculada.
     valida = [(i * 100.0, decodificar(trama(i, 1000 + i * 100))) for i in range(5)]
-    assert "5 en 0.4 s (12.50 por segundo)" in "\n".join(analizar(valida))
+    assert "5 en 0.4 s (10.00 por segundo)" in "\n".join(analizar(valida))
+    assert "2 en 0.1 s (10.00 por segundo)" in "\n".join(analizar(valida[:2]))
     print("autoprueba: ok")
 
 
