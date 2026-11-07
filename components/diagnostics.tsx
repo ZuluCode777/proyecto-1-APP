@@ -120,6 +120,19 @@ const CHECKS: Check[] = [
         throw new Error("La guardia aceptó un viaje forjado con paradas no verificadas (H72/Calle 127).")
       }
 
+      // Metro (EA-13): una estación se explica como proyecto sin servicio y una
+      // petición de viaje real por Metro se rechaza; ninguna abre pantallas ni
+      // da órdenes de abordaje.
+      const estacionMetro = await ask("estación E3 del metro")
+      if (estacionMetro.action !== "none" || !/Ciudad Kennedy/.test(estacionMetro.reply) || !/sin servicio comercial/.test(estacionMetro.reply)) {
+        throw new Error(`La consulta de una estación del Metro debe informar sin navegar: «${estacionMetro.reply}»`)
+      }
+      const viajeMetro = await ask("cómo llego en metro a Calle 72")
+      if (viajeMetro.action !== "none" || !/No puedo planear viajes en Metro/.test(viajeMetro.reply)) {
+        throw new Error(`Un viaje real por Metro debe explicar que no está disponible: «${viajeMetro.reply}»`)
+      }
+      validarContenido(viajeMetro, "viaje por Metro")
+
       // El estado del motor se reporta según la SALUD del servidor (GET), no
       // según `incierto.engine`, para no dar avisos falsos (EA-08, decisión C).
       // La lógica vive en `lib/estado-motor.ts` para poder probarla.

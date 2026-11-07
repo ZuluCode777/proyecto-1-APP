@@ -1,6 +1,6 @@
 "use client"
 
-import { Bot, Bus, ChevronRight, Map, PhoneCall, ScanText, Zap } from "lucide-react"
+import { Bot, Bus, ChevronRight, Map, PhoneCall, ScanText, TrainFront, Zap } from "lucide-react"
 
 type PartialHomeProps = {
   fluor: boolean
@@ -9,6 +9,7 @@ type PartialHomeProps = {
   onRoutes: () => void
   onVision: () => void
   onGps: () => void
+  onMetro: () => void
   onAssistance: () => void
 }
 
@@ -16,12 +17,13 @@ type PartialHomeProps = {
  * Inicio del modo baja visión: pocas opciones, grandes, con alto contraste.
  * Cada opción ocupa el ancho completo y al menos 72 px de alto.
  */
-export function PartialHome({ fluor, onToggleFluor, onAgent, onRoutes, onVision, onGps, onAssistance }: PartialHomeProps) {
+export function PartialHome({ fluor, onToggleFluor, onAgent, onRoutes, onVision, onGps, onMetro, onAssistance }: PartialHomeProps) {
   const actions = [
     // Un color distinto por botón, sin repetir el de la cabecera.
     { key: "asistente", label: "Asistente", hint: "Pregunta cómo llegar", icon: Bot, onClick: onAgent, fill: "bg-fill-agent", emergency: false },
     { key: "rutas", label: "Rutas", hint: "Buscar y frecuentes", icon: Bus, onClick: onRoutes, fill: "bg-fill-routes", emergency: false },
     { key: "gps", label: "Mapa y GPS", hint: "Estaciones cercanas", icon: Map, onClick: onGps, fill: "bg-fill-map", emergency: false },
+    { key: "metro", label: "Metro de Bogotá", hint: "En construcción, sin servicio", icon: TrainFront, onClick: onMetro, fill: "bg-brand-soft", emergency: false },
     { key: "vision", label: "Lupa", hint: "Ampliar letreros", icon: ScanText, onClick: onVision, fill: "bg-fill-lens", emergency: false },
     // Emergencia va siempre al final, con el contorno más grueso.
     { key: "asistencia", label: "Emergencia", hint: "Llamar al 123", icon: PhoneCall, onClick: onAssistance, fill: "bg-sos", emergency: true },
