@@ -1,0 +1,19 @@
+name: Comprobar entorno macOS
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  herramientas:
+    runs-on: macos-26
+    steps:
+      - name: Mostrar versión de Xcode
+        run: xcodebuild -version
+
+      - name: Mostrar simuladores disponibles
+        run: xcrun simctl list devices available
