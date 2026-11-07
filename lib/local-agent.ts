@@ -247,12 +247,14 @@ export function parseIntent(text: string, data: TransmilenioData): Intent {
   if (!t) return { type: "unknown" }
 
   if (hasPhrase(t, CANCEL)) return { type: "cancel" }
-  if (hasPhrase(t, HELP)) return { type: "help" }
-  // El Metro se decide ANTES que tarifas, rutas, lugares y GPS: con contexto
-  // explícito de Metro, una petición de viaje, tarifa u horario no puede caer a
-  // los buses ni a la navegación de TransMilenio (EA-13, #39).
+  // El Metro se decide ANTES que la ayuda, tarifas, rutas, lugares y GPS: con
+  // contexto explícito de Metro, una petición de viaje, tarifa u horario no puede
+  // caer a los buses ni a la navegación de TransMilenio, y «ayuda» o «cómo
+  // funciona» dentro de una frase de Metro no la convierte en la ayuda genérica.
+  // «Cancela el metro» ya salió arriba (EA-13, #39).
   const metro = interpretarMetro(text)
   if (metro) return { type: "metro", consulta: metro }
+  if (hasPhrase(t, HELP)) return { type: "help" }
   if (hasPhrase(t, FARE)) return { type: "unsupported", topic: "tarifas" }
 
   const route = findRouteByCode(text, data)

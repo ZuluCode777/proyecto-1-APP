@@ -43,12 +43,38 @@ function texto(el: unknown): string {
   return el && typeof el === "object" ? texto((el as Elemento).props?.children) : ""
 }
 
-test("MetroList: 16 estaciones sin mapa, estado visible, fuentes con enlace y la misma voz que el texto", () => {
+/**
+ * Dobles de React y de voz con ciclo de vida: `useEffect` corre al montar y guarda
+ * su limpieza; `esUltimaLocucion` compara la identidad con la última locución
+ * entregada, como el singleton real de `use-speech`.
+ */
+function dobleCiclo() {
   const voz: string[] = []
-  const { MetroList } = compilar("components/metro-list.tsx", {
-    react: { useEffect: (f: () => void) => f() },
-    "@/hooks/use-speech": { useSpeech: () => ({ speak: (t: string) => voz.push(t) }) },
-  })
+  const limpiezas: Array<() => void> = []
+  const estado = { cancelaciones: 0, ultima: undefined as object | undefined }
+  const hablar = (t: string) => {
+    voz.push(t)
+    estado.ultima = { texto: t }
+    return estado.ultima
+  }
+  return {
+    voz,
+    estado,
+    hablar,
+    desmontar: () => limpiezas.forEach((f) => f()),
+    dobles: {
+      react: { useEffect: (f: () => void | (() => void)) => { const l = f(); if (typeof l === "function") limpiezas.push(l) } },
+      "@/hooks/use-speech": {
+        useSpeech: () => ({ speak: hablar, cancel: () => estado.cancelaciones++ }),
+        esUltimaLocucion: (l: object | undefined) => l !== undefined && estado.ultima === l,
+      },
+    },
+  }
+}
+
+test("MetroList: 16 estaciones sin mapa, estado visible, fuentes con enlace y la misma voz que el texto", () => {
+  const { voz, dobles } = dobleCiclo()
+  const { MetroList } = compilar("components/metro-list.tsx", dobles)
   const arbol = MetroList({ onBack() {} })
   const visible = texto(arbol)
 
@@ -57,6 +83,8 @@ test("MetroList: 16 estaciones sin mapa, estado visible, fuentes con enlace y la
   assert.match(visible, /E07 · nombre pendiente/)
   assert.ok(visible.includes(metro.TEXTO_LINEA_1), "estado de la Línea 1 visible")
   assert.match(visible, /11 estaciones proyectadas/)
+  assert.match(visible, /No tengo ubicación exacta ni accesos validados/)
+  assert.doesNotMatch(visible, /accesos publicados/)
 
   const enlaces = nodos(arbol, (n) => n.type === "a").map((n) => n.props.href)
   assert.deepEqual(enlaces, Object.values(metro.FUENTES_METRO).map((f) => f.url), "todas las fuentes enlazadas")
@@ -65,6 +93,24 @@ test("MetroList: 16 estaciones sin mapa, estado visible, fuentes con enlace y la
 
   assert.equal(voz.length, 1)
   assert.ok(voz[0].startsWith(metro.TEXTO_LINEA_1) && visible.includes(metro.TEXTO_LINEA_1), "voz y texto dicen el mismo estado")
+})
+
+test("MetroList: al salir antes de terminar corta su propia locución", () => {
+  const c = dobleCiclo()
+  const { MetroList } = compilar("components/metro-list.tsx", c.dobles)
+  MetroList({ onBack() {} })
+  assert.equal(c.estado.cancelaciones, 0, "no corta al montar")
+  c.desmontar()
+  assert.equal(c.estado.cancelaciones, 1, "la locución larga no sigue sonando fuera de la pantalla")
+})
+
+test("MetroList: al salir no corta una locución más nueva del padre", () => {
+  const c = dobleCiclo()
+  const { MetroList } = compilar("components/metro-list.tsx", c.dobles)
+  MetroList({ onBack() {} })
+  c.hablar("Modo baja visión") // anuncio posterior del padre al cambiar de modo
+  c.desmontar()
+  assert.equal(c.estado.cancelaciones, 0, "la voz del padre sigue")
 })
 
 test("PartialHome ofrece el Metro como opción descubrible y la activa", () => {

@@ -399,6 +399,8 @@ export type TemaServicioMetro = "viaje" | "tarifa" | "horario" | "tiempo_real"
 export type ConsultaMetro =
   | { tipo: "estacion"; clave: string }
   | { tipo: "estacion_inexistente"; numero: number }
+  /** El número y el nombre dichos apuntan a estaciones distintas (o el número no existe). */
+  | { tipo: "estacion_contradictoria"; numero: number; clave: string }
   | { tipo: "linea"; linea: 1 | 2 }
   | { tipo: "listado" }
   | { tipo: "general" }
@@ -489,7 +491,12 @@ export function interpretarMetro(texto: string): ConsultaMetro | null {
   if (frase(t, HORARIO)) return { tipo: "servicio", tema: "horario" }
   if (frase(t, VIAJE) || DE_A_DESTINO.test(t) || nombradas.length >= 2) return { tipo: "servicio", tema: "viaje" }
 
-  if (nombradas.length === 1) return { tipo: "estacion", clave: nombradas[0].estacion.clave }
+  if (nombradas.length === 1) {
+    const { estacion } = nombradas[0]
+    // Un número que no coincide con el nombre no se descarta en silencio: se pide aclarar.
+    if (numero && Number(numero[1]) !== estacion.numero) return { tipo: "estacion_contradictoria", numero: Number(numero[1]), clave: estacion.clave }
+    return { tipo: "estacion", clave: estacion.clave }
+  }
   if (numero) {
     const n = Number(numero[1])
     const encontrada = ESTACIONES_METRO_L1.find((e) => e.numero === n)
@@ -529,6 +536,13 @@ export function responderMetro(consulta: ConsultaMetro): RespuestaMetro {
         reply: `La Línea 1 del Metro tiene 16 estaciones, de E01 a E16; no tengo una estación ${consulta.numero} en el catálogo. La Línea 2 no tiene lista de estaciones. ${TEXTO_FUENTE}`,
         steps: [base],
       }
+    case "estacion_contradictoria": {
+      const e = ESTACIONES_METRO_L1.find((x) => x.clave === consulta.clave)!
+      return {
+        reply: `Mencionaste la estación ${consulta.numero} y también ${e.nombre ?? e.aliasSig}, que es la ${e.idOficial}. No coinciden y no sé cuál quieres. Pregunta por una sola: por número, de E01 a E16, o por nombre. ${TEXTO_FUENTE}`,
+        steps: [base],
+      }
+    }
     case "listado":
       return { reply: describirListado(), steps: [base, ...pasosFuentes(["F5", "F10", "F6", "F13"])] }
     case "servicio":

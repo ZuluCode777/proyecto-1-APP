@@ -12,7 +12,9 @@ la fija `METRO_CORTE` en `lib/metro.ts`.
   público, alias SIG, corredor, fuentes y conexión futura), la ficha de la Línea 2 (11
   estaciones proyectadas, sin lista) y las fuentes con enlace y fecha.
 - `lib/local-agent.ts`: intención `metro`. Se decide antes que tarifas, rutas, lugares
-  y GPS, y solo con contexto explícito (`metro`, `PLMB`, `línea 1/2`). La respuesta usa
+  y GPS, y solo con contexto explícito (`metro`, `PLMB`, `línea 1/2`). Va después de
+  cancelar y antes de la ayuda genérica: «cómo funciona la línea 2 del metro» y «ayuda
+  para ir de Central a Calle 72 en metro» se responden como Metro; «ayuda» sola no cambia. La respuesta usa
   la acción `none` y los pasos existentes, así que el contrato HTTP del cliente iOS
   (`none/frequent/gps/search/route/trip`) no cambia.
 - `components/metro-list.tsx`: listado accesible sin mapa (acordeones con teclado),
@@ -27,6 +29,10 @@ la fija `METRO_CORTE` en `lib/metro.ts`.
   ni en el GPS. «Calle 72» sin contexto de Metro sigue siendo la estación de TransMilenio.
 - Una petición de viaje, tarifa, horario o tiempo real con contexto de Metro explica
   que no hay servicio comercial; no navega ni da órdenes de abordaje.
+- Si una frase da un número y un nombre de estación que no coinciden («estación E3
+  Calle 72 del metro»), o un número que no existe junto a un nombre, el asistente pide
+  aclarar con la acción `none`; no elige una de las dos en silencio.
+- Al salir del listado se corta solo su propia locución; una voz posterior del padre sigue.
 - Las fechas son previsiones: ningún estado cambia al llegar marzo de 2028.
 - Las 8 conexiones directas, E06/E07 por verificar y la discrepancia de E13 (2019 contra
   2026) se describen con su evidencia; ninguna se habilita para transbordo y la

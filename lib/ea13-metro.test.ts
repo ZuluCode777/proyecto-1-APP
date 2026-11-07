@@ -196,3 +196,48 @@ test("comportamiento normal de TransMilenio, cancelar y tarifas de buses se cons
   assert.equal(parseIntent("cancela el metro", data).type, "cancel")
   assert.match(responder("ayuda").reply, /Metro de Bogotá/)
 })
+
+test("«ayuda» o «cómo funciona» dentro de una frase de Metro no cae a la ayuda genérica", () => {
+  const linea2 = parseIntent("cómo funciona la línea 2 del metro", data)
+  assert.deepEqual(linea2, { type: "metro", consulta: { tipo: "linea", linea: 2 } })
+  const reply = responder("cómo funciona la línea 2 del metro")
+  assert.match(reply.reply, /contratación y precalificación/)
+  assert.match(reply.reply, /11 estaciones/)
+  assert.ok(reply.steps.some((s) => s.label.startsWith("Fuente ")))
+
+  for (const frase of ["ayuda para ir de Central a Calle 72 en metro", "ayuda, viaje en metro y transmilenio de Portal Américas a Central"]) {
+    assert.equal(parseIntent(frase, data).type, "metro", frase)
+    const viaje = responder(frase)
+    assert.equal(viaje.action, "none", frase)
+    assert.match(viaje.reply, /No puedo planear viajes en Metro/, frase)
+  }
+  // Sin contexto de Metro, la ayuda genérica y cancelar no cambian.
+  assert.equal(parseIntent("ayuda", data).type, "help")
+  assert.equal(parseIntent("cómo funciona", data).type, "help")
+  assert.equal(parseIntent("cancela el metro", data).type, "cancel")
+})
+
+test("número y nombre de estación que no coinciden piden aclarar en vez de elegir uno en silencio", () => {
+  const e16 = "metro-bogota:l1:e16"
+  const e03 = "metro-bogota:l1:e03"
+  const contradictorias: [string, number, string][] = [
+    ["estación E3 Calle 72 del metro", 3, e16],
+    ["metro estación 3, no Calle 72", 3, e16],
+    ["estación E17 Ciudad Kennedy del metro", 17, e03],
+  ]
+  for (const [frase, numero, clave] of contradictorias) {
+    assert.deepEqual(interpretarMetro(frase), { tipo: "estacion_contradictoria", numero, clave }, frase)
+    const respuesta = responder(frase)
+    assert.equal(respuesta.action, "none", frase)
+    assert.match(respuesta.reply, /No coinciden/, frase)
+    assert.ok(respuestaSinImperativos(respuesta), frase)
+    assert.deepEqual(AgentReplySchema.parse(respuesta), respuesta, frase)
+  }
+  // Identificadores coherentes, o uno solo, siguen resolviendo la estación.
+  assert.deepEqual(interpretarMetro("estación E16 Calle 72 del metro"), { tipo: "estacion", clave: e16 })
+  assert.deepEqual(interpretarMetro("metro estación 3 Ciudad Kennedy"), { tipo: "estacion", clave: e03 })
+  assert.deepEqual(interpretarMetro("estación Ciudad Kennedy del metro"), { tipo: "estacion", clave: e03 })
+  assert.deepEqual(interpretarMetro("estación E17 del metro"), { tipo: "estacion_inexistente", numero: 17 })
+  // Una petición de viaje con dos estaciones sigue siendo un rechazo de servicio.
+  assert.deepEqual(interpretarMetro("de E3 a Calle 72 en metro"), { tipo: "servicio", tema: "viaje" })
+})

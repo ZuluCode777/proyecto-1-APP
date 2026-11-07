@@ -3,7 +3,7 @@
 import { useEffect } from "react"
 import { ExternalLink, Info, TrainFront } from "lucide-react"
 import { ScreenHeader } from "@/components/screen-header"
-import { useSpeech } from "@/hooks/use-speech"
+import { esUltimaLocucion, useSpeech } from "@/hooks/use-speech"
 import {
   ATRIBUCION_METRO,
   ESTACIONES_METRO_L1,
@@ -29,12 +29,17 @@ type MetroListProps = {
  * planificador de TransMilenio.
  */
 export function MetroList({ onBack }: MetroListProps) {
-  const { speak } = useSpeech()
+  const { speak, cancel } = useSpeech()
 
-  // Dice el estado una vez al entrar, con las mismas palabras que la pantalla.
+  // Dice el estado una vez al entrar, con las mismas palabras que la pantalla. Al
+  // salir corta SOLO su propia locución: si el padre habló después (p. ej. el
+  // anuncio de cambio de modo), esa voz no es suya y no se toca.
   useEffect(() => {
-    speak(`${TEXTO_LINEA_1} ${TEXTO_LIMITES}`, { queue: true })
-  }, [speak])
+    const locucion = speak(`${TEXTO_LINEA_1} ${TEXTO_LIMITES}`, { queue: true })
+    return () => {
+      if (esUltimaLocucion(locucion)) cancel()
+    }
+  }, [speak, cancel])
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4" aria-label="Metro de Bogotá">
@@ -67,7 +72,7 @@ export function MetroList({ onBack }: MetroListProps) {
                 <p>{describirNombre(estacion)}</p>
                 <p>Nombre técnico de referencia: {estacion.aliasSig} (archivo de 2022).</p>
                 <p>{describirConexion(estacion)}</p>
-                <p>Sin ubicación exacta ni accesos publicados.</p>
+                <p>No tengo ubicación exacta ni accesos validados.</p>
                 <p className="text-muted-foreground">
                   Fuentes: {estacion.fuentes.filter((id, i, ids) => ids.indexOf(id) === i).join(", ")}
                 </p>
