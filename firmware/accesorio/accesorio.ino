@@ -222,12 +222,45 @@ std::atomic<bool> g_borrar_pedido{false};
 
 // Se ejecutan en el hilo del host. El indicador se baja AL EMPEZAR: una petición
 // que llegue durante la ejecución encola otra, y las repetidas se funden en una.
+void anunciar();
+
+// La sesión se consulta y se actúa sobre ella en el mismo hilo que reutiliza sus manejadores.
 void evento_notificar(ble_npl_event*) {
   g_notificar_pedido.store(false);
   {
     Cerrojo c;
     // La configuración SMP la modifica su propio hilo; el loop solo cambia la ventana.
     ble_hs_cfg.sm_oob_data_flag = g_puerta.vetar_negociacion(millis());
+  }
+  bool conectada;
+  bool cortar_sesion;
+  uint16_t conexion = 0;
+  uint16_t id_sesion;
+  {
+    Cerrojo c;
+    conectada = g_puerta.sesion().conectada();
+    id_sesion = g_puerta.sesion().id_conexion();
+    cortar_sesion = g_puerta.gracia_vencida(millis(), &conexion);
+  }
+  if (cortar_sesion) {
+    Serial.println("BLE: enlace sin proteger pasado el plazo; se corta");
+    cortar(conexion);
+  }
+  if (conectada) {
+    ble_gap_conn_desc d;
+    if (ble_gap_conn_find(id_sesion, &d) != 0) {
+      Cerrojo c;
+      g_puerta.al_desconectar(id_sesion);
+      conectada = false;
+    }
+  }
+  if (!conectada) {
+    const uint32_t ahora = millis();
+    if (ahora - g_ultimo_anuncio_ms >= kPeriodoAnuncioMs) {
+      g_ultimo_anuncio_ms = ahora;
+      anunciar();
+    }
+    return;
   }
   g_puerta.atender_notificacion(g_stack);
 }
@@ -389,8 +422,6 @@ int escribir_vinculo(int tipo, const union ble_store_value* valor) {
 }
 
 // --- Eventos GAP (hilo del stack) ------------------------------------------------------------
-
-void anunciar();
 
 int evento_gap(ble_gap_event* ev, void*) {
   switch (ev->type) {
@@ -592,10 +623,6 @@ bool iniciar_ble() {
 void ciclo_ble() {
   enlace::AccionBoton boton = enlace::AccionBoton::Ninguna;
   enlace::Transicion transicion = enlace::Transicion::SinCambio;
-  bool conectada = false;
-  bool cortar_sesion = false;
-  uint16_t conexion = 0;
-  uint16_t id_sesion = 0;
   {
     Cerrojo c;
     const uint32_t ahora = millis();
@@ -611,12 +638,6 @@ void ciclo_ble() {
       g_puerta.revocar_sesion();
     }
     transicion = g_puerta.actualizar_ventana(ahora);
-    conectada = g_puerta.sesion().conectada();
-    id_sesion = g_puerta.sesion().id_conexion();
-    if (!cortar_sesion && g_puerta.gracia_vencida(ahora, &conexion)) {
-      Serial.println("BLE: enlace sin proteger pasado el plazo; se corta");
-      cortar_sesion = true;
-    }
   }
 
   if (boton == enlace::AccionBoton::AbrirAlta) Serial.println("Alta: ventana abierta 60 s");
@@ -627,29 +648,6 @@ void ciclo_ble() {
   }
   // También sin conexión: abrir o cerrar la ventana actualiza SMP en el hilo del host.
   pedir_en_el_host(&g_evento_notificar, g_notificar_pedido);
-  if (cortar_sesion) cortar(conexion);
-
-  if (conectada) {
-    // Si el stack ya no conoce la conexión (se perdió su evento de desconexión), la
-    // sesión se cierra: si no, el siguiente cliente se rechazaría como «segundo».
-    ble_gap_conn_desc d;
-    if (ble_gap_conn_find(id_sesion, &d) != 0) {
-      Cerrojo c;
-      g_puerta.al_desconectar(id_sesion);
-      conectada = false;
-    }
-  }
-  if (!conectada) {
-    // Un solo cliente a la vez: se anuncia solo sin conexión.
-    const uint32_t ahora = millis();
-    if (ahora - g_ultimo_anuncio_ms >= kPeriodoAnuncioMs) {
-      g_ultimo_anuncio_ms = ahora;
-      anunciar();
-    }
-    return;
-  }
-
-  // La notificación ya está pedida: el host consulta enlace, sesión y ritmo al ejecutarla.
 }
 
 void imprimir_estado(uint32_t ahora) {
