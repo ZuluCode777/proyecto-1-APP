@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { AppHeader } from "@/components/app-header"
 import { Assistance } from "@/components/assistance"
 import { AuditoryGps } from "@/components/auditory-gps"
+import { MetroList } from "@/components/metro-list"
 import { ModeMenu } from "@/components/mode-menu"
 import { PartialHome } from "@/components/partial-home"
 import { PartialRoutes } from "@/components/partial-routes"
@@ -33,6 +34,7 @@ type Screen =
   | "asistencia"
   | "vision"
   | "gps"
+  | "metro"
 
 const STORAGE_KEY = "transmivoz-mode"
 const FLUOR_KEY = "transmivoz-fluor"
@@ -241,6 +243,7 @@ export function TransMiVozApp() {
             go("gps")
             speak("Mapa y GPS. Activa tu ubicación para ver las estaciones cercanas.")
           }}
+          onMetro={() => go("metro")}
           onAssistance={() => go("asistencia")}
         />
       )}
@@ -321,6 +324,8 @@ export function TransMiVozApp() {
       {screen === "asistencia" && <Assistance onBack={back} />}
 
       {screen === "vision" && <VisionAssist onBack={back} />}
+
+      {screen === "metro" && <MetroList onBack={back} />}
 
       {screen === "gps" && (data ? <AuditoryGps data={data} onBack={back} /> : loading)}
 

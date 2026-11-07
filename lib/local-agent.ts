@@ -19,6 +19,7 @@ import {
   type TransmilenioData,
   type TripPlan,
 } from "@/lib/routes"
+import { interpretarMetro, responderMetro, type ConsultaMetro } from "@/lib/metro"
 import { normalize } from "@/lib/text"
 import { procedenciaCatalogo } from "@/lib/transmilenio"
 
@@ -45,6 +46,8 @@ export type Intent =
   | { type: "trip"; origin?: string; destination: string }
   | { type: "trip_missing_destination"; origin: string }
   | { type: "unsupported"; topic: "tarifas" | "tiempo_real" }
+  /** Consulta informativa del Metro futuro (EA-13): nunca viaje, GPS ni abordaje. */
+  | { type: "metro"; consulta: ConsultaMetro }
   | { type: "unknown" }
 
 const AgentStepSchema = z.object({
@@ -245,6 +248,11 @@ export function parseIntent(text: string, data: TransmilenioData): Intent {
 
   if (hasPhrase(t, CANCEL)) return { type: "cancel" }
   if (hasPhrase(t, HELP)) return { type: "help" }
+  // El Metro se decide ANTES que tarifas, rutas, lugares y GPS: con contexto
+  // explícito de Metro, una petición de viaje, tarifa u horario no puede caer a
+  // los buses ni a la navegación de TransMilenio (EA-13, #39).
+  const metro = interpretarMetro(text)
+  if (metro) return { type: "metro", consulta: metro }
   if (hasPhrase(t, FARE)) return { type: "unsupported", topic: "tarifas" }
 
   const route = findRouteByCode(text, data)
@@ -509,7 +517,7 @@ function resolverIntent(
 
     case "help":
       return say(
-        "Puedo decirte cómo llegar de una estación a otra, qué rutas pasan por una estación, el recorrido y el horario de una ruta, y la estación más cercana a ti. Por ejemplo: cómo llego de Ricaurte a Calle 72.",
+        "Puedo decirte cómo llegar de una estación a otra, qué rutas pasan por una estación, el recorrido y el horario de una ruta, y la estación más cercana a ti. También explico el Metro de Bogotá, que está en construcción y aún no tiene servicio: pregunta por el Metro o por una de sus estaciones. Por ejemplo: cómo llego de Ricaurte a Calle 72.",
       )
 
     case "cancel":
@@ -521,6 +529,13 @@ function resolverIntent(
           ? "Todavía no tengo información de tarifas. Puedo ayudarte con rutas, estaciones y horarios."
           : "Todavía no tengo la ubicación de los buses en tiempo real. Puedo decirte el horario de la ruta y por dónde pasa.",
       )
+
+    case "metro": {
+      // Solo informa (acción `none`): sin pantalla de viaje, GPS ni búsqueda de buses.
+      const metro = responderMetro(intent.consulta)
+      steps.push(...metro.steps)
+      return say(metro.reply)
+    }
 
     case "frequent":
       steps.push({ label: "Abrí tus rutas frecuentes" })
