@@ -1,0 +1,31 @@
+{
+  "fecha": "2026-11-06T19:30:56.777Z",
+  "comprobaciones": [
+    {
+      "caso": "redirección sin credencial",
+      "ruta": "/api/agent/",
+      "estado": 308,
+      "redirigeMismoOrigen": true,
+      "estableceCookie": false
+    },
+    {
+      "caso": "redirección sin credencial",
+      "ruta": "//evil.example/",
+      "estado": 308,
+      "redirigeMismoOrigen": true,
+      "estableceCookie": false
+    },
+    {
+      "caso": "estático JavaScript",
+      "autenticada": false,
+      "estado": 401,
+      "hsts": "max-age=15552000"
+    },
+    {
+      "caso": "estático JavaScript",
+      "autenticada": true,
+      "estado": 200,
+      "hsts": "max-age=15552000"
+    }
+  ]
+}

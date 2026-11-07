@@ -1,0 +1,39 @@
+{
+  "fechaRegistroUTC": "2026-11-06T20:32:37.272Z",
+  "servicio": "https://transmivoz.onrender.com",
+  "revision": "e269a8a6656b488ffe032c999e1d5160a5876c7c",
+  "despliegueRollback": "dep-dbn3epifngtc73avllkg",
+  "rama": "main",
+  "inicio": "pnpm run start",
+  "build": "pnpm install --frozen-lockfile && pnpm run build",
+  "autoDeploy": "After CI Checks Pass",
+  "variables": [
+    "APP_PASSWORD",
+    "NODE_VERSION"
+  ],
+  "nodeVersionConfigurada": "24",
+  "runtimeSonda": "24.22.2",
+  "pnpm": "12.3.4",
+  "sondaHttp": 404,
+  "proxiesDePruebaRetirados": true,
+  "catalogoFinal": "live",
+  "diagnosticosFinales": "9/9",
+  "planWorkspace": "Hobby",
+  "planServicio": "Free",
+  "tarjeta": false,
+  "cargosUSD": 0,
+  "horasGratisUsadas": 1.95,
+  "horasGratisIncluidas": 750,
+  "minutosPipelineUsados": 3,
+  "minutosPipelineIncluidos": 500,
+  "windows": {
+    "revision": "dfbd388",
+    "appTask": "Ready",
+    "ollamaTask": "Ready",
+    "puerto3000Responde": false,
+    "modificado": false
+  },
+  "archivosDelProyectoBorrados": false,
+  "ramasDeSondaFusionadas": false,
+  "alcance": "Backend Render; pruebas de micrófono, cámara y GPS en Chrome simuladas. No acredita iPhone, BLE ni VoiceOver reales."
+}

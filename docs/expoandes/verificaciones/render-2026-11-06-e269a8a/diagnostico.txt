@@ -1,0 +1,26 @@
+Inicio UTC: 2026-11-06T19:32:18.434Z
+Fin UTC: 2026-11-06T19:32:22.249Z
+Salida: 0
+
+Verificación de TransMiVoz en https://transmivoz.onrender.com
+
+✔ Contexto seguro
+    https://transmivoz.onrender.com
+✔ Datos reales de TransMilenio
+    153 estaciones y 124 rutas troncales (en vivo, 6/11/2026, 2:29:43 p. m.)
+✔ Asistente
+    Motor: reglas locales. Incertidumbre validada; plan verificado 8 G; payload forjado rechazado.
+✔ Mapa
+    Mapa base de OpenStreetMap disponible
+✔ Voz de la app
+    2 voces en español. Debiste oír «Prueba de voz».
+✔ Reconocimiento de voz
+    Disponible
+✔ Micrófono
+    Permiso concedido
+✔ Cámara
+    Permiso concedido (fake_device_0)
+✔ Ubicación
+    4.6124, -74.0935 (±20 m)
+
+9 de 9 pruebas correctas.

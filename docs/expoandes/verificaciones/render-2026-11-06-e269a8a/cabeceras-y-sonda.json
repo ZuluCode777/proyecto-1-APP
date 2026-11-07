@@ -1,0 +1,30 @@
+{
+  "fecha": "2026-11-06T19:29:45.102Z",
+  "comprobaciones": [
+    {
+      "ruta": "/",
+      "metodo": "HEAD",
+      "autenticada": false,
+      "estado": 401,
+      "hsts": "max-age=15552000",
+      "servidor": "cloudflare"
+    },
+    {
+      "ruta": "/api/agent",
+      "metodo": "GET",
+      "autenticada": true,
+      "estado": 200,
+      "hsts": "max-age=15552000",
+      "servidor": "cloudflare"
+    },
+    {
+      "ruta": "/api/sonda-cabeceras",
+      "metodo": "GET",
+      "autenticada": true,
+      "estado": 404,
+      "hsts": "max-age=15552000",
+      "servidor": "cloudflare",
+      "sondaActiva": false
+    }
+  ]
+}

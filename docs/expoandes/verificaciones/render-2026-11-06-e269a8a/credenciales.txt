@@ -1,0 +1,14 @@
+Fecha UTC: 2026-11-06T19:27:49.860Z
+Modo: credenciales
+Salida: 0
+OK    GET / sin credencial: HTTP 401 (esperado 401), 422 ms
+OK    GET / con clave errónea: HTTP 401 (esperado 401), 124 ms
+OK    GET /api/agent sin credencial: HTTP 401 (esperado 401), 347 ms
+OK    GET /api/agent con clave errónea: HTTP 401 (esperado 401), 110 ms
+OK    POST /api/agent sin credencial: HTTP 401 (esperado 401), 118 ms
+OK    POST /api/agent con clave errónea: HTTP 401 (esperado 401), 113 ms
+OK    GET /api/transmilenio sin credencial: HTTP 401 (esperado 401), 109 ms
+OK    GET /api/transmilenio con clave errónea: HTTP 401 (esperado 401), 136 ms
+OK    GET / con la clave correcta: HTTP 200 (esperado 200), 146 ms
+OK    POST /api/agent con cuerpo de 5000 bytes: HTTP 413 (esperado 413), 125 ms
+OK    GET /api/agent: HTTP 200, motor reglas (esperado reglas)

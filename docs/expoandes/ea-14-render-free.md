@@ -1,21 +1,45 @@
-# EA-14 (#40): Render Free preparado, mediciones en vivo pendientes
+# EA-14 (#40): Render Free, preparación y validación en vivo del 2026-11-06
 
-Rama `ea-14-render-free`, desde `origin/main` 66cdd87 (con EA-06, EA-08 y EA-10
-fusionados). El issue #36 sigue abierto solo por la evidencia del proxy real, que
-este trabajo también necesita. No se desplegó, no se cambió ningún servicio de
-Render, no se accedió a Windows, a la API de Render ni a ninguna clave. No se
-añadieron dependencias ni se tocaron el lockfile, los workflows, el instalador ni
-la prueba PowerShell.
+Este documento junta dos cosas con alcance distinto:
 
-Al 2026-11-06 ya existe un servicio manual en `https://transmivoz.onrender.com`.
-Esta rama no lo tocó, no lo desplegó ni lo midió; sus ajustes reales no están
-verificados hasta que el titular de la cuenta los inspeccione y los alinee con
-`docs/RENDER.md` (Camino A).
+- **Preparación (histórico).** Rama `ea-14-render-free`, desde `origin/main`
+  66cdd87 (con EA-06, EA-08 y EA-10 fusionados). Entregó `render.yaml`, la guía
+  [`docs/RENDER.md`](../RENDER.md), el script de medición y HSTS. Las secciones
+  «Qué se entrega», «Decisiones y su fuente», «HSTS» y «Prueba local» describen
+  ese trabajo y esas pruebas locales; no miden Render. Cuando se escribieron, no
+  se había tocado ningún servicio de Render.
+- **Validación en vivo (6 de noviembre de 2026).** Mediciones reales sobre el
+  servicio manual existente, `https://transmivoz.onrender.com` (Free, Virginia),
+  con la revisión `main` en `e269a8a6656b488ffe032c999e1d5160a5876c7c`. No es el
+  `main` actual del repositorio. Informe y evidencia sanitizada:
+  [`verificaciones/render-2026-11-06-e269a8a/informe.md`](verificaciones/render-2026-11-06-e269a8a/informe.md).
 
-Hay configuración reproducible, una guía para el titular de la cuenta
-([`docs/RENDER.md`](../RENDER.md)) y una herramienta de medición. **Ningún
-criterio de rendimiento está cerrado:** todo lo que dependa de Render real
-figura como pendiente y ninguna prueba local se presenta como medición de Render.
+## Estado actual
+
+De los 13 criterios de #40, **6 tienen una medición completa** y **7 son
+parciales**; ninguno queda sin evidencia. Los criterios parciales y los límites de
+abajo siguen abiertos, así que **#36 y #40 no se cierran con este trabajo**.
+
+Qué quedó fijado el 2026-11-06:
+
+- El servicio se validó tal como estaba: Node 24 (`NODE_VERSION=24`, resuelto a
+  24.22.2), pnpm 12.3.4, build `pnpm install --frozen-lockfile && pnpm run build`,
+  inicio `pnpm run start`, auto-deploy `After CI Checks Pass`. **No coincide con
+  `render.yaml`** (Node 24.22.1, `corepack pnpm`, despliegue manual). El Blueprint
+  no se importó, no se creó otro servicio y **`corepack pnpm` no se validó en
+  Render**.
+- Las pruebas de proxy, memoria y la serie con tráfico paralelo usaron una
+  revisión temporal de diagnóstico (`f32c92b`, rama no fusionada). Su código no
+  está en el repositorio.
+- Todo lo medido de memoria, reposo y proxy es de una sola corrida (por red, en el caso del proxy). Las lecturas
+  de memoria son puntuales, no una carga sostenida de feria.
+- Chrome usó dispositivos simulados. No hay validación con iPhone, BLE, audio
+  ni VoiceOver reales. La máquina con Windows (`dfbd388`) tiene sus tareas en
+  `Ready`, pero el puerto 3000 no respondía: no queda acreditada como respaldo
+  operativo.
+- Al terminar, Render volvió por rollback al artefacto original de `main`: solo
+  quedan `APP_PASSWORD` y `NODE_VERSION`, la ruta de sonda da 404 y las ramas
+  de diagnóstico no se fusionaron.
 
 ## Qué se entrega
 
@@ -29,7 +53,7 @@ figura como pendiente y ninguna prueba local se presenta como medición de Rende
 
 ### Decisiones y su fuente
 
-Consultadas el 2026-11-06 en la documentación oficial de Render (`render.com/docs`).
+Histórico de la preparación, no de la validación en vivo. Consultadas el 2026-11-06 en la documentación oficial de Render (`render.com/docs`).
 
 - **Node.** `NODE_VERSION` tiene la máxima precedencia y los servicios creados
   antes del 2026-10-21 tienen otro valor por defecto, así que se fija la versión
@@ -37,8 +61,8 @@ Consultadas el 2026-11-06 en la documentación oficial de Render (`render.com/do
   integración continua (24). No se añadió `.node-version` ni `engines`: el repo no
   tenía fijación y la variable basta.
 - **pnpm.** `corepack pnpm` toma la versión de `packageManager` (12.3.4). Con
-  Node 24, Corepack viene incluido. Se comprobó localmente (ver más abajo); en Render
-  queda pendiente de confirmar en el primer registro de compilación.
+  Node 24, Corepack viene incluido. Se comprobó localmente (ver más abajo). En Render no se validó: el servicio
+  manual compiló con `pnpm` directo, sin `corepack pnpm`.
 - **Salud.** Se omite `healthCheckPath`: `/` y la API devuelven 401 con clave, y
   Render exige 2xx o 3xx. La comprobación TCP por defecto se mantiene. Una ruta
   HTTP de salud con excepción de autenticación sería trabajo aparte.
@@ -89,12 +113,14 @@ cabeceras); no hace falta, porque es una redirección relativa al mismo origen. 
 estado y las cabeceras de autenticación no cambian.
 
 Para retirarla, hay que servir `max-age=0` por HTTPS: los navegadores que la
-recibieron la recuerdan hasta 180 días. Pendiente en vivo: ver si Render ya añade
-su propia cabecera (duplicado o valor distinto).
+recibieron la recuerdan hasta 180 días. En vivo se observó el valor
+`max-age=15552000` en Render (ver la fila 12 de la tabla); los archivos no
+registran cuántas cabeceras HSTS llegan, así que un posible duplicado no está
+descartado.
 
-## Prueba local (portátil Linux, Node 26.13.0, sin Render)
+## Prueba local (histórica; portátil Linux, Node 26.13.0, sin Render)
 
-El portátil usa Node 26.13.0; la integración continua y Render usan Node 24. Nada
+Son las pruebas de la preparación, anteriores a la validación en vivo. El portátil usa Node 26.13.0; la integración continua y Render usan Node 24. Nada
 de esto es una medición de Render.
 
 - `pnpm exec tsc --noEmit`: salida 0.
@@ -123,46 +149,55 @@ En `scripts/medir-render.mjs`, cada mutación hace fallar su prueba: despacho de
 modos con `MODOS[modo]` (acepta `toString`), quitar los casos 401 de la API,
 devolver verdadero ante un 429 sin `Retry-After` y `redirect: "follow"`.
 
-## Pendiente en vivo (titular de la cuenta)
+## Criterios de #40 frente a la evidencia en vivo
 
-Si el servicio puede estar dormido, el primer comando es `despertar` y se espera
-su 200: los demás modos tienen plazo de 20 s por petición. Cada fila se cierra
-solo con una medición en el servicio real, anotando fecha,
-commit, región y versiones efectivas de Node y pnpm. No guardes en el registro la
-clave, la cabecera `Authorization` ni direcciones IP de personas.
+Mediciones del 2026-11-06 sobre `https://transmivoz.onrender.com`, revisión `main`
+`e269a8a` salvo donde se indica (ver «Estado actual»). **Medido** significa que el
+criterio tiene una medición real completa; **Parcial**, que se midió solo una
+parte, con el límite de la última columna. Nada de esto es una garantía de cuotas
+ni de tiempos futuros. Todas las rutas son relativas a la carpeta
+[`verificaciones/render-2026-11-06-e269a8a/`](verificaciones/render-2026-11-06-e269a8a/).
 
-| # | Criterio de #40 | Cómo medirlo | Estado |
+| # | Criterio de #40 | Estado | Qué se midió y límite |
 | --- | --- | --- | --- |
-| 1 | Cuenta, cuota y costo cero antes de activar | *Billing* y *Included usage*: plan Hobby, ningún recurso de pago, medio de pago o no | Pendiente |
-| 2 | Build y arranque con Node 24, pnpm 12.3.4 y lockfile congelado | Registro de compilación; `corepack pnpm` funciona; escucha en `$PORT` | Pendiente |
-| 3 | Matriz de credenciales y motor «reglas» | Tras `despertar`: `node scripts/medir-render.mjs credenciales` (401 sin clave y con clave errónea en `/`, `/api/agent` GET y POST, `/api/transmilenio`; 200 con la correcta en `/` y `/api/agent`; 413; motor) y `pnpm verificar "$RENDER_URL"`. El 200 del catálogo con clave sale de la fila 7 | Pendiente |
-| 4 | Salud TCP | El despliegue pasa a *Live* sin `healthCheckPath` y sigue sano | Pendiente |
-| 5 | Cadena de proxy y resistencia a suplantación | Requiere ver las cabeceras que llegan al servidor, lo que esta rama no incluye: hace falta una sonda temporal aparte (no se fusiona). Medir saltos de confianza, si un cliente puede inyectar saltos en `x-forwarded-for` y quién escribe `x-real-ip` (matriz de EA-10) | Pendiente |
-| 6 | RAM pico y errores frente a 512 MB y 400 MB propuestos | *Metrics > Memory* durante arranque, 30 peticiones en caliente, renovación del catálogo y la prueba 429. Un build exitoso no demuestra que quepa | Pendiente |
-| 7 | p50 y p95 en caliente, separados de la red y de ArcGIS | `node scripts/medir-render.mjs latencia 30`: informa el catálogo aparte, `GET /api/agent` (red y Render, sin datos) y `POST /api/agent` (reglas, catálogo en caché) | Pendiente |
-| 8 | Primer arranque tras reposo | Tras más de 15 min sin tráfico, `node scripts/medir-render.mjs despertar` (plazo 120 s); repetir varias veces. Con menos reposo es una medición en caliente, no arranque en frío. Sin pings | Pendiente |
-| 9 | 429 y que un reinicio reinicie el contador | `node scripts/medir-render.mjs limite` en ensayo aparte; luego *Restart* y repetir un POST | Pendiente |
-| 10 | Fuente caída y copia fechada | Solo con una caída real de ArcGIS: `source: "snapshot"` y fecha visible en `/api/transmilenio`. La dirección de ArcGIS está fija en el código, así que no se puede provocar desde Render sin cambiarlo | Pendiente |
-| 11 | Reinicio conserva la copia | Tras *Restart*, `/api/transmilenio` responde con catálogo (en vivo o copia fechada) | Pendiente |
-| 12 | HSTS en Render | `curl -sI "$RENDER_URL/"` (sin credenciales) y buscar `strict-transport-security`: una sola, con el valor esperado | Pendiente |
-| 13 | Reversión | Suspender, y *Rollback* si hay un despliegue anterior; confirmar que el origen de Tailscale no cambió | Pendiente |
+| 1 | Cuenta, cuota y costo cero antes de activar | Medido | Hobby, un servicio Free, sin tarjeta, USD 0,00 pendientes. Al cierre: 1,95 de 750 horas y 3 de 500 minutos de pipeline. Transcrito a mano del panel. [`estado-final.json`](verificaciones/render-2026-11-06-e269a8a/estado-final.json), [`observaciones-dashboard.json`](verificaciones/render-2026-11-06-e269a8a/observaciones-dashboard.json) |
+| 2 | Build y arranque con Node 24, pnpm 12.3.4 y lockfile congelado | Parcial | Registros reales: instalación congelada, Node 24.22.2, pnpm 12.3.4, Next 16.3.3, puerto 10000, Live. Con la configuración original (`pnpm`). **No validado:** Node 24.22.1 del Blueprint y `corepack pnpm`. [`estado-final.json`](verificaciones/render-2026-11-06-e269a8a/estado-final.json) |
+| 3 | Matriz de credenciales y motor «reglas» | Medido | 401 sin clave y con clave errónea en `/`, `/api/agent` GET y POST y `/api/transmilenio`; 200 con la correcta; 413 con 5000 bytes; motor `reglas`. Repetido tras el rollback. Chrome 9 de 9 con dispositivos simulados. [`credenciales.txt`](verificaciones/render-2026-11-06-e269a8a/credenciales.txt), [`credenciales-final.txt`](verificaciones/render-2026-11-06-e269a8a/credenciales-final.txt), [`diagnostico.txt`](verificaciones/render-2026-11-06-e269a8a/diagnostico.txt), [`diagnostico-final.txt`](verificaciones/render-2026-11-06-e269a8a/diagnostico-final.txt) |
+| 4 | Salud TCP | Medido | Los despliegues y el rollback pasan a *Live* con `healthCheckPath` vacío. [`configuracion-previa.json`](verificaciones/render-2026-11-06-e269a8a/configuracion-previa.json), [`recuperacion-final.json`](verificaciones/render-2026-11-06-e269a8a/recuperacion-final.json) |
+| 5 | Cadena de proxy y resistencia a suplantación | Medido | Dos redes, siete casos por red, en la revisión de sonda `f32c92b`. El cliente real queda tercero desde la derecha en `x-forwarded-for` en los casos aceptados; las entradas inyectadas quedan a la izquierda; `x-real-ip` llega ausente; escribir `cf-connecting-ip` da 403. Es el ingreso de Render de esa fecha. `claveCliente()` no cambió: siguen siendo 20 POST por minuto compartidos. [`proxy-seudonimizado.json`](verificaciones/render-2026-11-06-e269a8a/proxy-seudonimizado.json) |
+| 6 | RAM pico y errores frente a 512 MB y 400 MB propuestos | Parcial | Cgroup v2 raíz con límite real de 536.870.912 bytes y pico de 393.547.776 (393,55 MB; 375,32 MiB), bajo 400 MB. RSS máximo del proceso Node: 134.189.056 bytes, cifra aparte. Dos lecturas puntuales en la revisión de sonda; el pico ya estaba en la primera. **No hay** carga sostenida, renovación del catálogo medida ni métricas del panel. [`memoria-inicial.json`](verificaciones/render-2026-11-06-e269a8a/memoria-inicial.json), [`memoria-tras-carga.json`](verificaciones/render-2026-11-06-e269a8a/memoria-tras-carga.json) |
+| 7 | p50 y p95 en caliente, separados de la red y de ArcGIS | Medido | Catálogo inicial 2976 ms (incluye ArcGIS). 30 GET: p50 105 ms, p95 121 ms. 30 POST: p50 108 ms, p95 167 ms. Serie aparte con tráfico paralelo de sonda: GET 114/124 ms, POST 160/529 ms, máximo 2058 ms, sin fallos. No es una carga de feria ni un SLA. [`latencia.txt`](verificaciones/render-2026-11-06-e269a8a/latencia.txt), [`carga-con-sonda.txt`](verificaciones/render-2026-11-06-e269a8a/carga-con-sonda.txt) |
+| 8 | Primer arranque tras reposo | Parcial | Una muestra: 960,022 s sin tráfico de la validación, 200 en 53.761 ms; Render registra un proceso nuevo a las 19:50:52 UTC. Tráfico de terceros no controlado; **no se repitió**, como pedía el criterio. [`despertar-reposo.txt`](verificaciones/render-2026-11-06-e269a8a/despertar-reposo.txt), [`reposo-corroborado.json`](verificaciones/render-2026-11-06-e269a8a/reposo-corroborado.json) |
+| 9 | 429 y que un reinicio reinicie el contador | Parcial | 429 en la petición 21 con `Retry-After`, antes y después del rollback. **No se probó** que un reinicio reinicie el contador: las ventanas vencieron entre reemplazos de instancia y el botón *Restart* no se ejercitó. [`limite.txt`](verificaciones/render-2026-11-06-e269a8a/limite.txt), [`limite-despues-rollback.txt`](verificaciones/render-2026-11-06-e269a8a/limite-despues-rollback.txt) |
+| 10 | Fuente caída y copia fechada | Parcial | Rechazo de conexión simulado en Render (proxy HTTPS local cerrado solo en el inicio de Next): `snapshot` del 2026-09-24T15:16:41.502Z con 153 estaciones y 124 rutas, aviso veraz del asistente y Chrome 9 de 9. **No cubre** una caída natural de ArcGIS, timeouts ni errores 5xx. [`fuente-caida-controlada.json`](verificaciones/render-2026-11-06-e269a8a/fuente-caida-controlada.json), [`diagnostico-fuente-caida.txt`](verificaciones/render-2026-11-06-e269a8a/diagnostico-fuente-caida.txt) |
+| 11 | Reinicio conserva la copia | Parcial | El reemplazo de instancia conservó la copia versionada y, tras el rollback, el catálogo volvió a `live` (153 estaciones, 124 rutas). **No se probó** el botón *Restart* ni la suspensión por separado. [`fuente-caida-controlada.json`](verificaciones/render-2026-11-06-e269a8a/fuente-caida-controlada.json), [`recuperacion-final.json`](verificaciones/render-2026-11-06-e269a8a/recuperacion-final.json) |
+| 12 | HSTS en Render | Medido | `strict-transport-security: max-age=15552000` observado en `/`, en la API, en un JS estático y tras el rollback; redirecciones 308 al mismo origen sin cookies. Los archivos guardan el valor, no el número de cabeceras. [`cabeceras-y-sonda.json`](verificaciones/render-2026-11-06-e269a8a/cabeceras-y-sonda.json), [`redirecciones-y-estaticos.json`](verificaciones/render-2026-11-06-e269a8a/redirecciones-y-estaticos.json), [`recuperacion-final.json`](verificaciones/render-2026-11-06-e269a8a/recuperacion-final.json) |
+| 13 | Reversión | Parcial | *Rollback* real al artefacto original (50,7 s): comando, política y variables originales restaurados, sonda 404, datos en vivo. **No se probó** suspender el servicio, y el origen de Tailscale no se confirmó (el puerto 3000 de Windows no respondía). [`estado-final.json`](verificaciones/render-2026-11-06-e269a8a/estado-final.json), [`recuperacion-final.json`](verificaciones/render-2026-11-06-e269a8a/recuperacion-final.json) |
 
-La fila 10 y parte de la 11 se cubren localmente, con simulaciones, en
+Falta, además, todo lo que ningún servidor puede acreditar: validación con iPhone,
+BLE, audio y VoiceOver reales, y operación física con el backend dormido. Eso
+corresponde a las tareas de iPhone y firmware.
+
+La fila 10 y parte de la 11 también se cubren localmente, con simulaciones, en
 `lib/transmilenio-data.test.ts`: catálogo en vivo, caída con copia fechada,
-conservación del último dato bueno y reintento. Eso no es una medición de Render.
+conservación del último dato bueno y reintento. Eso no es una medición de Render;
+la medición de Render son las filas de arriba.
 
 ### Límites que conviene tener presentes
 
-- **Cuota compartida.** `claveCliente()` devuelve una sola clave mientras no se
-  mida el proxy (fila 5), así que los 20 POST por minuto de `/api/agent` son para
-  todas las personas a la vez. Con un público de feria es un tope de capacidad,
-  no un límite por persona. No se inventa una política de proxy confiable antes de
-  tener esa medición. El contador es de una instancia y se pierde al reiniciar.
+- **Cuota compartida.** `claveCliente()` no cambió y devuelve una sola clave, así
+  que los 20 POST por minuto de `/api/agent` son para todas las personas a la vez.
+  Con un público de feria es un tope de capacidad, no un límite por persona. La
+  fila 5 ya midió la cadena de proxy de Render, pero usar esa medición para una
+  identidad por cliente es otro cambio, con revisión y validación de la cabecera
+  y del entorno. El contador es de una instancia; que se reinicie con *Restart*
+  no está probado (fila 9).
 - **Voz y Bluetooth.** El reconocimiento de voz de Chrome y la síntesis dependen
   del navegador, no de este servidor. Este repositorio no tiene BLE; no se añadió
   ninguno. La comprobación con accesorio y teléfono reales con el servidor
   dormido corresponde a las tareas de iPhone y firmware.
 - **Sin SLA.** Render documenta que Free no es para producción, que reinicia y que
   puede suspender por tráfico saliente inusual (sin cifra pública).
-- **Un deploy a la vez.** Los despliegues son manuales. Un cambio en `main` no
-  actualiza Render hasta que el titular lo pida.
+- **Despliegue.** El servicio real tiene auto-deploy `After CI Checks Pass`; el
+  Blueprint (`render.yaml`) pide despliegue manual. Son políticas distintas y esta
+  validación no cambió ninguna.

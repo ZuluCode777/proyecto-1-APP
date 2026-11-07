@@ -1,0 +1,4 @@
+Inicio UTC: 2026-11-06T19:34:27.307Z
+Fin UTC: 2026-11-06T19:34:30.616Z
+Salida: 0
+OK    429 en la petición 21, Retry-After 58.

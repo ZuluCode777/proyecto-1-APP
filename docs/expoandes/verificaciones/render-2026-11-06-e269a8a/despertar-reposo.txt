@@ -1,0 +1,7 @@
+Última solicitud conocida UTC: 2026-11-06T19:34:30.616Z
+Inicio UTC: 2026-11-06T19:50:30.638Z
+Fin UTC: 2026-11-06T19:51:24.429Z
+Sin tráfico de esta validación durante: 960.022 s
+Tráfico de terceros no controlado; corroborar arranque con registros de Render.
+Salida: 0
+Primera petición (arranque en frío solo si hubo más de 15 min sin tráfico): HTTP 200, 53761 ms, motor reglas.

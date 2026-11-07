@@ -1,0 +1,238 @@
+{
+  "fecha": "2026-11-06T20:07:44.838Z",
+  "sha": "f32c92b801cb3975cbb6acc74641d6e8c8af72d1",
+  "referenciaCloudflareLaptop": true,
+  "referenciaCloudflareWindows": true,
+  "referenciasDistintas": true,
+  "filas": [
+    {
+      "cliente": "laptop",
+      "caso": "normal",
+      "estado": 200,
+      "xff": [
+        "cliente-laptop",
+        "valor-1",
+        "valor-2"
+      ],
+      "xRealIp": null,
+      "cfConnectingIp": "cliente-laptop",
+      "trueClientIp": "cliente-laptop",
+      "cfConnectingIpv6": null,
+      "xEnvoyExternalAddress": null,
+      "refRealEnXff": true,
+      "cfCoincideReferencia": true
+    },
+    {
+      "cliente": "laptop",
+      "caso": "xff-uno",
+      "estado": 200,
+      "xff": [
+        "inyectada-A",
+        "cliente-laptop",
+        "valor-3",
+        "valor-4"
+      ],
+      "xRealIp": null,
+      "cfConnectingIp": "cliente-laptop",
+      "trueClientIp": "cliente-laptop",
+      "cfConnectingIpv6": null,
+      "xEnvoyExternalAddress": null,
+      "refRealEnXff": true,
+      "cfCoincideReferencia": true
+    },
+    {
+      "cliente": "laptop",
+      "caso": "xff-cadena",
+      "estado": 200,
+      "xff": [
+        "inyectada-A",
+        "inyectada-B",
+        "cliente-laptop",
+        "valor-5",
+        "valor-6"
+      ],
+      "xRealIp": null,
+      "cfConnectingIp": "cliente-laptop",
+      "trueClientIp": "cliente-laptop",
+      "cfConnectingIpv6": null,
+      "xEnvoyExternalAddress": null,
+      "refRealEnXff": true,
+      "cfCoincideReferencia": true
+    },
+    {
+      "cliente": "laptop",
+      "caso": "x-real-ip",
+      "estado": 200,
+      "xff": [
+        "cliente-laptop",
+        "valor-5",
+        "valor-6"
+      ],
+      "xRealIp": null,
+      "cfConnectingIp": "cliente-laptop",
+      "trueClientIp": "cliente-laptop",
+      "cfConnectingIpv6": null,
+      "xEnvoyExternalAddress": null,
+      "refRealEnXff": true,
+      "cfCoincideReferencia": true
+    },
+    {
+      "cliente": "laptop",
+      "caso": "cf-connecting-ip",
+      "estado": 403,
+      "xff": null,
+      "xRealIp": null,
+      "cfConnectingIp": null,
+      "trueClientIp": null,
+      "cfConnectingIpv6": null,
+      "xEnvoyExternalAddress": null,
+      "refRealEnXff": false,
+      "cfCoincideReferencia": false
+    },
+    {
+      "cliente": "laptop",
+      "caso": "true-client-ip",
+      "estado": 200,
+      "xff": [
+        "cliente-laptop",
+        "valor-3",
+        "valor-4"
+      ],
+      "xRealIp": null,
+      "cfConnectingIp": "cliente-laptop",
+      "trueClientIp": "cliente-laptop",
+      "cfConnectingIpv6": null,
+      "xEnvoyExternalAddress": null,
+      "refRealEnXff": true,
+      "cfCoincideReferencia": true
+    },
+    {
+      "cliente": "laptop",
+      "caso": "todos",
+      "estado": 403,
+      "xff": null,
+      "xRealIp": null,
+      "cfConnectingIp": null,
+      "trueClientIp": null,
+      "cfConnectingIpv6": null,
+      "xEnvoyExternalAddress": null,
+      "refRealEnXff": false,
+      "cfCoincideReferencia": false
+    },
+    {
+      "cliente": "windows",
+      "caso": "normal",
+      "estado": 200,
+      "xff": [
+        "cliente-windows",
+        "valor-5",
+        "valor-6"
+      ],
+      "xRealIp": null,
+      "cfConnectingIp": "cliente-windows",
+      "trueClientIp": "cliente-windows",
+      "cfConnectingIpv6": null,
+      "xEnvoyExternalAddress": null,
+      "refRealEnXff": true,
+      "cfCoincideReferencia": true
+    },
+    {
+      "cliente": "windows",
+      "caso": "xff-uno",
+      "estado": 200,
+      "xff": [
+        "inyectada-A",
+        "cliente-windows",
+        "valor-5",
+        "valor-6"
+      ],
+      "xRealIp": null,
+      "cfConnectingIp": "cliente-windows",
+      "trueClientIp": "cliente-windows",
+      "cfConnectingIpv6": null,
+      "xEnvoyExternalAddress": null,
+      "refRealEnXff": true,
+      "cfCoincideReferencia": true
+    },
+    {
+      "cliente": "windows",
+      "caso": "xff-cadena",
+      "estado": 200,
+      "xff": [
+        "inyectada-A",
+        "inyectada-B",
+        "cliente-windows",
+        "valor-5",
+        "valor-6"
+      ],
+      "xRealIp": null,
+      "cfConnectingIp": "cliente-windows",
+      "trueClientIp": "cliente-windows",
+      "cfConnectingIpv6": null,
+      "xEnvoyExternalAddress": null,
+      "refRealEnXff": true,
+      "cfCoincideReferencia": true
+    },
+    {
+      "cliente": "windows",
+      "caso": "x-real-ip",
+      "estado": 200,
+      "xff": [
+        "cliente-windows",
+        "valor-5",
+        "valor-6"
+      ],
+      "xRealIp": null,
+      "cfConnectingIp": "cliente-windows",
+      "trueClientIp": "cliente-windows",
+      "cfConnectingIpv6": null,
+      "xEnvoyExternalAddress": null,
+      "refRealEnXff": true,
+      "cfCoincideReferencia": true
+    },
+    {
+      "cliente": "windows",
+      "caso": "cf-connecting-ip",
+      "estado": 403,
+      "xff": null,
+      "xRealIp": null,
+      "cfConnectingIp": null,
+      "trueClientIp": null,
+      "cfConnectingIpv6": null,
+      "xEnvoyExternalAddress": null,
+      "refRealEnXff": false,
+      "cfCoincideReferencia": false
+    },
+    {
+      "cliente": "windows",
+      "caso": "true-client-ip",
+      "estado": 200,
+      "xff": [
+        "cliente-windows",
+        "valor-7",
+        "valor-2"
+      ],
+      "xRealIp": null,
+      "cfConnectingIp": "cliente-windows",
+      "trueClientIp": "cliente-windows",
+      "cfConnectingIpv6": null,
+      "xEnvoyExternalAddress": null,
+      "refRealEnXff": true,
+      "cfCoincideReferencia": true
+    },
+    {
+      "cliente": "windows",
+      "caso": "todos",
+      "estado": 403,
+      "xff": null,
+      "xRealIp": null,
+      "cfConnectingIp": null,
+      "trueClientIp": null,
+      "cfConnectingIpv6": null,
+      "xEnvoyExternalAddress": null,
+      "refRealEnXff": false,
+      "cfCoincideReferencia": false
+    }
+  ],
+  "privacidad": "IP y valores crudos no registrados; referencias obtenidas por /cdn-cgi/trace del mismo origen."
+}

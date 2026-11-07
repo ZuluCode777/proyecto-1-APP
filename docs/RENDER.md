@@ -3,8 +3,10 @@
 Guía para el titular de la cuenta de Render. Publica el backend existente
 (Next.js, reglas del asistente, sin Ollama) como demostración HTTPS que no
 depende de la máquina con Windows. La configuración está en
-[`render.yaml`](../render.yaml); las mediciones pendientes y su estado están en
-[`docs/expoandes/ea-14-render-free.md`](expoandes/ea-14-render-free.md).
+[`render.yaml`](../render.yaml); el estado de las mediciones está en
+[`docs/expoandes/ea-14-render-free.md`](expoandes/ea-14-render-free.md) y el
+informe del 6 de noviembre de 2026, con sus ajustes reales, en
+[`verificaciones/render-2026-11-06-e269a8a/informe.md`](expoandes/verificaciones/render-2026-11-06-e269a8a/informe.md).
 
 Esta guía no despliega nada por sí sola. Ninguno de sus pasos toca la máquina
 con Windows ni el origen actual (`desktop-oa6r547.taila37867.ts.net`). Despliega
@@ -34,11 +36,21 @@ en el nombre. Por eso hay dos caminos y conviene decidir uno antes de tocar nada
 
 **Camino A. Conservar el servicio manual** (`transmivoz.onrender.com`). Es el
 que ya tiene la dirección conocida. No crees un Blueprint: usa `render.yaml`
-como lista de comprobación y alinea los ajustes del servicio a mano. Este
-repositorio no ha inspeccionado esos ajustes: revísalos uno por uno, no supongas
-que ya coinciden.
+como lista de comprobación y alinea los ajustes del servicio a mano.
 
-| Ajuste en el panel | Valor |
+La tabla siguiente es la **configuración recomendada**, alineada con `render.yaml`.
+**No es lo que el servicio manual tenía** el 6 de noviembre de 2026, cuando se
+inspeccionó y se validó sin cambiar esos ajustes (ver el
+[informe](expoandes/verificaciones/render-2026-11-06-e269a8a/informe.md)). Los
+ajustes reales ese día eran: Branch `main`, Root Directory vacío, Build Command
+`pnpm install --frozen-lockfile && pnpm run build`, Start Command
+`pnpm run start`, Auto-Deploy `After CI Checks Pass`, Health Check Path vacío,
+`NODE_VERSION=24` (Render lo resolvió a 24.22.2) y solo `APP_PASSWORD` y
+`NODE_VERSION` como variables. La recomendada de abajo no se ha aplicado a ese
+servicio, y `corepack pnpm` no se ha validado en Render. Antes de cambiar algo,
+anota los valores que haya en ese momento: pueden haber cambiado desde esa fecha.
+
+| Ajuste en el panel | Valor recomendado |
 | --- | --- |
 | Language | Node |
 | Instance type | Free |
