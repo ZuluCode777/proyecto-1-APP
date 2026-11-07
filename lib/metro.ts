@@ -483,10 +483,6 @@ export function interpretarMetro(texto: string): ConsultaMetro | null {
   }
 
   if (frase(t, TARIFA)) return { tipo: "servicio", tema: "tarifa" }
-  // «¿Cuándo abre?» pregunta por la previsión, no por un servicio: se responde con la ficha.
-  if (frase(t, APERTURA) && nombradas.length < 2) {
-    return nombradas.length === 1 ? { tipo: "estacion", clave: nombradas[0].estacion.clave } : { tipo: "linea", linea: 1 }
-  }
   if (frase(t, TIEMPO_REAL)) return { tipo: "servicio", tema: "tiempo_real" }
   if (frase(t, HORARIO)) return { tipo: "servicio", tema: "horario" }
   if (frase(t, VIAJE) || DE_A_DESTINO.test(t) || nombradas.length >= 2) return { tipo: "servicio", tema: "viaje" }
@@ -503,6 +499,9 @@ export function interpretarMetro(texto: string): ConsultaMetro | null {
     return encontrada ? { tipo: "estacion", clave: encontrada.clave } : { tipo: "estacion_inexistente", numero: n }
   }
 
+  // «¿Cuándo abre?» sin estación: pregunta por la previsión de la Línea 1, no por un servicio.
+  // Va después de servicio e identidad de estación para no saltarse sus validaciones.
+  if (frase(t, APERTURA)) return { tipo: "linea", linea: 1 }
   if (frase(t, LISTADO)) return { tipo: "listado" }
   if (LINEA_UNO.test(t)) return { tipo: "linea", linea: 1 }
   return { tipo: "general" }

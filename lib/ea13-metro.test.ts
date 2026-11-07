@@ -241,3 +241,30 @@ test("número y nombre de estación que no coinciden piden aclarar en vez de ele
   // Una petición de viaje con dos estaciones sigue siendo un rechazo de servicio.
   assert.deepEqual(interpretarMetro("de E3 a Calle 72 en metro"), { tipo: "servicio", tema: "viaje" })
 })
+
+test("preguntas de apertura pasan por la misma prioridad de servicio e identidad de estación", () => {
+  const e16 = "metro-bogota:l1:e16"
+  const e03 = "metro-bogota:l1:e03"
+  // Número y nombre en conflicto, o número inválido: se pide aclarar, nunca se elige uno en silencio.
+  assert.deepEqual(interpretarMetro("cuándo abre la estación E3 Calle 72 del metro"), { tipo: "estacion_contradictoria", numero: 3, clave: e16 })
+  assert.deepEqual(interpretarMetro("cuándo abre la estación E17 Ciudad Kennedy del metro"), { tipo: "estacion_contradictoria", numero: 17, clave: e03 })
+  assert.deepEqual(interpretarMetro("cuándo abre la estación E17 del metro"), { tipo: "estacion_inexistente", numero: 17 })
+  // Coherente, solo por nombre o solo por número: la misma estación que sin la pregunta de apertura.
+  assert.deepEqual(interpretarMetro("cuándo abre la estación E16 Calle 72 del metro"), { tipo: "estacion", clave: e16 })
+  assert.deepEqual(interpretarMetro("cuándo abre la estación Calle 72 del metro"), { tipo: "estacion", clave: e16 })
+  assert.deepEqual(interpretarMetro("cuándo abre la estación E3 del metro"), { tipo: "estacion", clave: e03 })
+  const ficha = responder("cuándo abre la estación E16 Calle 72 del metro")
+  assert.match(ficha.reply, /E16/)
+  assert.match(ficha.reply, /previsión|prevista|previsto/i)
+  assert.match(ficha.reply, /sin servicio comercial/i)
+  // Un viaje futuro en Metro se rechaza como viaje, aunque diga «cuando abra».
+  assert.deepEqual(interpretarMetro("cómo llego a Calle 72 en metro cuando abra"), { tipo: "servicio", tema: "viaje" })
+  const viaje = responder("cómo llego a Calle 72 en metro cuando abra")
+  assert.equal(viaje.action, "none")
+  assert.match(viaje.reply, /No puedo planear viajes en Metro/)
+  // Sin estación: Línea 1 por defecto; la Línea 2 conserva su propia ficha.
+  assert.deepEqual(interpretarMetro("cuándo abre el metro"), { tipo: "linea", linea: 1 })
+  assert.deepEqual(interpretarMetro("cuándo abre la línea 2 del metro"), { tipo: "linea", linea: 2 })
+  assert.match(responder("cuándo abre la línea 2 del metro").reply, /contratación y precalificación/)
+  assert.match(responder("cuándo abre el metro").reply, /marzo de 2028; es una previsión/)
+})
