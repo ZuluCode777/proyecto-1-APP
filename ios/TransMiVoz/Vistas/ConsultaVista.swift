@@ -24,6 +24,10 @@ struct ConsultaVista: View {
                         .foregroundStyle(.textoSecundario)
                         .accessibilityIdentifier("resumen-servidor")
 
+                    // El resultado va antes del campo: con texto grande queda arriba, a la vista,
+                    // y no se desliza bajo la barra de pestañas (que tapa y desdibuja lo que pasa por debajo).
+                    ResultadoConsultaVista(modelo: modelo, foco: $foco, alReintentar: reintentar)
+
                     Text("Escribe una pregunta de transporte. El texto se envía al servidor configurado; no se envía tu ubicación.")
                         .font(.body)
 
@@ -58,8 +62,6 @@ struct ConsultaVista: View {
                                 .accessibilityIdentifier("boton-cancelar")
                         }
                     }
-
-                    ResultadoConsultaVista(modelo: modelo, foco: $foco, alReintentar: reintentar)
                 }
                 .padding(16)
             }

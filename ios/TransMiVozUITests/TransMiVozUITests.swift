@@ -34,8 +34,14 @@ final class TransMiVozUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments += ["-PRUEBAS_UI_SIMULADAS", "-AppleLanguages", "(es)", "-AppleLocale", "es_CO"]
+        // Tamaño de texto normal explícito: la categoría no depende de lo que dejó otra prueba en el Simulator.
+        app.launchArguments += [
+            "-PRUEBAS_UI_SIMULADAS", "-AppleLanguages", "(es)", "-AppleLocale", "es_CO",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
+        ]
         app.launch()
+        // Ciclo de vida acotado: cada prueba cierra su app y la siguiente arranca limpia.
+        addTeardownBlock { [app] in app?.terminate() }
     }
 
     // MARK: Ayudas
@@ -206,6 +212,7 @@ final class TransMiVozTextoGrandeUITests: XCTestCase {
             "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL",
         ]
         app.launch()
+        addTeardownBlock { app.terminate() }
         for nombre in ["Sesión", "Consulta"] {
             let pestana = app.tabBars.buttons[nombre]
             XCTAssertTrue(pestana.waitForExistence(timeout: 10))
