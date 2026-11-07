@@ -1,0 +1,91 @@
+# Compila y prueba el cliente SwiftUI en un runner macOS estándar de GitHub.
+# Demuestra: compilación y XCTest en iOS Simulator, pruebas de interfaz con
+# auditoría automática de accesibilidad, y compilación para iPhone genérico SIN
+# firma. NO demuestra: app instalable en un iPhone, firma, Bluetooth/radar real,
+# audio, VoiceOver real ni permisos. Guía: docs/expoandes/ios-ci.md.
+# Las mismas instrucciones corren en local: ios/scripts/comprobar-ios.sh.
+name: iOS
+
+on:
+  pull_request:
+    paths:
+      - "ios/**"
+      - "contratos/**"
+      - ".github/workflows/ios.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  compilar-y-probar:
+    name: Compilar y probar (Simulator + iPhone sin firma)
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      # Selección explícita y registrada: ver «Herramientas» en docs/expoandes/ios-ci.md.
+      # Verificado en #69: macos-26 trae Xcode 26.6, build 17F113.
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      XCODE_VERSION_EXACTA: "26.6"
+      XCODE_BUILD_EXACTO: "17F113"
+      IOS_MAYOR_ESPERADO: "26"
+      SIMULADOR_NOMBRE: "iPhone 17"
+      # Carpeta nueva en el runner: el script no borra ni pisa resultados; cada paso
+      # escribe archivos con su propio nombre dentro de ella.
+      SALIDA: ${{ github.workspace }}/ios/salida
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Autocomprobación del script (sin borrados, sin pisar resultados)
+        run: ios/scripts/probar-comprobar-ios.sh
+
+      - name: Herramientas (Xcode, SDK, runtimes)
+        run: ios/scripts/comprobar-ios.sh herramientas
+
+      - name: Compilar para iOS Simulator
+        if: ${{ !cancelled() }}
+        run: ios/scripts/comprobar-ios.sh compilar-simulador
+
+      - name: Pruebas en iOS Simulator (lógica, HTTP, BLE, interfaz, accesibilidad)
+        if: ${{ !cancelled() }}
+        run: ios/scripts/comprobar-ios.sh pruebas-simulador
+
+      - name: Compilar para iPhone genérico sin firma
+        if: ${{ !cancelled() }}
+        run: ios/scripts/comprobar-ios.sh compilar-dispositivo
+
+      - name: Resumen de la ejecución
+        if: ${{ !cancelled() }}
+        run: |
+          {
+            echo "## iOS CI"
+            echo "- SHA: \`${{ github.sha }}\`"
+            echo "- SHA de la rama del PR: \`${{ github.event.pull_request.head.sha || github.sha }}\`"
+            echo "- Ejecución: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "- Runner: \`${{ runner.os }} ${{ runner.arch }}\` (macos-26)"
+            echo
+            echo '```'
+            grep -E '^(Xcode|Build version)' "$SALIDA/herramientas.txt" || true
+            echo '```'
+            echo "Simulator y compilación sin firma NO producen una app instalable en iPhone ni validan hardware."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Siempre, también si falló: logs crudos de xcodebuild y paquetes .xcresult.
+      - name: Subir logs y resultados (.xcresult)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-resultados-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            ios/salida/*.log
+            ios/salida/*.txt
+            ios/salida/*.json
+            ios/salida/*.xcresult
+          if-no-files-found: error
+          retention-days: 30

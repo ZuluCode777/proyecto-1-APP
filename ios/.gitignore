@@ -1,0 +1,6 @@
+# Resultados locales de scripts/comprobar-ios.sh (logs, .xcresult, DerivedData)
+/salida/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.DS_Store
