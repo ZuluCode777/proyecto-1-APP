@@ -1,0 +1,16 @@
+{
+  "revision_desplegada": "e269a8a6656b488ffe032c999e1d5160a5876c7c",
+  "rama": "main",
+  "region": "Virginia",
+  "plan_servicio": "Free",
+  "plan_workspace": "Hobby",
+  "tarjeta_registrada": false,
+  "cargos_sin_facturar_usd": 0,
+  "build": "pnpm install --frozen-lockfile && pnpm run build",
+  "inicio": "pnpm run start",
+  "autodeploy": "After CI Checks Pass",
+  "root_directory": "",
+  "health_check_path": "",
+  "sonda_respuesta_http": 404,
+  "restauracion": "Volver a main, inicio original y política After CI Checks Pass; desactivar SONDA_CABECERAS sin borrar archivos ni ramas."
+}

@@ -1,0 +1,4 @@
+Fecha UTC: 2026-11-06T19:27:47.960Z
+Modo: despertar
+Salida: 0
+Primera petición (arranque en frío solo si hubo más de 15 min sin tráfico): HTTP 200, 475 ms, motor reglas.

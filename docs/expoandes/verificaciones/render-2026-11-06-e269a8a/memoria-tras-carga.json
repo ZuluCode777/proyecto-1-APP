@@ -1,0 +1,25 @@
+{
+  "fecha": "2026-11-06T20:09:21.071Z",
+  "proceso": {
+    "node": "24.22.2",
+    "plataforma": "linux",
+    "pnpm": "12.3.4",
+    "uptimeSegundos": 340.672680175,
+    "rssBytes": 134189056,
+    "maxRssBytes": 134189056
+  },
+  "cgroup": {
+    "version": "v2",
+    "motivo": null,
+    "actualBytes": 261234688,
+    "picoBytes": 393547776,
+    "limiteBytes": 536870912,
+    "sinLimite": false,
+    "limiteIgual512MiB": true,
+    "raizDelEspacio": true
+  },
+  "picoMB": 393.547776,
+  "picoMiB": 375.31640625,
+  "bajoObjetivo400MB": true,
+  "bajoLimite512MiB": true
+}

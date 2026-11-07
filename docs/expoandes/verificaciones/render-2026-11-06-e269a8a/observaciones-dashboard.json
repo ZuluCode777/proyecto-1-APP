@@ -1,0 +1,49 @@
+{
+  "fecha": "2026-11-06T20:15:49.663Z",
+  "cuenta": {
+    "plan": "Hobby",
+    "paymentCard": false,
+    "unbilledUSD": 0,
+    "freeHoursUsed": 1.15,
+    "freeHoursIncluded": 750,
+    "serviceCount": 1,
+    "serviceLimit": 25,
+    "pipelineMinutesUsed": 1,
+    "bandwidthReported": "0 MB"
+  },
+  "despliegueInicial": {
+    "sha": "e269a8a6656b488ffe032c999e1d5160a5876c7c",
+    "branch": "main",
+    "plan": "Free",
+    "region": "Virginia",
+    "deployId": "dep-dbn2hd5ckfvc73f596dg",
+    "trigger": "Auto-Deploy After CI Checks Pass",
+    "buildCommand": "pnpm install --frozen-lockfile && pnpm run build",
+    "startCommand": "pnpm run start",
+    "healthCheckPath": "",
+    "priorRollbackTargets": [
+      "7db054b",
+      "e871f07"
+    ]
+  },
+  "reposo": {
+    "lastKnownRequest": "2026-11-06T19:34:30.616Z",
+    "requestStarted": "2026-11-06T19:50:30.638Z",
+    "requestFinished": "2026-11-06T19:51:24.429Z",
+    "idleSeconds": 960.022,
+    "responseMs": 53761,
+    "status": 200,
+    "engine": "reglas",
+    "renderLogStartUTC": "2026-11-06T19:50:52Z",
+    "renderNextReadyUTC": "2026-11-06T19:51:16Z",
+    "newInstance": true
+  },
+  "intentoFalloPnpm": {
+    "deployId": "dep-dbn38nqfngtc73av6460",
+    "status": "failed",
+    "cause": "ERR_PNPM_META_FETCH_FAIL: pnpm bootstrap registry request ECONNREFUSED 127.0.0.1:9",
+    "existingInstanceRetained": true,
+    "sourceFallbackTested": false
+  },
+  "notaPrivacidad": "Sin claves, Authorization, IP ni rutas de cgroup crudas."
+}

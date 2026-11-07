@@ -1,0 +1,10 @@
+{
+  "solicitud_inicio_utc": "2026-11-06T19:50:30.638Z",
+  "respuesta_http": 200,
+  "respuesta_ms": 53761,
+  "reposo_cliente_segundos": 960.022,
+  "registro_render_inicio_utc": "2026-11-06T19:50:52Z",
+  "registro_next_ready_utc": "2026-11-06T19:51:16Z",
+  "instancia_nueva": true,
+  "alcance": "Sin tráfico de esta validación durante 16 minutos; nuevo arranque corroborado en registros de Render. No se controló tráfico de terceros."
+}

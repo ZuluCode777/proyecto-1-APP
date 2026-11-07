@@ -1,0 +1,15 @@
+Inicio UTC: 2026-11-06T20:27:51.889Z
+Fin UTC: 2026-11-06T20:27:53.469Z
+Después de rollback a main e269a8a
+Salida: 0
+OK    GET / sin credencial: HTTP 401 (esperado 401), 324 ms
+OK    GET / con clave errónea: HTTP 401 (esperado 401), 131 ms
+OK    GET /api/agent sin credencial: HTTP 401 (esperado 401), 114 ms
+OK    GET /api/agent con clave errónea: HTTP 401 (esperado 401), 114 ms
+OK    POST /api/agent sin credencial: HTTP 401 (esperado 401), 134 ms
+OK    POST /api/agent con clave errónea: HTTP 401 (esperado 401), 127 ms
+OK    GET /api/transmilenio sin credencial: HTTP 401 (esperado 401), 123 ms
+OK    GET /api/transmilenio con clave errónea: HTTP 401 (esperado 401), 111 ms
+OK    GET / con la clave correcta: HTTP 200 (esperado 200), 131 ms
+OK    POST /api/agent con cuerpo de 5000 bytes: HTTP 413 (esperado 413), 122 ms
+OK    GET /api/agent: HTTP 200, motor reglas (esperado reglas)

@@ -1,0 +1,6 @@
+Inicio UTC: 2026-11-06T19:29:42.125Z
+Fin UTC: 2026-11-06T19:31:24.832Z
+Salida: 0
+Catálogo (puede incluir ArcGIS): HTTP 200, origen live, fecha 2026-11-06T19:29:43.648Z, 2976 ms
+GET /api/agent (red + Render, sin datos): n=30 estados 200×30 · p50 105 ms · p95 121 ms · mín 99 ms · máx 173 ms
+POST /api/agent (reglas + catálogo en caché): n=30 estados 200×30 · p50 108 ms · p95 167 ms · mín 100 ms · máx 177 ms

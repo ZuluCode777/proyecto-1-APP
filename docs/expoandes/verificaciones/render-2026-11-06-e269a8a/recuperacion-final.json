@@ -1,0 +1,15 @@
+{
+  "fecha": "2026-11-06T20:27:26.958Z",
+  "rollback": "dep-dbn3epifngtc73avllkg",
+  "sha": "e269a8a6656b488ffe032c999e1d5160a5876c7c",
+  "catalogo": {
+    "estado": 200,
+    "source": "live",
+    "fetchedAt": "2026-11-06T20:26:47.078Z",
+    "estaciones": 153,
+    "rutas": 124
+  },
+  "sondaHttp": 404,
+  "sinCredencialHttp": 401,
+  "hsts": "max-age=15552000"
+}

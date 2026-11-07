@@ -1,0 +1,35 @@
+{
+  "fecha": "2026-11-06T20:05:41.403Z",
+  "shaSonda": "f32c92b801cb3975cbb6acc74641d6e8c8af72d1",
+  "guardas": [
+    {
+      "caso": "sin-credencial",
+      "estado": 401
+    },
+    {
+      "caso": "clave-incorrecta",
+      "estado": 401
+    }
+  ],
+  "estado": 200,
+  "cacheControl": "no-store",
+  "proceso": {
+    "node": "24.22.2",
+    "plataforma": "linux",
+    "pnpm": "12.3.4",
+    "uptimeSegundos": 121.004275791,
+    "rssBytes": 97849344,
+    "maxRssBytes": 97849344
+  },
+  "cgroup": {
+    "version": "v2",
+    "motivo": null,
+    "actualBytes": 267186176,
+    "picoBytes": 393547776,
+    "limiteBytes": 536870912,
+    "sinLimite": false,
+    "limiteIgual512MiB": true,
+    "raizDelEspacio": true,
+    "rutaRegistrada": false
+  }
+}

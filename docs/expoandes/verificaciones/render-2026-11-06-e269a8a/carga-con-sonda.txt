@@ -1,0 +1,7 @@
+Inicio UTC: 2026-11-06T20:06:34.007Z
+Fin UTC: 2026-11-06T20:08:20.494Z
+Rama temporal: ea-14-sonda-ram f32c92b
+Salida: 0
+Catálogo (puede incluir ArcGIS): HTTP 200, origen live, fecha 2026-11-06T20:06:35.441Z, 3287 ms
+GET /api/agent (red + Render, sin datos): n=30 estados 200×30 · p50 114 ms · p95 124 ms · mín 105 ms · máx 136 ms
+POST /api/agent (reglas + catálogo en caché): n=30 estados 200×30 · p50 160 ms · p95 529 ms · mín 107 ms · máx 2058 ms
