@@ -31,6 +31,19 @@ private final class AlmacenConBorradoRoto: AlmacenClave, @unchecked Sendable {
     }
 }
 
+/// Almacén con una clave ya guardada cuyo GUARDADO falla pero cuya lectura funciona:
+/// modela `SecItemUpdate` fallando sin borrar la clave que ya existía.
+private final class AlmacenConGuardadoRoto: AlmacenClave, @unchecked Sendable {
+    private let candado = NSLock()
+    private var claves: [OrigenServidor: ClaveAcceso] = [:]
+
+    init(guardada: ClaveAcceso, origen: OrigenServidor) { claves[origen] = guardada }
+
+    func leer(origen: OrigenServidor) throws -> ClaveAcceso? { candado.lock(); defer { candado.unlock() }; return claves[origen] }
+    func guardar(_ clave: ClaveAcceso, origen: OrigenServidor) throws { throw ErrorAlmacenClave(codigo: -3) }
+    func borrar(origen: OrigenServidor) throws { candado.lock(); claves[origen] = nil; candado.unlock() }
+}
+
 @MainActor
 final class AjustesServidorModeloTests: XCTestCase {
     private var preferencias: UserDefaults!
@@ -126,7 +139,7 @@ final class AjustesServidorModeloTests: XCTestCase {
         modelo.aplicar()
         XCTAssertEqual(modelo.mensaje?.esError, true)
         XCTAssertEqual(modelo.configuracion?.clave, ClaveAcceso(valor: "clave-inventada"))
-        XCTAssertFalse(modelo.recordarClave)
+        XCTAssertTrue(modelo.recordarClave, "el guardado falló, no se sabe qué hay en el Llavero: el interruptor no se apaga")
     }
 }
 
@@ -205,6 +218,84 @@ final class AjustesServidorBorradoFallidoTests: XCTestCase {
         modelo.recordarClave = false
         modelo.aplicar()
         XCTAssertNil(modelo.configuracion?.clave, "la clave de A no pasa a B")
+    }
+}
+
+@MainActor
+final class AjustesServidorGuardadoFallidoTests: XCTestCase {
+    private var preferencias: UserDefaults!
+    private var nombreSuite = ""
+    private let origen = try! OrigenServidor.analizar("https://a.ejemplo").get()
+    private let guardada = ClaveAcceso(valor: "clave-guardada-inventada")
+
+    override func setUp() async throws {
+        nombreSuite = "pruebas.transmivoz.\(UUID().uuidString)"
+        preferencias = UserDefaults(suiteName: nombreSuite)
+        preferencias.set(origen.esquemaYAutoridad, forKey: AjustesServidorModelo.claveOrigenGuardado)
+    }
+
+    override func tearDown() async throws {
+        preferencias.removePersistentDomain(forName: nombreSuite)
+    }
+
+    private func verificarAvisoConservador(_ modelo: AjustesServidorModelo, otraClave: String? = nil) throws {
+        XCTAssertEqual(modelo.mensaje?.esError, true, "el fallo debe verse")
+        let texto = try XCTUnwrap(modelo.mensaje?.texto)
+        XCTAssertFalse(texto.contains("hasta cerrar"), "no es verdad que la clave sea transitoria: \(texto)")
+        XCTAssertFalse(texto.contains("solo en memoria"), texto)
+        XCTAssertTrue(texto.contains("puede seguir en el Llavero"), texto)
+        XCTAssertTrue(texto.contains("Aplicar"), texto)
+        XCTAssertTrue(texto.contains("Olvidar clave"), texto)
+        XCTAssertFalse(texto.contains(guardada.valor))
+        if let otraClave { XCTAssertFalse(texto.contains(otraClave)) }
+    }
+
+    /// Regresión: con la MISMA clave ya guardada, guardar falla sin borrarla; antes se
+    /// decía «solo vale hasta cerrar la app» y la clave volvía al reabrir.
+    func testMismaClaveConGuardadoFallidoNoPrometeSerSoloEnMemoria() async throws {
+        let almacen = AlmacenConGuardadoRoto(guardada: guardada, origen: origen)
+        let modelo = AjustesServidorModelo(almacen: almacen, preferencias: preferencias)
+        XCTAssertTrue(modelo.recordarClave, "la clave guardada se carga al abrir")
+
+        modelo.aplicar()
+
+        try verificarAvisoConservador(modelo)
+        XCTAssertEqual(modelo.configuracion?.clave, guardada, "la sesión sigue usable")
+        XCTAssertTrue(modelo.recordarClave, "queda disponible el reintento de guardar")
+        XCTAssertFalse(modelo.mensaje?.texto.contains("clave guardada en el Llavero") ?? true)
+        XCTAssertEqual(try almacen.leer(origen: origen), guardada, "el almacén conserva la clave")
+
+        // «Reabrir la app»: nuevo modelo con los mismos almacén y preferencias.
+        let reabierto = AjustesServidorModelo(almacen: almacen, preferencias: preferencias)
+        XCTAssertEqual(reabierto.configuracion?.clave, guardada)
+        XCTAssertTrue(reabierto.recordarClave)
+    }
+
+    func testClaveCambiadaConGuardadoFallidoAvisaQueLaAnteriorPuedeVolver() async throws {
+        let almacen = AlmacenConGuardadoRoto(guardada: guardada, origen: origen)
+        let modelo = AjustesServidorModelo(almacen: almacen, preferencias: preferencias)
+        modelo.claveTexto = "clave-nueva-inventada"
+        modelo.aplicar()
+
+        try verificarAvisoConservador(modelo, otraClave: "clave-nueva-inventada")
+        XCTAssertEqual(modelo.configuracion?.clave, ClaveAcceso(valor: "clave-nueva-inventada"), "la sesión usa la nueva")
+
+        let reabierto = AjustesServidorModelo(almacen: almacen, preferencias: preferencias)
+        XCTAssertEqual(reabierto.configuracion?.clave, guardada, "al reabrir vuelve la anterior")
+        XCTAssertTrue(reabierto.recordarClave)
+    }
+
+    func testGuardadoFallidoSePuedeQuitarConOlvidarClave() async throws {
+        let almacen = AlmacenConGuardadoRoto(guardada: guardada, origen: origen)
+        let modelo = AjustesServidorModelo(almacen: almacen, preferencias: preferencias)
+        modelo.aplicar()
+        modelo.olvidarClave()
+        XCTAssertEqual(modelo.mensaje?.esError, false)
+        XCTAssertNil(try almacen.leer(origen: origen))
+
+        let reabierto = AjustesServidorModelo(almacen: almacen, preferencias: preferencias)
+        XCTAssertNil(reabierto.configuracion?.clave)
+        XCTAssertFalse(reabierto.recordarClave)
     }
 }
 

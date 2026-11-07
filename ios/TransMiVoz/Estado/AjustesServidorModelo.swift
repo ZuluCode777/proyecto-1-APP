@@ -69,7 +69,9 @@ final class AjustesServidorModelo {
         }
 
         var aviso = ""
-        var borradoFallido = false
+        // Si guardar o borrar falla, lo que haya en el Llavero para este origen NO se
+        // sabe: no se promete que la clave sea solo de memoria ni que se olvidó.
+        var almacenIncierto = false
         do {
             if recordarClave, let clave {
                 try almacen.guardar(clave, origen: origen)
@@ -77,15 +79,18 @@ final class AjustesServidorModelo {
                 try almacen.borrar(origen: origen)
             }
         } catch {
+            almacenIncierto = true
             if recordarClave {
-                aviso = " No se pudo guardar la clave en el Llavero; solo vale hasta cerrar la app."
-                recordarClave = false
+                // El guardado falló (p. ej. SecItemUpdate sobre una clave ya guardada): la
+                // clave anterior, si la había, SIGUE en el Llavero y se recargará al abrir
+                // la app. El interruptor se conserva: «Aplicar» reintenta guardar y
+                // «Olvidar clave» reintenta borrar.
+                aviso = " No se pudo guardar la clave en el Llavero: se usa en esta sesión, pero una clave guardada antes, si la había, puede seguir en el Llavero y volver a cargarse al abrir la app. Pulsa «Aplicar» para reintentar u «Olvidar clave» para borrarla."
             } else {
                 // El borrado falló: si había una clave guardada SIGUE en el Llavero y se
                 // volverá a cargar al abrir la app. No se dice que sea transitoria ni se
                 // pierde el reintento: el interruptor queda apagado, así que «Aplicar»
                 // otra vez, o «Olvidar clave», vuelven a intentar el borrado.
-                borradoFallido = true
                 aviso = " No se pudo borrar del Llavero la clave guardada, si había una: seguirá guardada y se volverá a cargar al abrir la app. Pulsa «Aplicar» u «Olvidar clave» para reintentar."
             }
         }
@@ -97,7 +102,7 @@ final class AjustesServidorModelo {
 
         let estadoClave: String
         if clave == nil { estadoClave = "sin clave" }
-        else if borradoFallido { estadoClave = "clave en uso en esta sesión" }
+        else if almacenIncierto { estadoClave = "clave en uso en esta sesión" }
         else if recordarClave { estadoClave = "clave guardada en el Llavero" }
         else { estadoClave = "clave solo en memoria" }
         mensaje = MensajeAjustes(texto: "Servidor aplicado: \(origen.esquemaYAutoridad), \(estadoClave).\(aviso)", esError: !aviso.isEmpty)
