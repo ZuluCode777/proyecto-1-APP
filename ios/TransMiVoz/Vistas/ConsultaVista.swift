@@ -30,6 +30,7 @@ struct ConsultaVista: View {
 
                     Text("Escribe una pregunta de transporte. El texto se envía al servidor configurado; no se envía tu ubicación.")
                         .font(.body)
+                        .accessibilityIdentifier("introduccion-consulta")
 
                     TextField("Pregunta", text: $modelo.texto, axis: .vertical)
                         .lineLimit(1...5)

@@ -24,6 +24,47 @@ private func auditar(_ app: XCUIApplication, _ contexto: String, testCase: XCTes
     XCTFail("Auditoría de accesibilidad (\(contexto)): \(problemas.count) problema(s):\n" + problemas.joined(separator: "\n"), file: file, line: line)
 }
 
+/// Espera, con la espera nativa de XCTest, a que un predicado sobre el elemento se cumpla.
+private func esperar(_ elemento: XCUIElement, _ predicado: String, _ valor: Any, _ mensaje: String, file: StaticString = #filePath, line: UInt = #line) {
+    let espera = XCTNSPredicateExpectation(predicate: NSPredicate(format: predicado, argumentArray: [valor]), object: elemento)
+    XCTAssertEqual(XCTWaiter().wait(for: [espera], timeout: 10), .completed, mensaje, file: file, line: line)
+}
+
+/// Toca el campo (fuera de su barra interna), espera foco de teclado real, escribe y espera a que el campo muestre el texto completo.
+/// `typeText` vuelve antes de que el teclado entregue todas las teclas (en CI llegó solo «e» de «error429»
+/// y se envió esa «e»); sin esta espera, la prueba enviaba un texto distinto del pedido.
+private func escribir(_ texto: String, en campo: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+    esperar(campo, "isHittable == %@", true, "El campo no es tocable", file: file, line: line)
+    // Un TextField vertical lleva una barra de desplazamiento horizontal dentro de su marco: el toque
+    // por defecto (centro/esquina) cayó sobre ella (y 312,7…323,7 en un campo de y 304,7…326,7) y no
+    // abrió el teclado. Se toca el tramo editable, arriba, dentro del propio marco del campo.
+    campo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
+    esperar(campo, "hasKeyboardFocus == %@", true, "El campo no recibió el foco del teclado", file: file, line: line)
+    campo.typeText(texto)
+    esperar(campo, "value == %@", texto, "El campo no muestra el texto escrito «\(texto)»", file: file, line: line)
+}
+
+/// Desliza con gesto real (arrastre sin inercia) hasta que `objetivo` quede entero y tocable entre la barra
+/// de navegación y la barra de pestañas, que en iOS 26 flotan sobre el contenido. Pasos acotados, no reintentos.
+private func exponer(_ objetivo: XCUIElement, en app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+    let ventana = app.windows.firstMatch.frame
+    let arriba = app.navigationBars.firstMatch.frame.maxY
+    let abajo = app.tabBars.firstMatch.frame.minY
+    let paso = abajo - arriba - 40
+    func visible() -> Bool {
+        let marco = objetivo.frame
+        return marco.minY >= arriba && marco.maxY <= abajo && objetivo.isHittable
+    }
+    for _ in 0..<4 where !visible() {
+        let desplazamiento = max(-paso, min(paso, objetivo.frame.minY - arriba - 8))
+        // Margen derecho del contenido (16 pt): el arrastre no cae sobre un campo ni un botón.
+        let inicio = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: ventana.width - 8, dy: desplazamiento > 0 ? abajo - 20 : arriba + 20))
+        inicio.press(forDuration: 0.1, thenDragTo: inicio.withOffset(CGVector(dx: 0, dy: -desplazamiento)))
+    }
+    XCTAssertTrue(visible(), "«\(objetivo.identifier)» no queda entero y tocable entre las barras: marco \(objetivo.frame), visible \(arriba)…\(abajo)", file: file, line: line)
+}
+
 /// Recorridos de interfaz en el Simulator, SIN red ni servidor: la app se lanza
 /// con `-PRUEBAS_UI_SIMULADAS` (solo existe en compilaciones de depuración) y
 /// responde con un cliente simulado. Demuestran el comportamiento de la
@@ -61,8 +102,7 @@ final class TransMiVozUITests: XCTestCase {
         abrirPestana("Consulta")
         let campo = elemento("campo-pregunta")
         XCTAssertTrue(campo.waitForExistence(timeout: 10))
-        campo.tap()
-        campo.typeText(texto)
+        escribir(texto, en: campo)
         elemento("boton-enviar").tap()
         // Enviar cierra el teclado: si no, tapa el resultado y la barra de pestañas.
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "El teclado debe cerrarse al enviar")
@@ -169,8 +209,7 @@ final class TransMiVozUITests: XCTestCase {
         abrirPestana("Servidor")
         let origen = elemento("campo-origen")
         XCTAssertTrue(origen.waitForExistence(timeout: 10))
-        origen.tap()
-        origen.typeText("http://servidor.ejemplo")
+        escribir("http://servidor.ejemplo", en: origen)
         elemento("boton-aplicar").tap()
         XCTAssertTrue(app.staticTexts["La dirección debe empezar por https://. La app no usa conexiones sin cifrar."].waitForExistence(timeout: 5))
     }
@@ -217,7 +256,15 @@ final class TransMiVozTextoGrandeUITests: XCTestCase {
             let pestana = app.tabBars.buttons[nombre]
             XCTAssertTrue(pestana.waitForExistence(timeout: 10))
             pestana.tap()
-            try auditar(app, "texto-muy-grande-\(nombre)", testCase: self)
+            if nombre == "Consulta" {
+                // La introducción mide ~500 pt: se audita entera y a la vista, y luego el campo con sus botones.
+                for (id, contexto) in [("introduccion-consulta", "introduccion"), ("boton-enviar", "campo")] {
+                    exponer(app.descendants(matching: .any).matching(identifier: id).firstMatch, en: app)
+                    try auditar(app, "texto-muy-grande-Consulta-\(contexto)", testCase: self)
+                }
+            } else {
+                try auditar(app, "texto-muy-grande-\(nombre)", testCase: self)
+            }
         }
     }
 }

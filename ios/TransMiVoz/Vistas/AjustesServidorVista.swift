@@ -96,10 +96,9 @@ struct AjustesServidorVista: View {
     }
 
     private var acciones: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) { botonAplicar; botonOlvidar }
-            VStack(alignment: .leading, spacing: 12) { botonAplicar; botonOlvidar }
-        }
+        // Siempre en vertical: `ViewThatFits` cambiaba de rama (y de nodos de accesibilidad) al escalar
+        // la fuente, y la auditoría marcaba los dos botones como Dynamic Type parcialmente sin soporte.
+        VStack(alignment: .leading, spacing: 12) { botonAplicar; botonOlvidar }
     }
 
     private var botonAplicar: some View {
@@ -107,6 +106,7 @@ struct AjustesServidorVista: View {
             campoEnfocado = nil
             modelo.aplicar()
         }
+        .font(.body)
         .buttonStyle(.bordered)
         .controlSize(.large)
         .frame(minHeight: 44)
@@ -120,6 +120,7 @@ struct AjustesServidorVista: View {
         } label: {
             Text("Olvidar clave").foregroundStyle(Color.rojoAccesible)
         }
+        .font(.body)
         .buttonStyle(.bordered)
         .controlSize(.large)
         .tint(.rojoAccesible)
