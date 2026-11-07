@@ -2,8 +2,9 @@
 
 Fecha: 6 de noviembre de 2026. Servicio: https://transmivoz.onrender.com
 (Render Free, región Virginia). Revisión medida: `main` en
-`e269a8a6656b488ffe032c999e1d5160a5876c7c`. Es la revisión que estaba
-desplegada ese día, no el `main` actual del repositorio.
+`e269a8a6656b488ffe032c999e1d5160a5876c7c`, salvo donde se indica en «Revisiones
+que intervinieron». Es la revisión que estaba desplegada ese día, no el `main`
+actual del repositorio.
 
 Esta es una medición puntual de un día, con una sola corrida de cada prueba salvo
 donde se indica lo contrario. Casi todas las comprobaciones del backend dieron el
@@ -24,11 +25,17 @@ archivo sin salir de GitHub.
   caliente, HSTS, redirecciones, 429, reposo y diagnóstico de Chrome.
 - **Revisión de sonda temporal `f32c92b`:** matriz de proxy, lecturas de memoria
   y la serie de carga con tráfico paralelo. Salió de una rama temporal de
-  diagnóstico (`ea-14-sonda-ram`) que no se fusionó; su código no está en este
-  repositorio. Por eso las cifras de memoria y de proxy describen esa revisión,
+  diagnóstico (`ea-14-sonda-ram`) que no se fusionó: el código de diagnóstico no
+  forma parte de `main` ni de este PR. Por eso las cifras de memoria y de proxy describen esa revisión,
   no `main` sin cambios.
-- **`main` con el comando de inicio alterado:** el ensayo de fuente caída (ver
-  más abajo). El código y la compilación fueron los de `main`.
+- **Despliegue temporal de diagnóstico con el comando de inicio alterado:** el
+  ensayo de fuente caída (ver más abajo). **No se registró el SHA exacto de ese
+  despliegue** ni en el informe original ni en
+  [`fuente-caida-controlada.json`](fuente-caida-controlada.json), así que no se
+  afirma que fuera el código y la compilación de `main`. Ese JSON incluye métricas
+  de `proceso` que coinciden con el ayudante de diagnóstico de la rama temporal,
+  ausente en `main` en `e269a8a`. Tampoco se atribuye a `f32c92b`: el dato no
+  está registrado.
 - **Rollback final:** vuelta al artefacto original de `main`, que es el estado
   restaurado.
 
@@ -63,8 +70,10 @@ Render**: el servicio compiló y arrancó con `pnpm`.
 
 ## Comprobaciones
 
-Resultado: **Medido** es una prueba con evidencia en esta carpeta; **Parcial**
-cubre solo una parte del criterio, con el límite indicado.
+Resultado: **Medido** es una observación registrada, con evidencia en esta
+carpeta, del comportamiento que indica la fila; no significa que el criterio
+completo de #40 quede aceptado. **Parcial** cubre solo una parte del criterio, con
+el límite indicado.
 
 | Criterio | Resultado | Evidencia y límite |
 | --- | --- | --- |
@@ -77,8 +86,8 @@ cubre solo una parte del criterio, con el límite indicado.
 | Latencia caliente | Medido | 30 GET y 30 POST sin respuestas fallidas, sobre `main`. Una segunda serie con tráfico paralelo se hizo con la sonda. Valores y condiciones en «Latencia y memoria». [`latencia.txt`](latencia.txt), [`carga-con-sonda.txt`](carga-con-sonda.txt). |
 | Reposo | Parcial | Una sola medición: tras 960,022 s sin solicitudes de esta validación, la primera respuesta tarda 53.761 ms y devuelve 200. Render confirma un proceso nuevo a las 19:50:52 UTC, listo a las 19:51:16. No se repitió y el tráfico de terceros no se controló. [`despertar-reposo.txt`](despertar-reposo.txt), [`reposo-corroborado.json`](reposo-corroborado.json). |
 | Límite y recuperación | Parcial | Petición 21: 429, con `Retry-After` de 58 s al inicio y 56 s después del rollback. Tras dejar vencer la ventana, vuelven a pasar autenticación, 413 y diagnóstico. No se verificó el reinicio inmediato del contador porque las ventanas vencieron durante los reemplazos de instancia, y el botón Restart no se ejercitó. [`limite.txt`](limite.txt), [`limite-despues-rollback.txt`](limite-despues-rollback.txt), [`credenciales-final.txt`](credenciales-final.txt), [`diagnostico-final.txt`](diagnostico-final.txt). |
-| Fuente caída | Parcial | Rechazo de conexión simulado dentro de Render: el catálogo devuelve `snapshot` fechado el 24/9/2026 y el asistente avisa que usa una copia sin conexión. El navegador pasa 9 de 9 en ese estado. No es una caída natural de ArcGIS ni cubre timeouts o errores 5xx. [`fuente-caida-controlada.json`](fuente-caida-controlada.json), [`diagnostico-fuente-caida.txt`](diagnostico-fuente-caida.txt). |
-| Reinicio y catálogo | Parcial | El reemplazo de instancia inicia sin caché y conserva la copia versionada. Después del rollback se obtiene catálogo `live`: 153 estaciones y 124 rutas, consultado a las 20:26:47 UTC. Es reemplazo de instancia por despliegue; el botón Restart y la suspensión no se probaron por separado. [`fuente-caida-controlada.json`](fuente-caida-controlada.json), [`recuperacion-final.json`](recuperacion-final.json). |
+| Fuente caída | Parcial | Despliegue temporal de diagnóstico, con el SHA exacto no registrado y el comando de inicio alterado (no se afirma que fuera `main`). Rechazo de conexión simulado dentro de Render: el catálogo devuelve `snapshot` fechado el 24/9/2026 y el asistente avisa que usa una copia sin conexión. El navegador pasa 9 de 9 en ese estado. No es una caída natural de ArcGIS ni cubre timeouts o errores 5xx. [`fuente-caida-controlada.json`](fuente-caida-controlada.json), [`diagnostico-fuente-caida.txt`](diagnostico-fuente-caida.txt). |
+| Reinicio y catálogo | Parcial | En el despliegue temporal de diagnóstico (SHA exacto no registrado), el reemplazo de instancia inicia sin caché y conserva la copia versionada. Después del rollback se obtiene catálogo `live`: 153 estaciones y 124 rutas, consultado a las 20:26:47 UTC. Es reemplazo de instancia por despliegue; el botón Restart y la suspensión no se probaron por separado. [`fuente-caida-controlada.json`](fuente-caida-controlada.json), [`recuperacion-final.json`](recuperacion-final.json). |
 | HSTS y redirecciones | Medido | HSTS `max-age=15552000` observado en Render y desde Windows. Las redirecciones 308 permanecen en el mismo origen y no añaden cookies. Un JS estático pide clave. Los archivos registran el valor, no cuántas cabeceras HSTS llegaron. [`cabeceras-y-sonda.json`](cabeceras-y-sonda.json), [`redirecciones-y-estaticos.json`](redirecciones-y-estaticos.json), [`recuperacion-final.json`](recuperacion-final.json). |
 | Reversión | Parcial | Rollback real a `e269a8a`; comando y política originales restaurados, variables temporales retiradas, sonda autenticada 404 y datos en vivo recuperados. No se probó suspender el servicio ni se confirmó el origen de Tailscale (Windows no respondía). [`estado-final.json`](estado-final.json), [`recuperacion-final.json`](recuperacion-final.json). |
 
@@ -134,7 +143,10 @@ y del entorno.
 
 ## Fallo controlado y recuperación
 
-La prueba usó un proxy HTTPS local cerrado solo en el comando de inicio de Next.
+La prueba usó un despliegue temporal de diagnóstico con el comando de inicio
+alterado: un proxy HTTPS local cerrado solo en el comando de inicio de Next. El
+SHA exacto de ese despliegue no se registró, así que no se afirma que fuera el
+código ni la compilación de `main`.
 Render registró `ECONNREFUSED 127.0.0.1:9`; después el backend entregó
 `source=snapshot`, fecha `2026-09-24T15:16:41.502Z`, 153 estaciones y 124 rutas.
 La respuesta de 8 G avisó que usaba una copia guardada. Esto prueba el respaldo

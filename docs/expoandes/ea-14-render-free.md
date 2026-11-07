@@ -16,9 +16,12 @@ Este documento junta dos cosas con alcance distinto:
 
 ## Estado actual
 
-De los 13 criterios de #40, **6 tienen una medición completa** y **7 son
-parciales**; ninguno queda sin evidencia. Los criterios parciales y los límites de
-abajo siguen abiertos, así que **#36 y #40 no se cierran con este trabajo**.
+De los 13 criterios de #40, **6 están marcados «Medido»** y **7 «Parcial»**;
+ninguno queda sin evidencia. «Medido» es una observación registrada del
+comportamiento que dice la fila, no la aceptación completa del criterio de #40
+(por ejemplo, HSTS no registra cuántas cabeceras llegaron). Los criterios
+parciales y los límites de abajo siguen abiertos, así que **#36 y #40 no se
+cierran con este trabajo**.
 
 Qué quedó fijado el 2026-11-06:
 
@@ -29,8 +32,11 @@ Qué quedó fijado el 2026-11-06:
   no se importó, no se creó otro servicio y **`corepack pnpm` no se validó en
   Render**.
 - Las pruebas de proxy, memoria y la serie con tráfico paralelo usaron una
-  revisión temporal de diagnóstico (`f32c92b`, rama no fusionada). Su código no
-  está en el repositorio.
+  revisión temporal de diagnóstico (`f32c92b`, rama no fusionada): el código de
+  diagnóstico no forma parte de `main` ni de este PR.
+- La prueba de fuente caída (filas 10 y 11) usó un despliegue temporal de
+  diagnóstico con el comando de inicio alterado. **El SHA exacto de ese despliegue
+  no se registró**: no se afirma que fuera `main` ni que fuera `f32c92b`.
 - Todo lo medido de memoria, reposo y proxy es de una sola corrida (por red, en el caso del proxy). Las lecturas
   de memoria son puntuales, no una carga sostenida de feria.
 - Chrome usó dispositivos simulados. No hay validación con iPhone, BLE, audio
@@ -152,9 +158,11 @@ devolver verdadero ante un 429 sin `Retry-After` y `redirect: "follow"`.
 ## Criterios de #40 frente a la evidencia en vivo
 
 Mediciones del 2026-11-06 sobre `https://transmivoz.onrender.com`, revisión `main`
-`e269a8a` salvo donde se indica (ver «Estado actual»). **Medido** significa que el
-criterio tiene una medición real completa; **Parcial**, que se midió solo una
-parte, con el límite de la última columna. Nada de esto es una garantía de cuotas
+`e269a8a` salvo donde se indica (ver «Estado actual»; la fuente caída no se
+atribuye a `main`). **Medido** significa que hay una observación registrada del
+comportamiento que dice la fila; no implica que el criterio completo de #40 quede
+aceptado. **Parcial**, que se midió solo una parte, con el límite de la última
+columna. Nada de esto es una garantía de cuotas
 ni de tiempos futuros. Todas las rutas son relativas a la carpeta
 [`verificaciones/render-2026-11-06-e269a8a/`](verificaciones/render-2026-11-06-e269a8a/).
 
@@ -169,8 +177,8 @@ ni de tiempos futuros. Todas las rutas son relativas a la carpeta
 | 7 | p50 y p95 en caliente, separados de la red y de ArcGIS | Medido | Catálogo inicial 2976 ms (incluye ArcGIS). 30 GET: p50 105 ms, p95 121 ms. 30 POST: p50 108 ms, p95 167 ms. Serie aparte con tráfico paralelo de sonda: GET 114/124 ms, POST 160/529 ms, máximo 2058 ms, sin fallos. No es una carga de feria ni un SLA. [`latencia.txt`](verificaciones/render-2026-11-06-e269a8a/latencia.txt), [`carga-con-sonda.txt`](verificaciones/render-2026-11-06-e269a8a/carga-con-sonda.txt) |
 | 8 | Primer arranque tras reposo | Parcial | Una muestra: 960,022 s sin tráfico de la validación, 200 en 53.761 ms; Render registra un proceso nuevo a las 19:50:52 UTC. Tráfico de terceros no controlado; **no se repitió**, como pedía el criterio. [`despertar-reposo.txt`](verificaciones/render-2026-11-06-e269a8a/despertar-reposo.txt), [`reposo-corroborado.json`](verificaciones/render-2026-11-06-e269a8a/reposo-corroborado.json) |
 | 9 | 429 y que un reinicio reinicie el contador | Parcial | 429 en la petición 21 con `Retry-After`, antes y después del rollback. **No se probó** que un reinicio reinicie el contador: las ventanas vencieron entre reemplazos de instancia y el botón *Restart* no se ejercitó. [`limite.txt`](verificaciones/render-2026-11-06-e269a8a/limite.txt), [`limite-despues-rollback.txt`](verificaciones/render-2026-11-06-e269a8a/limite-despues-rollback.txt) |
-| 10 | Fuente caída y copia fechada | Parcial | Rechazo de conexión simulado en Render (proxy HTTPS local cerrado solo en el inicio de Next): `snapshot` del 2026-09-24T15:16:41.502Z con 153 estaciones y 124 rutas, aviso veraz del asistente y Chrome 9 de 9. **No cubre** una caída natural de ArcGIS, timeouts ni errores 5xx. [`fuente-caida-controlada.json`](verificaciones/render-2026-11-06-e269a8a/fuente-caida-controlada.json), [`diagnostico-fuente-caida.txt`](verificaciones/render-2026-11-06-e269a8a/diagnostico-fuente-caida.txt) |
-| 11 | Reinicio conserva la copia | Parcial | El reemplazo de instancia conservó la copia versionada y, tras el rollback, el catálogo volvió a `live` (153 estaciones, 124 rutas). **No se probó** el botón *Restart* ni la suspensión por separado. [`fuente-caida-controlada.json`](verificaciones/render-2026-11-06-e269a8a/fuente-caida-controlada.json), [`recuperacion-final.json`](verificaciones/render-2026-11-06-e269a8a/recuperacion-final.json) |
+| 10 | Fuente caída y copia fechada | Parcial | Despliegue temporal de diagnóstico, SHA exacto no registrado, comando de inicio alterado (no se afirma `main`). Rechazo de conexión simulado en Render (proxy HTTPS local cerrado solo en el inicio de Next): `snapshot` del 2026-09-24T15:16:41.502Z con 153 estaciones y 124 rutas, aviso veraz del asistente y Chrome 9 de 9. **No cubre** una caída natural de ArcGIS, timeouts ni errores 5xx. [`fuente-caida-controlada.json`](verificaciones/render-2026-11-06-e269a8a/fuente-caida-controlada.json), [`diagnostico-fuente-caida.txt`](verificaciones/render-2026-11-06-e269a8a/diagnostico-fuente-caida.txt) |
+| 11 | Reinicio conserva la copia | Parcial | En el despliegue temporal de diagnóstico (SHA no registrado), el reemplazo de instancia conservó la copia versionada y, tras el rollback, el catálogo volvió a `live` (153 estaciones, 124 rutas). **No se probó** el botón *Restart* ni la suspensión por separado. [`fuente-caida-controlada.json`](verificaciones/render-2026-11-06-e269a8a/fuente-caida-controlada.json), [`recuperacion-final.json`](verificaciones/render-2026-11-06-e269a8a/recuperacion-final.json) |
 | 12 | HSTS en Render | Medido | `strict-transport-security: max-age=15552000` observado en `/`, en la API, en un JS estático y tras el rollback; redirecciones 308 al mismo origen sin cookies. Los archivos guardan el valor, no el número de cabeceras. [`cabeceras-y-sonda.json`](verificaciones/render-2026-11-06-e269a8a/cabeceras-y-sonda.json), [`redirecciones-y-estaticos.json`](verificaciones/render-2026-11-06-e269a8a/redirecciones-y-estaticos.json), [`recuperacion-final.json`](verificaciones/render-2026-11-06-e269a8a/recuperacion-final.json) |
 | 13 | Reversión | Parcial | *Rollback* real al artefacto original (50,7 s): comando, política y variables originales restaurados, sonda 404, datos en vivo. **No se probó** suspender el servicio, y el origen de Tailscale no se confirmó (el puerto 3000 de Windows no respondía). [`estado-final.json`](verificaciones/render-2026-11-06-e269a8a/estado-final.json), [`recuperacion-final.json`](verificaciones/render-2026-11-06-e269a8a/recuperacion-final.json) |
 
