@@ -2,6 +2,8 @@
 
 Consulta: 2 de noviembre de 2026. ExpoAndes: 17 de noviembre. Equipo: dos personas de app y tres de hardware; Mac/Xcode disponible y ningún componente comprado, según el equipo. Esta es una investigación de compra, no una orden ni una reserva. No se contactó a vendedores ni se compró nada.
 
+**Actualización del 6/11:** el equipo compró una placa ESP32-S3-N16R8 y un radar DFRobot SEN0395. El [plan de firmware](plan-firmware.md) explica por qué el SEN0395 da presencia dentro de una ventana y no distancia. El resto de este documento conserva la consulta del 2/11.
+
 ## Resultado práctico
 
 Hay placas ESP32-S3 y radares de presencia anunciados por comercios de Bogotá. **No se confirmó inventario local de un kit mmWave que resuelva detección genérica de obstáculos estáticos.** No comprar por la palabra «radar»: presencia, seguimiento humano y medición de reflectores son funciones diferentes. El [informe técnico](investigacion-hardware-ios.md) compara LD2450, XM125 y kits TI y explica sus límites.
