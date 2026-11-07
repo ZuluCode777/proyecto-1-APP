@@ -31,8 +31,8 @@ Estado: **hecho**, **en curso** o **pendiente**. «Kiro» es el agente en el san
 | 8 | Registrar recomendación provisional, cambios de diseño y límites. | Kiro | Hecho, en evaluación |
 | 9 | Revisión independiente del diff; corregir sus hallazgos y volver a revisar. | Kiro | Hecho, ver cambios en evaluación |
 | 9b | Abrir PR en español hacia `main`, con revisión limpia e integración continua en verde. Sin fusionar hasta que A2 lo indique. | Kiro | Hecho, [PR #58](https://github.com/ZuluCode777/proyecto-1-APP/pull/58) |
-| 10 | Abrir el prototipo en Safari de iPhone con VoiceOver y recorrer las tareas en ambas variantes. | Agente con Mac | Pendiente. A2 no puede revisar las funciones del iPhone. |
-| 11 | Probar tamaños de Dynamic Type reales, Negrita, Aumentar contraste y Reducir movimiento en el iPhone. | Agente con Mac | Pendiente. A2 no puede revisar las funciones del iPhone. |
+| 10 | Abrir el prototipo en Safari de iPhone con VoiceOver y recorrer las tareas en ambas variantes. | Agente con Mac | Pendiente. A2 no tiene iPhone para revisarlo. |
+| 11 | Probar tamaños de Dynamic Type reales, Negrita, Aumentar contraste y Reducir movimiento en el iPhone. | Agente con Mac | Pendiente. A2 no tiene iPhone para revisarlo. |
 | 12 | Sesiones con personas ciegas y de baja visión, con consentimiento. Si no hay participantes, la validación sigue pendiente. | A2 con el equipo | Pendiente. Se harán cuando la app esté desarrollada en Xcode, no con este prototipo. |
 | 13 | Elegir variante (o combinación) y registrar la decisión en la evaluación y en #28. | A2 | Hecho el 7/11/2026: variante B con ajustes, en la [evaluación](evaluacion-y-decision.md) y en el PR #58. Falta anotarla en #28. |
 | 14 | Fusionar el PR cuando A2 lo indique. | A2 | A2 pidió fusionar el 7/11/2026; Kiro lo fusiona por ese pedido. |

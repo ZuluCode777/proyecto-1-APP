@@ -135,17 +135,17 @@ Esta recomendación sale de mediciones automáticas y revisión experta. No sust
 | Decisión | **B: Pestañas y lista de estados**, con los ajustes de abajo. A2 la prefiere por orden y estética. |
 | Opciones | A, B o combinación A + pestañas. |
 | Validación con usuarios | No se hizo con el prototipo. Las pruebas con usuarios se harán cuando la app esté desarrollada en Xcode. Muestra: ninguna todavía. |
-| Pruebas en iPhone | A2 no puede revisar las funciones del iPhone: VoiceOver, Dynamic Type y ajustes de accesibilidad de iOS. Quedan para un agente o una persona con Mac e iPhone ([plan](plan-de-trabajo.md), pasos 10 y 11). |
+| Pruebas en iPhone | A2 no tiene iPhone para revisar VoiceOver, Dynamic Type ni los ajustes de accesibilidad de iOS. Esas pruebas quedan para un agente o una persona con Mac e iPhone ([plan](plan-de-trabajo.md), pasos 10 y 11). |
 | Fecha | 7/11/2026 |
 | Consecuencia para #43 | Las vistas SwiftUI de #43 siguen la variante B, los ajustes de A2 y la [especificación de accesibilidad](especificacion-accesibilidad.md). |
 
 ### Ajustes pedidos por A2
 
-1. **Opciones más grandes.** Aumentar un poco el tamaño de las opciones de B.
-2. **Barra de pestañas más grande.** Botones más altos y texto más grande en la barra de abajo. A2 lo ve adecuado porque el asistente también puede guiar a la persona por la app.
-3. **Considerar que «Avisos» también esté en «Más».** Hoy la barra tiene cinco pestañas: Inicio, Viajar, Asistente, Avisos y Más. Si Avisos sale de la barra, las cuatro pestañas restantes pueden ser más anchas. A cambio se pierde el número de avisos activos que muestra la pestaña («Avisos 2»), y #43 tendría que mostrarlo de otra forma, sobre todo para los avisos urgentes.
+1. **Barra de abajo más grande.** Aumentar un poco el tamaño de todos los botones de la barra de pestañas de B: más altos y con el texto más grande. Hoy la barra tiene cinco pestañas iguales: Inicio, Viajar, Asistente, Avisos y Más.
+2. **Asistente destacado en la barra.** El asistente debe tener un lugar destacado en la barra, porque también puede guiar a la persona por la app. Hoy está en el centro, con el mismo tamaño que las demás pestañas.
+3. **«Avisos» también en «Más».** «Más» conserva todas sus opciones y además incluye Avisos. No está decidido si Avisos sigue también en la barra. Si sale de ella, #43 debe mostrar de otra forma el número de avisos activos que hoy lleva la pestaña («Avisos 2»), sobre todo para los avisos urgentes.
 4. **No poner todas las herramientas en una sola fila.** En A todas las herramientas van seguidas, y recorrerlas puede ser molesto para personas con discapacidad visual parcial. B no lo hace en la barra, y esa ventaja se conserva.
-5. **Repartir los botones de «Más».** «Más» tiene el problema del punto 4. Sus opciones (Ubicación y orientación, Accesorio, Metro, Lupa, Ajustes y ayuda, Emergencia) van en fila y dejan pantalla libre. Hay que usar ese espacio con botones más grandes y más separados.
+5. **«Más» en cuadrícula, sin perder visibilidad.** «Más» tiene el problema del punto 4. Sus opciones (Ubicación y orientación, Accesorio, Metro, Lupa, Ajustes y ayuda, Emergencia y ahora Avisos) van en fila y dejan pantalla libre. Deben pasar a una cuadrícula que use ese espacio. La cuadrícula mantiene las reglas de la [especificación](especificacion-accesibilidad.md): controles de al menos 44×44 pt, contraste 7:1 y ninguna palabra cortada. Si con texto grande una opción no cabe, la cuadrícula usa menos columnas.
 
 Costos de B que siguen vigentes (ver «Comparación A y B»): cancelar y «La app dijo» quedan al final, lejos del título, y en Inicio con una sesión activa las franjas fijas ocupan el 23 % de la pantalla con texto al 100 %. Una barra más grande aumenta esa franja fija, así que #43 debe medirla también con texto al 200 y 310 %.
 
