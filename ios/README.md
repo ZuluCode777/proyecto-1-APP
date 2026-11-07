@@ -50,7 +50,7 @@ ios/
   scripts/comprobar-ios.sh     las mismas comprobaciones que la CI
 ```
 
-El proyecto usa grupos sincronizados (`objectVersion 77`): necesita **Xcode 16 o superior**. El runner `macos-26` trae Xcode 26.6 (verificado en #69); **la CI de esta app todavía no se ha ejecutado**, así que no hay compilación en macOS comprobada (ver [ios-ci.md](../docs/expoandes/ios-ci.md)). El paquete `ContratoBLE` se enlaza por ruta local; el producto `ContratoBLEVectores` solo se enlaza al objetivo de pruebas, nunca a la app.
+El proyecto usa grupos sincronizados (`objectVersion 77`): necesita **Xcode 16 o superior**. El runner `macos-26` trae Xcode 26.6 (verificado en #69); la CI de esta app **sí se ejecutó** en el SHA `97b7e819cb5ed478240a25cd253c7bd92a80844b` ([ejecución](https://github.com/ZuluCode777/proyecto-1-APP/actions/runs/42345095644)): Xcode 26.6 (build 17F113) compiló para Simulator y para iPhone genérico sin firma (Release), y pasaron 82 pruebas unitarias y 16 de interfaz (98 en total, 0 fallos, 0 omitidas) con todas las auditorías de accesibilidad, incluida `AccessibilityXXXL`. Eso es evidencia de software en un runner; **no** prueba la app en un iPhone real, ni la apertura en Xcode, ni la guía con otra persona (ver [ios-ci.md](../docs/expoandes/ios-ci.md)). Cambios posteriores a ese SHA necesitan su propia ejecución. El paquete `ContratoBLE` se enlaza por ruta local; el producto `ContratoBLEVectores` solo se enlaza al objetivo de pruebas, nunca a la app.
 
 ## Abrir y comprobar en un Mac
 

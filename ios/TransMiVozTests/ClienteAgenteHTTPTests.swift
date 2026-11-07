@@ -56,6 +56,23 @@ final class ClienteAgenteHTTPTests: XCTestCase {
         XCTAssertNil(peticion.url?.query)
     }
 
+    /// La petición real va al host y puerto validados, sin credenciales en la URL.
+    func testPeticionConservaHostYPuertoValidados() async throws {
+        responder(200, FixturesHTTP.ninguna)
+        let origenConPuerto = try OrigenServidor.analizar("https://Servidor.Ejemplo:8443").get()
+        let cliente = ClienteAgenteHTTP(sesion: ProtocoloSimulado.sesion()) {
+            ConfiguracionServidor(origen: origenConPuerto, clave: self.claveInventada)
+        }
+        _ = try await cliente.consultar(texto: "hola")
+        let url = try XCTUnwrap(ProtocoloSimulado.peticiones.first?.url)
+        XCTAssertEqual(url.absoluteString, "https://servidor.ejemplo:8443/api/agent")
+        let partes = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        XCTAssertEqual(partes.host, "servidor.ejemplo")
+        XCTAssertEqual(partes.port, 8443)
+        XCTAssertNil(partes.user)
+        XCTAssertNil(partes.password)
+    }
+
     func testSinClaveNoEnviaAuthorization() async throws {
         responder(200, FixturesHTTP.ninguna)
         let sinClave = ClienteAgenteHTTP(sesion: ProtocoloSimulado.sesion()) { ConfiguracionServidor(origen: self.origen, clave: nil) }

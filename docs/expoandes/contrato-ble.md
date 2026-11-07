@@ -7,7 +7,7 @@ Congelado el **6 de noviembre de 2026** para el issue [#30](https://github.com/Z
 - Es un **contrato de bytes y de sesión**. Lo implementan el codificador y emisor de prueba en C++ ([`firmware/`](../../firmware/README.md)) y el decodificador y la validación de sesión en Swift ([`ios/ContratoBLE`](../../ios/ContratoBLE/README.md)). Ambos lados se prueban con los **mismos vectores** de [`contratos/ble/`](../../contratos/ble/).
 - Todo vector y el emisor son **sintéticos**. No hay medición de radar, ni trama real del SEN0395, ni enlace BLE, ni Core Bluetooth detrás. Un vector que pasa **no acredita** radar ni enlace físico.
 - Las cifras de tiempo (500 ms, 200 ms, 20 ms, 30 s, 100 ms) son **objetivos por medir**, no capacidades. El 20 ms de margen es una hipótesis de ensayo, no precisión de reloj probada.
-- **Pendiente, no cerrado por este trabajo:** ensayo B2 (retardo del SEN0395 y conflicto de 1 Hz), enlace cifrado y autenticado real (EA-12), transporte Core Bluetooth (EA-11/EA-12), prueba en el iPhone desde el 11/11 y la corrida de Swift en macOS de CI. Ver [sección 10](#10-pendiente-y-puertas).
+- **Pendiente, no cerrado por este trabajo:** ensayo B2 (retardo del SEN0395 y conflicto de 1 Hz), enlace cifrado y autenticado real (EA-12), transporte Core Bluetooth (EA-11/EA-12), y la prueba en el iPhone desde el 11/11. La corrida de Swift en macOS de CI **ya pasó** en `97b7e819` ([ejecución](https://github.com/ZuluCode777/proyecto-1-APP/actions/runs/42345095722): 1054 comprobaciones de C++ y 7 pruebas de Swift en macOS; fixtures 22 info / 51 med / 11 emisión / 61 sesión), solo con vectores sintéticos. Ver [sección 10](#10-pendiente-y-puertas).
 
 ## 1. Servicio y características
 
@@ -286,7 +286,7 @@ Decisiones tomadas al congelar. Ninguna cambia la distribución de bytes de §8.
 | Trama real del SEN0395 y salud ante desconexión | H2 (B1) | Captura de UART cruda. |
 | Enlace cifrado y autenticado real, y qué evidencia lo afirma en iOS | H3 (EA-12) | Prueba con la placa y el iPhone. |
 | Transporte Core Bluetooth que use `SesionProximidad` | A2 (EA-11/EA-12) | Código y prueba en el iPhone desde el 11/11. |
-| Swift en macOS de CI y, después, en Xcode con el app | A1 / A2 | Primera corrida verde del job `swift`; el módulo se probó aquí solo en Linux. |
+| Swift en Xcode con la app (Swift en macOS de CI ya verde) | A1 / A2 | El job de CI pasó en `97b7e819` ([ejecución](https://github.com/ZuluCode777/proyecto-1-APP/actions/runs/42345095722): 1054 comprobaciones de C++ + 7 pruebas de Swift en macOS). Falta integrarlo en Xcode con la app. |
 | Pines, cableado y firmware de placa | H3 (EA-12) | `firmware/README.md` una vez recibida la placa. |
 
 Este trabajo **no cierra el issue #30**: deja el contrato congelado y verificable por software; la evidencia física sigue pendiente.

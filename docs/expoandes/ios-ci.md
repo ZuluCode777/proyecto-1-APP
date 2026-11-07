@@ -1,6 +1,6 @@
 # CI de iOS en runners macOS de GitHub (iOS-CI, #68)
 
-Estado: **código y workflow preparados, sin ejecución real todavía.** Este documento no acredita que la app compile en macOS: eso lo prueba una ejecución aprobada de `.github/workflows/ios.yml`, que el PR debe enlazar con su SHA. Preparado y verificado solo en Linux (ver [Qué se verificó antes de la primera ejecución](#qué-se-verificó-antes-de-la-primera-ejecución)).
+Estado: **el workflow ya corrió en macOS.** En el SHA `97b7e819cb5ed478240a25cd253c7bd92a80844b` la [ejecución 42345095644](https://github.com/ZuluCode777/proyecto-1-APP/actions/runs/42345095644) usó Xcode 26.6 (build 17F113): compilaron el Simulator y el iPhone genérico sin firma (Release), y pasaron 82 pruebas unitarias + 16 de interfaz = 98, 0 fallos, 0 omitidas, con todas las auditorías de accesibilidad automáticas (incluida `AccessibilityXXXL`). Es evidencia de software en un runner, no de un iPhone ni de Xcode abierto a mano. La corrección posterior del origen del servidor (`OrigenServidor`, 5 pruebas nuevas) **todavía necesita la ejecución de la cabeza siguiente**; hasta entonces solo se verificó en Linux (ver [Qué se verificó antes de la primera ejecución](#qué-se-verificó-antes-de-la-primera-ejecución)).
 
 ## Qué comprueba y qué no
 
@@ -19,7 +19,7 @@ Los fixtures BLE (`contratos/ble/`) y los HTTP (`ios/TransMiVozTests/FixturesHTT
 | Elemento | Valor | Origen |
 | --- | --- | --- |
 | Runner | `macos-26` (estándar, gratuito en repositorio público) | [#69](https://github.com/ZuluCode777/proyecto-1-APP/pull/69), ejecución `42335167808` |
-| Xcode | **26.6**, build **17F113**, `DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer` | #69 informó la versión; la ruta `Xcode_26.6.app` es la convención de las imágenes y se confirma en la primera ejecución (el paso «Herramientas» falla si no coincide) |
+| Xcode | **26.6**, build **17F113**, `DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer` | #69 informó la versión; la [ejecución 42345095644](https://github.com/ZuluCode777/proyecto-1-APP/actions/runs/42345095644) confirmó Xcode 26.6, build 17F113 y la ruta `Xcode_26.6.app` (el paso «Herramientas» falla si no coincide) |
 | iOS del Simulator | Runtime más nuevo con versión mayor **26** | `IOS_MAYOR_ESPERADO` |
 | Dispositivo del Simulator | **iPhone 17** exacto, elegido por UDID | `SIMULADOR_NOMBRE` |
 | Destino sin firma | `generic/platform=iOS`, `CODE_SIGNING_ALLOWED=NO` | |
@@ -78,18 +78,18 @@ xcodebuild build -project ios/TransMiVoz.xcodeproj -scheme TransMiVoz -configura
 | Criterio | Estado |
 | --- | --- |
 | Proyecto abrible, esquema compartido, pruebas y recursos locales | Hecho en el repositorio; **falta confirmarlo con una apertura real en Xcode** (no hubo Mac para crearlo) |
-| Job en macOS para PR del cliente/contratos/workflow y `main` | Escrito; **sin ejecución** |
-| Simulator: compilar, XCTest, UI y auditoría; fallo = job rojo | Escrito; **sin ejecución** |
-| Compilación iPhone genérico sin firma | Escrita; **sin ejecución** |
+| Job en macOS para PR del cliente/contratos/workflow y `main` | Ejecutado y verde en `97b7e819` ([ejecución](https://github.com/ZuluCode777/proyecto-1-APP/actions/runs/42345095644)) |
+| Simulator: compilar, XCTest, UI y auditoría; fallo = job rojo | Verde en `97b7e819`: 82 unitarias + 16 de interfaz = 98, 0 fallos, 0 omitidas, auditorías incluida `AccessibilityXXXL` |
+| Compilación iPhone genérico sin firma | Verde en `97b7e819` (Release, sin firma) |
 | Fixtures HTTP y BLE compartidos, simulación distinguida | Hecho (ver «Límites») |
 | CI web intacta, permisos mínimos, sin secretos | Hecho |
-| Logs y `.xcresult` ligados al SHA | Escrito; **sin ejecución** |
+| Logs y `.xcresult` ligados al SHA | Subidos por la ejecución de `97b7e819` |
 | Guía local de apertura, firma, instalación, recuperación | Hecha ([ios/README.md](../../ios/README.md)); **falta validarla el 10/11 con otra persona** |
-| PR y ejecución real aprobada adjuntos | **Pendiente.** No cerrar #68 solo con el YAML |
+| PR y ejecución real aprobada adjuntos | Ejecución aprobada de `97b7e819` enlazada arriba; la corrección de `OrigenServidor` exige una nueva ejecución en la cabeza siguiente. No cerrar #68 sin ella ni sin las pendientes de esta tabla |
 
 ## Qué se verificó antes de la primera ejecución
 
-Solo en Linux, sin Xcode: el código sin SwiftUI/Keychain/Simulator (dominio, red, estado, sesión local, ajustes, guardia de contenido) compila y sus 78 pruebas pasan con `swift test` (Swift 6.2.4 en `docker.io/library/swift:6.2`) junto al paquete `ContratoBLE` y los vectores compartidos; los fixtures HTTP válidos pasan `AgentReplySchema` real (zod); `project.pbxproj` y el esquema se leen con un analizador y todos sus identificadores están definidos; el script elige el Simulator correctamente con datos simulados de `simctl`. **No se compiló SwiftUI, no se abrió el proyecto en Xcode y no se ejecutó ninguna prueba de interfaz ni auditoría.** Un fallo en la primera ejecución en `macos-26` es esperable y se corrige con el log del artefacto.
+Antes de que corriera en macOS, solo en Linux, sin Xcode: el código sin SwiftUI/Keychain/Simulator (dominio, red, estado, sesión local, ajustes, guardia de contenido) compila y sus 78 pruebas pasan con `swift test` (Swift 6.2.4 en `docker.io/library/swift:6.2`) junto al paquete `ContratoBLE` y los vectores compartidos; los fixtures HTTP válidos pasan `AgentReplySchema` real (zod); `project.pbxproj` y el esquema se leen con un analizador y todos sus identificadores están definidos; el script elige el Simulator correctamente con datos simulados de `simctl`. Esa verificación en Linux no compila SwiftUI ni corre pruebas de interfaz; eso lo cubrió después la ejecución de macOS en `97b7e819`. **Nadie ha abierto el proyecto a mano en Xcode.** La corrección de `OrigenServidor` (host y puerto validados ya decodificados, endpoint construido con `URLComponents`) pasó en Linux las 87 pruebas del paquete (5 de ellas nuevas) y sigue pendiente de la ejecución de macOS en su propia cabeza.
 
 ## Pendiente fuera de la CI
 
