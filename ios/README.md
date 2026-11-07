@@ -1,0 +1,98 @@
+# TransMiVoz para iPhone (SwiftUI)
+
+Cliente iPhone mínimo de TransMiVoz. **Proyecto:** `ios/TransMiVoz.xcodeproj` (se abre directamente en Xcode; no hay generadores ni pasos manuales). **Esquema compartido:** `TransMiVoz`. **Destino mínimo:** iOS 17.0, solo iPhone. Código y comentarios en español.
+
+Es un corte mínimo para EA-09 (#35) con soporte de CI iOS-CI (#68). No es una app terminada ni instalable sin firma: ver [Límites](#límites-de-la-evidencia).
+
+## Qué hace
+
+| Pestaña | Contenido | Necesita red |
+| --- | --- | --- |
+| Sesión | Sesión local de proximidad **simulada**: iniciar, detener, estado del sensor, origen de los datos, enlace, tramas perdidas. | No |
+| Consulta | Texto → `POST /api/agent` del backend Next existente, con cancelar, reintentar y errores claros. | Sí |
+| Servidor | Origen HTTPS y clave opcional (Llavero si la persona lo pide). | No |
+
+Todas las reglas de transporte siguen en el backend (`lib/local-agent.ts`). La app solo envía el texto, valida la respuesta y la muestra. Esta primera versión **no envía ubicación**.
+
+### Contrato HTTP usado
+
+- `POST {origen}/api/agent`, cuerpo `{"message": "..."}`, `Content-Type: application/json`. Sin reintentos automáticos.
+- Entrada validada antes de enviar: no vacía y hasta 300 unidades UTF-16 (igual que el recorte del servidor; la app **rechaza**, no recorta en silencio). Cuerpo ≤ 4.000 bytes.
+- Respuesta `AgentReplySchema` (`reply`, `steps`, `engine`, `action` ∈ `none|frequent|gps|search|route|trip`). El decodificador rechaza acciones desconocidas, campos faltantes y textos vacíos o desmedidos.
+- Autenticación: HTTP Basic con usuario fijo `transmivoz` y la clave de la persona (el servidor ignora el usuario). Solo HTTPS, sin credenciales en la URL, y **no se sigue ninguna redirección** para que `Authorization` no viaje a otro origen.
+- Errores: 400, 401, 413, 429 (con `Retry-After` en segundos), 503, 5xx, sin conexión, TLS, plazo de 12 s y respuesta incompatible. Cada uno trae mensaje y recuperación. Cancelar, reemplazar o enviar una entrada inválida invalida la consulta vigente, y salir de la pestaña Consulta la cancela: su respuesta tardía se descarta.
+- Plazo total de 12 s (propuesta de `arquitectura-y-experimentos.md`, criterio de UX, no una latencia medida).
+
+### Respuestas de viaje (`action: trip`)
+
+El texto de un viaje puede traer órdenes de abordaje sin parada, sentido ni vigencia verificados en el cliente. Esta versión **no muestra el texto** de un viaje: muestra un aviso y los tramos como información (el conteo de estaciones solo si `conteoVerificado`). No es una guía de abordaje. El resto de respuestas pasa por una guardia de contenido equivalente a la política del backend (`contieneImperativoDeViaje` y `respuestaSinImperativos` en `lib/local-agent.ts`, la misma que usa la web): si el texto o algún paso contiene una orden («Toma la X en Y», «sube en», «bájate en», «cambia a/en»), la app muestra el aviso seguro «no te doy indicaciones de abordaje» en su lugar y omite los pasos. Las abstenciones que solo mencionan subir o bajar sin ordenar nada se muestran. Esa guardia no planifica nada y el servidor sigue siendo la autoridad (`TransMiVoz/Dominio/GuardiaContenido.swift`; casos en `GuardiaContenidoTests`, repetidos de `lib/local-agent.test.ts`).
+
+### Sesión local simulada
+
+Usa el paquete [`ContratoBLE`](ContratoBLE/README.md) con `modo: .simulada` y un guion de tramas inventadas por la app (`TransMiVoz/Sesion/GuionSimulado.swift`). **No hay Core Bluetooth, accesorio ni radar.** La pantalla lo dice siempre («SESIÓN SIMULADA»), muestra «Origen de los datos: simulación» y «Enlace autenticado: no (no hay enlace real)». La sesión usa una asociación sin protección frente a intermediario **solo para poder arrancar el guion**; no se afirma ningún enlace autenticado. Al acabar las tramas, la sesión caduca a «Sin datos vigentes» (la última medida ya es demasiado vieja) y no la repite. El reloj es monotónico (`ProcessInfo.systemUptime`), no la hora de pared. «Sin detección» nunca se presenta como camino libre.
+
+### Seguridad
+
+- Clave: solo en memoria, salvo que se active «Recordar la clave en el Llavero» (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, asociada al origen: la clave de un servidor no se ofrece a otro). «Olvidar clave» la borra. Si el Llavero no deja borrar la clave guardada, la app lo dice (no afirma que sea transitoria), la clave se volverá a cargar al abrir la app y se puede reintentar con «Aplicar» u «Olvidar clave».
+- Sin claves ni URLs reales en el repositorio, binario, registros o pruebas. Todos los fixtures usan valores inventados (`servidor.ejemplo`, ruta `Z99`, «Estación Ejemplo Norte»).
+- `ClaveAcceso` oculta su valor en `description`/`debugDescription`.
+
+## Estructura
+
+```
+ios/
+  TransMiVoz.xcodeproj/        proyecto + xcshareddata/xcschemes/TransMiVoz.xcscheme
+  TransMiVoz/                  app (grupo sincronizado: todo archivo nuevo entra solo)
+    Dominio/ Red/ Estado/ Sesion/ Vistas/ Simulacion/ Assets.xcassets
+  TransMiVozTests/             XCTest de lógica, HTTP simulado, BLE compartido
+  TransMiVozUITests/           recorridos de interfaz + auditoría de accesibilidad
+  ContratoBLE/                 paquete local del contrato BLE (otro responsable)
+  scripts/comprobar-ios.sh     las mismas comprobaciones que la CI
+```
+
+El proyecto usa grupos sincronizados (`objectVersion 77`): necesita **Xcode 16 o superior**. El runner `macos-26` trae Xcode 26.6 (verificado en #69); **la CI de esta app todavía no se ha ejecutado**, así que no hay compilación en macOS comprobada (ver [ios-ci.md](../docs/expoandes/ios-ci.md)). El paquete `ContratoBLE` se enlaza por ruta local; el producto `ContratoBLEVectores` solo se enlaza al objetivo de pruebas, nunca a la app.
+
+## Abrir y comprobar en un Mac
+
+```bash
+git clone https://github.com/ZuluCode777/proyecto-1-APP.git && cd proyecto-1-APP
+git rev-parse HEAD                        # anota el commit
+open ios/TransMiVoz.xcodeproj             # o: doble clic en Finder
+ios/scripts/comprobar-ios.sh herramientas # versión de Xcode, SDK y runtimes
+ios/scripts/comprobar-ios.sh todo         # compila, prueba y compila para iPhone sin firma
+```
+
+Cada ejecución local escribe en una carpeta nueva `ios/salida/<fecha UTC>-<pid>/` (logs crudos de `xcodebuild`, `.xcresult`, `herramientas.txt`); el script imprime la ruta al empezar y **no borra ni pisa nada**. Para abrir un resultado: `open ios/salida/<carpeta>/pruebas-simulador.xcresult`. Pasos sueltos: `compilar-simulador`, `pruebas-simulador`, `compilar-dispositivo`; para que varios pasos compartan carpeta, fija `SALIDA=ios/salida/mi-corrida` (ruta que no exista aún: si ya hay un resultado del mismo paso, el script falla y te dice cuál). Limpiar resultados viejos es cosa tuya. Autocomprobación del script (sin Xcode): `ios/scripts/probar-comprobar-ios.sh`. Si tu Xcode o tu Simulator difieren de los de la CI, el script puede fallar al elegir destino a propósito; puedes fijar `SIMULADOR_NOMBRE` e `IOS_MAYOR_ESPERADO` (ver cabecera del script). En Xcode: elige el esquema **TransMiVoz** y un iPhone Simulator, Cmd+U ejecuta todas las pruebas.
+
+Las pruebas de interfaz arrancan la app con `-PRUEBAS_UI_SIMULADAS` (solo en compilaciones de depuración): cliente HTTP simulado, Llavero en memoria, sin red. Palabras clave de la consulta: `error401`, `error429`, `sinred`, `lento`, `viaje`, `orden`.
+
+## Firmar, instalar y recuperar (iPhone real)
+
+Pendiente del Mac y el iPhone del 11/11 (EA-09 / #35). **Nada de esto lo prueba la CI.**
+
+1. **Antes:** Xcode instalado y su primera ejecución terminada; cable de datos; la Apple Account de quien firma con segundo factor a mano; confirmar que ese Xcode soporta el iOS exacto del iPhone (si el iPhone tiene un iOS más nuevo que el que soporta Xcode, actualiza Xcode antes de seguir).
+2. Abre `ios/TransMiVoz.xcodeproj`, comprueba el commit con `git rev-parse HEAD` y la versión con `xcodebuild -version`.
+3. Xcode ▸ Settings ▸ Accounts: agrega la Apple Account. Selecciona el proyecto ▸ target **TransMiVoz** ▸ Signing & Capabilities: marca «Automatically manage signing», elige el **Team** y cambia el *Bundle Identifier* (`co.transmivoz.app` es un valor provisional que casi seguro está ocupado: usa uno propio, por ejemplo `co.transmivoz.<tus-iniciales>`). No cambies nada más. No subas al repositorio los cambios de equipo ni de identificador.
+4. Conecta el iPhone, desbloquéalo y acepta «Confiar en este ordenador». Si Xcode lo pide: iPhone ▸ Ajustes ▸ Privacidad y seguridad ▸ Modo de desarrollador ▸ activar (reinicia el teléfono).
+5. Elige el iPhone como destino y pulsa Run. La primera vez: iPhone ▸ Ajustes ▸ General ▸ VPN y gestión de dispositivos ▸ confía en tu perfil de desarrollador.
+6. Pestaña **Servidor**: escribe el origen `https://…` y la clave por el campo (nunca por URL ni archivo). Prueba **Consulta** (respuesta, error de red con modo avión, cancelar, volver). Prueba **Sesión** sin red: debe funcionar.
+7. Un Personal Team caduca a los 7 días y hay que reinstalar desde Xcode; no equivale a TestFlight.
+
+Recuperación (solo estas):
+
+| Síntoma | Qué hacer |
+| --- | --- |
+| «Failed to register bundle identifier» | Cambia el *Bundle Identifier* por uno único. |
+| «No account for team» / sin Team | Agrega la Apple Account en Settings ▸ Accounts. |
+| El iPhone no aparece o dice «Developer Mode disabled» | Activa Modo de desarrollador y reinicia; reconecta el cable. |
+| «Untrusted Developer» al abrir | Ajustes ▸ General ▸ VPN y gestión de dispositivos ▸ confiar. |
+| Xcode no soporta el iOS del iPhone | Actualiza Xcode o usa un iPhone compatible. |
+| La consulta falla con 401 | La clave es incorrecta o falta (pestaña Servidor). |
+| La consulta falla sin conexión | Revisa Wi-Fi/datos y el origen; la pestaña Sesión sigue siendo útil. |
+| Cualquier otro fallo de compilación | Guarda el error exacto y el log (`Report navigator`), la versión de Xcode y el commit; vuelve al commit probado en CI con `git checkout <sha>`. Si no hay acceso al asistente, aplica el respaldo web (Safari) al agotar el día-persona de EA-09 en vez de reescribir. |
+
+## Límites de la evidencia
+
+Esta carpeta, el Simulator y el build sin firma permiten detectar errores de código, de contrato y de interfaz. **No** validan: firma ni instalación en iPhone, enlace BLE o radar reales, emparejamiento, latencia sensor→auricular, dictado, VoiceOver real, audio por auriculares, permisos de Bluetooth/micrófono/ubicación (la app no los solicita todavía), segundo plano ni autonomía. Un artefacto del Simulator o el build `generic/platform=iOS` sin firma **no se instala en un iPhone**. Esas pruebas siguen abiertas en #35, #48 y los demás issues de producto.
+
+Fuera de este corte: mapas, rediseño completo, dictado, transporte Core Bluetooth, expansión de audio, ubicación en la consulta.

@@ -1,0 +1,73 @@
+# Contrato BLE v1.0 (EA-04): los mismos vectores de contratos/ble/ se ejecutan
+# en el portátil (C++ del firmware) y en macOS (paquete Swift ContratoBLE).
+# Es lógica y fixtures sintéticos: no prueba radar, enlace BLE ni Core Bluetooth.
+name: Contrato BLE
+
+on:
+  pull_request:
+    paths:
+      - "contratos/ble/**"
+      - "firmware/**"
+      - "ios/ContratoBLE/**"
+      - ".github/workflows/contrato-ble.yml"
+  push:
+    branches: [main]
+    paths:
+      - "contratos/ble/**"
+      - "firmware/**"
+      - "ios/ContratoBLE/**"
+      - ".github/workflows/contrato-ble.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versión del compilador
+        run: g++ --version
+
+      - name: Pruebas del codificador y del emisor sintético
+        run: make -C firmware probar
+
+  swift:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versiones de Xcode y Swift
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Pruebas del decodificador y la sesión
+        run: |
+          set -o pipefail
+          mkdir -p evidencia
+          swift test --package-path ios/ContratoBLE 2>&1 | tee evidencia/swift-test.txt
+
+      - name: Huella de vectores y commit
+        if: always()
+        run: |
+          mkdir -p evidencia
+          {
+            echo "commit: $(git rev-parse HEAD)"
+            xcodebuild -version
+            swift --version
+            shasum -a 256 contratos/ble/*.txt
+          } | tee evidencia/huella.txt
+          cp contratos/ble/*.txt evidencia/
+
+      - name: Conservar evidencia
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contrato-ble-swift
+          path: evidencia/
+          retention-days: 30

@@ -1,0 +1,99 @@
+# Vectores canónicos del contrato BLE v1.0 (EA-04). Sintéticos: no son mediciones.
+# Generados con struct.pack de Python, independiente del C++ y del Swift.
+# Formato: una línea por caso, campos separados por espacios; "#" inicia comentario.
+#   info <id> <hex|-> ok <clave=valor>...        | error <código>
+#   med <id> <info_ref> <hex|-> ok <clave=valor>... | error <código>
+#   emision <id> <info_ref> <seqInicial> <inicioMs> <pasoMs> <edadMs> <estado> <sim 0|1> <hex,hex,...>
+# Valores decimales; centinelas sin traducir (distanciaMm 65535, azimutCent -32768, bateria 255).
+
+## Información
+info info-sen0395 0100000044332211000100016400f4010000b80b ok mayor=1 menor=0 capacidades=0 arranque=287454020 fwMayor=0 fwMenor=1 fwRevision=0 perfil=1 periodoMs=100 caducidadMs=500 distMinMm=0 distMaxMm=3000
+info info-radar-completo 0100070088776655000102026400f40164007017 ok mayor=1 menor=0 capacidades=7 arranque=1432778632 fwMayor=0 fwMenor=1 fwRevision=2 perfil=2 periodoMs=100 caducidadMs=500 distMinMm=100 distMaxMm=6000
+info info-radar-solo-distancia 0100010088776655000102026400f40164007017 ok mayor=1 menor=0 capacidades=1 arranque=1432778632 fwMayor=0 fwMenor=1 fwRevision=2 perfil=2 periodoMs=100 caducidadMs=500 distMinMm=100 distMaxMm=6000
+info info-perfil-desconocido 0100000044332211000100006400f4010000b80b ok mayor=1 menor=0 capacidades=0 arranque=287454020 fwMayor=0 fwMenor=1 fwRevision=0 perfil=0 periodoMs=100 caducidadMs=500 distMinMm=0 distMaxMm=3000
+info info-sen0395-otro-arranque 01000000ddccbbaa000100016400f4010000b80b ok mayor=1 menor=0 capacidades=0 arranque=2864434397 fwMayor=0 fwMenor=1 fwRevision=0 perfil=1 periodoMs=100 caducidadMs=500 distMinMm=0 distMaxMm=3000
+info info-longitud-0 - error longitudIncorrecta
+info info-longitud-19 0100000044332211000100016400f4010000b8 error longitudIncorrecta
+info info-longitud-21 0100000044332211000100016400f4010000b80b00 error longitudIncorrecta
+info info-version-mayor-2 0200000044332211000100016400f4010000b80b error versionIncompatible
+info info-version-mayor-0 0000000044332211000100016400f4010000b80b error versionIncompatible
+info info-version-menor-1 0101000044332211000100016400f4010000b80b error versionIncompatible
+info info-capacidad-reservada 0100080044332211000100016400f4010000b80b error bitsReservados
+info info-capacidad-reservada-alta 0100008044332211000100016400f4010000b80b error bitsReservados
+info info-azimut-sin-distancia 0100020044332211000100016400f4010000b80b error capacidadInconsistente
+info info-perfil-4 0100000044332211000100046400f4010000b80b error perfilInvalido
+info info-periodo-0 0100000044332211000100010000f4010000b80b error periodoInvalido
+info info-caducidad-1000 0100000044332211000100016400e8030000b80b error caducidadInvalida
+info info-caducidad-0 010000004433221100010001640000000000b80b error caducidadInvalida
+info info-limites-iguales 0100000044332211000100016400f401f401f401 error limitesInvalidos
+info info-limites-invertidos 0100000044332211000100016400f401b80b6400 error limitesInvalidos
+info info-maximo-65535 0100000044332211000100016400f4010000ffff error limitesInvalidos
+info info-maximo-65534 0100000044332211000100016400f4010000feff ok mayor=1 menor=0 capacidades=0 arranque=287454020 fwMayor=0 fwMenor=1 fwRevision=0 perfil=1 periodoMs=100 caducidadMs=500 distMinMm=0 distMaxMm=65534
+
+## Medición válida
+med med-sen-sin-blanco info-sen0395 0101010044332211e8030000ffff00801e00ff00 ok mayor=1 banderas=1 secuencia=1 arranque=287454020 emisionMs=1000 distanciaMm=65535 azimutCent=-32768 edadRadarMs=30 bateria=255 salud=0
+med med-sen-presencia info-sen0395 01030200443322114c040000ffff00801e00ff00 ok mayor=1 banderas=3 secuencia=2 arranque=287454020 emisionMs=1100 distanciaMm=65535 azimutCent=-32768 edadRadarMs=30 bateria=255 salud=0
+med med-sen-presencia-simulada info-sen0395 0123030044332211b0040000ffff00801e00ff00 ok mayor=1 banderas=35 secuencia=3 arranque=287454020 emisionMs=1200 distanciaMm=65535 azimutCent=-32768 edadRadarMs=30 bateria=255 salud=0
+med med-sen-radar-sin-datos info-sen0395 010004004433221114050000ffff0080ffffff02 ok mayor=1 banderas=0 secuencia=4 arranque=287454020 emisionMs=1300 distanciaMm=65535 azimutCent=-32768 edadRadarMs=65535 bateria=255 salud=2
+med med-sen-iniciando info-sen0395 010005004433221178050000ffff0080ffffff01 ok mayor=1 banderas=0 secuencia=5 arranque=287454020 emisionMs=1400 distanciaMm=65535 azimutCent=-32768 edadRadarMs=65535 bateria=255 salud=1
+med med-sen-trama-invalida info-sen0395 0100060044332211dc050000ffff0080b004ff03 ok mayor=1 banderas=0 secuencia=6 arranque=287454020 emisionMs=1500 distanciaMm=65535 azimutCent=-32768 edadRadarMs=1200 bateria=255 salud=3
+med med-sen-fallo-declarado info-sen0395 010007004433221140060000ffff0080ffffff04 ok mayor=1 banderas=0 secuencia=7 arranque=287454020 emisionMs=1600 distanciaMm=65535 azimutCent=-32768 edadRadarMs=65535 bateria=255 salud=4
+med med-sen-alimentacion info-sen0395 0100080044332211a4060000ffff0080ffffff05 ok mayor=1 banderas=0 secuencia=8 arranque=287454020 emisionMs=1700 distanciaMm=65535 azimutCent=-32768 edadRadarMs=65535 bateria=255 salud=5
+med med-sen-montaje-no-validado info-sen0395 010009004433221108070000ffff0080ffffff06 ok mayor=1 banderas=0 secuencia=9 arranque=287454020 emisionMs=1800 distanciaMm=65535 azimutCent=-32768 edadRadarMs=65535 bateria=255 salud=6
+med med-sen-resultado-vencido-en-origen info-sen0395 01000a00443322116c070000ffff00802003ff00 ok mayor=1 banderas=0 secuencia=10 arranque=287454020 emisionMs=1900 distanciaMm=65535 azimutCent=-32768 edadRadarMs=800 bateria=255 salud=0
+med med-sen-secuencia-maxima info-sen0395 0101ffff44332211d0070000ffff00801e00ff00 ok mayor=1 banderas=1 secuencia=65535 arranque=287454020 emisionMs=2000 distanciaMm=65535 azimutCent=-32768 edadRadarMs=30 bateria=255 salud=0
+med med-sen-instante-maximo info-sen0395 01010b0044332211ffffffffffff00801e00ff00 ok mayor=1 banderas=1 secuencia=11 arranque=287454020 emisionMs=4294967295 distanciaMm=65535 azimutCent=-32768 edadRadarMs=30 bateria=255 salud=0
+med med-completo-ejemplo-informe info-radar-completo 010f2a0044332211e8030000b00448f41400ff00 ok mayor=1 banderas=15 secuencia=42 arranque=287454020 emisionMs=1000 distanciaMm=1200 azimutCent=-3000 edadRadarMs=20 bateria=255 salud=0
+med med-completo-solo-distancia info-radar-completo 01072b00443322114c040000dc05008019005700 ok mayor=1 banderas=7 secuencia=43 arranque=287454020 emisionMs=1100 distanciaMm=1500 azimutCent=-32768 edadRadarMs=25 bateria=87 salud=0
+med med-completo-azimut-limite-derecha info-radar-completo 010f2c0044332211b0040000701728230a00ff00 ok mayor=1 banderas=15 secuencia=44 arranque=287454020 emisionMs=1200 distanciaMm=6000 azimutCent=9000 edadRadarMs=10 bateria=255 salud=0
+med med-completo-azimut-limite-izquierda info-radar-completo 010f2d0044332211140500006400d8dc0a00ff00 ok mayor=1 banderas=15 secuencia=45 arranque=287454020 emisionMs=1300 distanciaMm=100 azimutCent=-9000 edadRadarMs=10 bateria=255 salud=0
+med med-completo-bateria-baja info-radar-completo 01112e004433221178050000ffff00801e000f00 ok mayor=1 banderas=17 secuencia=46 arranque=287454020 emisionMs=1400 distanciaMm=65535 azimutCent=-32768 edadRadarMs=30 bateria=15 salud=0
+med med-completo-bateria-0 info-radar-completo 01112f0044332211dc050000ffff00801e000000 ok mayor=1 banderas=17 secuencia=47 arranque=287454020 emisionMs=1500 distanciaMm=65535 azimutCent=-32768 edadRadarMs=30 bateria=0 salud=0
+med med-completo-sin-blanco info-radar-completo 010130004433221140060000ffff00801e006400 ok mayor=1 banderas=1 secuencia=48 arranque=287454020 emisionMs=1600 distanciaMm=65535 azimutCent=-32768 edadRadarMs=30 bateria=100 salud=0
+med med-completo-presencia-sin-distancia info-radar-completo 0103310044332211a4060000ffff00801e00ff00 ok mayor=1 banderas=3 secuencia=49 arranque=287454020 emisionMs=1700 distanciaMm=65535 azimutCent=-32768 edadRadarMs=30 bateria=255 salud=0
+med med-completo-objetivo-simulado info-radar-completo 012f32004433221108070000d007f4011e00ff00 ok mayor=1 banderas=47 secuencia=50 arranque=287454020 emisionMs=1800 distanciaMm=2000 azimutCent=500 edadRadarMs=30 bateria=255 salud=0
+
+## Medición inválida
+med med-longitud-0 info-sen0395 - error longitudIncorrecta
+med med-longitud-19 info-sen0395 010100004433221100000000ffff00801e00ff error longitudIncorrecta
+med med-longitud-21 info-sen0395 010100004433221100000000ffff00801e00ff0000 error longitudIncorrecta
+med med-version-2 info-sen0395 020100004433221100000000ffff00801e00ff00 error versionIncompatible
+med med-version-0 info-sen0395 000100004433221100000000ffff00801e00ff00 error versionIncompatible
+med med-bit6-reservado info-sen0395 014100004433221100000000ffff00801e00ff00 error bitsReservados
+med med-bit7-reservado info-sen0395 018100004433221100000000ffff00801e00ff00 error bitsReservados
+med med-salud-7 info-sen0395 010000004433221100000000ffff0080ffffff07 error saludInvalida
+med med-salud-255 info-sen0395 010000004433221100000000ffff0080ffffffff error saludInvalida
+med med-blanco-sin-resultado info-sen0395 010200004433221100000000ffff00801e00ff00 error banderasIncoherentes
+med med-distancia-sin-blanco info-radar-completo 010500004433221100000000b00400801e00ff00 error banderasIncoherentes
+med med-azimut-sin-distancia info-radar-completo 010b00004433221100000000ffff64001e00ff00 error banderasIncoherentes
+med med-fallo-con-resultado info-sen0395 010100004433221100000000ffff00801e00ff02 error banderasIncoherentes
+med med-fallo-con-presencia info-sen0395 010300004433221100000000ffff00801e00ff04 error banderasIncoherentes
+med med-edad-desconocida-con-resultado info-sen0395 010100004433221100000000ffff0080ffffff00 error banderasIncoherentes
+med med-bateria-baja-sin-bateria info-radar-completo 011100004433221100000000ffff00801e00ff00 error banderasIncoherentes
+med med-distancia-cero-sin-bandera info-sen0395 010100004433221100000000000000801e00ff00 error centinelaInconsistente
+med med-azimut-cero-sin-bandera info-radar-completo 010700004433221100000000b00400001e00ff00 error centinelaInconsistente
+med med-distancia-valida-con-centinela info-radar-completo 010700004433221100000000ffff00801e00ff00 error centinelaInconsistente
+med med-azimut-valido-con-centinela info-radar-completo 010f00004433221100000000b00400801e00ff00 error centinelaInconsistente
+med med-azimut-9001 info-radar-completo 010f00004433221100000000b00429231e00ff00 error valorFueraDeRango
+med med-azimut-menos-9001 info-radar-completo 010f00004433221100000000b004d7dc1e00ff00 error valorFueraDeRango
+med med-bateria-101 info-radar-completo 010100004433221100000000ffff00801e006500 error valorFueraDeRango
+med med-bateria-254 info-radar-completo 010100004433221100000000ffff00801e00fe00 error valorFueraDeRango
+med med-distancia-sobre-maximo info-radar-completo 010700004433221100000000711700801e00ff00 error valorFueraDeRango
+med med-distancia-bajo-minimo info-radar-completo 010700004433221100000000630000801e00ff00 error valorFueraDeRango
+med med-distancia-sin-capacidad info-sen0395 010700004433221100000000b00400801e00ff00 error capacidadInconsistente
+med med-azimut-sin-capacidad info-radar-solo-distancia 010f00004433221100000000b00464001e00ff00 error capacidadInconsistente
+med med-bateria-sin-capacidad info-sen0395 010100004433221100000000ffff00801e003200 error capacidadInconsistente
+med med-bateria-baja-sin-capacidad info-sen0395 011100004433221100000000ffff00801e000a00 error capacidadInconsistente
+
+## Emisor sintético (el C++ debe regenerar estas tramas; el Swift las decodifica y verifica)
+emision emision-sen-sin-blanco info-sen0395 100 5000 100 20 sinBlanco 0 010164004433221188130000ffff00801400ff00,0101650044332211ec130000ffff00801400ff00,010166004433221150140000ffff00801400ff00,0101670044332211b4140000ffff00801400ff00
+emision emision-sen-presencia info-sen0395 100 5000 100 20 presencia 0 010364004433221188130000ffff00801400ff00,0103650044332211ec130000ffff00801400ff00,010366004433221150140000ffff00801400ff00
+emision emision-sen-objetivo-degrada-a-presencia info-sen0395 7 100 100 20 objetivo:1200:- 0 010307004433221164000000ffff00801400ff00,0103080044332211c8000000ffff00801400ff00
+emision emision-sen-uart-1hz-vencida info-sen0395 200 9000 100 800 presencia 0 0100c8004433221128230000ffff00802003ff00,0100c900443322118c230000ffff00802003ff00,0100ca0044332211f0230000ffff00802003ff00
+emision emision-sen-fallo-sin-datos info-sen0395 300 1000 100 65535 fallo:2 0 01002c0144332211e8030000ffff0080ffffff02,01002d01443322114c040000ffff0080ffffff02,01002e0144332211b0040000ffff0080ffffff02
+emision emision-sen-simulada info-sen0395 1 0 100 20 presencia 1 012301004433221100000000ffff00801400ff00,012302004433221164000000ffff00801400ff00,0123030044332211c8000000ffff00801400ff00
+emision emision-vuelta-secuencia info-sen0395 65534 3000 100 20 sinBlanco 0 0101feff44332211b80b0000ffff00801400ff00,0101ffff443322111c0c0000ffff00801400ff00,0101000044332211800c0000ffff00801400ff00,0101010044332211e40c0000ffff00801400ff00
+emision emision-vuelta-reloj info-sen0395 10 4294967200 100 20 presencia 0 01030a0044332211a0ffffffffff00801400ff00,01030b004433221104000000ffff00801400ff00,01030c004433221168000000ffff00801400ff00,01030d0044332211cc000000ffff00801400ff00
+emision emision-completo-objetivo info-radar-completo 0 100 100 20 objetivo:1200:-3000 0 010f00008877665564000000b00448f41400ff00,010f010088776655c8000000b00448f41400ff00
+emision emision-completo-sin-azimut info-radar-completo 0 100 100 20 objetivo:1200:- 0 010700008877665564000000b00400801400ff00,0107010088776655c8000000b00400801400ff00
+emision emision-reinicio-arranque info-sen0395-otro-arranque 0 100 100 20 sinBlanco 0 01010000ddccbbaa64000000ffff00801400ff00,01010100ddccbbaac8000000ffff00801400ff00,01010200ddccbbaa2c010000ffff00801400ff00
