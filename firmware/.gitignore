@@ -1,1 +1,3 @@
 build/
+# Configuración local del accesorio: contiene la clave de enlace. Nunca se versiona.
+accesorio/configuracion_local.h

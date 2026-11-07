@@ -1,0 +1,176 @@
+# EA-12: firmware BLE del accesorio, seguridad y guion de banco
+
+Estado al **7 de noviembre de 2026**. Issue: [#38](https://github.com/ZuluCode777/proyecto-1-APP/issues/38). Este documento describe el **software** de EA-12 (`firmware/accesorio/accesorio.ino`, `puerta_ble.h/.cpp`, `enlace_radar.h/.cpp` y `enlace_accesorio.h/.cpp`) y deja el **guion de banco**. **No hay mediciones ni enlace probado**: nadie ha cargado el firmware en una placa, energizado el radar ni emparejado un iPhone. Que el sketch compile **no prueba** el radar, el enlace, la seguridad ni los pines. EA-12 **sigue abierta**: los criterios que exigen hardware están pendientes (tabla del final).
+
+Manda el [contrato BLE v1.0](contrato-ble.md) (no cambia aquí: ni sus bytes, ni su versión, ni los vectores). El intérprete del radar es [EA-11](ea-11-radar.md). Donde el [plan de firmware](plan-firmware.md) difiere, valen el contrato y este documento.
+
+## Cómo está construido
+
+La biblioteca BLE de Arduino **solo arranca el stack** (`BLEDevice::init`). El GAP (anuncio, conexión, emparejamiento), el GATT (servicio, lecturas, notificación) y el almacén de vínculos son del sketch, sobre la API **nativa de NimBLE** ya instalada en el núcleo 3.3.12 (sin biblioteca nueva ni parche del núcleo). Se dejó el envoltorio porque no era posible ejercer sobre él los controles que la seguridad exige:
+
+- imprimía la clave de emparejamiento por el puerto serie (`onPassKeyNotify` heredado);
+- la lectura múltiple de variable longitud (habilitada en el núcleo) no llama al callback de lectura y devolvía el último valor guardado, de una conexión anterior;
+- la notificación y la lectura compartían un mismo valor (`m_value`) que la biblioteca copiaba fuera del cerrojo del sketch;
+- no tenía gancho previo a la autorización para el emparejamiento ni para persistir un vínculo.
+
+Ahora cada pieza es del sketch y la **política** está en `puerta_ble.h`, portátil, que las pruebas ejecutan con el intérprete real del radar y la sesión real. `accesorio.ino` traduce estructuras de NimBLE a esos tipos y ejecuta la acción:
+
+| Gancho nativo de NimBLE | Qué decide la política |
+| --- | --- |
+| Callback de acceso GATT de Medición (`ble_gatt_chr_def.access_cb`) | Se llama en **cada** lectura, también la larga y la lectura múltiple. Genera una trama nueva con el enlace protegido consultado en vivo. No existe valor guardado. |
+| `ble_gatts_notify_custom` con un `os_mbuf` propio | Cada notificación lleva su trama independiente: no comparte nada con las lecturas. NimBLE **no** comprueba aquí cifrado, CCCD ni sesión (solo el manejador): por eso la comprobación y el envío son **una sola operación** en el hilo del host (fila siguiente). |
+| Cola de eventos del host (`nimble_port_get_dflt_eventq`, `ble_npl_eventq_put`) | La notificación (`PuertaBle::atender_notificacion`) y el borrado de vínculos (`atender_borrado`) se ejecutan como eventos de la **misma tarea** que procesa los cambios de cifrado, las suscripciones y las desconexiones. El mismo evento gestiona el plazo de seguridad, la comprobación de conexión y el anuncio. El `loop()` solo solicita los eventos: ninguna acción usa un manejador de conexión retenido entre tareas. |
+| `BLE_GAP_EVENT_PASSKEY_ACTION` | La clave solo se inyecta (`ble_sm_inject_io`) con la ventana de alta abierta y la acción «mostrar clave»; si no, se corta. Nunca se imprime. |
+| `BLE_GAP_EVENT_REPEAT_PAIRING` | Fuera de la ventana el vínculo existente se conserva; con ella abierta se sustituye. |
+| `ble_hs_cfg.sm_oob_data_flag` | El evento del host actualiza esta configuración desde la ventana vigente. Con la ventana cerrada se declaran datos OOB; `loop()` no escribe la configuración que lee SMP. |
+| `ble_hs_cfg.store_write_cb` | Solo se persisten vínculos autenticados, LESC y de 16 bytes, **de un emparejamiento que esta conexión inició con la ventana de alta abierta** y que nadie revocó (`PuertaBle::persistir_vinculo`, solo atómicos: puede correr con locks del stack tomados). Va **antes** de la flash. |
+| `BLE_GAP_EVENT_ENC_CHANGE` | Un enlace que no sea cifrado, autenticado, vinculado y de 16 bytes se corta. |
+| `BLE_GAP_EVENT_SUBSCRIBE` | Solo con el enlace protegido se acepta la suscripción (también la restaurada del vínculo). |
+
+## Qué hace
+
+- **Servicio y tramas.** Servicio `e13a0000-76b8-4fb0-9d2b-8c4f8d8a7e31`, Información `…0001` (lectura, 20 bytes) y Medición `…0002` (lectura y notificación, 20 bytes). Los UUID se calculan del texto del contrato (`puerta::uuid128_le`, probado) para que no haya dos copias. Las tramas las codifica `trama_ble` a través de `EmisorSintetico`, que conserva su nombre histórico pero es el codificador de verdad: lo usan el sintético y el real.
+- **Capacidades reales.** Información con capacidades `0x0000` (sin distancia, azimut ni batería), perfil `1`, periodo 100 ms, caducidad 500 ms y la ventana configurada del radar en mm (hoy `0`/`3000`, la de fábrica del fabricante, sin ensayo). Presencia dentro de una ventana: nunca distancia ni azimut. `SinBlanco` es «sin detección en este momento», nunca «camino libre».
+- **Identificador de arranque** aleatorio (`esp_random()`) y distinto del anterior, que se guarda en NVS. Si la fuente no lo logra en 8 intentos, el BLE no arranca.
+- **Lectura fresca.** Cada lectura de Medición, sea cual sea el tipo de petición ATT, genera una trama **nueva** (secuencia +1 e instante propio) en el callback de acceso; nunca devuelve la última notificada ni una de otra conexión. Exige además el enlace cifrado, autenticado, vinculado y de 16 bytes **en vivo** (`ble_gap_conn_find`); si no, responde «autenticación insuficiente» sin gastar secuencia. Las dos características declaran clave mínima de 16 bytes.
+- **Notificaciones acotadas.** A lo sumo una cada 100 ms, desde la suscripción; tras un hueco no se recuperan en ráfaga. La secuencia sube con cada trama generada (lecturas incluidas), también sin blanco o con fallo. Generar la trama, comprobar el enlace **en vivo** (cifrado, autenticación, vínculo, 16 bytes), la sesión (conexión actual, suscrita, no revocada) y el ritmo, y entregarla al transporte son **una sola operación**, `PuertaBle::atender_notificacion`, que corre como evento en la tarea del host de NimBLE (cola de eventos del host). El evento se pide desde `loop()` cada 2 ms y solo notifica si hay una sesión suscrita y el turno de 100 ms se consume **al generar**, con el reloj de ese instante: dos tramas distan al menos 100 ms reales aunque el evento se retrase. Cada notificación lleva su propio búfer, sin valor compartido con las lecturas.
+- **Suscripción.** Un booleano por conexión, no un contador: suscribir dos veces no duplica nada. La reconexión empieza sin suscripción ni datos; si el stack restaura la suscripción de un vínculo, se acepta una sola, y solo con el enlace protegido. Lo preparado para una conexión no sale si la sesión cambió, aunque el stack reutilice el número de conexión y la nueva aún no se haya suscrito.
+- **La única escritura es el CCCD.** Las dos características no tienen propiedad de escritura; no hay comandos, texto, umbrales ni actualización remota (contrato §1). El CCCD de Medición declara además `NOTIFY_INDICATE_ENC` y `NOTIFY_INDICATE_AUTHEN`.
+- **Un solo cliente.** Con una conexión activa no se anuncia; una segunda conexión que llegue igualmente se rechaza sin tocar la sesión de la primera. Si el stack pierde la conexión sin avisar, la sesión se cierra en el ciclo siguiente.
+- **Radar autónomo.** `loop()` lee la UART, alimenta el intérprete de EA-11, envía sus órdenes y vigila su salud **en cada ciclo (2 ms)**, haya cliente, suscripción o autorización BLE, o no. Con la clave sin provisionar la UART también funciona y se diagnostica por el puerto serie. La salud sale del radar sin red, servidor ni IA.
+- **Fallo del radar.** `Interprete::entrada()` entrega `Fallo` con la salud (1 iniciando, 2 sin trama válida en 2500 ms, 3 trama inválida, 4 `Error` o sin respuesta, 6 configuración no válida). Sin pines elegidos, el firmware publica salud `6` sin abrir la UART. Salud `5` (alimentación) no la produce nadie: no hay medición eléctrica.
+- **Pérdida de bytes en la UART.** Si en la UART espera más que un trozo (256 bytes) o el controlador avisa de un desborde (`Serial1.onReceiveError`, que corre en otra tarea: el aviso se consulta al empezar el ciclo **y otra vez tras la lectura y el drenaje, justo antes de entregar nada al parser**), nada de lo leído en ese ciclo se entrega, el resto se drena (hasta 4 096 bytes por ciclo) y el intérprete recibe `perder_entrada()`: su línea a medias se borra (no se une con lo que llegue después), el resultado anterior deja de valer (salud 3) y solo una trama íntegra **nueva** devuelve la salud 0.
+- **Recuperación del radar.** `SupervisorRadar` reinicia la configuración cuando el radar lleva 10 s **con la salud no sana** estando operativo (se reinició, se calló o contesta basura) o 5 s en fallo de configuración (`Error` o respuesta que no llegó). Los 10 s no cuentan desde la última trama válida: la salud deja de ser sana 2 501 ms después de ella (latido de 2 500 ms), así que el reinicio llega a **≈ 12,5 s de la última trama válida**; después el intérprete reconfigura el radar (órdenes con su `Done`) y exige ≥ 5 s de estabilización y una trama íntegra nueva antes de volver a salud 0. Antes de reiniciar vacía la UART con una cota por ciclo (`kMaxDrenajePorCiclo`, 4 096): si queda cola, `EstadoUart::drenando` la hace descartar en los ciclos siguientes, no se envía ninguna orden mientras dure y el reinicio espera a verla vacía. Cada reintento llama a `reiniciar(false)`: **aplica el rango y la latencia sin `saveCfg`**, así que ni un radar mudo ni uno que se reinicia sin parar gastan su flash. Los reintentos esperan 5, 10, 20, 40 y 60 s (tope) y el contador vuelve a cero tras 30 s de salud 0. La configuración inválida no se reintenta. Después el intérprete exige su estabilización (≥ 5 s) y una trama íntegra nueva: mientras tanto la salud es 1, no la del dato viejo. El arranque de la placa sigue guardando la configuración una vez (`reiniciar(true)`).
+- **UART 2500 ms, GPIO2 no usado.** El latido es la trama `$JYBSS` completa (≤ 2500 ms). El pin GPIO2 del sensor **no se lee**: sigue provisional hasta B2. Con la UART a 1 Hz, la edad del resultado supera 500 ms cerca de la mitad del tiempo y esas tramas salen como vencidas (bit 0 en cero): es el conflicto del contrato §7, no un defecto. La edad que se publica es la **real** de la última trama recibida; consultar o reemitir nunca la rejuvenece.
+- **Nada retenido por conexión.** `entrada_para_sesion()` descarta, para una conexión nueva, toda observación recibida antes de conectar (o en el mismo milisegundo): sale como resultado vencido hasta que llegue una trama UART **posterior** a la conexión. Un fallo se publica tal cual (la salud es el estado actual, no un dato retenido).
+- **Simulación distinguible.** `-DVISIONARIA_SIMULACION=1` genera presencia sintética alterna cada 2 s con el bit 5 activo y anuncia `Visionaria-SIM`; no combina con pines del radar (error de compilación). La compilación real anuncia `Visionaria` y nunca activa el bit 5.
+- **Versión.** Contrato 1.0; firmware 0.1.0 (Información, bytes 8 a 10).
+
+## Seguridad
+
+| Capa | Qué hace el firmware |
+| --- | --- |
+| Emparejamiento | `sm_io_cap = DISPLAY_ONLY`, `sm_bonding = sm_mitm = sm_sc = sm_sc_only = 1`: LE Secure Connections con protección MITM por clave de 6 dígitos y vínculo. La clave la entrega solo `BLE_GAP_EVENT_PASSKEY_ACTION` con la ventana abierta; con ella cerrada, o ante cualquier otra acción (comparación numérica, entrada, OOB), se corta la conexión. |
+| Veto de emparejar fuera de la ventana | Cuatro capas, ninguna es «una clave aleatoria»: (1) sin ventana **no se entrega la clave** y se corta; (2) sin ventana se declara OOB (`sm_oob_data_flag = 1`), con lo que el algoritmo SC deja de ser Just Works y pide datos que el firmware no tiene; (3) el almacén **rechaza persistir** todo vínculo que no sea autenticado, LESC y de 16 bytes, o que no venga de un emparejamiento autorizado por la alta física de esa conexión, aunque el stack lo negocie; (4) `ENC_CHANGE` corta todo enlace sin esa protección. |
+| Re-emparejamiento | Un par vinculado que intenta emparejar de nuevo con la ventana cerrada **no pierde su vínculo** (se rechaza y se corta); con ella abierta se sustituye. |
+| Vínculos autorizados | Sobreviven al reinicio y se restauran **sin ventana**: el teléfono reconecta, cifra con su clave y se suscribe. Solo se borran con la pulsación de 10 s o al sustituirlos en un alta. |
+| Permisos GATT | Información y Medición con `READ_ENC \| READ_AUTHEN` y clave mínima de 16 bytes; el CCCD, con `NOTIFY_INDICATE_ENC \| NOTIFY_INDICATE_AUTHEN`. |
+| Sesión | `seguridad_suficiente()` exige cifrado, autenticación, vínculo y clave de 16 bytes sobre `ble_gap_conn_desc.sec_state`. Se evalúa al cifrar, al suscribir, en cada lectura y **en vivo antes de cada notificación**. Sin ella: no se suscribe, no se lee, no se notifica y se corta. |
+| Plazo | Una conexión sin proteger se corta a los 30 s. |
+| Un cliente | Con una conexión activa no se anuncia; una segunda se rechaza. |
+| Alta | Botón físico: pulsación de 3 a 10 s abre la ventana **60 s**; cierra al emparejar con éxito, al cumplirse el plazo (también con vuelta del reloj de 32 bits), al borrar vínculos y al reiniciar. |
+| Borrado | Pulsación de 10 s o más, decidida al soltar. Cierra la ventana, retira la autorización de emparejar, revoca la sesión y bloquea nuevas conexiones y toda escritura del almacén, también si no había cliente. El evento del host corta la conexión y comprueba el resultado de `ble_store_clear()`. Solo un borrado correcto retira la barrera de admisión; la sesión anterior sigue revocada hasta desconectar. Si falla, el BLE permanece bloqueado y el registro pide repetir la pulsación. Ningún emparejamiento anterior puede volver a persistirse. |
+| Vínculo nuevo | Solo se persiste si la conexión actual recibió la clave con la ventana abierta (`al_pedir_clave`, que mira la ventana al **ejecutarse** el evento, no cuando se encoló). La autorización acaba con el cifrado del emparejamiento, la desconexión o la revocación; no pasa a otra conexión. Los vínculos ya autorizados se restauran fuera de la ventana sin escribir claves. |
+| Registros | Ningún mensaje del firmware contiene la clave; el job de CI comprueba que la imagen no incluye cadenas que la impriman ni la clave de la ejecución como texto. |
+
+**Clave provisionada, fuera de Git.** La clave de 6 dígitos sale de `VISIONARIA_CLAVE_ENLACE` en `firmware/accesorio/configuracion_local.h` (ignorado por Git) o de una bandera de compilación. El repositorio solo trae `configuracion_local.ejemplo.h` con el procedimiento. Sin clave válida (o con una trivial: `000000`, `123456`, `654321`, dígitos repetidos), el sketch **no compila** o, si falta, **no arranca el BLE** y lo dice por el puerto serie (falla cerrado). La clave no se imprime ni se escribe en el repositorio, issues o chat. Quien prepara el accesorio la genera con el generador del sistema y la guarda donde guarda sus secretos.
+
+### Qué está probado y qué no
+
+- **Probado en el portátil** (`pruebas_puerta_ble`, con el intérprete y la sesión reales y las funciones de producción `atender_notificacion` / `atender_borrado` / `persistir_vinculo` sobre un doble del stack que inyecta acciones en cada frontera y exige las reglas de cerrojo): la política de cada gancho, con negativos de seguridad (sin ventana no hay clave, ni re-emparejamiento, y se declara OOB; Just Works, sin MITM, sin vínculo y clave corta se cortan; nada sin autenticar pasa por la compuerta del almacén; las lecturas repetidas, la lectura tras una notificación y la lectura de un enlace sin protección en vivo; una conexión nueva sin datos de la anterior; lectura y notificación en búferes separados); la notificación que no sale tras un cambio de cifrado, un fallo del stack, una desconexión con el manejador reutilizado o una revocación, y su ritmo de 100 ms reales; la revocación inmediata, el corte y el vaciado del almacén; y un emparejamiento que intenta escribir antes, durante y después del borrado, o sin alta de esa conexión.
+- **Comprobado en el binario** (gate de CI): que el envoltorio de la biblioteca no está enlazado y que los ganchos nativos (incluidos los eventos del host) sí.
+- **Sin comprobar hasta tener placa e iPhone:** que la cola de eventos por defecto de NimBLE (`nimble_port_get_dflt_eventq`) sea la que atiende los eventos del stack, como indica su fuente (ESP-IDF 5.5.5) y de la que depende la serialización; que NimBLE 3.3.12 llame a esos ganchos con los datos esperados y en el orden supuesto; que con la ventana cerrada el algoritmo OOB haga fallar el emparejamiento antes de cifrar (si no lo hiciera, quedan las capas 1, 3 y 4: nada se persiste ni se sirve); que `NOTIFY_INDICATE_ENC/AUTHEN` rechacen el CCCD sin cifrar; y cuándo marca `sec_state.bonded` el stack respecto del evento de cifrado.
+
+### Límites declarados
+
+- **Clave estática y reutilizable.** El accesorio no tiene pantalla ni teclado: la clave es fija por unidad. En LESC con clave, un intermediario que provoque emparejamientos fallidos repetidos durante una ventana abierta aprende la clave bit a bit. La ventana de 60 s con presencia física reduce la exposición, no la elimina. Si se sospecha una filtración: clave nueva, recompilar, cargar y borrar vínculos.
+- **Ventana abierta y vínculo ajeno.** Con la ventana abierta, un dispositivo que suplante la dirección de un par vinculado puede provocar el borrado de su vínculo antes de autenticarse (denegación de servicio, no lectura de datos). Exige presencia física durante los 60 s; se recupera con un alta. Fuera de la ventana el vínculo se conserva.
+- **Lectura larga.** NimBLE entrega a la característica solo «lectura»; si un cliente pide un fragmento con desplazamiento (Read Blob), recibe una parte de una trama **nueva**, no una trama coherente. Las tramas miden 20 bytes y caben en una respuesta con la MTU mínima, así que el cliente no la necesita; un fragmento no decodifica (longitud distinta de 20).
+- **Serialización del envío.** El mismo evento de la tarea del host comprueba el enlace y entrega la notificación. El cerrojo de la aplicación se mantiene desde la comprobación final hasta la entrega al transporte: una pulsación de borrado espera a que termine esa operación y después revoca la sesión. Los eventos GAP no se intercalan dentro del evento del host. Esta ruta y el orden de los cerrojos se revisaron contra la fuente de NimBLE; faltan las pruebas con radio e iPhone.
+- **Denegación de servicio por radio.** Un dispositivo que conecte y no autentique ocupa el cupo hasta 30 s; el bloqueo de radio no se puede evitar. Ni el cifrado ni la versión evitan esos fallos; ninguno equivale a «sin obstáculos».
+- **Qué evidencia afirma `cifradoAutenticado` en iOS** sigue pendiente (contrato §6): Core Bluetooth no expone el nivel. La capa de iOS es EA-15 y no está aquí.
+- **Un pulsador activo en bajo y la clave de ejemplo** son supuestos de montaje que quien arma el accesorio confirma.
+
+## Pines y hardware: nada sin selección humana
+
+Los pines exactos de la placa recibida **no están verificados**. El firmware no trae pines por defecto: cada hardware se habilita solo si alguien define su macro.
+
+| Macro | Si falta |
+| --- | --- |
+| `VISIONARIA_PIN_RADAR_RX` y `VISIONARIA_PIN_RADAR_TX` (juntos) | No abre la UART; salud `6`. |
+| `VISIONARIA_PIN_BOTON` | La ventana de alta nunca se abre: nadie puede emparejar. |
+| `VISIONARIA_CLAVE_ENLACE` | El BLE no arranca. |
+
+Al compilar se rechazan los pines de arranque (0 excepto como botón, 3, 45, 46), USB (19, 20), consola (43, 44), inexistentes, flash y PSRAM (22 a 37) y los fuera de 0 a 48; RX y TX distintos; el botón distinto de los del radar. Es una lista de exclusión basada en el plan de firmware y las hojas de datos de Espressif: **un pin permitido no está probado** en la placa. Los pines de los jobs de CI (`4`, `5`, `0`) son de ejemplo para compilar la rama de hardware y **no son la selección real**. Primera conexión del radar: sigue [plan-firmware.md](plan-firmware.md#conexión-eléctrica) (3V3, masa común); no se energiza nada hasta revisar el cableado.
+
+## Integración con EA-11
+
+El contacto con el intérprete está en `enlace_radar.h/.cpp` (portátil, probado) y se llama desde `atender_radar()` en `accesorio.ino`, que implementa `PuertoUart` sobre `Serial1`. Usa solo la API pública de [ea-11-radar.md](ea-11-radar.md): `procesar`, `salida_pendiente`, `salida_enviada`, `entrada`, `salud`, `fase`, `motivo_fallo`, `contadores`, `ventana_minima_mm`/`ventana_maxima_mm`, `reiniciar(bool guardar_en_flash)` y `perder_entrada`. Si esa API cambia, son los sitios que hay que revisar.
+
+- Cada ciclo lee como máximo 256 bytes y los entrega con `millis()`; llama a `procesar` también con `n == 0`. Si en la UART quedan más de 256 bytes esperando, o el controlador avisó de un desborde, **todo lo leído en ese ciclo se descarta**, se drena el resto y se avisa con `perder_entrada()`: perder esas tramas es seguro, rejuvenecerlas o unir sus restos no. Se cuenta en `descartados` y `perdidas`.
+- La UART se vacía antes de `reiniciar()` al arrancar y antes de cada reintento del supervisor.
+- Los callbacks BLE, los eventos del host y `loop()` comparten el intérprete, la sesión y la ventana bajo un cerrojo recursivo. `millis()` se lee dentro para que el reloj del intérprete no decrezca. La comprobación final y el envío de una notificación mantienen ese cerrojo; cortar, anunciar y borrar vínculos se ejecutan sin él. Los callbacks GAP y ATT de NimBLE se llaman sin su cerrojo de host; el callback del almacén solo lee atómicos y nunca toma el cerrojo de la aplicación. Los contadores compartidos `notif` y `rechazados` también son atómicos.
+- Cada 5 s el puerto serie imprime una línea `estado …` y, con radar real, una línea `uart …` con los contadores (válidas, parciales, largas, otras, ignoradas, errores, timeouts, descartados, perdidas, reintentos) y el número de vínculos rechazados por la compuerta. Es la bitácora de banco; no lleva datos personales ni la clave.
+
+## Compilar
+
+Núcleo de Espressif **3.3.12** (existe en el índice oficial; comprobado el 7 de noviembre de 2026), ESP-IDF 5.5.5 según el plan, placa `esp32s3`, y **NimBLE** como stack de BLE (no hay biblioteca nueva). `arduino-cli` **1.5.1**.
+
+```bash
+URL=https://espressif.github.io/arduino-esp32/package_esp32_index.json
+arduino-cli core update-index --additional-urls "$URL"
+arduino-cli core install esp32:esp32@3.3.12 --additional-urls "$URL"
+arduino-cli compile --fqbn esp32:esp32:esp32s3:FlashSize=16M firmware/accesorio
+```
+
+Con `FlashSize=16M` y el esquema de particiones por defecto, la aplicación dispone de 1 310 720 bytes; el firmware real usa unos 571 000 (43 %), la compilación sin pines ni clave unos 283 000 (21 %) y la de simulación unos 569 000 (43 %). La PSRAM queda desactivada. El núcleo completo ocupa unos 6 GB; el job de CI conserva solo lo del ESP32-S3 (unos 2 GB, borrando las cadenas de otros chips) y lo guarda en caché.
+
+Variantes (banderas de compilación o `configuracion_local.h`), por ejemplo:
+
+```bash
+arduino-cli compile --fqbn esp32:esp32:esp32s3:FlashSize=16M \
+  --build-property "compiler.cpp.extra_flags=-DVISIONARIA_SIMULACION=1 -DVISIONARIA_PIN_BOTON=0 -DVISIONARIA_CLAVE_ENLACE=<6 dígitos>" \
+  firmware/accesorio
+```
+
+Cargar y ver el puerto serie son pasos de banco, con la placa en la mano; este trabajo no cargó nada. El CI (`contrato-ble.yml`, job `sketch`) compila la configuración sin pines ni clave, la de radar real y la de simulación, y comprueba que **fallan** un pin vetado, una clave trivial y la simulación con pines del radar. Usa una clave descartable por ejecución, enmascarada y nunca cargada. Sobre cada binario (`.elf`) aplica además un **gate de símbolos y cadenas**: falla si enlaza el servidor o los callbacks de seguridad de la biblioteca BLE de Arduino (`BLEDevice::createServer`, `BLEServer::BLEServer`, `BLESecurityCallbacks`…), si falta `acceso_medicion`, `escribir_vinculo`, `evento_gap`, `evento_notificar` o `evento_borrar` (en las configuraciones que arrancan el BLE), si contiene un mensaje que imprime la clave de emparejamiento o si la clave de la ejecución aparece como texto en la imagen. La búsqueda de cadenas guarda la salida de `strings` en un archivo temporal y busca ahí (con `strings | grep -q` bajo `pipefail`, `grep` sale al primer acierto, `strings` muere por SIGPIPE y el `if` lo toma por falso: un acierto se perdía). Antes de usarla, el job comprueba el gate con un binario **sintético** (marcador al principio de una salida de varios MB: debe detectarlo, y no detectar uno ausente). La clave nunca se imprime.
+
+
+## Pruebas del portátil
+
+```bash
+make -C firmware probar               # codificador, vectores EA-04 (1 054) y parser EA-11 (594)
+bash firmware/pruebas/probar_enlace.sh  # EA-12: enlace, política BLE, radar y guardia del sketch
+python3 firmware/herramientas/analizar_captura.py --autoprueba
+```
+
+`probar_enlace.sh` compila con `-Wall -Wextra -Werror -pedantic` y ejecuta, en orden:
+
+1. `pruebas_enlace.cpp` (21 203 comprobaciones; casi todas son el barrido de ritmo): clave y pines; identificador de arranque; Información del SEN0395; «nada retenido»; simulación y salud 6; ventana (59 999/60 000 ms, vuelta del reloj, reloj que retrocede); botón; seguridad; suscripción; ritmo de notificaciones (100 por 10 s, sin ráfagas, bloqueo de 2 s); plazo de 30 s; y, con el intérprete real de EA-11, edad real de las tramas y reconexión.
+2. `pruebas_puerta_ble.cpp` (488): UUID calculados; compuerta del almacén (Just Works, sin SC, clave corta); clave solo con ventana (cerrada, 59 999/60 000 ms, acción distinta de «mostrar clave», conexión ajena, clave inválida); re-emparejamiento y OOB según la ventana; resultado del cifrado (cada requisito por separado, estado de fallo, conexión ajena); vínculo autorizado restaurado sin ventana; suscripción; lecturas repetidas y tras una notificación (siempre secuencia nueva, edad real); rechazos de lectura sin enlace en vivo; conexión nueva sin datos de la anterior; notificación (ritmo de 100 ms reales, enlace perdido, conexión que cambia o se reutiliza); notificación como una operación con el doble del stack (cambio de cifrado, desconexión con manejador reutilizado y revocación antes del envío, acciones inyectadas entre la consulta del enlace y el envío, reglas de cerrojo); revocación de la sesión; borrado que corta y vacía el almacén; emparejamiento en vuelo antes, durante y después del borrado; persistencia ligada a la alta de esa conexión (sin clave entregada, ventana cerrada, evento diferido fuera de plazo, un alta un vínculo, conexión siguiente); lectura y notificación sin valor compartido; un solo cliente; gracia de 30 s; simulación y sin radar.
+3. `pruebas_radar_integracion.cpp` (1 019 106 comprobaciones; casi todas son vigilancias por ciclo): **reproduce el defecto anterior** (línea a medias + desborde + resto formaban una trama válida con un `SinBlanco` falso) y comprueba que ya no ocurre; desborde del controlador, también el que se avisa **durante** la lectura (un `Do` + `ne\r\n` no confirma `sensorStop` y una línea a medias no se une con su resto); drenaje acotado; cola vieja tras un drenaje acotado (`drenando`) sin órdenes mientras dure; recuperación tras un arranque con radar mudo (el firmware anterior se quedaba en salud 4), tras un reinicio del radar que pierde su configuración, tras `Error` al guardar, con el cable suelto y con `Error` permanente; purga de la UART, estabilización ≥ 5 s, observación nueva, espera creciente y acotada, **ninguna escritura de la flash del sensor** al recuperar configuración inválida sin reintentos y retirada del plazo anterior al recuperarse, incluso tras más de 2³¹ ms de reloj.
+4. Guardia del sketch: `accesorio.ino` no puede volver a usar el envoltorio de la biblioteca (`BLEServer`, `BLESecurity`, `BLECharacteristic`, `setValue`, `notify()`…), debe usar los ganchos nativos y no imprime la clave.
+
+**Lo que estas pruebas no son.** No prueban NimBLE (que llame a los ganchos, el emparejamiento, los permisos GATT, el cifrado, `sec_state`, el CCCD), la UART real ni el radar. El doble de la UART y del radar es mínimo (bytes, reloj, Done/Error).
+
+## Guion de banco (pendiente; lo ejecuta H3 con H1)
+
+Antes: cableado revisado por una persona, pines elegidos en `configuracion_local.h` y clave generada (ver la plantilla). Registrar commit, versión del núcleo, FQBN, placa, versión de iOS y del iPhone en un CSV sin datos personales.
+
+1. **Arranque sin selección.** Cargar la compilación por defecto. Esperado: por el serie, «sin pines» y «sin clave»; el radar no se toca; no se anuncia BLE.
+2. **Simulación.** Cargar `-DVISIONARIA_SIMULACION=1` con botón y clave. Mantener el botón 4 s, emparejar desde el iPhone o `bluetoothctl` con la clave, leer Información y suscribirse. Esperado: tramas con bit 5 y nombre `Visionaria-SIM`. Intentar emparejar con la ventana cerrada: debe fallar.
+3. **Seguridad.** (a) Sin emparejar, leer Información y Medición: deben fallar con «autenticación insuficiente». (b) Intentar emparejar como «Just Works» (herramienta que anuncie sin entrada ni salida), **con la ventana cerrada y con ella abierta**: debe fallar; confirmar por el serie que `rechazados` no crece por un vínculo bueno, y que tras el intento un reinicio no deja ningún vínculo nuevo. (c) Escribir en las características: debe fallar. (d) Suscribirse (escribir el CCCD) sin cifrar: debe rechazarse; sin vínculo no deben llegar notificaciones. (e) Con la ventana cerrada, intentar emparejar con una herramienta que sí tenga teclado: debe cortarse sin pedir clave; anotar si el fallo ocurre antes de cifrar (algoritmo OOB) o al cortar. (f) Volver a emparejar un teléfono ya vinculado con la ventana cerrada: el vínculo debe conservarse. (g) Lectura múltiple de Medición (`gatttool`/`bluetoothctl` o la herramienta del banco): cada respuesta con secuencia nueva. Registrar cada resultado; si alguno pasa, es un hallazgo de seguridad.
+4. **Vínculo.** Reiniciar la placa y el iPhone: reconexión sin ventana abierta (debe funcionar: confirma que `sec_state.bonded` y la restauración de la suscripción llegan a tiempo). Pulsar 10 s con el teléfono conectado: la sesión se corta en el acto y deja de notificar, los vínculos se borran y la reconexión falla; repetir la pulsación mientras se empareja (clave ya mostrada) y comprobar que tras reiniciar no queda ningún vínculo nuevo.
+5. **Radar real** (solo tras B0/B1 de [EA-11](ea-11-radar.md)). Cargar la compilación real y comprobar `uart …` sin errores; presencia dentro y fuera de la ventana; `sin blanco` no se presenta como libre.
+6. **Fallos.** Desconectar el TX del radar: salud 2 en ≤ 2,5 s con el BLE conectado y con el BLE apagado; reconectarlo: el supervisor espera 10 s **desde que la salud deja de ser sana** (2 501 ms después de la última trama válida), es decir ≈ 12,5 s hasta reiniciar la configuración, y a eso se suman la configuración y ≥ 5 s de estabilización: debe volver a salud 0 **sin reiniciar la placa**, con `reintentos` creciendo solo mientras dure el fallo (no esperar 10 s desde la última trama). Reiniciar el radar (cortar su alimentación unos segundos): lo mismo; medir cuánto tarda y si su flash conserva la configuración. Provocar un desborde (ráfaga por la UART con el firmware ocupado) y comprobar que `perdidas` sube y la salud pasa por 3 antes de volver a 0. Reiniciar la ESP32: identificador de arranque nuevo y secuencia en 0; el iPhone debe releer Información.
+7. **Reconexión.** Cortar y recuperar el enlace 20 veces: una sola suscripción por conexión, sin tramas de la conexión anterior, la primera trama vigente llega solo tras una trama UART posterior a la conexión. Intentar una segunda conexión simultánea: debe rechazarse sin afectar a la primera.
+8. **Mediciones del criterio 5 del issue.** Capturar ≥ 10 min de notificaciones en un CSV `t_host_ms,hex` y ejecutar `python3 firmware/herramientas/analizar_captura.py captura.csv`: frecuencia, pérdidas por huecos de secuencia, intervalos (mediana y p95), deriva de relojes y reparto de salud. Para la **latencia** no hay reloj común: usar una señal física visible (persona que cruza una marca) filmada junto al registro del equipo, o un pulso de GPIO de la placa, y documentar el método y su incertidumbre. Para el **consumo**, un medidor USB en serie con la placa, con BLE activo y sin él. Nada de esto está medido.
+
+## Estado de los criterios de #38
+
+| Criterio | Estado |
+| --- | --- |
+| Contrato versionado, capacidades reales, notificaciones acotadas, secuencia, salud; fixture y sensor real distinguibles | Software hecho y probado en el portátil; **falta verlo en la placa**. |
+| Selección y protección acordadas; datos o configuración inválidos no se aceptan | Configurado en el stack NimBLE y probada la política; **falta comprobar en la placa con un iPhone** (pasos 2 a 4). |
+| Pérdida de enlace, reinicio de ESP32 y del radar, reconexión sin suscripciones duplicadas ni mediciones previas | Lógica y recuperación del radar probadas en el portátil; **falta banco** (pasos 6 y 7). |
+| Ausencia de mediciones nuevas anunciada; sin detección no es «camino libre»; sin servidor ni IA | Salud 2 y latido de 500 ms en el cliente; **falta banco**. |
+| Medir frecuencia, pérdida, consumo y latencia | **Pendiente.** Guion y analizador listos, sin mediciones. |
+
+## Pendiente
+
+- **Placa y radar:** todo lo del guion. Hasta entonces, nada de esto se declara probado.
+- **B2:** si el GPIO2 cambia antes que la trama. El firmware no lo usa; cuando B2 lo decida, se añade solo con `latido_vigente()` y sin tomar la edad del pin.
+- **Pines y cableado:** los fija quien reciba la placa en `configuracion_local.h`.
+- **Core Bluetooth y qué evidencia afirma `cifradoAutenticado` en iOS:** EA-15.
+- **Ganchos de NimBLE en banco:** OOB con la ventana cerrada, `NOTIFY_INDICATE_ENC/AUTHEN`, `sec_state.bonded` y restauración de la suscripción (pasos 3 y 4).
+- **Configuración activa del radar:** el firmware no lee la configuración que tiene el sensor; un radar que se reinicia y sigue emitiendo con otra configuración no se detecta hasta que calle. B1 decide si hace falta una consulta.

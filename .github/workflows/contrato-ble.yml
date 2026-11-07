@@ -1,6 +1,8 @@
 # Contrato BLE v1.0 (EA-04): los mismos vectores de contratos/ble/ se ejecutan
 # en el portátil (C++ del firmware) y en macOS (paquete Swift ContratoBLE).
 # Es lógica y fixtures sintéticos: no prueba radar, enlace BLE ni Core Bluetooth.
+# El job `sketch` (EA-12) compila el firmware real para ESP32-S3 con el núcleo de
+# Espressif fijado; compilar no prueba el enlace, el radar ni la seguridad en la placa.
 name: Contrato BLE
 
 on:
@@ -32,8 +34,176 @@ jobs:
       - name: Versión del compilador
         run: g++ --version
 
-      - name: Pruebas del codificador y del emisor sintético
+      - name: Pruebas del codificador, del emisor sintético y del intérprete del radar
         run: make -C firmware probar
+
+      - name: Pruebas del enlace (EA-12) - sesión, GAP/GATT, radar y guardia del sketch
+        run: bash firmware/pruebas/probar_enlace.sh
+
+      - name: Autoprueba del analizador de capturas
+        run: python3 -I firmware/herramientas/analizar_captura.py --autoprueba
+
+  sketch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ARDUINO_CLI_VERSION: "1.5.1"
+      ARDUINO_CLI_SHA256: "28a8e119c498a25607821c36cb2dc49e8463941b261a0d99091baa7bc692dd2b"
+      ESP32_CORE_VERSION: "3.3.12"
+      ESP32_INDEX_URL: "https://espressif.github.io/arduino-esp32/package_esp32_index.json"
+      FQBN: "esp32:esp32:esp32s3:FlashSize=16M"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar arduino-cli fijado
+        run: |
+          set -euo pipefail
+          curl -sSfL -o /tmp/arduino-cli.tar.gz \
+            "https://github.com/arduino/arduino-cli/releases/download/v${ARDUINO_CLI_VERSION}/arduino-cli_${ARDUINO_CLI_VERSION}_Linux_64bit.tar.gz"
+          echo "${ARDUINO_CLI_SHA256}  /tmp/arduino-cli.tar.gz" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf /tmp/arduino-cli.tar.gz -C "$HOME/.local/bin" arduino-cli
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Solo se conserva lo que usa el ESP32-S3 (Xtensa). Sin recortar, el núcleo
+      # ocupa unos 6 GB; recortado, unos 2.
+      - name: Caché del núcleo de Espressif
+        id: cache-nucleo
+        uses: actions/cache@v4
+        with:
+          path: ~/.arduino15
+          key: arduino-esp32-${{ env.ESP32_CORE_VERSION }}-s3-cli-${{ env.ARDUINO_CLI_VERSION }}
+
+      - name: Instalar el núcleo esp32 ${{ env.ESP32_CORE_VERSION }}
+        if: steps.cache-nucleo.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          arduino-cli core update-index --additional-urls "$ESP32_INDEX_URL"
+          arduino-cli core install "esp32:esp32@${ESP32_CORE_VERSION}" --additional-urls "$ESP32_INDEX_URL"
+          herramientas="$HOME/.arduino15/packages/esp32/tools"
+          for d in esp-rv32 esp32c3-libs esp32c5-libs esp32c6-libs esp32h2-libs esp32p4-libs esp32p4_es-libs \
+                   esp32s2-libs esp32-libs riscv32-esp-elf-gdb openocd-esp32; do
+            rm -rf "${herramientas:?}/$d"
+          done
+          rm -rf "${HOME:?}/.arduino15/staging"   # descargas ya instaladas
+
+      - name: Versiones
+        run: |
+          arduino-cli version
+          arduino-cli core list
+
+      - name: Compilar el sketch real (varias configuraciones)
+        run: |
+          set -euo pipefail
+          mkdir -p evidencia
+          {
+            arduino-cli version
+            echo "núcleo: esp32:esp32@${ESP32_CORE_VERSION}"
+            echo "FQBN: ${FQBN}"
+            echo "commit: $(git rev-parse HEAD)"
+          } | tee evidencia/compilacion.txt
+
+          # Clave descartable de esta ejecución: solo para compilar; no se carga a
+          # ninguna placa ni se guarda. El firmware rechaza claves triviales.
+          clave=$(( $(od -An -N4 -tu4 /dev/urandom) % 900000 + 100000 ))
+          while [ $((clave % 111111)) -eq 0 ] || [ "$clave" -eq 123456 ] || [ "$clave" -eq 654321 ]; do
+            clave=$(( $(od -An -N4 -tu4 /dev/urandom) % 900000 + 100000 ))
+          done
+          echo "::add-mask::$clave"
+
+          # Gate del binario: el sketch no puede volver al envoltorio BLE de Arduino
+          # (que imprimía la clave, no veía las lecturas de varias características y
+          # compartía un valor entre hilos) ni dejar la clave de esta ejecución como
+          # texto. La clave nunca se escribe en el registro.
+          # Busca una cadena en las cadenas imprimibles del binario SIN tubería: con
+          # pipefail, `strings | grep -q` pierde el acierto (grep sale al primer
+          # resultado, strings muere por SIGPIPE con 141 y el `if` lo toma por falso).
+          # Las cadenas van a un archivo temporal fuera de evidencia/ y se borra, y la
+          # cadena buscada no se imprime.
+          binario_contiene() { # archivo cadena
+            local cadenas rc=0
+            cadenas=$(mktemp)
+            strings -a "$1" > "$cadenas"
+            grep -qF -- "$2" "$cadenas" || rc=$?
+            rm -f "$cadenas"
+            [ "$rc" -le 1 ] || { echo "::error::falló la búsqueda de cadenas (grep $rc)"; exit 1; }
+            return "$rc"
+          }
+          # Autoprueba del gate con un binario SINTÉTICO: el marcador está al principio
+          # de una salida grande de `strings` (varios MB, mucho más que el búfer de una
+          # tubería), que es donde la forma anterior fallaba. Positivo y ausencia.
+          fixture=$(mktemp)
+          { printf 'MARCADOR-SINTETICO-DEL-GATE\n'; awk 'BEGIN { for (i = 0; i < 200000; i++) print "relleno sintetico del gate numero " i }'; } > "$fixture"
+          binario_contiene "$fixture" "MARCADOR-SINTETICO-DEL-GATE" || { echo "::error::el gate de cadenas no detecta un marcador presente"; exit 1; }
+          if binario_contiene "$fixture" "MARCADOR-AUSENTE-DEL-GATE"; then
+            echo "::error::el gate de cadenas da un acierto falso"; exit 1
+          fi
+          rm -f "$fixture"
+
+          verificar_elf() { # elf clave con_ble(1: la configuración arranca el BLE)
+            elf="$1"; clave_ejecucion="$2"; con_ble="$3"
+            nm_s3=$(ls "$HOME"/.arduino15/packages/esp32/tools/esp-x32/*/bin/xtensa-esp32s3-elf-nm | head -1)
+            "$nm_s3" -C "$elf" > simbolos.txt
+            if grep -E "BLEDevice::createServer|BLEServer::BLEServer|BLEDevice::setSecurityCallbacks|BLESecurityCallbacks|BLEServerCallbacks" simbolos.txt; then
+              echo "::error::el binario enlaza el envoltorio BLE de Arduino (servidor o callbacks de seguridad)"; exit 1
+            fi
+            for simbolo in acceso_medicion escribir_vinculo evento_gap evento_notificar evento_borrar; do
+              if [ "$con_ble" = 1 ] && ! grep -q "$simbolo" simbolos.txt; then
+                echo "::error::falta $simbolo en el binario: el GATT o la seguridad nativos no están"; exit 1
+              fi
+            done
+            for mensaje in "Passkey: " "passkey: %" "Using default passkey"; do
+              if binario_contiene "$elf" "$mensaje"; then
+                echo "::error::el binario contiene un mensaje que imprime la clave de emparejamiento"; exit 1
+              fi
+            done
+            if [ -n "$clave_ejecucion" ] && binario_contiene "$elf" "$clave_ejecucion"; then
+              echo "::error::la clave de la ejecución aparece como texto en el binario"; exit 1
+            fi
+          }
+
+          compilar() { # etiqueta banderas...
+            etiqueta="$1"; shift
+            echo "== $etiqueta" | tee -a evidencia/compilacion.txt
+            salida=$(mktemp)
+            destino=$(mktemp -d)
+            if ! arduino-cli compile --fqbn "$FQBN" --warnings all --output-dir "$destino" \
+                 --build-property "compiler.cpp.extra_flags=$*" firmware/accesorio > "$salida" 2>&1; then
+              cat "$salida"; exit 1
+            fi
+            cat "$salida" >> evidencia/compilacion.txt
+            grep -E "Sketch uses|Global variables" "$salida"
+            # Ninguna advertencia propia: las del núcleo de Espressif no se evalúan aquí.
+            if grep -E "firmware/accesorio/.*warning" "$salida"; then exit 1; fi
+            con_ble=0
+            case "$*" in *VISIONARIA_CLAVE_ENLACE*) con_ble=1 ;; esac
+            verificar_elf "$destino/accesorio.ino.elf" "$clave" "$con_ble"
+          }
+          debe_fallar() { # etiqueta banderas...
+            etiqueta="$1"; shift
+            echo "== $etiqueta (debe fallar)" | tee -a evidencia/compilacion.txt
+            if arduino-cli compile --fqbn "$FQBN" --build-property "compiler.cpp.extra_flags=$*" firmware/accesorio \
+                 >> evidencia/compilacion.txt 2>&1; then
+              echo "::error::compiló una configuración que debía rechazarse: $etiqueta"; exit 1
+            fi
+          }
+
+          # Sin selección humana: no abre UART, alta ni BLE; compila.
+          compilar "sin pines ni clave" ""
+          # Pines de EJEMPLO solo para compilar la rama de hardware; no son la selección real.
+          compilar "radar real" "-DVISIONARIA_PIN_RADAR_RX=4 -DVISIONARIA_PIN_RADAR_TX=5 -DVISIONARIA_PIN_BOTON=0 -DVISIONARIA_CLAVE_ENLACE=$clave"
+          compilar "simulación" "-DVISIONARIA_SIMULACION=1 -DVISIONARIA_PIN_BOTON=0 -DVISIONARIA_CLAVE_ENLACE=$clave"
+          debe_fallar "pin vetado (USB)" "-DVISIONARIA_PIN_RADAR_RX=19 -DVISIONARIA_PIN_RADAR_TX=5 -DVISIONARIA_CLAVE_ENLACE=$clave"
+          debe_fallar "clave trivial" "-DVISIONARIA_CLAVE_ENLACE=123456"
+          debe_fallar "simulación con pines del radar" "-DVISIONARIA_SIMULACION=1 -DVISIONARIA_PIN_RADAR_RX=4 -DVISIONARIA_PIN_RADAR_TX=5"
+
+      - name: Conservar evidencia
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contrato-ble-sketch
+          path: evidencia/
+          retention-days: 30
 
   swift:
     runs-on: macos-26
