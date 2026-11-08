@@ -10,13 +10,42 @@ final class RelojFalso: @unchecked Sendable {
     func avanzar(_ delta: Milisegundos) { candado.lock(); ms += delta; candado.unlock() }
 }
 
+/// Anota los estados de la sesión desde la pausa inyectada, no desde un bucle de la prueba.
+///
+/// Es determinista: en `ejecutarGuion`, cada `publicar` va seguido de un `await pausa(...)`
+/// antes del siguiente `publicar`, y mientras la tarea está en la pausa el estado no cambia.
+/// Por eso anotar al empezar la pausa registra cada estado que la pantalla podía mostrar, sin
+/// depender de cuándo le toca el turno a la prueba. Antes la prueba revisaba `estado` en un
+/// bucle con `Task.yield()` mientras el guion avanzaba en otra tarea, y podía saltarse un
+/// estado que dura un solo paso (en la ejecución 42417859757 se saltó el objetivo a 1500 mm).
+@MainActor
+final class RegistroEstados {
+    weak var modelo: SesionLocalModelo?
+    private(set) var vistos: [EstadoSesion] = []
+    /// Se cumple una sola vez, al anotar ese estado, y luego queda en `nil`.
+    var espera: (estado: EstadoSesion, expectativa: XCTestExpectation)?
+
+    /// Agrega el estado actual si es distinto del último anotado.
+    func anotar() {
+        guard let estado = modelo?.estado else { return }
+        if vistos.last != estado { vistos.append(estado) }
+        if let espera, espera.estado == estado {
+            espera.expectativa.fulfill()
+            self.espera = nil
+        }
+    }
+}
+
 @MainActor
 final class SesionLocalModeloTests: XCTestCase {
-    private func crear(_ reloj: RelojFalso) -> SesionLocalModelo {
-        SesionLocalModelo(reloj: { reloj.ahora }, pausa: { ms in
+    private func crear(_ reloj: RelojFalso, registro: RegistroEstados? = nil) -> SesionLocalModelo {
+        let modelo = SesionLocalModelo(reloj: { reloj.ahora }, pausa: { ms in
+            if let registro { await registro.anotar() }
             reloj.avanzar(ms)
             await Task.yield()
         })
+        registro?.modelo = modelo
+        return modelo
     }
 
     private func esperar(_ modelo: SesionLocalModelo, hasta estado: EstadoSesion, file: StaticString = #filePath, line: UInt = #line) async {
@@ -44,15 +73,14 @@ final class SesionLocalModeloTests: XCTestCase {
     }
 
     func testElGuionRecorreSusEstadosYCaducaSinRepetirLaUltimaMedida() async {
-        let reloj = RelojFalso()
-        var vistos: [EstadoSesion] = []
-        let modelo = crear(reloj)
+        let registro = RegistroEstados()
+        let caducada = expectation(description: "la sesión simulada caduca")
+        registro.espera = (.sinDatos(.vencido), caducada)
+        let modelo = crear(RelojFalso(), registro: registro)
         modelo.iniciar()
-        for _ in 0..<5_000 {
-            if vistos.last != modelo.estado { vistos.append(modelo.estado) }
-            if modelo.estado == .sinDatos(.vencido) { break }
-            await Task.yield()
-        }
+        await fulfillment(of: [caducada], timeout: 10)
+        // Se copia antes de `detener`, que cambia el estado a `.desconectada`.
+        let vistos = registro.vistos
         modelo.detener()
         XCTAssertTrue(vistos.contains(.sincronizando) || vistos.contains(.esperandoInformacion))
         XCTAssertTrue(vistos.contains(.sinBlanco))
