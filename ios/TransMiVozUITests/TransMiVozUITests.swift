@@ -44,8 +44,8 @@ private func escribir(_ texto: String, en campo: XCUIElement, file: StaticString
     esperar(campo, "value == %@", texto, "El campo no muestra el texto escrito «\(texto)»", file: file, line: line)
 }
 
-/// Desliza con gesto real (arrastre sin inercia) hasta que `objetivo` quede entero y tocable entre la barra
-/// de navegación y la barra de pestañas, que en iOS 26 flotan sobre el contenido. Pasos acotados, no reintentos.
+/// Desliza con gesto real hasta que `objetivo` quede entero y tocable entre la barra de navegación y la
+/// barra de pestañas, que en iOS 26 flotan sobre el contenido. Pasos acotados, no reintentos.
 private func exponer(_ objetivo: XCUIElement, en app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
     let ventana = app.windows.firstMatch.frame
     let arriba = app.navigationBars.firstMatch.frame.maxY
@@ -60,7 +60,12 @@ private func exponer(_ objetivo: XCUIElement, en app: XCUIApplication, file: Sta
         // Margen derecho del contenido (16 pt): el arrastre no cae sobre un campo ni un botón.
         let inicio = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
             .withOffset(CGVector(dx: ventana.width - 8, dy: desplazamiento > 0 ? abajo - 20 : arriba + 20))
-        inicio.press(forDuration: 0.1, thenDragTo: inicio.withOffset(CGVector(dx: 0, dy: -desplazamiento)))
+        // El dedo queda quieto medio segundo antes de soltar para que no haya inercia y la lista recorra
+        // lo pedido. Sin esa espera la lista recorría unos 130 pt de más (ejecución 42417859757: se
+        // pidieron 457,3 pt y el bloque se movió unos 590).
+        inicio.press(
+            forDuration: 0.1, thenDragTo: inicio.withOffset(CGVector(dx: 0, dy: -desplazamiento)),
+            withVelocity: .default, thenHoldForDuration: 0.5)
     }
     XCTAssertTrue(visible(), "«\(objetivo.identifier)» no queda entero y tocable entre las barras: marco \(objetivo.frame), visible \(arriba)…\(abajo)", file: file, line: line)
 }
