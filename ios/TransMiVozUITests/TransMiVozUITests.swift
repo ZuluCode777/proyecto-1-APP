@@ -21,7 +21,7 @@ private func auditar(_ app: XCUIApplication, _ contexto: String, testCase: XCTes
         }
     }
     guard !problemas.isEmpty else { return }
-    let texto = XCTAttachment(string: problemas.joined(separator: "\n"))
+    let texto = XCTAttachment(string: problemas.joined(separator: "\n") + "\n\nJerarquía de accesibilidad:\n" + app.debugDescription)
     texto.name = "auditoria-\(contexto)-problemas"
     texto.lifetime = .keepAlways
     testCase.add(texto)

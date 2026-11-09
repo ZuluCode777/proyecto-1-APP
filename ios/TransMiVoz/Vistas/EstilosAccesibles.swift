@@ -21,8 +21,13 @@ private struct BordeInferiorLegible: ViewModifier {
     func body(content: Content) -> some View {
         #if compiler(>=6.2)
         if #available(iOS 26, *) {
-            // El borde duro también desenfoca; recortar al marco limita el desbordamiento visible.
-            content.scrollEdgeEffectStyle(.hard, for: .bottom).clipped()
+            // ScrollView se extiende bajo las barras: el contenedor fija el marco antes de recortarlo.
+            GeometryReader { geometria in
+                content
+                    .scrollEdgeEffectStyle(.hard, for: .bottom)
+                    .frame(width: geometria.size.width, height: geometria.size.height)
+                    .clipped()
+            }
         } else {
             content
         }
