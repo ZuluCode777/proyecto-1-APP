@@ -109,6 +109,7 @@ final class TransMiVozUITests: XCTestCase {
         let pestana = app.tabBars.buttons[nombre]
         XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña \(nombre)")
         pestana.tap()
+        esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña \(nombre)")
     }
 
     private func preguntar(_ texto: String) {
@@ -269,6 +270,7 @@ final class TransMiVozTextoGrandeUITests: XCTestCase {
             let pestana = app.tabBars.buttons[nombre]
             XCTAssertTrue(pestana.waitForExistence(timeout: 10))
             pestana.tap()
+            esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña \(nombre)")
             if nombre == "Consulta" {
                 // La introducción mide ~500 pt: se audita entera y a la vista, y luego el campo con sus botones.
                 for (id, contexto) in [("introduccion-consulta", "introduccion"), ("boton-enviar", "campo")] {

@@ -26,6 +26,7 @@ private struct BordeInferiorLegible: ViewModifier {
                 content
                     .scrollEdgeEffectStyle(.hard, for: .bottom)
                     .frame(width: geometria.size.width, height: geometria.size.height)
+                    .contentShape(Rectangle())
                     .clipped()
             }
         } else {
