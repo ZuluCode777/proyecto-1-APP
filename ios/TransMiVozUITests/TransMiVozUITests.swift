@@ -1,6 +1,6 @@
 import XCTest
 
-/// Auditoría real de accesibilidad (todos los tipos, sin excluir ninguno). Reúne TODOS los
+/// Auditoría real de accesibilidad de los tipos pedidos. Reúne TODOS los
 /// problemas y los adjunta como texto + captura antes de fallar, para que el resultado
 /// diga qué elemento falló (en Xcode, sin handler, solo se ve el primero y sin elemento).
 /// No ignora nada: si hay un problema, la prueba falla.
@@ -260,18 +260,17 @@ final class TransMiVozTextoGrandeUITests: XCTestCase {
             let pestana = app.tabBars.buttons[nombre]
             XCTAssertTrue(pestana.waitForExistence(timeout: 10))
             pestana.tap()
-            // Dynamic Type cambia el tamaño y reinicia el desplazamiento: se ejecuta antes
-            // de exponer contenido para las demás auditorías. No se omite ningún tipo.
-            try auditar(app, "texto-muy-grande-\(nombre)-dynamic-type", tipos: .dynamicType, testCase: self)
-            let tiposVisuales = XCUIAccessibilityAuditType.all.subtracting(.dynamicType)
+            // Las demás auditorías también cambian el tamaño y el desplazamiento: contraste
+            // se mide por separado, con el contenido expuesto. Las dos fases cubren .all.
+            try auditar(app, "texto-muy-grande-\(nombre)-sin-contraste", tipos: .all.subtracting(.contrast), testCase: self)
             if nombre == "Consulta" {
                 // La introducción mide ~500 pt: se audita entera y a la vista, y luego el campo con sus botones.
                 for (id, contexto) in [("introduccion-consulta", "introduccion"), ("boton-enviar", "campo")] {
                     exponer(app.descendants(matching: .any).matching(identifier: id).firstMatch, en: app)
-                    try auditar(app, "texto-muy-grande-Consulta-\(contexto)", tipos: tiposVisuales, testCase: self)
+                    try auditar(app, "texto-muy-grande-Consulta-\(contexto)", tipos: .contrast, testCase: self)
                 }
             } else {
-                try auditar(app, "texto-muy-grande-\(nombre)", tipos: tiposVisuales, testCase: self)
+                try auditar(app, "texto-muy-grande-\(nombre)", tipos: .contrast, testCase: self)
             }
         }
     }
