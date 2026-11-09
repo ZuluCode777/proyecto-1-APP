@@ -62,19 +62,16 @@ extension View {
     }
 }
 
-/// Pila de contenido: diferida o inmediata, con la misma disposición. Solo con tamaños de accesibilidad se
-/// difiere la creación (el contenido que queda bajo el área desplazable existiría sin verse y la auditoría de
-/// contraste lo evaluaría); con tamaños normales la pila diferida rompió la auditoría de Dynamic Type.
+/// Pila de los controles de la consulta: diferida o inmediata, con la misma disposición.
 struct ContenedorControles<Contenido: View>: View {
     let diferido: Bool
-    var espaciado: CGFloat = 16
     @ViewBuilder let contenido: Contenido
 
     var body: some View {
         if diferido {
-            LazyVStack(alignment: .leading, spacing: espaciado) { contenido }
+            LazyVStack(alignment: .leading, spacing: 16) { contenido }
         } else {
-            VStack(alignment: .leading, spacing: espaciado) { contenido }
+            VStack(alignment: .leading, spacing: 16) { contenido }
         }
     }
 }

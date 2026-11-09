@@ -13,8 +13,6 @@ struct SesionAccesorioVista: View {
     /// Solo para que la pantalla se redibuje cuando la persona enciende o apaga VoiceOver con la app abierta.
     /// La política sigue en el modelo, que consulta VoiceOver en cada uso (`vozPropiaActiva`).
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverActivo
-    /// Se fija al crear la vista y no cambia si la persona cambia el tamaño de texto con la app abierta.
-    @State private var creacionDiferida = UIApplication.shared.preferredContentSizeCategory.isAccessibilityCategory
 
     /// `modelo.vozPropiaActiva`, leído junto al entorno para que el interruptor y el texto de audio se refresquen.
     private var vozPropiaActiva: Bool {
@@ -25,10 +23,10 @@ struct SesionAccesorioVista: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                // Con tamaños de accesibilidad cada elemento se crea al desplazarse (también dentro de cada sección):
-                // lo que queda bajo el área desplazable, entre su borde y la barra de pestañas, está en pantalla pero
-                // recortado y la auditoría de contraste lo evaluaría sin que se vea.
-                ContenedorControles(diferido: creacionDiferida) {
+                // Con cualquier tamaño de texto cada elemento se crea al acercarse a la vista (también dentro de cada
+                // sección): lo que queda bajo el área desplazable, entre su borde y la barra de pestañas, está en
+                // pantalla pero recortado y la auditoría de contraste lo evaluaría sin que se vea.
+                LazyVStack(alignment: .leading, spacing: 16) {
                     if avisoSintetico {
                         Label("Modo de pruebas: transporte sintético. No hay Bluetooth, radio, audio ni accesorio reales; el enlace sigue sin verificarse.", systemImage: "testtube.2")
                             .font(.footnote)
@@ -77,7 +75,7 @@ struct SesionAccesorioVista: View {
     }
 
     private var seccionBluetooth: some View {
-        ContenedorControles(diferido: creacionDiferida, espaciado: 8) {
+        LazyVStack(alignment: .leading, spacing: 8) {
             Text(TextoAccesorio.bluetooth(modelo.disponibilidad))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("estado-bluetooth")
@@ -93,7 +91,7 @@ struct SesionAccesorioVista: View {
     }
 
     private var seccionAccesorio: some View {
-        ContenedorControles(diferido: creacionDiferida, espaciado: 8) {
+        LazyVStack(alignment: .leading, spacing: 8) {
             Text("Accesorio")
                 .font(.headline)
                 .accessibilityAddTraits(.isHeader)
@@ -132,7 +130,7 @@ struct SesionAccesorioVista: View {
     }
 
     private var seccionControles: some View {
-        ContenedorControles(diferido: creacionDiferida, espaciado: 8) {
+        LazyVStack(alignment: .leading, spacing: 8) {
             Button(modelo.activa ? "Detener sesión" : "Iniciar sesión") {
                 if modelo.activa { modelo.detener() } else { modelo.iniciar() }
             }
@@ -153,7 +151,7 @@ struct SesionAccesorioVista: View {
 
     private var seccionEstado: some View {
         let estado = modelo.estado
-        return ContenedorControles(diferido: creacionDiferida, espaciado: 8) {
+        return LazyVStack(alignment: .leading, spacing: 8) {
             Text("Estado del accesorio")
                 .font(.headline)
                 .accessibilityAddTraits(.isHeader)
@@ -178,7 +176,7 @@ struct SesionAccesorioVista: View {
     }
 
     private var seccionVoz: some View {
-        ContenedorControles(diferido: creacionDiferida, espaciado: 8) {
+        LazyVStack(alignment: .leading, spacing: 8) {
             Toggle("Avisos hablados por la app", isOn: Binding(
                 get: { vozPropiaActiva },
                 set: { modelo.fijarVozPropia($0) }))
