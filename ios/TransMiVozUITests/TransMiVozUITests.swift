@@ -95,6 +95,24 @@ private func exponer(_ identificador: String, en app: XCUIApplication, completo:
     XCTAssertTrue(visible(), "«\(identificador)» no queda \(completo ? "entero y tocable" : "con su comienzo a la vista") entre las barras: marco \(objetivo.exists ? "\(objetivo.frame)" : "fuera de la jerarquía visible"), visible \(arriba)…\(abajo)", file: file, line: line)
 }
 
+/// Lleva la pantalla del accesorio al final de su contenido y comprueba que los `visibles` quedan enteros entre las barras.
+/// Con tamaño de texto normal el contenido es inmediato: lo que sigue bajo el área desplazable (entre su borde y la
+/// barra de pestañas) está en pantalla pero recortado, y la auditoría de contraste lo evalúa sin que se vea. Solo al
+/// final no queda nada debajo; por eso la auditoría con texto normal se hace allí. Con texto de accesibilidad no hace
+/// falta: ahí el contenido se crea al desplazarse y nunca existe bajo la barra.
+private func exponerAlFinal(visibles: [String], en app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+    exponer("aviso-sin-red", en: app, file: file, line: line)
+    let arriba = app.navigationBars.firstMatch.frame.maxY
+    let abajo = app.scrollViews.firstMatch.frame.maxY
+    for id in visibles {
+        let objetivo = app.descendants(matching: .any).matching(identifier: id).firstMatch
+        XCTAssertTrue(objetivo.exists, "«\(id)» no existe al final del contenido", file: file, line: line)
+        let marco = objetivo.frame
+        XCTAssertTrue(marco.minY >= arriba && marco.maxY <= abajo,
+            "«\(id)» no queda entero al final del contenido: marco \(marco), visible \(arriba)…\(abajo)", file: file, line: line)
+    }
+}
+
 /// Recorridos de interfaz en el Simulator, SIN red ni servidor: la app se lanza
 /// con `-PRUEBAS_UI_SIMULADAS` (solo existe en compilaciones de depuración) y
 /// responde con un cliente simulado. Demuestran el comportamiento de la
@@ -439,9 +457,14 @@ final class TransMiVozAccesorioUITests: XCTestCase {
     func testAuditoriaAccesibilidadSesionAccesorioEnReposoYBloqueada() throws {
         lanzar(["-PRUEBAS_UI_ACCESORIO_PERMISO_CONCEDIDO"])
         XCTAssertTrue(elemento("aviso-seguridad-enlace").waitForExistence(timeout: 10))
+        // Reposo: los dos botones están inhabilitados porque no hay accesorio elegido, y deben pasar el contraste.
+        XCTAssertFalse(elemento("boton-sesion-accesorio").isEnabled)
+        XCTAssertFalse(elemento("boton-reconectar").isEnabled)
+        exponerAlFinal(visibles: ["boton-sesion-accesorio", "boton-reconectar", "estado-accesorio", "estado-audio"], en: app)
         try auditar(app, "accesorio-reposo", testCase: self)
         buscarYElegir(conHoja: false)
         iniciarYEsperarBloqueo()
+        exponerAlFinal(visibles: ["estado-accesorio", "estado-audio"], en: app)
         try auditar(app, "accesorio-bloqueado", testCase: self)
     }
 
@@ -454,6 +477,9 @@ final class TransMiVozAccesorioUITests: XCTestCase {
         continuar.tap()
         esperarEtiqueta("Sin permiso de Bluetooth. Actívalo en Ajustes, en TransMiVoz.")
         XCTAssertTrue(elemento("boton-abrir-ajustes").waitForExistence(timeout: 10))
+        XCTAssertFalse(elemento("boton-sesion-accesorio").isEnabled)
+        XCTAssertFalse(elemento("boton-reconectar").isEnabled)
+        exponerAlFinal(visibles: ["boton-sesion-accesorio", "boton-reconectar", "estado-accesorio", "estado-audio"], en: app)
         try auditar(app, "accesorio-permiso-denegado", testCase: self)
     }
 

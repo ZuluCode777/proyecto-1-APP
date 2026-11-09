@@ -23,6 +23,22 @@ final class EstilosAccesiblesTests: XCTestCase {
         }
     }
 
+    /// Una acción no disponible sigue siendo legible: texto y borde sobre su fondo, ≥ 4,5:1 en claro, oscuro y contraste alto.
+    func testLaAccionInhabilitadaCumpleElContrasteDeCuatroYMedioAUno() {
+        for estilo in [UIUserInterfaceStyle.light, .dark] {
+            for contraste in [UIAccessibilityContrast.normal, .high] {
+                let rasgos = UITraitCollection {
+                    $0.userInterfaceStyle = estilo
+                    $0.accessibilityContrast = contraste
+                }
+                let tinta = luminancia(UIColor(Color.textoAccionInhabilitada), rasgos: rasgos)
+                let fondo = luminancia(UIColor(Color.fondoAccionInhabilitada), rasgos: rasgos)
+                let relacion = (max(tinta, fondo) + 0.05) / (min(tinta, fondo) + 0.05)
+                XCTAssertGreaterThanOrEqual(relacion, 4.5, "Contraste insuficiente con \(rasgos)")
+            }
+        }
+    }
+
     // Luminancia relativa sRGB: verifica el objetivo 7:1 de EA-02, además de la auditoría visual.
     private func luminancia(_ color: UIColor, rasgos: UITraitCollection) -> Double {
         var rojo: CGFloat = 0, verde: CGFloat = 0, azul: CGFloat = 0, alfa: CGFloat = 0
