@@ -36,24 +36,6 @@ struct VistaAuditada: Equatable {
 
     /// El marco cabría entero en la vista si se desplazara hasta ella.
     func cabe(_ marco: CGRect) -> Bool { Self.marcoValido(marco) && marco.height <= abajo - arriba }
-
-    /// Zona en la que una medición de contraste cuenta como «entero a la vista». Además del recorte por las barras, en
-    /// iOS 26 el sistema pinta bajo la barra de navegación un efecto de borde del área desplazable (desvanece y difumina
-    /// lo que pasa por debajo). En la jerarquía aparece como nodos anónimos del área, anclados a su borde superior,
-    /// del ancho del área y más bajos que ella (en el CI medían 170,8 pt con la barra hasta 116). Un nodo dentro de esa
-    /// banda no se mide con su aspecto real: se trata como no visible, así que un fallo de contraste allí se DIFIERE y
-    /// obliga a medirlo de nuevo fuera de la banda (la remedición lo centra). Solo estrecha la zona: nunca la amplía, y
-    /// si no hay nodos así, es la zona de siempre. `zona`: instantánea del área desplazable, con ella misma primero.
-    static func medible(arriba: CGFloat, abajo: CGFloat, zona: [NodoJerarquia]) -> VistaAuditada {
-        guard let area = zona.first, marcoValido(area.marco) else { return VistaAuditada(arriba: arriba, abajo: abajo) }
-        let borde = zona.dropFirst().filter {
-            $0.identificador.isEmpty && $0.etiqueta.isEmpty && marcoValido($0.marco)
-                && abs($0.marco.minY - area.marco.minY) <= tolerancia
-                && abs($0.marco.width - area.marco.width) <= tolerancia
-                && $0.marco.height < area.marco.height - tolerancia
-        }.map(\.marco.maxY).max() ?? arriba
-        return VistaAuditada(arriba: min(max(arriba, borde), abajo), abajo: abajo)
-    }
 }
 
 /// Un problema de la auditoría copiado COMO VALOR dentro del manejador nativo. Nunca se conserva el
@@ -89,7 +71,7 @@ struct NodoJerarquia {
     var clave: ClaveNodo? { identificador.isEmpty ? nil : ClaveNodo(identificador: identificador, etiqueta: etiqueta) }
 }
 
-/// Lo observado de la jerarquía nativa en un instante: zona medible, nodos del área desplazable y de toda la app.
+/// Lo observado de la jerarquía nativa en un instante: zona visible, nodos del área desplazable y de toda la app.
 struct ObservacionContraste {
     /// Deriva máxima (pt) entre dos observaciones para darlas por la misma maquetación.
     static let derivaMaxima: CGFloat = 0.5

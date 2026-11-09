@@ -80,14 +80,14 @@ private final class FaseAuditada {
         libro = LibroContraste(fase: fase)
     }
 
-    /// Zona visible bruta (entre las barras) y la medible de contraste (sin la banda del efecto de borde), de la instantánea actual.
+    /// Zona realmente visible de la instantánea actual: la que dejan las barras y el área desplazable, sin inferir nada más.
     private func observar() throws -> ObservacionContraste {
         let contenido = app.scrollViews.firstMatch.frame
         let zona = try nodos(de: app.scrollViews.firstMatch)
         let aplicacion = try nodos(de: app)
-        let vista = VistaAuditada.medible(
+        let vista = VistaAuditada(
             arriba: max(app.navigationBars.firstMatch.frame.maxY, contenido.minY),
-            abajo: min(app.tabBars.firstMatch.frame.minY, contenido.maxY), zona: zona)
+            abajo: min(app.tabBars.firstMatch.frame.minY, contenido.maxY))
         return ObservacionContraste(vista: vista, zona: zona, aplicacion: aplicacion)
     }
 
@@ -110,7 +110,7 @@ private final class FaseAuditada {
         let lineas = libro.registrar(
             contexto: contexto, hallazgos: resultado.hallazgos, zona: despues.zona, aplicacion: despues.aplicacion, vista: despues.vista)
         adjuntar("auditoria-\(libro.fase)-\(contexto)-problemas",
-            "Zona medible de contraste: \(despues.vista.arriba)…\(despues.vista.abajo)\n" + (lineas.isEmpty ? "Sin problemas." : lineas.joined(separator: "\n")))
+            "Zona visible: \(despues.vista.arriba)…\(despues.vista.abajo)\n" + (lineas.isEmpty ? "Sin problemas." : lineas.joined(separator: "\n")))
     }
 
     /// Nodos de la jerarquía nativa (instantánea) bajo `elemento`, él incluido.

@@ -172,66 +172,48 @@ final class ClasificadorContrasteTests: XCTestCase {
         XCTAssertEqual(libro.fallos.count, 1)
     }
 
-    // MARK: Zona medible (efecto de borde de iOS 26)
+    // MARK: Contraste visible pegado a la barra: siempre falla
 
     private func anonimo(_ marco: CGRect) -> NodoJerarquia { nodo("", "", marco) }
-    /// Como la jerarquía nativa del CI: área desplazable de 0 a 775, contenedor a su tamaño y bajo él el efecto de borde de 170,8.
-    private var areaConBorde: [NodoJerarquia] {
-        [anonimo(CGRect(x: 0, y: 0, width: 402, height: 775)),
-         anonimo(CGRect(x: 0, y: -249, width: 402, height: 1184.7)),
-         anonimo(CGRect(x: 0, y: 0, width: 402, height: 775)),
-         anonimo(CGRect(x: 0, y: 0, width: 402, height: 170.8)),
-         anonimo(CGRect(x: 0, y: 0, width: 402, height: 94.3)),
-         anonimo(CGRect(x: 369, y: 116, width: 30, height: 659)),
-         nodo("boton-sesion-accesorio", "Detener sesión", CGRect(x: 16, y: 117, width: 154.7, height: 50.3))]
+
+    private let claveDetener = ClaveNodo(identificador: "boton-sesion-accesorio", etiqueta: "Detener sesión")
+    /// Como el hallazgo nativo del CI: botón a 1 pt bajo la barra de navegación (barra hasta 116), dentro de la zona visible.
+    private let botonPegadoALaBarra = CGRect(x: 16, y: 117, width: 154.7, height: 50.3)
+
+    func testElContrasteDeUnBotonVisiblePegadoALaBarraFallaSinDiferirse() {
+        esFallo(
+            clasificar(contraste("boton-sesion-accesorio", "Detener sesión", marco: botonPegadoALaBarra)),
+            "entero a la vista")
     }
 
-    func testLaZonaMedibleExcluyeLaBandaDelEfectoDeBorde() {
-        let medible = VistaAuditada.medible(arriba: 116, abajo: 775, zona: areaConBorde)
-        XCTAssertEqual(medible, VistaAuditada(arriba: 170.8, abajo: 775))
-    }
-
-    func testSinBandaLaZonaMedibleEsLaDeSiempreYNuncaSeAmplia() {
-        XCTAssertEqual(VistaAuditada.medible(arriba: 116, abajo: 775, zona: Array(areaConBorde.prefix(2))), vista)
-        XCTAssertEqual(VistaAuditada.medible(arriba: 116, abajo: 775, zona: []), vista)
-        // Un nodo anónimo más bajo que la barra no la amplía hacia arriba.
-        let corto = [areaConBorde[0], anonimo(CGRect(x: 0, y: 0, width: 402, height: 60))]
-        XCTAssertEqual(VistaAuditada.medible(arriba: 116, abajo: 775, zona: corto), vista)
-    }
-
-    func testNodosConIdentificadorOEnOtroSitioNoFormanLaBanda() {
-        let zona = [areaConBorde[0],
-                    nodo("estado", "", CGRect(x: 0, y: 0, width: 402, height: 300)),
-                    anonimo(CGRect(x: 0, y: 300, width: 402, height: 300)),
-                    anonimo(CGRect(x: 0, y: 0, width: 200, height: 300))]
-        XCTAssertEqual(VistaAuditada.medible(arriba: 116, abajo: 775, zona: zona), vista)
-    }
-
-    func testElBotonPegadoALaBarraFallaSinBandaYSeDifiereConBandaYSeSaldaCentrado() {
-        let marco = CGRect(x: 16, y: 117, width: 154.7, height: 50.3)
-        let enBanda = VistaAuditada.medible(arriba: 116, abajo: 775, zona: areaConBorde)
-        esFallo(ClasificadorContraste.clasificar(contraste("boton-sesion-accesorio", "Detener sesión", marco: marco), vista: vista, unico: true), "entero a la vista")
-        let veredicto = ClasificadorContraste.clasificar(contraste("boton-sesion-accesorio", "Detener sesión", marco: marco), vista: enBanda, unico: true)
-        XCTAssertEqual(veredicto, .diferido(ClaveNodo(identificador: "boton-sesion-accesorio", etiqueta: "Detener sesión")))
+    func testUnaMedicionLimpiaAnteriorNoCubreUnFalloVisibleDeLaMismaFase() {
         var libro = LibroContraste(fase: "bloqueada")
-        let zonaBanda = [nodo("boton-sesion-accesorio", "Detener sesión", marco)]
-        libro.registrar(contexto: "abajo", hallazgos: [contraste("boton-sesion-accesorio", "Detener sesión", marco: marco)], zona: zonaBanda, aplicacion: zonaBanda, vista: enBanda)
-        XCTAssertEqual(libro.pendientes.count, 1)
-        // Centrado sigue sin saldarse si el contraste sigue fallando: la banda no oculta un fallo real.
-        let centrado = CGRect(x: 16, y: 420, width: 154.7, height: 50.3)
-        let zonaCentro = [nodo("boton-sesion-accesorio", "Detener sesión", centrado)]
-        libro.registrar(contexto: "remedicion", hallazgos: [contraste("boton-sesion-accesorio", "Detener sesión", marco: centrado)], zona: zonaCentro, aplicacion: zonaCentro, vista: enBanda)
+        // Arriba: el mismo botón, entero a la vista, sin problema de contraste (queda como medido limpio).
+        let arriba = nodo("boton-sesion-accesorio", "Detener sesión", CGRect(x: 16, y: 300, width: 154.7, height: 50.3))
+        libro.registrar(contexto: "arriba", hallazgos: [], zona: [arriba], aplicacion: [arriba], vista: vista)
+        XCTAssertTrue(libro.limpios.contains(claveDetener))
+        XCTAssertTrue(libro.fallos.isEmpty)
+        // Abajo: el mismo botón, en otra posición, con un hallazgo de contraste nativo y marco 117…167 dentro de 116…775.
+        let abajo = nodo("boton-sesion-accesorio", "Detener sesión", botonPegadoALaBarra)
+        libro.registrar(
+            contexto: "abajo", hallazgos: [contraste("boton-sesion-accesorio", "Detener sesión", marco: botonPegadoALaBarra)],
+            zona: [abajo], aplicacion: [abajo], vista: vista)
+        XCTAssertEqual(libro.fallos.count, 1, "la fase falla: el contraste visible no se compensa con la medición limpia anterior")
+        XCTAssertTrue(libro.diferidos.isEmpty)
+        XCTAssertTrue(libro.pendientes.isEmpty, "no hay deuda que una medición posterior pueda saldar")
+        XCTAssertTrue(libro.resueltosConFallo.contains(claveDetener))
+    }
+
+    func testUnNodoDentroDeLaZonaVisibleNuncaSeDifiereAunqueHayaAnonimosPegadosAlBorde() {
+        // Los nodos anónimos del área (por ejemplo, un efecto de borde) no cambian la zona visible: manda la geometría real.
+        let zona = [anonimo(CGRect(x: 0, y: 0, width: 402, height: 775)), anonimo(CGRect(x: 0, y: 0, width: 402, height: 170.8)),
+                    nodo("boton-sesion-accesorio", "Detener sesión", botonPegadoALaBarra)]
+        var libro = LibroContraste(fase: "bloqueada")
+        libro.registrar(
+            contexto: "abajo", hallazgos: [contraste("boton-sesion-accesorio", "Detener sesión", marco: botonPegadoALaBarra)],
+            zona: zona, aplicacion: zona, vista: vista)
         XCTAssertEqual(libro.fallos.count, 1)
-        XCTAssertTrue(libro.pendientes.isEmpty)
-        XCTAssertFalse(libro.limpios.contains(ClaveNodo(identificador: "boton-sesion-accesorio", etiqueta: "Detener sesión")))
-    }
-
-    func testUnNodoEnLaBandaNoSeAcreditaLimpio() {
-        var libro = LibroContraste(fase: "bloqueada")
-        let enBanda = VistaAuditada.medible(arriba: 116, abajo: 775, zona: areaConBorde)
-        let zona = [nodo("boton-sesion-accesorio", "Detener sesión", CGRect(x: 16, y: 117, width: 154.7, height: 50.3))]
-        libro.registrar(contexto: "abajo", hallazgos: [], zona: zona, aplicacion: zona, vista: enBanda)
-        XCTAssertTrue(libro.limpios.isEmpty)
+        XCTAssertTrue(libro.diferidos.isEmpty)
     }
 
     // MARK: Deriva de la maquetación durante la medición
