@@ -61,17 +61,3 @@ extension View {
         }
     }
 }
-
-/// Pila de los controles de la consulta: diferida o inmediata, con la misma disposición.
-struct ContenedorControles<Contenido: View>: View {
-    let diferido: Bool
-    @ViewBuilder let contenido: Contenido
-
-    var body: some View {
-        if diferido {
-            LazyVStack(alignment: .leading, spacing: 16) { contenido }
-        } else {
-            VStack(alignment: .leading, spacing: 16) { contenido }
-        }
-    }
-}

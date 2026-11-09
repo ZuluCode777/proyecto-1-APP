@@ -23,9 +23,10 @@ struct SesionAccesorioVista: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                // Con cualquier tamaño de texto cada elemento se crea al acercarse a la vista (también dentro de cada
-                // sección): lo que queda bajo el área desplazable, entre su borde y la barra de pestañas, está en
-                // pantalla pero recortado y la auditoría de contraste lo evaluaría sin que se vea.
+                // Pila diferida, con cualquier tamaño de texto y también dentro de cada sección: la intención es que cada
+                // elemento se cree al acercarse a la vista, para que lo recortado bajo el área desplazable (entre su borde
+                // y la barra de pestañas) no entre en la auditoría de contraste sin verse. SwiftUI decide cuándo crea y
+                // descarta; las pruebas de interfaz no suponen que un elemento fuera de la vista exista o deje de existir.
                 LazyVStack(alignment: .leading, spacing: 16) {
                     if avisoSintetico {
                         Label("Modo de pruebas: transporte sintético. No hay Bluetooth, radio, audio ni accesorio reales; el enlace sigue sin verificarse.", systemImage: "testtube.2")

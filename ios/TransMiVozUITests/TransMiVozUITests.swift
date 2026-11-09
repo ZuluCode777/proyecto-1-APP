@@ -64,12 +64,16 @@ private func arrastrarContenido(_ desplazamiento: CGFloat, en app: XCUIApplicati
         withVelocity: .default, thenHoldForDuration: 0.5)
 }
 
-/// Busca hacia delante en el orden de lectura y centra el elemento entre las barras.
-/// Con tamaños de accesibilidad los controles de creación diferida pueden no existir hasta desplazarse. Máximo cuatro gestos.
+/// Busca el elemento y lo centra entre las barras. Máximo cuatro gestos.
+/// La pantalla del accesorio usa `LazyVStack` y se supone que puede descartar los elementos que quedan fuera de la
+/// vista, así que un objetivo que aún no existe se busca desplazando un paso: hacia delante (por defecto, en el orden
+/// de lectura) o, con `haciaAtras`, hacia atrás. `haciaAtras` solo cuenta mientras el objetivo no existe; si existe,
+/// el desplazamiento sale de su marco, igual en ambos casos. Nunca se da por hecho que un elemento sigue existiendo
+/// por haber pasado antes por él.
 /// `completo: false` es solo para textos que con `AccessibilityXXXL` miden más que el área visible (un aviso de
 /// ~200 caracteres ocupa más de 900 pt): pide que su COMIENZO quede a la vista y tocable por arriba, no entero.
 /// Todo lo demás (botones, interruptor, títulos) se sigue exigiendo entero y tocable.
-private func exponer(_ identificador: String, en app: XCUIApplication, completo: Bool = true, file: StaticString = #filePath, line: UInt = #line) {
+private func exponer(_ identificador: String, en app: XCUIApplication, completo: Bool = true, haciaAtras: Bool = false, file: StaticString = #filePath, line: UInt = #line) {
     let objetivo = app.descendants(matching: .any).matching(identifier: identificador).firstMatch
     let contenido = app.scrollViews.firstMatch.frame
     let limiteBarra = app.tabBars.firstMatch.frame.minY
@@ -86,38 +90,44 @@ private func exponer(_ identificador: String, en app: XCUIApplication, completo:
     }
     for _ in 0..<4 where !visible() {
         // Centrar deja margen a ambos lados para la zona muerta inicial del gesto.
-        // Un control de creación diferida aún no existe: no se lee su marco (sería una instantánea fallida), se avanza un paso.
+        // Un control de creación diferida aún no existe: no se lee su marco (sería una instantánea fallida), se da un
+        // paso en el sentido pedido (el objetivo puede quedar encima o debajo de la vista).
         let desplazamiento: CGFloat
         if objetivo.exists {
             let ancla = completo ? objetivo.frame.midY - (arriba + abajo) / 2 : objetivo.frame.minY - (arriba + 40)
             desplazamiento = max(-paso, min(paso, ancla))
         } else {
-            desplazamiento = paso
+            desplazamiento = haciaAtras ? -paso : paso
         }
         arrastrarContenido(desplazamiento, en: app, arriba: arriba, abajo: abajo)
     }
     XCTAssertTrue(visible(), "«\(identificador)» no queda \(completo ? "entero y tocable" : "con su comienzo a la vista") entre las barras: marco \(objetivo.exists ? "\(objetivo.frame)" : "fuera de la jerarquía visible"), visible \(arriba)…\(abajo)", file: file, line: line)
 }
 
-/// Comprueba, sin desplazar, que cada elemento YA creado queda entero entre las barras (y tocable si `tocables`).
-/// La pantalla del accesorio crea sus elementos al acercarse a la vista: solo se lee el marco de uno que existe,
-/// y el que no existe falla con un mensaje claro. Es la prueba de que lo auditado a continuación se ve de verdad.
-private func comprobarEnteros(_ ids: [String], en app: XCUIApplication, tocables: Bool = false, file: StaticString = #filePath, line: UInt = #line) {
+/// Comprueba, sin desplazar, que cada elemento queda entero entre las barras (y tocable si `tocables`). Con `comienzo`
+/// basta que su COMIENZO quede a la vista (para textos más altos que el área visible, como en `exponer(completo: false)`).
+/// Antes de leer un marco espera, con la espera nativa y su límite de siempre, a que el elemento exista: si no existe,
+/// falla con un mensaje claro y no se lee ningún marco. Es la prueba de que lo auditado a continuación se ve de verdad.
+private func comprobarEnteros(_ ids: [String], en app: XCUIApplication, tocables: Bool = false, comienzo: Bool = false, file: StaticString = #filePath, line: UInt = #line) {
     let arriba = app.navigationBars.firstMatch.frame.maxY
     let abajo = app.scrollViews.firstMatch.frame.maxY
     for id in ids {
         let objetivo = app.descendants(matching: .any).matching(identifier: id).firstMatch
-        XCTAssertTrue(objetivo.exists, "«\(id)» no existe en la vista que se va a auditar", file: file, line: line)
+        guard objetivo.waitForExistence(timeout: 10) else {
+            XCTFail("«\(id)» no existe en la vista que se va a auditar", file: file, line: line)
+            continue
+        }
         let marco = objetivo.frame
-        XCTAssertTrue(marco.minY >= arriba && marco.maxY <= abajo,
-            "«\(id)» no queda entero en la vista auditada: marco \(marco), visible \(arriba)…\(abajo)", file: file, line: line)
+        let aVista = comienzo ? marco.minY >= arriba && marco.minY <= abajo - 80 : marco.minY >= arriba && marco.maxY <= abajo
+        XCTAssertTrue(aVista,
+            "«\(id)» no queda \(comienzo ? "con su comienzo a la vista" : "entero") en la vista auditada: marco \(marco), visible \(arriba)…\(abajo)", file: file, line: line)
         if tocables { XCTAssertTrue(objetivo.isHittable, "«\(id)» no es tocable en la vista auditada", file: file, line: line) }
     }
 }
 
 /// Lleva la pantalla del accesorio al final de su contenido y comprueba que los `visibles` quedan enteros entre las barras.
-/// Con la creación diferida de la pantalla, lo que queda bajo el área desplazable (entre su borde y la barra de
-/// pestañas) no llega a existir, y al final del contenido no queda nada debajo: es la auditoría «de abajo».
+/// Con la creación diferida de la pantalla se espera que lo que queda bajo el área desplazable (entre su borde y la
+/// barra de pestañas) no llegue a crearse, y al final del contenido no queda nada debajo: es la auditoría «de abajo».
 private func exponerAlFinal(visibles: [String], en app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
     exponer("aviso-sin-red", en: app, file: file, line: line)
     comprobarEnteros(visibles, en: app, file: file, line: line)
@@ -377,8 +387,9 @@ final class TransMiVozAccesorioUITests: XCTestCase {
     }
 
     /// Buscar, aceptar la explicación del permiso si sale, y elegir el accesorio sintético.
+    /// Los dos recorridos que lo usan parten de más abajo (tras los controles o al final): «Buscar» queda encima.
     private func buscarYElegir(conHoja: Bool) {
-        exponer("boton-buscar", en: app)
+        exponer("boton-buscar", en: app, haciaAtras: true)
         elemento("boton-buscar").tap()
         if conHoja {
             let continuar = elemento("boton-permiso-continuar")
@@ -422,8 +433,8 @@ final class TransMiVozAccesorioUITests: XCTestCase {
         XCTAssertTrue(etiquetado("Enlace autenticado: no verificado").exists)
         XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "Objeto")).firstMatch.exists, "bloqueado: ninguna medida")
 
-        // Detener.
-        exponer("boton-sesion-accesorio", en: app)
+        // Detener (el botón queda encima del estado en el que se acaba de leer el enlace).
+        exponer("boton-sesion-accesorio", en: app, haciaAtras: true)
         let boton = elemento("boton-sesion-accesorio")
         boton.tap()
         esperarEtiqueta("Detenido")
@@ -458,8 +469,8 @@ final class TransMiVozAccesorioUITests: XCTestCase {
         XCTAssertTrue(continuar.waitForExistence(timeout: 10))
         continuar.tap()
         XCTAssertTrue(continuar.waitForNonExistence(timeout: 10), "La hoja del permiso no se cerró")
-        // El aviso y «Abrir Ajustes» están arriba, fuera de la vista tras buscar: se vuelve allí para que existan.
-        exponer("aviso-transporte-sintetico", en: app)
+        // El aviso y «Abrir Ajustes» están arriba, posiblemente fuera de la vista tras buscar: se vuelve allí.
+        exponer("aviso-transporte-sintetico", en: app, haciaAtras: true)
         esperarEtiqueta("Sin permiso de Bluetooth. Actívalo en Ajustes, en TransMiVoz.")
         XCTAssertTrue(elemento("boton-abrir-ajustes").waitForExistence(timeout: 10), "debe ofrecer cómo activarlo")
         XCTAssertFalse(elemento("buscando-accesorios").exists, "con el permiso denegado nunca se presenta como buscando")
@@ -473,9 +484,9 @@ final class TransMiVozAccesorioUITests: XCTestCase {
     // MARK: Auditoría de accesibilidad de la pantalla real
 
     /// Con texto normal la auditoría se hace en DOS posiciones, cada una con todos los tipos y sin filtros: arriba
-    /// (avisos, permiso y los botones) y al final (estado y audio). Entre una y otra se comprueba que lo auditado
-    /// queda entero entre las barras. La pantalla crea sus elementos al acercarse, así que lo recortado bajo el
-    /// área desplazable no existe y no se audita sin verse.
+    /// (avisos y los botones) y al final (estado y audio). Antes de cada una se comprueba que los elementos clave
+    /// quedan enteros entre las barras. La pantalla usa `LazyVStack`: se espera que lo recortado bajo el área
+    /// desplazable no exista y no se audite sin verse, pero esa creación diferida la decide SwiftUI.
     func testAuditoriaAccesibilidadSesionAccesorioEnReposoYBloqueada() throws {
         lanzar(["-PRUEBAS_UI_ACCESORIO_PERMISO_CONCEDIDO"])
         XCTAssertTrue(elemento("aviso-transporte-sintetico").waitForExistence(timeout: 10))
@@ -489,7 +500,9 @@ final class TransMiVozAccesorioUITests: XCTestCase {
         try auditar(app, "accesorio-reposo-abajo", testCase: self)
         buscarYElegir(conHoja: false)
         iniciarYEsperarBloqueo()
-        exponer("aviso-transporte-sintetico", en: app)
+        // Tras iniciar, el título del bloqueo quedó centrado más abajo: el aviso de arriba queda encima.
+        exponer("aviso-transporte-sintetico", en: app, haciaAtras: true)
+        comprobarEnteros(["aviso-seguridad-enlace", "boton-sesion-accesorio", "boton-reconectar"], en: app)
         try auditar(app, "accesorio-bloqueado-arriba", testCase: self)
         exponerAlFinal(visibles: ["estado-accesorio", "estado-audio"], en: app)
         try auditar(app, "accesorio-bloqueado-abajo", testCase: self)
@@ -504,17 +517,16 @@ final class TransMiVozAccesorioUITests: XCTestCase {
         continuar.tap()
         XCTAssertTrue(continuar.waitForNonExistence(timeout: 10), "La hoja del permiso no se cerró")
         // Arriba están el texto del permiso y «Abrir Ajustes»; se vuelve allí antes de esperarlos (creación diferida).
-        exponer("aviso-transporte-sintetico", en: app)
+        exponer("aviso-transporte-sintetico", en: app, haciaAtras: true)
         esperarEtiqueta("Sin permiso de Bluetooth. Actívalo en Ajustes, en TransMiVoz.")
         XCTAssertTrue(elemento("boton-abrir-ajustes").waitForExistence(timeout: 10))
         comprobarEnteros(["estado-bluetooth", "boton-abrir-ajustes"], en: app, tocables: true)
-        try auditar(app, "accesorio-permiso-denegado-arriba", testCase: self)
-        // Sin accesorio elegido los dos botones siguen inhabilitados (se colocan a la vista antes de leerlos).
-        exponer("titulo-estado-accesorio", en: app)
+        // Sin accesorio elegido los dos botones siguen inhabilitados y también quedan enteros (no hace falta que sean tocables).
+        comprobarEnteros(["boton-sesion-accesorio", "boton-reconectar"], en: app)
         for id in ["boton-sesion-accesorio", "boton-reconectar"] {
-            XCTAssertTrue(elemento(id).exists, "«\(id)» debe existir")
-            XCTAssertFalse(elemento(id).isEnabled)
+            XCTAssertFalse(elemento(id).isEnabled, "«\(id)» debe seguir inhabilitado sin accesorio elegido")
         }
+        try auditar(app, "accesorio-permiso-denegado-arriba", testCase: self)
         exponerAlFinal(visibles: ["estado-accesorio", "estado-audio"], en: app)
         try auditar(app, "accesorio-permiso-denegado-abajo", testCase: self)
     }
@@ -543,6 +555,8 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         addTeardownBlock { app.terminate() }
         func elemento(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
 
+        // Directo desde arriba, «Buscar» consume los cuatro gestos: se pasa antes por el aviso de seguridad.
+        exponer("aviso-seguridad-enlace", en: app, completo: false)
         exponer("boton-buscar", en: app)
         elemento("boton-buscar").tap()
         XCTAssertTrue(elemento("texto-permiso-bluetooth").waitForExistence(timeout: 10), "Falta la explicación previa al permiso")
@@ -562,10 +576,11 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         addTeardownBlock { app.terminate() }
         func elemento(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
 
-        // La pantalla crea sus elementos al acercarse: se espera el primer aviso visible y se coloca después lo lejano.
+        // Se espera el primer aviso visible y se coloca después lo lejano, sin dar por hecho que ya exista.
         XCTAssertTrue(elemento("aviso-transporte-sintetico").waitForExistence(timeout: 10))
         exponer("aviso-transporte-sintetico", en: app)
-        XCTAssertTrue(elemento("aviso-accesorio-real").waitForExistence(timeout: 10), "el aviso del sensor real debe empezar a la vista")
+        // El aviso de pruebas queda entero a la vista (lo exige `exponer`) y el del sensor real, al menos su comienzo.
+        comprobarEnteros(["aviso-accesorio-real"], en: app, comienzo: true)
         try auditar(app, "texto-muy-grande-Accesorio-avisos-iniciales", testCase: self)
         for (id, contexto, completo) in [("aviso-seguridad-enlace", "bloqueo", false), ("boton-buscar", "busqueda", true)] {
             exponer(id, en: app, completo: completo)
@@ -587,12 +602,13 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         exponer("titulo-estado-accesorio", en: app)
         let bloqueado = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Bloqueado: enlace no verificado")).firstMatch
         XCTAssertTrue(bloqueado.waitForExistence(timeout: 10), "No apareció el bloqueo")
-        for (id, contexto, completo) in [
-            ("boton-sesion-accesorio", "controles", true), ("titulo-estado-accesorio", "estado", true),
-            ("estado-accesorio", "descripcion", false), ("estado-audio", "audio", false),
-            ("interruptor-voz-app", "voz", true),
+        // El título del bloqueo quedó centrado: los controles están encima (el resto, debajo).
+        for (id, contexto, completo, haciaAtras) in [
+            ("boton-sesion-accesorio", "controles", true, true), ("titulo-estado-accesorio", "estado", true, false),
+            ("estado-accesorio", "descripcion", false, false), ("estado-audio", "audio", false, false),
+            ("interruptor-voz-app", "voz", true, false),
         ] {
-            exponer(id, en: app, completo: completo)
+            exponer(id, en: app, completo: completo, haciaAtras: haciaAtras)
             try auditar(app, "texto-muy-grande-Accesorio-\(contexto)", testCase: self)
         }
     }
@@ -612,6 +628,8 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         func elemento(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
 
         XCTAssertTrue(elemento("aviso-transporte-sintetico").waitForExistence(timeout: 10))
+        // Directo desde arriba, «Buscar» consume los cuatro gestos: se pasa antes por el aviso de seguridad.
+        exponer("aviso-seguridad-enlace", en: app, completo: false)
         exponer("boton-buscar", en: app)
         elemento("boton-buscar").tap()
         // La hoja del permiso es la de siempre; su botón se toca con el desplazamiento propio de XCTest.
@@ -620,9 +638,9 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         continuar.tap()
         XCTAssertTrue(continuar.waitForNonExistence(timeout: 10), "La hoja del permiso no se cerró")
 
-        // El texto ya existe (se pasó por él al buscar); «Abrir Ajustes» se crea al acercarse a la vista. Centrar el
-        // texto sacaría el botón de la vista (a este tamaño miden ~380 y ~160 pt): se sube el texto al borde superior.
-        exponer("estado-bluetooth", en: app)
+        // El texto queda encima de «Buscar» y puede no existir ya: se vuelve a él (hacia atrás). Centrarlo sacaría
+        // «Abrir Ajustes» de la vista (a este tamaño miden ~380 y ~160 pt): se sube el texto al borde superior.
+        exponer("estado-bluetooth", en: app, haciaAtras: true)
         let arriba = app.navigationBars.firstMatch.frame.maxY
         arrastrarContenido(elemento("estado-bluetooth").frame.minY - (arriba + 40), en: app,
             arriba: arriba, abajo: app.scrollViews.firstMatch.frame.maxY)
