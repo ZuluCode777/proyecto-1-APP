@@ -102,9 +102,11 @@ struct AjustesServidorVista: View {
     }
 
     private var botonAplicar: some View {
-        Button("Aplicar") {
+        Button {
             campoEnfocado = nil
             modelo.aplicar()
+        } label: {
+            Text("Aplicar").foregroundStyle(Color(uiColor: .systemBackground))
         }
         .font(.body)
         .buttonStyle(.borderedProminent)
