@@ -17,28 +17,7 @@ extension ShapeStyle where Self == Color {
     }
 }
 
-private struct BordeInferiorLegible: ViewModifier {
-    func body(content: Content) -> some View {
-        #if compiler(>=6.2)
-        if #available(iOS 26, *) {
-            // ScrollView se extiende bajo las barras: el contenedor fija el marco antes de recortarlo.
-            GeometryReader { geometria in
-                content
-                    .scrollEdgeEffectStyle(.hard, for: .bottom)
-                    .frame(width: geometria.size.width, height: geometria.size.height)
-                    .contentShape(Rectangle())
-                    .clipped()
-            }
-        } else {
-            content
-        }
-        #else
-        content
-        #endif
-    }
-}
-
 extension View {
-    /// Contenido que se desplaza bajo la barra de pestañas sin quedar ilegible.
-    func bordeInferiorLegible() -> some View { modifier(BordeInferiorLegible()) }
+    /// El margen exterior evita que ScrollView extienda su marco bajo la barra de pestañas.
+    func bordeInferiorLegible() -> some View { padding(.bottom) }
 }

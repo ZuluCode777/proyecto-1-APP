@@ -57,8 +57,12 @@ private func escribir(_ texto: String, en campo: XCUIElement, app: XCUIApplicati
 /// barra de pestañas, que en iOS 26 flotan sobre el contenido. Pasos acotados, no reintentos.
 private func exponer(_ objetivo: XCUIElement, en app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
     let ventana = app.windows.firstMatch.frame
-    let arriba = app.navigationBars.firstMatch.frame.maxY
-    let abajo = app.tabBars.firstMatch.frame.minY
+    let contenido = app.scrollViews.firstMatch.frame
+    let limiteBarra = app.tabBars.firstMatch.frame.minY
+    XCTAssertLessThanOrEqual(contenido.maxY, limiteBarra,
+        "El área de desplazamiento invade la barra de pestañas: marco \(contenido), barra desde \(limiteBarra)", file: file, line: line)
+    let arriba = max(app.navigationBars.firstMatch.frame.maxY, contenido.minY)
+    let abajo = min(limiteBarra, contenido.maxY)
     let paso = abajo - arriba - 40
     func visible() -> Bool {
         let marco = objetivo.frame
