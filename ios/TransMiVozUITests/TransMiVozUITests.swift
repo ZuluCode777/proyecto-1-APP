@@ -53,9 +53,10 @@ private func escribir(_ texto: String, en campo: XCUIElement, app: XCUIApplicati
     esperar(campo, "value == %@", texto, "El campo no muestra el texto escrito «\(texto)»", file: file, line: line)
 }
 
-/// Desliza con gesto real hasta que `objetivo` quede entero y tocable entre la barra de navegación y la
-/// barra de pestañas, que en iOS 26 flotan sobre el contenido. Pasos acotados, no reintentos.
-private func exponer(_ objetivo: XCUIElement, en app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+/// Busca hacia delante en el orden de lectura y centra el elemento entre las barras.
+/// Los controles de creación diferida pueden no existir hasta desplazarse. Máximo cuatro gestos.
+private func exponer(_ identificador: String, en app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+    let objetivo = app.descendants(matching: .any).matching(identifier: identificador).firstMatch
     let ventana = app.windows.firstMatch.frame
     let contenido = app.scrollViews.firstMatch.frame
     let limiteBarra = app.tabBars.firstMatch.frame.minY
@@ -65,12 +66,14 @@ private func exponer(_ objetivo: XCUIElement, en app: XCUIApplication, file: Sta
     let abajo = min(limiteBarra, contenido.maxY)
     let paso = abajo - arriba - 40
     func visible() -> Bool {
+        guard objetivo.exists else { return false }
         let marco = objetivo.frame
         return marco.minY >= arriba && marco.maxY <= abajo && objetivo.isHittable
     }
     for _ in 0..<4 where !visible() {
         // Centrar deja margen a ambos lados para la zona muerta inicial del gesto.
-        let desplazamiento = max(-paso, min(paso, objetivo.frame.midY - (arriba + abajo) / 2))
+        let desplazamiento = objetivo.exists
+            ? max(-paso, min(paso, objetivo.frame.midY - (arriba + abajo) / 2)) : paso
         // Arrastrar el contenido, lejos del indicador de desplazamiento del borde derecho.
         let inicio = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
             .withOffset(CGVector(dx: ventana.width / 2, dy: desplazamiento > 0 ? abajo - 20 : arriba + 20))
@@ -79,7 +82,7 @@ private func exponer(_ objetivo: XCUIElement, en app: XCUIApplication, file: Sta
             forDuration: 0.1, thenDragTo: inicio.withOffset(CGVector(dx: 0, dy: -desplazamiento)),
             withVelocity: .default, thenHoldForDuration: 0.5)
     }
-    XCTAssertTrue(visible(), "«\(objetivo.identifier)» no queda entero y tocable entre las barras: marco \(objetivo.frame), visible \(arriba)…\(abajo)", file: file, line: line)
+    XCTAssertTrue(visible(), "«\(identificador)» no queda entero y tocable entre las barras: marco \(objetivo.exists ? "\(objetivo.frame)" : "fuera de la jerarquía visible"), visible \(arriba)…\(abajo)", file: file, line: line)
 }
 
 /// Recorridos de interfaz en el Simulator, SIN red ni servidor: la app se lanza
@@ -278,7 +281,13 @@ final class TransMiVozTextoGrandeUITests: XCTestCase {
             if nombre == "Consulta" {
                 // La introducción mide ~500 pt: se audita entera y a la vista, y luego el campo con sus botones.
                 for (id, contexto) in [("introduccion-consulta", "introduccion"), ("boton-enviar", "campo")] {
-                    exponer(app.descendants(matching: .any).matching(identifier: id).firstMatch, en: app)
+                    exponer(id, en: app)
+                    if id == "boton-enviar" {
+                        let contador = app.staticTexts["contador-caracteres"]
+                        XCTAssertTrue(contador.isHittable, "El contador debe estar visible para auditarlo")
+                        XCTAssertGreaterThanOrEqual(contador.frame.minY, app.navigationBars.firstMatch.frame.maxY)
+                        XCTAssertLessThanOrEqual(contador.frame.maxY, app.scrollViews.firstMatch.frame.maxY)
+                    }
                     try auditar(app, "texto-muy-grande-Consulta-\(contexto)", testCase: self)
                 }
             } else {

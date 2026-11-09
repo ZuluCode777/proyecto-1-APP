@@ -32,35 +32,38 @@ struct ConsultaVista: View {
                         .font(.body)
                         .accessibilityIdentifier("introduccion-consulta")
 
-                    TextField("Pregunta", text: $modelo.texto, axis: .vertical)
-                        .lineLimit(1...5)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(minHeight: 44)
-                        .focused($campoEnfocado)
-                        .submitLabel(.send)
-                        .onSubmit { enviar() }
-                        .accessibilityLabel("Pregunta de transporte")
-                        .accessibilityHint("Máximo \(EntradaConsulta.maximoCaracteres) caracteres.")
-                        .accessibilityIdentifier("campo-pregunta")
-
-                    Text("\(modelo.texto.utf16.count) de \(EntradaConsulta.maximoCaracteres) caracteres")
-                        .font(.footnote)
-                        .foregroundStyle(.textoSecundario)
-                        .accessibilityIdentifier("contador-caracteres")
-
-                    HStack(spacing: 12) {
-                        Button("Enviar") { enviar() }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.large)
+                    // La creación diferida se limita a los controles; el resultado mantiene su destino de foco.
+                    LazyVStack(alignment: .leading, spacing: 16) {
+                        TextField("Pregunta", text: $modelo.texto, axis: .vertical)
+                            .lineLimit(1...5)
+                            .textFieldStyle(.roundedBorder)
                             .frame(minHeight: 44)
-                            .disabled(modelo.estaEnviando)
-                            .accessibilityIdentifier("boton-enviar")
-                        if modelo.estaEnviando {
-                            Button("Cancelar") { modelo.cancelar() }
-                                .buttonStyle(.bordered)
+                            .focused($campoEnfocado)
+                            .submitLabel(.send)
+                            .onSubmit { enviar() }
+                            .accessibilityLabel("Pregunta de transporte")
+                            .accessibilityHint("Máximo \(EntradaConsulta.maximoCaracteres) caracteres.")
+                            .accessibilityIdentifier("campo-pregunta")
+
+                        Text("\(modelo.texto.utf16.count) de \(EntradaConsulta.maximoCaracteres) caracteres")
+                            .font(.footnote)
+                            .foregroundStyle(.textoSecundario)
+                            .accessibilityIdentifier("contador-caracteres")
+
+                        HStack(spacing: 12) {
+                            Button("Enviar") { enviar() }
+                                .buttonStyle(.borderedProminent)
                                 .controlSize(.large)
                                 .frame(minHeight: 44)
-                                .accessibilityIdentifier("boton-cancelar")
+                                .disabled(modelo.estaEnviando)
+                                .accessibilityIdentifier("boton-enviar")
+                            if modelo.estaEnviando {
+                                Button("Cancelar") { modelo.cancelar() }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.large)
+                                    .frame(minHeight: 44)
+                                    .accessibilityIdentifier("boton-cancelar")
+                            }
                         }
                     }
                 }
