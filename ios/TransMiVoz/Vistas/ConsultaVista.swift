@@ -12,6 +12,8 @@ struct ConsultaVista: View {
 
     @AccessibilityFocusState private var foco: ZonaFocoConsulta?
     @FocusState private var campoEnfocado: Bool
+    /// Se fija al crear la vista y no cambia si el usuario cambia el tamaño de texto con la app abierta.
+    @State private var creacionDiferida = UIApplication.shared.preferredContentSizeCategory.isAccessibilityCategory
 
     var body: some View {
         NavigationStack {
@@ -32,8 +34,11 @@ struct ConsultaVista: View {
                         .font(.body)
                         .accessibilityIdentifier("introduccion-consulta")
 
-                    // La creación diferida se limita a los controles; el resultado mantiene su destino de foco.
-                    LazyVStack(alignment: .leading, spacing: 16) {
+                    // Solo con tamaños de accesibilidad los controles se crean al desplazarse: con texto muy grande
+                    // quedan bajo la barra de pestañas y la auditoría los evaluaría sin que se vean. Con tamaños normales
+                    // la pila diferida hizo fallar la auditoría de Dynamic Type en el contador y en «Enviar».
+                    // El resultado queda fuera para mantener su destino de foco.
+                    ContenedorControles(diferido: creacionDiferida) {
                         TextField("Pregunta", text: $modelo.texto, axis: .vertical)
                             .lineLimit(1...5)
                             .textFieldStyle(.roundedBorder)
@@ -105,6 +110,20 @@ struct ConsultaVista: View {
         }
         AccessibilityNotification.Announcement(texto).post()
         if estado != .enviando { foco = .resultado }
+    }
+}
+
+/// Pila de los controles de la consulta: diferida o inmediata, con la misma disposición.
+private struct ContenedorControles<Contenido: View>: View {
+    let diferido: Bool
+    @ViewBuilder let contenido: Contenido
+
+    var body: some View {
+        if diferido {
+            LazyVStack(alignment: .leading, spacing: 16) { contenido }
+        } else {
+            VStack(alignment: .leading, spacing: 16) { contenido }
+        }
     }
 }
 

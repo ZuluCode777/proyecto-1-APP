@@ -54,7 +54,7 @@ private func escribir(_ texto: String, en campo: XCUIElement, app: XCUIApplicati
 }
 
 /// Busca hacia delante en el orden de lectura y centra el elemento entre las barras.
-/// Los controles de creación diferida pueden no existir hasta desplazarse. Máximo cuatro gestos.
+/// Con tamaños de accesibilidad los controles de creación diferida pueden no existir hasta desplazarse. Máximo cuatro gestos.
 private func exponer(_ identificador: String, en app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
     let objetivo = app.descendants(matching: .any).matching(identifier: identificador).firstMatch
     let ventana = app.windows.firstMatch.frame
