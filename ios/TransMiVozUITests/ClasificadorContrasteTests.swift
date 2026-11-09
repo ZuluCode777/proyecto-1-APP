@@ -352,10 +352,14 @@ final class ClasificadorContrasteTests: XCTestCase {
         XCTAssertLessThanOrEqual(tramo(nuevo[0]), 1238, "la escala nueva sí cabe en el alcance desde donde quedó la vista")
     }
 
-    func testUnDestinoAlAlcanceDesdeDondeQuedoLaVistaYaNoNecesitaEscalas() {
-        let real = pantalla(comienzoDe: "aviso-seguridad-enlace", en: 600)
+    func testUnDestinoAlAlcanceDesdeDondeQuedoLaVistaYaNoNecesitaEscalas() throws {
+        let real = pantalla(comienzoDe: "estado-accesorio", en: 600)
+        let destino = try XCTUnwrap(real.first { $0.identificador == "estado-accesorio" })
+        let alcance: CGFloat = 1238
+        XCTAssertLessThanOrEqual(abs(destino.marco.midY - (vista.arriba + vista.abajo) / 2), alcance,
+            "el destino debe estar al alcance para comprobar que no necesita escalas")
         XCTAssertEqual(
-            PlanRecorrido.escalas(destino: "estado-accesorio", zona: real, aplicacion: real, arriba: 116, abajo: 775, alcance: 1238, excluir: ["aviso-seguridad-enlace"]),
+            PlanRecorrido.escalas(destino: "estado-accesorio", zona: real, aplicacion: real, arriba: 116, abajo: 775, alcance: alcance, excluir: ["aviso-seguridad-enlace"]),
             [])
     }
 
