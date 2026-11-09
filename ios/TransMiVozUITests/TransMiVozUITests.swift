@@ -131,18 +131,25 @@ private final class FaseAuditada {
 
     /// Un nodo diferido puede estar muy lejos de donde quedó la vista (con el texto más grande, a más de cuatro pasos de
     /// `exponer`). Antes de exponerlo se pasa por nodos únicos con identificador que están en el camino, en el orden de la
-    /// maquetación (`PlanRecorrido`), cada tramo dentro del tope de cuatro gestos de `exponer` y cada escala con su
-    /// comienzo a la vista. No cambia ninguna guarda: el `exponer` final del destino sigue exigiéndolo entero y tocable.
+    /// maquetación (`PlanRecorrido`), cada tramo dentro del tope de cuatro gestos de `exponer`. `exponer(completo: false)`
+    /// deja el comienzo de la escala en cualquier punto de la vista, no en `arriba + 40` como supone el plan: por eso tras
+    /// CADA escala se toma una instantánea nueva y se vuelve a planear desde donde quedó la vista de verdad, sin repetir
+    /// escalas. No cambia ninguna guarda: el `exponer` final del destino sigue exigiéndolo entero y tocable.
     private func acercar(_ identificador: String, file: StaticString, line: UInt) throws {
-        let contenido = app.scrollViews.firstMatch.frame
-        let arriba = max(app.navigationBars.firstMatch.frame.maxY, contenido.minY)
-        let abajo = min(app.tabBars.firstMatch.frame.minY, contenido.maxY)
-        // Dos pasos de `exponer` (cada uno `abajo - arriba - 40`): la mitad del tope, para no depender de que cada gesto rinda entero.
-        let escalas = PlanRecorrido.escalas(
-            destino: identificador, zona: try nodos(de: app.scrollViews.firstMatch), aplicacion: try nodos(de: app),
-            arriba: arriba, abajo: abajo, alcance: 2 * (abajo - arriba - 40))
-        adjuntar("auditoria-\(libro.fase)-ruta-\(identificador)", escalas.isEmpty ? "Directo." : escalas.joined(separator: "\n"))
-        for escala in escalas { exponer(escala, en: app, completo: false, file: file, line: line) }
+        var recorridas: [String] = []
+        while true {
+            let contenido = app.scrollViews.firstMatch.frame
+            let arriba = max(app.navigationBars.firstMatch.frame.maxY, contenido.minY)
+            let abajo = min(app.tabBars.firstMatch.frame.minY, contenido.maxY)
+            // Dos pasos de `exponer` (cada uno `abajo - arriba - 40`): la mitad del tope, para no depender de que cada gesto rinda entero.
+            let escalas = PlanRecorrido.escalas(
+                destino: identificador, zona: try nodos(de: app.scrollViews.firstMatch), aplicacion: try nodos(de: app),
+                arriba: arriba, abajo: abajo, alcance: 2 * (abajo - arriba - 40), excluir: Set(recorridas))
+            guard let siguiente = escalas.first else { break }
+            recorridas.append(siguiente)
+            exponer(siguiente, en: app, completo: false, file: file, line: line)
+        }
+        adjuntar("auditoria-\(libro.fase)-ruta-\(identificador)", recorridas.isEmpty ? "Directo." : recorridas.joined(separator: "\n"))
     }
 
     /// Remedición obligatoria: cada deuda se lleva entera a la vista (`exponer`) y se vuelve a auditar con todos los grupos.
@@ -216,7 +223,8 @@ private func arrastrarContenido(_ desplazamiento: CGFloat, en app: XCUIApplicati
         withVelocity: .default, thenHoldForDuration: 0.5)
 }
 
-/// Busca el elemento y lo centra entre las barras. Máximo cuatro gestos.
+/// Busca el elemento y lo centra entre las barras. Máximo cuatro gestos. Cada gesto descuenta lo que el anterior se pasó
+/// de largo, medido con el marco real del objetivo (`Desplazamiento`); la guarda final no cambia: entero y tocable.
 /// En la pantalla del accesorio (pilas ansiosas) todo elemento existe siempre y se desplaza por su marco real. La
 /// consulta con texto de accesibilidad usa `LazyVStack` (`ContenedorControles`) y allí un objetivo puede no existir
 /// aún, así que si no existe se busca desplazando un paso: hacia delante (por defecto, en el orden de lectura) o, con
@@ -240,18 +248,29 @@ private func exponer(_ identificador: String, en app: XCUIApplication, completo:
         if !completo { return marco.minY >= arriba && marco.minY <= abajo - 80 }
         return marco.minY >= arriba && marco.maxY <= abajo && objetivo.isHittable
     }
+    // Cuánto se pasó de largo el gesto anterior (`Desplazamiento`): se mide con el marco real y se descuenta del siguiente.
+    var sobreimpulso: CGFloat = 0
     for _ in 0..<4 where !visible() {
         // Centrar deja margen a ambos lados para la zona muerta inicial del gesto.
         // Un control de creación diferida (la consulta) aún no existe: no se lee su marco (sería una instantánea fallida),
         // se da un paso en el sentido pedido (el objetivo puede quedar encima o debajo de la vista).
         let desplazamiento: CGFloat
+        let antes: CGFloat?
         if objetivo.exists {
-            let ancla = completo ? objetivo.frame.midY - (arriba + abajo) / 2 : objetivo.frame.minY - (arriba + 40)
-            desplazamiento = max(-paso, min(paso, ancla))
+            let marco = objetivo.frame
+            let ancla = completo ? marco.midY - (arriba + abajo) / 2 : marco.minY - (arriba + 40)
+            desplazamiento = Desplazamiento.pedido(ancla: ancla, paso: paso, sobreimpulso: sobreimpulso)
+            antes = marco.minY
         } else {
             desplazamiento = haciaAtras ? -paso : paso
+            antes = nil
         }
         arrastrarContenido(desplazamiento, en: app, arriba: arriba, abajo: abajo)
+        if let antes, objetivo.exists {
+            sobreimpulso = Desplazamiento.sobreimpulso(pedido: desplazamiento, antes: antes, despues: objetivo.frame.minY, paso: paso)
+        } else {
+            sobreimpulso = 0
+        }
     }
     XCTAssertTrue(visible(), "«\(identificador)» no queda \(completo ? "entero y tocable" : "con su comienzo a la vista") entre las barras: marco \(objetivo.exists ? "\(objetivo.frame)" : "fuera de la jerarquía visible"), visible \(arriba)…\(abajo)", file: file, line: line)
 }

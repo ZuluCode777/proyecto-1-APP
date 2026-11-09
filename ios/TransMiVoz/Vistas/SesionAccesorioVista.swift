@@ -183,9 +183,15 @@ struct SesionAccesorioVista: View {
 
     private var seccionVoz: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Toggle("Avisos hablados por la app", isOn: Binding(
+            // El rótulo es un `Text` explícito con identificador propio: la auditoría de contraste reporta ese texto (no el
+            // interruptor) y, con un rótulo sin identificador, no se podía saldar su deuda de contraste recortado.
+            // El interruptor conserva su identificador, su etiqueta y su valor.
+            Toggle(isOn: Binding(
                 get: { vozPropiaActiva },
-                set: { modelo.fijarVozPropia($0) }))
+                set: { modelo.fijarVozPropia($0) })) {
+                    Text("Avisos hablados por la app")
+                        .accessibilityIdentifier("etiqueta-interruptor-voz-app")
+                }
                 .frame(minHeight: 44)
                 .accessibilityIdentifier("interruptor-voz-app")
             Text("Con VoiceOver activo empieza apagada para no hablar dos veces. Los avisos del sensor nunca se leen con VoiceOver: solo salen por auriculares y quedan en pantalla.")

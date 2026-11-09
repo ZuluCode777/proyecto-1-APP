@@ -315,4 +315,95 @@ final class ClasificadorContrasteTests: XCTestCase {
                          nodo("a", "e", CGRect(x: 0, y: 150, width: 10, height: 10)), nodo("b", "e", CGRect(x: 0, y: 5000, width: 10, height: 10))]
         XCTAssertEqual(escalas("b", separados), [])
     }
+
+    // MARK: Recorrido con la vista real que dejó cada escala
+
+    /// Marcos reales (370 pt de ancho, `AccessibilityXXXL`) de la jerarquía nativa de `795dcb9`: `y` y alto de cada nodo único.
+    private let pantallaReal: [(String, CGFloat, CGFloat)] = [
+        ("aviso-transporte-sintetico", -208.0, 520.7), ("aviso-accesorio-real", 328.7, 986.7), ("aviso-seguridad-enlace", 1331.3, 869.3),
+        ("estado-bluetooth", 2216.7, 311.3), ("boton-abrir-ajustes", 2536.0, 77.3), ("encabezado-accesorio", 2629.3, 63.3),
+        ("accesorio-elegido", 2700.7, 125.3), ("boton-buscar", 2834.0, 139.3), ("nota-identificador-accesorio", 2981.3, 260.7),
+        ("boton-sesion-accesorio", 3258.0, 87.3), ("boton-reconectar", 3353.3, 87.3), ("encabezado-estado-accesorio", 3456.7, 125.3),
+        ("estado-accesorio", 3728.7, 435.3), ("origen-datos-accesorio", 4172.0, 249.3), ("enlace-accesorio", 4429.3, 187.3),
+        ("tramas-perdidas-accesorio", 4624.7, 125.3), ("estado-audio", 4758.0, 621.3), ("interruptor-voz-app", 5395.3, 187.3),
+    ]
+
+    /// La misma pantalla desplazada para que `id` tenga su comienzo en `y`.
+    private func pantalla(comienzoDe id: String, en y: CGFloat) -> [NodoJerarquia] {
+        let desvio = y - pantallaReal.first { $0.0 == id }!.1
+        return pantallaReal.map { nodo($0.0, "e", CGRect(x: 16, y: $0.1 + desvio, width: 370, height: $0.2)) }
+    }
+
+    func testLaPantallaRealDelAccesorioSeRecorreConUnaSolaEscalaPorInstantanea() {
+        let inicial = pantallaReal.map { nodo($0.0, "e", CGRect(x: 16, y: $0.1, width: 370, height: $0.2)) }
+        let plan = PlanRecorrido.escalas(destino: "estado-accesorio", zona: inicial, aplicacion: inicial, arriba: 116, abajo: 775, alcance: 1238)
+        XCTAssertEqual(plan, ["aviso-seguridad-enlace", "boton-abrir-ajustes"])
+    }
+
+    func testSiLaEscalaQuedoMasAbajoDeLoQueSuponeElPlanElPlanViejoNoAlcanzaYElNuevoSi() {
+        // `exponer(completo: false)` dejó «aviso-seguridad-enlace» con su comienzo en y 300, no en 156 (116 + 40).
+        let real = pantalla(comienzoDe: "aviso-seguridad-enlace", en: 300)
+        func tramo(_ id: String) -> CGFloat { real.first { $0.identificador == id }!.marco.minY - 156 }
+        XCTAssertGreaterThan(tramo("boton-abrir-ajustes"), 1238, "la segunda escala del plan viejo ya no cabe en el alcance desde donde quedó la vista")
+        let nuevo = PlanRecorrido.escalas(
+            destino: "estado-accesorio", zona: real, aplicacion: real, arriba: 116, abajo: 775, alcance: 1238, excluir: ["aviso-seguridad-enlace"])
+        XCTAssertEqual(nuevo.first, "estado-bluetooth")
+        XCTAssertGreaterThan(tramo(nuevo[0]), 0)
+        XCTAssertLessThanOrEqual(tramo(nuevo[0]), 1238, "la escala nueva sí cabe en el alcance desde donde quedó la vista")
+    }
+
+    func testUnDestinoAlAlcanceDesdeDondeQuedoLaVistaYaNoNecesitaEscalas() {
+        let real = pantalla(comienzoDe: "aviso-seguridad-enlace", en: 600)
+        XCTAssertEqual(
+            PlanRecorrido.escalas(destino: "estado-accesorio", zona: real, aplicacion: real, arriba: 116, abajo: 775, alcance: 1238, excluir: ["aviso-seguridad-enlace"]),
+            [])
+    }
+
+    func testLasEscalasExcluidasNoSeRepiten() {
+        let real = pantalla(comienzoDe: "aviso-seguridad-enlace", en: 156)
+        let sin = PlanRecorrido.escalas(destino: "interruptor-voz-app", zona: real, aplicacion: real, arriba: 116, abajo: 775, alcance: 1238, excluir: ["boton-abrir-ajustes"])
+        XCTAssertFalse(sin.contains("boton-abrir-ajustes"))
+        XCTAssertFalse(sin.contains("interruptor-voz-app"))
+    }
+
+    // MARK: Cuánto pedir en cada gesto
+
+    func testSinSobreimpulsoConocidoSePideLaDistanciaExactaAcotada() {
+        XCTAssertEqual(Desplazamiento.pedido(ancla: 357.2, paso: 619, sobreimpulso: 0), 357.2)
+        XCTAssertEqual(Desplazamiento.pedido(ancla: 1100, paso: 619, sobreimpulso: 0), 619)
+        XCTAssertEqual(Desplazamiento.pedido(ancla: -1100, paso: 619, sobreimpulso: 0), -619)
+        XCTAssertEqual(Desplazamiento.pedido(ancla: -152.8, paso: 619, sobreimpulso: 0), -152.8)
+    }
+
+    func testElSobreimpulsoConocidoSeDescuentaEnElSentidoDelGesto() {
+        XCTAssertEqual(Desplazamiento.pedido(ancla: 357.2, paso: 619, sobreimpulso: 131.3), 225.9, accuracy: 0.001)
+        XCTAssertEqual(Desplazamiento.pedido(ancla: -357.2, paso: 619, sobreimpulso: 131.3), -225.9, accuracy: 0.001)
+        XCTAssertEqual(Desplazamiento.pedido(ancla: 1100, paso: 619, sobreimpulso: 131.3), 619, "nunca más que el tope de un gesto")
+    }
+
+    func testUnaCorreccionMenorQueElSobreimpulsoSigueSiendoUnGestoQueDesplaza() {
+        // Pedir 0 sería un toque sin arrastre sobre lo que haya bajo el dedo: se pide como mínimo un gesto que ya desplaza.
+        XCTAssertEqual(Desplazamiento.pedido(ancla: 150, paso: 619, sobreimpulso: 165), Desplazamiento.minimo)
+        XCTAssertEqual(Desplazamiento.pedido(ancla: -150, paso: 619, sobreimpulso: 165), -Desplazamiento.minimo)
+    }
+
+    func testElSobreimpulsoSeMideConLosMarcosRealesAntesYDespuesDelGesto() {
+        // Registro nativo de `795dcb9`: tras pedir 357,2 el objetivo pasó de ancla +357,2 a -152,8 (se movió 510).
+        XCTAssertEqual(Desplazamiento.sobreimpulso(pedido: 357.2, antes: 1000, despues: 490, paso: 619), 152.8, accuracy: 0.001)
+        // Pidió -152,8 (contenido hacia atrás) y el marco bajó 315,3: pasó 162,5 de largo hacia atrás.
+        XCTAssertEqual(Desplazamiento.sobreimpulso(pedido: -152.8, antes: 490, despues: 805.3, paso: 619), 162.5, accuracy: 0.001)
+    }
+
+    func testSiElContenidoSeMovioMenosDeLoPedidoNoHayNadaQueDescontar() {
+        // Llegó al tope del contenido, o se movió en sentido contrario: nunca negativo.
+        XCTAssertEqual(Desplazamiento.sobreimpulso(pedido: 357.2, antes: 1000, despues: 800, paso: 619), 0)
+        XCTAssertEqual(Desplazamiento.sobreimpulso(pedido: 357.2, antes: 1000, despues: 1100, paso: 619), 0)
+    }
+
+    func testUnaMedicionAnomalaNoAnulaElGestoSiguiente() {
+        XCTAssertEqual(Desplazamiento.sobreimpulso(pedido: 100, antes: 5000, despues: 0, paso: 619), 619)
+        XCTAssertEqual(Desplazamiento.sobreimpulso(pedido: 0, antes: 10, despues: 0, paso: 619), 0)
+        XCTAssertEqual(Desplazamiento.sobreimpulso(pedido: 100, antes: .nan, despues: 0, paso: 619), 0)
+        XCTAssertEqual(Desplazamiento.sobreimpulso(pedido: 100, antes: 1, despues: .infinity, paso: 619), 0)
+    }
 }
