@@ -369,45 +369,4 @@ final class ClasificadorContrasteTests: XCTestCase {
         XCTAssertFalse(sin.contains("boton-abrir-ajustes"))
         XCTAssertFalse(sin.contains("interruptor-voz-app"))
     }
-
-    // MARK: Cuánto pedir en cada gesto
-
-    func testSinSobreimpulsoConocidoSePideLaDistanciaExactaAcotada() {
-        XCTAssertEqual(Desplazamiento.pedido(ancla: 357.2, paso: 619, sobreimpulso: 0), 357.2)
-        XCTAssertEqual(Desplazamiento.pedido(ancla: 1100, paso: 619, sobreimpulso: 0), 619)
-        XCTAssertEqual(Desplazamiento.pedido(ancla: -1100, paso: 619, sobreimpulso: 0), -619)
-        XCTAssertEqual(Desplazamiento.pedido(ancla: -152.8, paso: 619, sobreimpulso: 0), -152.8)
-    }
-
-    func testElSobreimpulsoConocidoSeDescuentaEnElSentidoDelGesto() {
-        XCTAssertEqual(Desplazamiento.pedido(ancla: 357.2, paso: 619, sobreimpulso: 131.3), 225.9, accuracy: 0.001)
-        XCTAssertEqual(Desplazamiento.pedido(ancla: -357.2, paso: 619, sobreimpulso: 131.3), -225.9, accuracy: 0.001)
-        XCTAssertEqual(Desplazamiento.pedido(ancla: 1100, paso: 619, sobreimpulso: 131.3), 619, "nunca más que el tope de un gesto")
-    }
-
-    func testUnaCorreccionMenorQueElSobreimpulsoSigueSiendoUnGestoQueDesplaza() {
-        // Pedir 0 sería un toque sin arrastre sobre lo que haya bajo el dedo: se pide como mínimo un gesto que ya desplaza.
-        XCTAssertEqual(Desplazamiento.pedido(ancla: 150, paso: 619, sobreimpulso: 165), Desplazamiento.minimo)
-        XCTAssertEqual(Desplazamiento.pedido(ancla: -150, paso: 619, sobreimpulso: 165), -Desplazamiento.minimo)
-    }
-
-    func testElSobreimpulsoSeMideConLosMarcosRealesAntesYDespuesDelGesto() {
-        // Registro nativo de `795dcb9`: tras pedir 357,2 el objetivo pasó de ancla +357,2 a -152,8 (se movió 510).
-        XCTAssertEqual(Desplazamiento.sobreimpulso(pedido: 357.2, antes: 1000, despues: 490, paso: 619), 152.8, accuracy: 0.001)
-        // Pidió -152,8 (contenido hacia atrás) y el marco bajó 315,3: pasó 162,5 de largo hacia atrás.
-        XCTAssertEqual(Desplazamiento.sobreimpulso(pedido: -152.8, antes: 490, despues: 805.3, paso: 619), 162.5, accuracy: 0.001)
-    }
-
-    func testSiElContenidoSeMovioMenosDeLoPedidoNoHayNadaQueDescontar() {
-        // Llegó al tope del contenido, o se movió en sentido contrario: nunca negativo.
-        XCTAssertEqual(Desplazamiento.sobreimpulso(pedido: 357.2, antes: 1000, despues: 800, paso: 619), 0)
-        XCTAssertEqual(Desplazamiento.sobreimpulso(pedido: 357.2, antes: 1000, despues: 1100, paso: 619), 0)
-    }
-
-    func testUnaMedicionAnomalaNoAnulaElGestoSiguiente() {
-        XCTAssertEqual(Desplazamiento.sobreimpulso(pedido: 100, antes: 5000, despues: 0, paso: 619), 619)
-        XCTAssertEqual(Desplazamiento.sobreimpulso(pedido: 0, antes: 10, despues: 0, paso: 619), 0)
-        XCTAssertEqual(Desplazamiento.sobreimpulso(pedido: 100, antes: .nan, despues: 0, paso: 619), 0)
-        XCTAssertEqual(Desplazamiento.sobreimpulso(pedido: 100, antes: 1, despues: .infinity, paso: 619), 0)
-    }
 }

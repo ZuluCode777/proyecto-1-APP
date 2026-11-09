@@ -70,13 +70,16 @@ private func auditar(_ app: XCUIApplication, _ contexto: String, testCase: XCTes
 private final class FaseAuditada {
     private let app: XCUIApplication
     private let caso: XCTestCase
+    /// Velocidad nativa de los gestos de las exposiciones de esta fase (`.default` salvo en las de `AccessibilityXXXL`).
+    private let velocidad: XCUIGestureVelocity
     private(set) var libro: LibroContraste
     /// Todo lo que la auditoría nativa reportó en esta fase, tal cual.
     private(set) var hallazgos: [HallazgoAuditoria] = []
 
-    init(_ fase: String, app: XCUIApplication, caso: XCTestCase) {
+    init(_ fase: String, app: XCUIApplication, caso: XCTestCase, velocidad: XCUIGestureVelocity = .default) {
         self.app = app
         self.caso = caso
+        self.velocidad = velocidad
         libro = LibroContraste(fase: fase)
     }
 
@@ -147,7 +150,7 @@ private final class FaseAuditada {
                 arriba: arriba, abajo: abajo, alcance: 2 * (abajo - arriba - 40), excluir: Set(recorridas))
             guard let siguiente = escalas.first else { break }
             recorridas.append(siguiente)
-            exponer(siguiente, en: app, completo: false, file: file, line: line)
+            exponer(siguiente, en: app, completo: false, velocidad: velocidad, file: file, line: line)
         }
         adjuntar("auditoria-\(libro.fase)-ruta-\(identificador)", recorridas.isEmpty ? "Directo." : recorridas.joined(separator: "\n"))
     }
@@ -166,7 +169,7 @@ private final class FaseAuditada {
             }
             vueltas += 1
             try acercar(clave.identificador, file: file, line: line)
-            exponer(clave.identificador, en: app, file: file, line: line)
+            exponer(clave.identificador, en: app, velocidad: velocidad, file: file, line: line)
             try auditar("remedicion-\(vueltas)-\(clave.identificador)")
             if libro.pendientes.contains(clave) {
                 libro.darPorFallida(clave, motivo: "entero a la vista no quedó medido sin problema")
@@ -213,18 +216,18 @@ private func escribir(_ texto: String, en campo: XCUIElement, app: XCUIApplicati
 }
 
 /// Arrastra el contenido `desplazamiento` puntos (positivo = hacia delante), lejos del indicador del borde derecho.
-private func arrastrarContenido(_ desplazamiento: CGFloat, en app: XCUIApplication, arriba: CGFloat, abajo: CGFloat) {
+/// `velocidad` es la velocidad nativa del gesto (`.default` como siempre; la auditoría del accesorio pide `.slow`).
+private func arrastrarContenido(_ desplazamiento: CGFloat, en app: XCUIApplication, arriba: CGFloat, abajo: CGFloat, velocidad: XCUIGestureVelocity = .default) {
     let ventana = app.windows.firstMatch.frame
     let inicio = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
         .withOffset(CGVector(dx: ventana.width / 2, dy: desplazamiento > 0 ? abajo - 20 : arriba + 20))
     // Mantener el dedo quieto antes de soltar evita añadir inercia al arrastre.
     inicio.press(
         forDuration: 0.1, thenDragTo: inicio.withOffset(CGVector(dx: 0, dy: -desplazamiento)),
-        withVelocity: .default, thenHoldForDuration: 0.5)
+        withVelocity: velocidad, thenHoldForDuration: 0.5)
 }
 
-/// Busca el elemento y lo centra entre las barras. Máximo cuatro gestos. Cada gesto descuenta lo que el anterior se pasó
-/// de largo, medido con el marco real del objetivo (`Desplazamiento`); la guarda final no cambia: entero y tocable.
+/// Busca el elemento y lo centra entre las barras. Máximo cuatro gestos.
 /// En la pantalla del accesorio (pilas ansiosas) todo elemento existe siempre y se desplaza por su marco real. La
 /// consulta con texto de accesibilidad usa `LazyVStack` (`ContenedorControles`) y allí un objetivo puede no existir
 /// aún, así que si no existe se busca desplazando un paso: hacia delante (por defecto, en el orden de lectura) o, con
@@ -233,7 +236,8 @@ private func arrastrarContenido(_ desplazamiento: CGFloat, en app: XCUIApplicati
 /// `completo: false` es solo para textos que con `AccessibilityXXXL` miden más que el área visible (un aviso de
 /// ~200 caracteres ocupa más de 900 pt): pide que su COMIENZO quede a la vista y tocable por arriba, no entero.
 /// Todo lo demás (botones, interruptor, títulos) se sigue exigiendo entero y tocable.
-private func exponer(_ identificador: String, en app: XCUIApplication, completo: Bool = true, haciaAtras: Bool = false, file: StaticString = #filePath, line: UInt = #line) {
+/// `velocidad` se pasa tal cual a cada gesto: solo la remedición de la auditoría del accesorio la baja a `.slow`.
+private func exponer(_ identificador: String, en app: XCUIApplication, completo: Bool = true, haciaAtras: Bool = false, velocidad: XCUIGestureVelocity = .default, file: StaticString = #filePath, line: UInt = #line) {
     let objetivo = app.descendants(matching: .any).matching(identifier: identificador).firstMatch
     let contenido = app.scrollViews.firstMatch.frame
     let limiteBarra = app.tabBars.firstMatch.frame.minY
@@ -248,29 +252,18 @@ private func exponer(_ identificador: String, en app: XCUIApplication, completo:
         if !completo { return marco.minY >= arriba && marco.minY <= abajo - 80 }
         return marco.minY >= arriba && marco.maxY <= abajo && objetivo.isHittable
     }
-    // Cuánto se pasó de largo el gesto anterior (`Desplazamiento`): se mide con el marco real y se descuenta del siguiente.
-    var sobreimpulso: CGFloat = 0
     for _ in 0..<4 where !visible() {
         // Centrar deja margen a ambos lados para la zona muerta inicial del gesto.
         // Un control de creación diferida (la consulta) aún no existe: no se lee su marco (sería una instantánea fallida),
         // se da un paso en el sentido pedido (el objetivo puede quedar encima o debajo de la vista).
         let desplazamiento: CGFloat
-        let antes: CGFloat?
         if objetivo.exists {
-            let marco = objetivo.frame
-            let ancla = completo ? marco.midY - (arriba + abajo) / 2 : marco.minY - (arriba + 40)
-            desplazamiento = Desplazamiento.pedido(ancla: ancla, paso: paso, sobreimpulso: sobreimpulso)
-            antes = marco.minY
+            let ancla = completo ? objetivo.frame.midY - (arriba + abajo) / 2 : objetivo.frame.minY - (arriba + 40)
+            desplazamiento = max(-paso, min(paso, ancla))
         } else {
             desplazamiento = haciaAtras ? -paso : paso
-            antes = nil
         }
-        arrastrarContenido(desplazamiento, en: app, arriba: arriba, abajo: abajo)
-        if let antes, objetivo.exists {
-            sobreimpulso = Desplazamiento.sobreimpulso(pedido: desplazamiento, antes: antes, despues: objetivo.frame.minY, paso: paso)
-        } else {
-            sobreimpulso = 0
-        }
+        arrastrarContenido(desplazamiento, en: app, arriba: arriba, abajo: abajo, velocidad: velocidad)
     }
     XCTAssertTrue(visible(), "«\(identificador)» no queda \(completo ? "entero y tocable" : "con su comienzo a la vista") entre las barras: marco \(objetivo.exists ? "\(objetivo.frame)" : "fuera de la jerarquía visible"), visible \(arriba)…\(abajo)", file: file, line: line)
 }
@@ -761,7 +754,7 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
 
         XCTAssertTrue(elemento("aviso-transporte-sintetico").waitForExistence(timeout: 10))
         // Reposo: el aviso de pruebas queda entero a la vista (lo exige `exponer`) y el del sensor real, al menos su comienzo.
-        let reposo = FaseAuditada("reposo-texto-muy-grande", app: app, caso: self)
+        let reposo = FaseAuditada("reposo-texto-muy-grande", app: app, caso: self, velocidad: .slow)
         exponer("aviso-transporte-sintetico", en: app)
         comprobarEnteros(["aviso-accesorio-real"], en: app, comienzo: true)
         try reposo.auditar("texto-muy-grande-Accesorio-avisos-iniciales")
@@ -778,7 +771,7 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         elemento("boton-buscar").tap()
         let elegir = elemento("elegir-SINTETICO-0001")
         XCTAssertTrue(elegir.waitForExistence(timeout: 10))
-        let hallazgo = FaseAuditada("hallazgo-texto-muy-grande", app: app, caso: self)
+        let hallazgo = FaseAuditada("hallazgo-texto-muy-grande", app: app, caso: self, velocidad: .slow)
         exponer("elegir-SINTETICO-0001", en: app)
         try hallazgo.auditar("texto-muy-grande-Accesorio-hallazgo")
         try hallazgo.cerrar()
@@ -794,7 +787,7 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         let bloqueado = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Bloqueado: enlace no verificado")).firstMatch
         XCTAssertTrue(bloqueado.waitForExistence(timeout: 10), "No apareció el bloqueo")
         // Bloqueada: el título del bloqueo quedó centrado, los controles están encima y el resto, debajo.
-        let bloqueada = FaseAuditada("bloqueada-texto-muy-grande", app: app, caso: self)
+        let bloqueada = FaseAuditada("bloqueada-texto-muy-grande", app: app, caso: self, velocidad: .slow)
         for (id, contexto, completo, haciaAtras) in [
             ("boton-sesion-accesorio", "controles", true, true), ("titulo-estado-accesorio", "estado", true, false),
             ("estado-accesorio", "descripcion", false, false), ("estado-audio", "audio", false, false),
@@ -832,7 +825,7 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         continuar.tap()
         XCTAssertTrue(continuar.waitForNonExistence(timeout: 10), "La hoja del permiso no se cerró")
 
-        let denegado = FaseAuditada("permiso-denegado-texto-muy-grande", app: app, caso: self)
+        let denegado = FaseAuditada("permiso-denegado-texto-muy-grande", app: app, caso: self, velocidad: .slow)
         XCTAssertTrue(elemento("estado-bluetooth").waitForExistence(timeout: 10), "No apareció el texto de permiso denegado")
         XCTAssertEqual(elemento("estado-bluetooth").label, "Sin permiso de Bluetooth. Actívalo en Ajustes, en TransMiVoz.")
         XCTAssertTrue(elemento("boton-abrir-ajustes").waitForExistence(timeout: 10), "Falta «Abrir Ajustes»")

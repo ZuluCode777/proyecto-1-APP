@@ -104,36 +104,6 @@ struct ObservacionContraste {
     }
 }
 
-/// Cuánto pedir en cada gesto de desplazamiento de `exponer`. En el CI nativo (`795dcb9`, iOS 26, `AccessibilityXXXL`) el
-/// contenido se movió SIEMPRE más de lo pedido, en el sentido del gesto: +131 pt tras pedir 566, +153 tras 357, +162 tras
-/// 153 y +168 tras 162 (sale de las distancias que pidió `exponer` en el registro nativo, calculadas del marco real tras cada gesto; el gesto
-/// es siempre `press(forDuration:thenDragTo:withVelocity:thenHoldForDuration:)`; el resto parece inercia que la espera
-/// final no anula, pero es una inferencia del registro, no una medición aislada). Un objetivo de 435 pt en una vista de 659 pt solo admite ±112 pt de error de centrado: pedir la distancia exacta
-/// pasaba de largo en cada corrección (+619, +357, -153, +162, ...) y agotaba los cuatro gestos sin tocar el tope.
-/// Aquí no se supone ninguna constante: `sobreimpulso` se mide del gesto anterior con los marcos reales y se descuenta
-/// del siguiente. El primer gesto de cada `exponer` no lo conoce y pide la distancia exacta, como siempre.
-enum Desplazamiento {
-    /// Un gesto más corto que esto puede no pasar de la zona muerta inicial del dedo y no desplazar nada.
-    static let minimo: CGFloat = 40
-
-    /// Lo que se pide para quedar a `ancla` puntos de la posición buscada (positivo: el contenido avanza). Nunca más
-    /// que `paso` (el tope de un gesto) ni menos que `minimo`; sin sobreimpulso conocido es `ancla` acotada, como antes.
-    static func pedido(ancla: CGFloat, paso: CGFloat, sobreimpulso: CGFloat) -> CGFloat {
-        let sentido: CGFloat = ancla < 0 ? -1 : 1
-        guard sobreimpulso > 0 else { return sentido * min(paso, abs(ancla)) }
-        return sentido * min(paso, max(minimo, abs(ancla) - sobreimpulso))
-    }
-
-    /// Lo que el contenido se movió de más (en el sentido del gesto) respecto de lo pedido, según el marco real del objetivo
-    /// antes (`antes`) y después (`despues`) del gesto. Nunca es negativo: si el contenido llegó a su tope y se movió de
-    /// menos, no hay nada que descontar. Se acota a `paso` para que una medición anómala (la maquetación cambió) no anule el gesto.
-    static func sobreimpulso(pedido: CGFloat, antes: CGFloat, despues: CGFloat, paso: CGFloat) -> CGFloat {
-        guard pedido != 0, [pedido, antes, despues, paso].allSatisfy(\.isFinite) else { return 0 }
-        let sentido: CGFloat = pedido < 0 ? -1 : 1
-        return min(paso, max(0, (antes - despues) * sentido - abs(pedido)))
-    }
-}
-
 /// Plan de escalas para llegar a un nodo lejano con el tope de gestos de `exponer` por tramo (cuatro). Un destino a
 /// más de ~4 pasos del tope no se alcanza de un solo `exponer`; el recorrido sigue el orden de la maquetación: de nodo
 /// único con identificador a nodo único con identificador, cada tramo de a lo sumo `alcance`, siempre hacia el destino.
