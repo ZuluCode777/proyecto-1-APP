@@ -21,10 +21,8 @@ private struct BordeInferiorLegible: ViewModifier {
     func body(content: Content) -> some View {
         #if compiler(>=6.2)
         if #available(iOS 26, *) {
-            // La barra de pestañas flota sobre el contenido: con texto muy grande una frase
-            // queda a medias bajo el vidrio y el contraste medido falla. El borde duro
-            // da a ese tramo un fondo opaco en vez de dejar ver el texto borroso.
-            content.scrollEdgeEffectStyle(.hard, for: .bottom)
+            // El borde duro también desenfoca; recortar al marco limita el desbordamiento visible.
+            content.scrollEdgeEffectStyle(.hard, for: .bottom).clipped()
         } else {
             content
         }
