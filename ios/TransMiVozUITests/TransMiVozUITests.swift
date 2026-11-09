@@ -56,13 +56,12 @@ private func exponer(_ objetivo: XCUIElement, en app: XCUIApplication, file: Sta
         return marco.minY >= arriba && marco.maxY <= abajo && objetivo.isHittable
     }
     for _ in 0..<4 where !visible() {
-        let desplazamiento = max(-paso, min(paso, objetivo.frame.minY - arriba - 8))
-        // Margen derecho del contenido (16 pt): el arrastre no cae sobre un campo ni un botón.
+        // Centrar deja margen a ambos lados para la zona muerta inicial del gesto.
+        let desplazamiento = max(-paso, min(paso, objetivo.frame.midY - (arriba + abajo) / 2))
+        // Arrastrar el contenido, lejos del indicador de desplazamiento del borde derecho.
         let inicio = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
-            .withOffset(CGVector(dx: ventana.width - 8, dy: desplazamiento > 0 ? abajo - 20 : arriba + 20))
-        // El dedo queda quieto medio segundo antes de soltar para que no haya inercia y la lista recorra
-        // lo pedido. Sin esa espera la lista recorría unos 130 pt de más (ejecución 42417859757: se
-        // pidieron 457,3 pt y el bloque se movió unos 590).
+            .withOffset(CGVector(dx: ventana.width / 2, dy: desplazamiento > 0 ? abajo - 20 : arriba + 20))
+        // Mantener el dedo quieto antes de soltar evita añadir inercia al arrastre.
         inicio.press(
             forDuration: 0.1, thenDragTo: inicio.withOffset(CGVector(dx: 0, dy: -desplazamiento)),
             withVelocity: .default, thenHoldForDuration: 0.5)

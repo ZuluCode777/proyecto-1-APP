@@ -107,7 +107,7 @@ struct AjustesServidorVista: View {
             modelo.aplicar()
         }
         .font(.body)
-        .buttonStyle(.bordered)
+        .buttonStyle(.borderedProminent)
         .controlSize(.large)
         .frame(minHeight: 44)
         .accessibilityIdentifier("boton-aplicar")
@@ -118,10 +118,10 @@ struct AjustesServidorVista: View {
             campoEnfocado = nil
             modelo.olvidarClave()
         } label: {
-            Text("Olvidar clave").foregroundStyle(Color.rojoAccesible)
+            Text("Olvidar clave").foregroundStyle(.background)
         }
         .font(.body)
-        .buttonStyle(.bordered)
+        .buttonStyle(.borderedProminent)
         .controlSize(.large)
         .tint(.rojoAccesible)
         .frame(minHeight: 44)
