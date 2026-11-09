@@ -524,7 +524,7 @@ final class SesionAccesorioModelo {
     private func rutaPerdida() {
         guard activa, !suspendida else { return }
         avisos.vibrar()
-        avisoAccesible(TextoAccesorio.audioSinAuriculares)
+        avisoAccesible(TextoAccesorio.audioSinAuriculares, .urgente)
     }
 
     // MARK: Avisos accesibles (sin mover el foco)
@@ -538,17 +538,17 @@ final class SesionAccesorioModelo {
         let texto = TextoAccesorio.anuncioAccesible(estado)
         if texto != ultimoAvisoEstado {
             ultimoAvisoEstado = texto
-            if let texto, !vozHablo { avisos.anunciar(texto) }
+            if let texto, !vozHablo { avisos.anunciar(texto, .urgente) }
         }
         // Con el audio no disponible la voz no puede avisar: el aviso va siempre por accesibilidad.
         if voz.audioNoDisponible != avisadoAudioNoDisponible {
             avisadoAudioNoDisponible = voz.audioNoDisponible
-            if voz.audioNoDisponible { avisos.anunciar(TextoAccesorio.audioNoDisponibleAviso) }
+            if voz.audioNoDisponible { avisos.anunciar(TextoAccesorio.audioNoDisponibleAviso, .urgente) }
         }
     }
 
-    private func avisoAccesible(_ texto: String) {
-        avisos.anunciar(texto)
+    private func avisoAccesible(_ texto: String, _ prioridad: PrioridadAviso = .rutina) {
+        avisos.anunciar(texto, prioridad)
     }
 
     // MARK: Escaneo
@@ -570,11 +570,20 @@ final class SesionAccesorioModelo {
     }
 }
 
+/// Prioridad de un anuncio de accesibilidad (EA-02 §5). `urgente`: bloqueo, rechazo, fallo, desconexión,
+/// pérdida de auriculares o audio no disponible; interrumpe lo que VoiceOver esté diciendo. `rutina`:
+/// confirmaciones de lo que la persona acaba de hacer (elegir, hallar); prioridad normal del sistema.
+/// Ninguna medida del sensor se anuncia por aquí, con ninguna prioridad.
+enum PrioridadAviso: Equatable {
+    case rutina
+    case urgente
+}
+
 /// Avisos del sistema para la persona. En producción son los reales (`AvisosAccesibles.sistema`); en
 /// pruebas son dobles que anotan.
 struct AvisosAccesibles {
     /// Anuncio de accesibilidad (VoiceOver). No mueve el foco.
-    var anunciar: @MainActor (String) -> Void = { _ in }
+    var anunciar: @MainActor (String, PrioridadAviso) -> Void = { _, _ in }
     var vibrar: @MainActor () -> Void = {}
     var voiceOverActivo: @MainActor () -> Bool = { false }
 }

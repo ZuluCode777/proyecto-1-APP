@@ -43,9 +43,9 @@ final class CicloConexionNativaTests: XCTestCase {
     }
 
     func testCancelarUnaConexionPendienteSigueElMismoCamino() {
-        // Una conexión solo «pendiente» (el sistema aún no conectó) también avisa del cierre al cancelarla:
-        // el nativo no está en `.disconnected`, así que se espera ese aviso y no se queda esperando para siempre
-        // sin que nadie lo vigile (lo vigila el plazo de la sesión, probado en el modelo).
+        // Una conexión solo «pendiente» (el sistema aún no conectó) se cancela igual: el nativo no está en
+        // `.disconnected`, así que se espera su aviso final. Que Apple lo entregue también para una conexión
+        // pendiente NO está verificado; si no llegara, ver `testSinAvisoFinalNingunReintentoReabreHastaReiniciar`.
         var ciclo = CicloConexionNativa()
         _ = ciclo.pedir(id: "A", token: 1)
         XCTAssertEqual(ciclo.cerrar(nativoActivo: true), [.cerrar(id: "A")])
@@ -55,6 +55,38 @@ final class CicloConexionNativaTests: XCTestCase {
         XCTAssertFalse(ciclo.atiende(token: 2))
         XCTAssertEqual(ciclo.terminal("A"), .ignorar, "el aviso de la primera llega y ya no abre nada")
         XCTAssertNil(ciclo.token)
+    }
+
+    /// Límite seguro y documentado: si el aviso final de una conexión pendiente cancelada no llega nunca,
+    /// los reintentos sobre ese accesorio NO reabren ni toman el token (un aviso rezagado de la vieja se
+    /// confundiría con un corte de la nueva). Solo `reiniciar()` (Bluetooth apagado y encendido, o app
+    /// reiniciada) lo libera. La persona lo ve como fallo repetido y su texto ofrece esa salida.
+    func testSinAvisoFinalNingunReintentoReabreHastaReiniciar() {
+        var ciclo = CicloConexionNativa()
+        XCTAssertEqual(ciclo.pedir(id: "A", token: 1), [.abrir(id: "A")])
+        // Conexión pendiente cancelada; el sistema nunca entrega `didDisconnect`/`didFailToConnect`.
+        XCTAssertEqual(ciclo.cerrar(nativoActivo: true), [.cerrar(id: "A")])
+
+        for intento in 2...5 {
+            XCTAssertEqual(ciclo.pedir(id: "A", token: intento), [], "intento \(intento): sigue esperando, no abre")
+            XCTAssertNil(ciclo.token, "ninguna conexión nueva vale")
+            XCTAssertFalse(ciclo.vale("A"))
+            XCTAssertEqual(ciclo.pendiente?.token, intento, "solo queda la última petición, sin reetiquetar")
+            XCTAssertEqual(ciclo.cerrar(nativoActivo: false), [], "rendirse olvida la petición, no el cierre pendiente")
+            XCTAssertEqual(ciclo.cerrando, ["A"], "el cierre sin aviso no se olvida por tiempo ni por reintentos")
+        }
+
+        // Otro accesorio no depende de ese cierre.
+        XCTAssertEqual(ciclo.pedir(id: "B", token: 6), [.abrir(id: "B")])
+        _ = ciclo.cerrar(nativoActivo: false)
+
+        // Recuperación documentada: Bluetooth apagado y encendido (o app reiniciada) → `reiniciar()`.
+        ciclo.reiniciar()
+        XCTAssertTrue(ciclo.cerrando.isEmpty)
+        XCTAssertEqual(ciclo.pedir(id: "A", token: 7), [.abrir(id: "A")])
+        XCTAssertEqual(ciclo.token, 7)
+        // Y un corte posterior sí es de esta conexión y lleva su token.
+        XCTAssertEqual(ciclo.terminal("A"), .avisar(token: 7))
     }
 
     func testPerifericoYaDesconectadoSeReabreEnSeguida() {

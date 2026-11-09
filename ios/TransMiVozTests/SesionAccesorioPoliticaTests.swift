@@ -178,9 +178,55 @@ final class SesionAccesorioPoliticaTests: XCTestCase {
         banco.transporte.emitir(.fallo(.conexionFallida))
         XCTAssertEqual(banco.avisos.deEstado, [
             "Accesorio desconectado. Se intenta reconectar.",
-            "No se pudo conectar con el accesorio. Sin avisos. Usa Reconectar.",
+            "No se pudo conectar con el accesorio. Sin avisos. Usa Reconectar. \(TextoAccesorio.recuperacionRepetida)",
         ])
         XCTAssertFalse(banco.avisos.deEstado.contains { $0.contains("Objeto") || $0.contains("Presencia") || $0.contains("Sin detección") })
+    }
+
+    func testLosAvisosUrgentesLlevanPrioridadYLasConfirmacionesSonDeRutina() throws {
+        let banco = BancoAccesorio(nivel: .desconocido, voiceOver: true)
+        defer { banco.cerrar() }
+        // Confirmación de lo que la persona hizo (elegir): rutina.
+        banco.iniciar()
+        XCTAssertEqual(banco.avisos.anuncios(.rutina), ["Accesorio elegido: Visionaria (cc-1)."])
+        XCTAssertEqual(banco.avisos.anuncios(.urgente), [])
+
+        // Bloqueo, desconexión y fallo: urgentes.
+        banco.transporte.emitir(.conectado(id: banco.accesorio.id))
+        banco.transporte.emitir(.desconectado)
+        banco.transporte.emitir(.fallo(.conexionFallida))
+        XCTAssertEqual(banco.avisos.anuncios(.urgente), banco.avisos.deEstado)
+        XCTAssertEqual(banco.avisos.anuncios(.urgente).count, 3, "bloqueo, desconexión y fallo")
+        XCTAssertEqual(banco.avisos.anuncios(.rutina).count, 1, "lo urgente no se mezcla con la rutina")
+    }
+
+    func testPerderLaSalidaPrivadaYElAudioNoDisponibleSonUrgentes() throws {
+        let banco = BancoAccesorio()
+        defer { banco.cerrar() }
+        let escenario = try objetivo()
+        banco.iniciar()
+        banco.sincronizar(escenario)
+        banco.ruta.valor = .noPrivada
+        banco.modelo.voz.rutaCambio()
+        XCTAssertEqual(banco.avisos.anuncios(.urgente), [TextoAccesorio.audioSinAuriculares])
+
+        let otro = BancoAccesorio()
+        defer { otro.cerrar() }
+        otro.salida.resultado = .sesionNoDisponible
+        otro.iniciar()
+        XCTAssertEqual(otro.avisos.anuncios(.urgente), [TextoAccesorio.audioNoDisponibleAviso])
+        XCTAssertEqual(otro.avisos.anuncios(.rutina), [])
+    }
+
+    func testNingunaMedidaSalePorElCaminoPublicoConNingunaPrioridad() throws {
+        let banco = BancoAccesorio(voiceOver: true)
+        defer { banco.cerrar() }
+        let escenario = try objetivo()
+        banco.iniciar()
+        banco.sincronizar(escenario)
+        banco.entregar(escenario.entregas[0])
+        banco.entregar(escenario.entregas[1])
+        XCTAssertTrue(banco.avisos.anuncios.isEmpty, "objeto, presencia y sin detección no se anuncian, ni urgentes ni de rutina")
     }
 
     func testElSensorNoSeAnunciaPorVoiceOverNiConLaVozPropiaApagada() throws {

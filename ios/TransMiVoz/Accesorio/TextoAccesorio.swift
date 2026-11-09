@@ -92,7 +92,7 @@ enum TextoAccesorio {
         case .rechazado(let motivo):
             return "Accesorio rechazado (\(motivo.etiqueta)). Sus datos no se usan y esto no es una detección."
         case .falla(let motivo):
-            return "\(fallo(motivo)) No hay medidas. Usa Reconectar."
+            return "\(fallo(motivo)) No hay medidas. Usa Reconectar. \(recuperacionRepetida)"
         case .desconectado:
             return "Accesorio desconectado. Se intenta reconectar. No hay medidas."
         case .sinDeteccion:
@@ -123,6 +123,10 @@ enum TextoAccesorio {
         }
     }
 
+    /// Salida si Reconectar no basta: si el sistema nunca avisa del cierre de una conexión cancelada, reconectar
+    /// con ese accesorio no puede tener éxito hasta reiniciar el Bluetooth o la app (límite sin probar con hardware).
+    static let recuperacionRepetida = "Si vuelve a fallar, apaga y enciende el Bluetooth del iPhone o cierra y abre la app."
+
     static let audioNoDisponibleAviso = "Audio no disponible: no se pueden decir avisos en voz alta. El estado queda en pantalla."
     static let audioSinAuriculares = "Se perdió la salida privada de audio. Los avisos no se dicen por el altavoz; el estado queda en pantalla."
 
@@ -137,7 +141,7 @@ enum TextoAccesorio {
         case .rechazado:
             return "Accesorio rechazado. Sin avisos."
         case .falla(let motivo):
-            return "\(fallo(motivo)) Sin avisos. Usa Reconectar."
+            return "\(fallo(motivo)) Sin avisos. Usa Reconectar. \(recuperacionRepetida)"
         case .desconectado:
             return "Accesorio desconectado. Se intenta reconectar."
         case .bluetoothNoDisponible(let d):

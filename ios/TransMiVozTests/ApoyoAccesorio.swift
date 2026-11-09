@@ -56,14 +56,21 @@ final class SalidaVozFalsa: SalidaVoz {
 @MainActor
 final class AvisosFalsos {
     private(set) var anuncios: [String] = []
+    /// Prioridad con que se anunció cada texto de `anuncios` (mismo orden).
+    private(set) var prioridades: [PrioridadAviso] = []
     private(set) var vibraciones = 0
     var voiceOver = false
     /// Sin las confirmaciones de elección y de hallazgo (esas las pide la persona).
     var deEstado: [String] { anuncios.filter { !$0.hasPrefix("Accesorio elegido") && !$0.hasPrefix("Accesorio encontrado") } }
 
+    /// Los anuncios con esa prioridad, en orden.
+    func anuncios(_ prioridad: PrioridadAviso) -> [String] {
+        zip(anuncios, prioridades).filter { $0.1 == prioridad }.map(\.0)
+    }
+
     var avisos: AvisosAccesibles {
         AvisosAccesibles(
-            anunciar: { [self] in anuncios.append($0) },
+            anunciar: { [self] texto, prioridad in anuncios.append(texto); prioridades.append(prioridad) },
             vibrar: { [self] in vibraciones += 1 },
             voiceOverActivo: { [self] in voiceOver })
     }

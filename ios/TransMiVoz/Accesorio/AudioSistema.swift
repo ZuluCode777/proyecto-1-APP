@@ -138,9 +138,21 @@ final class MonitorAudioSistema {
 
 extension AvisosAccesibles {
     /// Avisos reales: anuncio de accesibilidad (no mueve el foco) y háptica de advertencia.
+    /// Lo urgente usa la prioridad alta pública de UIKit (iOS 17+): un `NSAttributedString` con
+    /// `accessibilitySpeechAnnouncementPriority`, según la documentación de `UIAccessibilityPriority`.
     @MainActor static var sistema: AvisosAccesibles {
         AvisosAccesibles(
-            anunciar: { UIAccessibility.post(notification: .announcement, argument: $0) },
+            anunciar: { texto, prioridad in
+                switch prioridad {
+                case .rutina:
+                    UIAccessibility.post(notification: .announcement, argument: texto)
+                case .urgente:
+                    let urgente = NSAttributedString(
+                        string: texto,
+                        attributes: [.accessibilitySpeechAnnouncementPriority: UIAccessibilityPriority.high])
+                    UIAccessibility.post(notification: .announcement, argument: urgente)
+                }
+            },
             vibrar: { UINotificationFeedbackGenerator().notificationOccurred(.warning) },
             voiceOverActivo: { UIAccessibility.isVoiceOverRunning })
     }

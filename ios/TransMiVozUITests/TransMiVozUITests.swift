@@ -76,8 +76,14 @@ private func exponer(_ identificador: String, en app: XCUIApplication, completo:
     }
     for _ in 0..<4 where !visible() {
         // Centrar deja margen a ambos lados para la zona muerta inicial del gesto.
-        let ancla = completo ? objetivo.frame.midY - (arriba + abajo) / 2 : objetivo.frame.minY - (arriba + 40)
-        let desplazamiento = objetivo.exists ? max(-paso, min(paso, ancla)) : paso
+        // Un control de creación diferida aún no existe: no se lee su marco (sería una instantánea fallida), se avanza un paso.
+        let desplazamiento: CGFloat
+        if objetivo.exists {
+            let ancla = completo ? objetivo.frame.midY - (arriba + abajo) / 2 : objetivo.frame.minY - (arriba + 40)
+            desplazamiento = max(-paso, min(paso, ancla))
+        } else {
+            desplazamiento = paso
+        }
         // Arrastrar el contenido, lejos del indicador de desplazamiento del borde derecho.
         let inicio = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
             .withOffset(CGVector(dx: ventana.width / 2, dy: desplazamiento > 0 ? abajo - 20 : arriba + 20))
@@ -357,6 +363,7 @@ final class TransMiVozAccesorioUITests: XCTestCase {
         exponer("elegir-SINTETICO-0001", en: app)
         elegir.tap()
         esperarEtiqueta("Accesorio elegido: Accesorio sintético (0001)")
+        esperar(elegir, "isSelected == %@", true, "El accesorio elegido debe exponer el rasgo «seleccionado»")
     }
 
     private func iniciarYEsperarBloqueo() {
@@ -438,6 +445,18 @@ final class TransMiVozAccesorioUITests: XCTestCase {
         try auditar(app, "accesorio-bloqueado", testCase: self)
     }
 
+    func testAuditoriaAccesibilidadPermisoDenegado() throws {
+        lanzar(["-PRUEBAS_UI_ACCESORIO_PERMISO_DENEGADO"])
+        exponer("boton-buscar", en: app)
+        elemento("boton-buscar").tap()
+        let continuar = elemento("boton-permiso-continuar")
+        XCTAssertTrue(continuar.waitForExistence(timeout: 10))
+        continuar.tap()
+        esperarEtiqueta("Sin permiso de Bluetooth. Actívalo en Ajustes, en TransMiVoz.")
+        XCTAssertTrue(elemento("boton-abrir-ajustes").waitForExistence(timeout: 10))
+        try auditar(app, "accesorio-permiso-denegado", testCase: self)
+    }
+
     func testAuditoriaAccesibilidadHojaDelPermisoDeBluetooth() throws {
         lanzar()
         exponer("boton-buscar", en: app)
@@ -449,6 +468,26 @@ final class TransMiVozAccesorioUITests: XCTestCase {
 
 /// La pantalla real del accesorio con el texto más grande de Dynamic Type de accesibilidad, sección por sección.
 final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
+    /// La hoja de explicación del permiso (la que sale antes del aviso del sistema) con el texto más grande.
+    func testAuditoriaHojaDelPermisoConTextoMuyGrande() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-PRUEBAS_UI_ACCESORIO_SINTETICO",
+            "-AppleLanguages", "(es)", "-AppleLocale", "es_CO",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL",
+        ]
+        app.launch()
+        addTeardownBlock { app.terminate() }
+        func elemento(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
+
+        exponer("boton-buscar", en: app)
+        elemento("boton-buscar").tap()
+        XCTAssertTrue(elemento("texto-permiso-bluetooth").waitForExistence(timeout: 10), "Falta la explicación previa al permiso")
+        XCTAssertTrue(elemento("boton-permiso-continuar").exists)
+        try auditar(app, "texto-muy-grande-Accesorio-hoja-permiso", testCase: self)
+    }
+
     func testAuditoriaConTextoMuyGrande() throws {
         continueAfterFailure = false
         let app = XCUIApplication()

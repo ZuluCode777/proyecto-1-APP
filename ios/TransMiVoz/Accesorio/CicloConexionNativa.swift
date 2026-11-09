@@ -18,9 +18,15 @@ import Foundation
 /// - todo evento de la conexión lleva el token con el que se ABRIÓ, nunca «el vigente de ahora»;
 /// - un periférico que no es el vigente, o cuya conexión ya terminó, no cuenta (`vale`).
 ///
-/// La espera no es indefinida: la sesión (`SesionAccesorioModelo`) vigila el plazo de la conexión y, si el
-/// sistema no avisara, la persona ve «el accesorio no respondió a tiempo». Si el Bluetooth se apaga,
-/// `reiniciar()` olvida todo (el sistema ya cortó todas las conexiones).
+/// Límite conocido, a propósito. La documentación de Apple dice que la cancelación no bloquea y que el gestor
+/// avisará después, pero NO está verificado que el aviso final llegue siempre para una conexión que solo estaba
+/// pendiente. Si ese aviso no llega, `cerrando` conserva el periférico y toda petición posterior sobre el mismo
+/// accesorio queda esperando: no puede tener éxito hasta apagar y encender el Bluetooth (`reiniciar()`) o
+/// reiniciar la app. No se olvida `cerrando` por tiempo: un aviso rezagado de la conexión vieja se confundiría
+/// con un corte de la nueva. La sesión (`SesionAccesorioModelo`) vigila el plazo de la conexión, pero eso solo
+/// acota lo que la persona ve («el accesorio no respondió a tiempo»); NO recupera este dueño. Por eso el texto
+/// de fallo ofrece, tras repetirse, apagar y encender el Bluetooth o reiniciar la app. Seguro, acotado y sin
+/// probar con hardware (ver ea-15-ios-ble-audio.md, banco de pruebas).
 struct CicloConexionNativa {
     enum Orden: Equatable {
         case abrir(id: String)

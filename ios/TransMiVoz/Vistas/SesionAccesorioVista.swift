@@ -10,6 +10,15 @@ struct SesionAccesorioVista: View {
     var avisoSintetico = false
 
     @Environment(\.openURL) private var abrirURL
+    /// Solo para que la pantalla se redibuje cuando la persona enciende o apaga VoiceOver con la app abierta.
+    /// La política sigue en el modelo, que consulta VoiceOver en cada uso (`vozPropiaActiva`).
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverActivo
+
+    /// `modelo.vozPropiaActiva`, leído junto al entorno para que el interruptor y el texto de audio se refresquen.
+    private var vozPropiaActiva: Bool {
+        _ = voiceOverActivo
+        return modelo.vozPropiaActiva
+    }
 
     var body: some View {
         NavigationStack {
@@ -106,6 +115,7 @@ struct SesionAccesorioVista: View {
                 Button("Elegir \(accesorio.etiqueta)") { modelo.elegir(accesorio) }
                     .buttonStyle(.bordered)
                     .frame(minHeight: 44)
+                    .accessibilityAddTraits(modelo.elegido?.id == accesorio.id ? .isSelected : [])
                     .accessibilityIdentifier("elegir-\(accesorio.id)")
             }
             Text("El nombre y el identificador no prueban que el accesorio sea el tuyo.")
@@ -124,6 +134,7 @@ struct SesionAccesorioVista: View {
             .controlSize(.large)
             .frame(minHeight: 44)
             .disabled(modelo.elegido == nil)
+            .accessibilityHint(modelo.elegido == nil ? "Primero elige un accesorio" : "")
             .accessibilityIdentifier("boton-sesion-accesorio")
 
             Button("Reconectar") { modelo.reconectar() }
@@ -131,6 +142,7 @@ struct SesionAccesorioVista: View {
                 .controlSize(.large)
                 .frame(minHeight: 44)
                 .disabled(modelo.elegido == nil)
+                .accessibilityHint(modelo.elegido == nil ? "Primero elige un accesorio" : "")
                 .accessibilityIdentifier("boton-reconectar")
         }
     }
@@ -154,7 +166,7 @@ struct SesionAccesorioVista: View {
             Text("Tramas perdidas: \(modelo.tramasPerdidas)")
             Text(TextoAccesorio.audio(
                 ruta: modelo.voz.ruta, interrumpido: modelo.voz.interrumpido,
-                audioNoDisponible: modelo.voz.audioNoDisponible, vozPropia: modelo.vozPropiaActiva))
+                audioNoDisponible: modelo.voz.audioNoDisponible, vozPropia: vozPropiaActiva))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("estado-audio")
         }
@@ -164,7 +176,7 @@ struct SesionAccesorioVista: View {
     private var seccionVoz: some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("Avisos hablados por la app", isOn: Binding(
-                get: { modelo.vozPropiaActiva },
+                get: { vozPropiaActiva },
                 set: { modelo.fijarVozPropia($0) }))
                 .frame(minHeight: 44)
                 .accessibilityIdentifier("interruptor-voz-app")
