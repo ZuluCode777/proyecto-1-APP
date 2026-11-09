@@ -8,7 +8,7 @@ Es un corte mínimo para EA-09 (#35) con soporte de CI iOS-CI (#68). No es una a
 
 | Pestaña | Contenido | Necesita red |
 | --- | --- | --- |
-| Sesión | Sesión local de proximidad **simulada**: iniciar, detener, estado del sensor, origen de los datos, enlace, tramas perdidas. | No |
+| Sesión | Accesorio **real** por Bluetooth: buscar y elegir, iniciar, detener, reconectar, estado, avisos hablados por auriculares. Hoy **bloqueada por diseño** (no se puede verificar la seguridad del enlace). Las pruebas de interfaz muestran en su lugar la sesión simulada. | No |
 | Consulta | Texto → `POST /api/agent` del backend Next existente, con cancelar, reintentar y errores claros. | Sí |
 | Servidor | Origen HTTPS y clave opcional (Llavero si la persona lo pide). | No |
 
@@ -27,7 +27,11 @@ Todas las reglas de transporte siguen en el backend (`lib/local-agent.ts`). La a
 
 El texto de un viaje puede traer órdenes de abordaje sin parada, sentido ni vigencia verificados en el cliente. Esta versión **no muestra el texto** de un viaje: muestra un aviso y los tramos como información (el conteo de estaciones solo si `conteoVerificado`). No es una guía de abordaje. El resto de respuestas pasa por una guardia de contenido equivalente a la política del backend (`contieneImperativoDeViaje` y `respuestaSinImperativos` en `lib/local-agent.ts`, la misma que usa la web): si el texto o algún paso contiene una orden («Toma la X en Y», «sube en», «bájate en», «cambia a/en»), la app muestra el aviso seguro «no te doy indicaciones de abordaje» en su lugar y omite los pasos. Las abstenciones que solo mencionan subir o bajar sin ordenar nada se muestran. Esa guardia no planifica nada y el servidor sigue siendo la autoridad (`TransMiVoz/Dominio/GuardiaContenido.swift`; casos en `GuardiaContenidoTests`, repetidos de `lib/local-agent.test.ts`).
 
-### Sesión local simulada
+### Sesión con el accesorio real (EA-15, software)
+
+Core Bluetooth con los UUID y el contrato v1.0 existentes, sobre `SesionProximidad`. **El transporte afirma enlace `desconocido`, así que la sesión rechaza el accesorio y no hay medidas ni avisos del sensor** hasta que EA-12 dé evidencia (contrato §6). Voz solo por auriculares, cola de uno, corte por cambio de ruta e interrupción; sin segundo plano. Detalle, pruebas y lista de banco en [ea-15-ios-ble-audio.md](../docs/expoandes/ea-15-ios-ble-audio.md). **No hay prueba con hardware.**
+
+### Sesión local simulada (solo pruebas de interfaz)
 
 Usa el paquete [`ContratoBLE`](ContratoBLE/README.md) con `modo: .simulada` y un guion de tramas inventadas por la app (`TransMiVoz/Sesion/GuionSimulado.swift`). **No hay Core Bluetooth, accesorio ni radar.** La pantalla lo dice siempre («SESIÓN SIMULADA»), muestra «Origen de los datos: simulación» y «Enlace autenticado: no (no hay enlace real)». La sesión usa una asociación sin protección frente a intermediario **solo para poder arrancar el guion**; no se afirma ningún enlace autenticado. Al acabar las tramas, la sesión caduca a «Sin datos vigentes» (la última medida ya es demasiado vieja) y no la repite. El reloj es monotónico (`ProcessInfo.systemUptime`), no la hora de pared. «Sin detección» nunca se presenta como camino libre.
 
@@ -43,7 +47,7 @@ Usa el paquete [`ContratoBLE`](ContratoBLE/README.md) con `modo: .simulada` y un
 ios/
   TransMiVoz.xcodeproj/        proyecto + xcshareddata/xcschemes/TransMiVoz.xcscheme
   TransMiVoz/                  app (grupo sincronizado: todo archivo nuevo entra solo)
-    Dominio/ Red/ Estado/ Sesion/ Vistas/ Simulacion/ Assets.xcassets
+    Dominio/ Red/ Estado/ Sesion/ Accesorio/ Vistas/ Simulacion/ Assets.xcassets
   TransMiVozTests/             XCTest de lógica, HTTP simulado, BLE compartido
   TransMiVozUITests/           recorridos de interfaz + auditoría de accesibilidad
   ContratoBLE/                 paquete local del contrato BLE (otro responsable)
@@ -93,6 +97,6 @@ Recuperación (solo estas):
 
 ## Límites de la evidencia
 
-Esta carpeta, el Simulator y el build sin firma permiten detectar errores de código, de contrato y de interfaz. **No** validan: firma ni instalación en iPhone, enlace BLE o radar reales, emparejamiento, latencia sensor→auricular, dictado, VoiceOver real, audio por auriculares, permisos de Bluetooth/micrófono/ubicación (la app no los solicita todavía), segundo plano ni autonomía. Un artefacto del Simulator o el build `generic/platform=iOS` sin firma **no se instala en un iPhone**. Esas pruebas siguen abiertas en #35, #48 y los demás issues de producto.
+Esta carpeta, el Simulator y el build sin firma permiten detectar errores de código, de contrato y de interfaz. **No** validan: firma ni instalación en iPhone, enlace BLE o radar reales, emparejamiento, latencia sensor→auricular, dictado, VoiceOver real, audio por auriculares, permisos de micrófono/ubicación (la app no los solicita; el de Bluetooth sí, al buscar o iniciar, sin probar en un iPhone), segundo plano ni autonomía. Un artefacto del Simulator o el build `generic/platform=iOS` sin firma **no se instala en un iPhone**. Esas pruebas siguen abiertas en #35, #48 y los demás issues de producto.
 
-Fuera de este corte: mapas, rediseño completo, dictado, transporte Core Bluetooth, expansión de audio, ubicación en la consulta.
+Fuera de este corte: mapas, rediseño completo, dictado, unificación de avisos (EA-20), ubicación en la consulta.
