@@ -6,7 +6,15 @@ struct TransMiVozApp: App {
 
     var body: some Scene {
         WindowGroup {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-PRUEBAS_UI_CONTRASTE_MALO") {
+                FixtureContrasteMalo()
+            } else {
+                RaizVista(entorno: entorno)
+            }
+            #else
             RaizVista(entorno: entorno)
+            #endif
         }
     }
 }

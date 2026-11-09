@@ -23,11 +23,10 @@ struct SesionAccesorioVista: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                // Pila diferida, con cualquier tamaño de texto y también dentro de cada sección: la intención es que cada
-                // elemento se cree al acercarse a la vista, para que lo recortado bajo el área desplazable (entre su borde
-                // y la barra de pestañas) no entre en la auditoría de contraste sin verse. SwiftUI decide cuándo crea y
-                // descarta; las pruebas de interfaz no suponen que un elemento fuera de la vista exista o deje de existir.
-                LazyVStack(alignment: .leading, spacing: 16) {
+                // Pila ansiosa (no diferida), también dentro de cada sección: todos los elementos existen siempre, con su
+                // marco real. Con `LazyVStack` la prueba nativa de Dynamic Type falló en muchos textos visibles. Lo recortado
+                // bajo el área desplazable lo cubren las pruebas de interfaz con su libro de contraste diferido.
+                VStack(alignment: .leading, spacing: 16) {
                     if avisoSintetico {
                         Label("Modo de pruebas: transporte sintético. No hay Bluetooth, radio, audio ni accesorio reales; el enlace sigue sin verificarse.", systemImage: "testtube.2")
                             .font(.footnote)
@@ -76,7 +75,7 @@ struct SesionAccesorioVista: View {
     }
 
     private var seccionBluetooth: some View {
-        LazyVStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(TextoAccesorio.bluetooth(modelo.disponibilidad))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("estado-bluetooth")
@@ -92,10 +91,11 @@ struct SesionAccesorioVista: View {
     }
 
     private var seccionAccesorio: some View {
-        LazyVStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("Accesorio")
                 .font(.headline)
                 .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("encabezado-accesorio")
             Text("Accesorio elegido: \(modelo.elegido?.etiqueta ?? "ninguno")")
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("accesorio-elegido")
@@ -127,11 +127,12 @@ struct SesionAccesorioVista: View {
                 .font(.footnote)
                 .foregroundStyle(.textoSecundario)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("nota-identificador-accesorio")
         }
     }
 
     private var seccionControles: some View {
-        LazyVStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
             Button(modelo.activa ? "Detener sesión" : "Iniciar sesión") {
                 if modelo.activa { modelo.detener() } else { modelo.iniciar() }
             }
@@ -152,10 +153,11 @@ struct SesionAccesorioVista: View {
 
     private var seccionEstado: some View {
         let estado = modelo.estado
-        return LazyVStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 8) {
             Text("Estado del accesorio")
                 .font(.headline)
                 .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("encabezado-estado-accesorio")
             Label(TextoAccesorio.titulo(estado), systemImage: TextoAccesorio.icono(estado))
                 .font(.title3.weight(.semibold))
                 .accessibilityIdentifier("titulo-estado-accesorio")
@@ -164,9 +166,11 @@ struct SesionAccesorioVista: View {
                 .accessibilityIdentifier("estado-accesorio")
             Text("Origen de los datos: accesorio real por Bluetooth")
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("origen-datos-accesorio")
             Text("Enlace autenticado: \(modelo.enlaceAutenticado ? "sí" : "no verificado")")
                 .accessibilityIdentifier("enlace-accesorio")
             Text("Tramas perdidas: \(modelo.tramasPerdidas)")
+                .accessibilityIdentifier("tramas-perdidas-accesorio")
             Text(TextoAccesorio.audio(
                 ruta: modelo.voz.ruta, interrumpido: modelo.voz.interrumpido,
                 audioNoDisponible: modelo.voz.audioNoDisponible, vozPropia: vozPropiaActiva))
@@ -177,7 +181,7 @@ struct SesionAccesorioVista: View {
     }
 
     private var seccionVoz: some View {
-        LazyVStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
             Toggle("Avisos hablados por la app", isOn: Binding(
                 get: { vozPropiaActiva },
                 set: { modelo.fijarVozPropia($0) }))
@@ -187,6 +191,7 @@ struct SesionAccesorioVista: View {
                 .font(.footnote)
                 .foregroundStyle(.textoSecundario)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("nota-voz-app")
         }
     }
 }

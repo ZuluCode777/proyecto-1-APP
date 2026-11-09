@@ -1,11 +1,10 @@
 import XCTest
 
-/// Auditoría real de accesibilidad de todos los tipos. Reúne TODOS los
-/// problemas y los adjunta como texto + captura antes de fallar, para que el resultado
-/// diga qué elemento falló (en Xcode, sin handler, solo se ve el primero y sin elemento).
-/// No ignora nada: si hay un problema, la prueba falla.
-private func auditar(_ app: XCUIApplication, _ contexto: String, testCase: XCTestCase, file: StaticString = #filePath, line: UInt = #line) throws {
-    var problemas: [String] = []
+/// Ejecuta TODOS los grupos de la auditoría nativa (todos los tipos, sin filtros ni exclusiones) y devuelve cada
+/// problema COMO VALOR, copiado dentro del manejador: más tarde la jerarquía ya es otra y no se vuelve a leer
+/// `problema.element`. El manejador devuelve `true` solo para seguir reuniendo; quien llama decide qué es un fallo.
+private func ejecutarAuditoria(_ app: XCUIApplication, _ contexto: String) throws -> [HallazgoAuditoria] {
+    var hallazgos: [HallazgoAuditoria] = []
     // Separar las pruebas que cambian fuentes evita mezclar geometrías y acota cada petición nativa.
     let auditorias: [XCUIAccessibilityAuditType] = [
         .all.subtracting([.dynamicType, .textClipped]), .dynamicType, .textClipped,
@@ -14,12 +13,24 @@ private func auditar(_ app: XCUIApplication, _ contexto: String, testCase: XCTes
         try XCTContext.runActivity(named: "Auditoría \(contexto): \(tipos)") { _ in
             try app.performAccessibilityAudit(for: tipos) { problema in
                 let elemento = problema.element
-                problemas.append("[\(problema.auditType)] \(problema.compactDescription) | \(problema.detailedDescription) | "
-                    + "id=«\(elemento?.identifier ?? "?")» etiqueta=«\(elemento?.label ?? "?")» marco=\(elemento.map { "\($0.frame)" } ?? "?")")
-                return true  // solo para seguir reuniendo; abajo se falla con todos
+                hallazgos.append(HallazgoAuditoria(
+                    tipo: "\(problema.auditType)", esContraste: problema.auditType == .contrast,
+                    compacta: problema.compactDescription, detallada: problema.detailedDescription,
+                    identificador: elemento?.identifier, etiqueta: elemento?.label, marco: elemento?.frame))
+                return true
             }
         }
     }
+    return hallazgos
+}
+
+/// Auditoría real de accesibilidad de todos los tipos. Reúne TODOS los
+/// problemas y los adjunta como texto + captura antes de fallar, para que el resultado
+/// diga qué elemento falló (en Xcode, sin handler, solo se ve el primero y sin elemento).
+/// No ignora nada: si hay un problema, la prueba falla. Es el comportamiento de siempre; solo las auditorías de la
+/// pantalla del accesorio que lo piden usan además `FaseAuditada` (contraste recortado diferido, con remedición obligatoria).
+private func auditar(_ app: XCUIApplication, _ contexto: String, testCase: XCTestCase, file: StaticString = #filePath, line: UInt = #line) throws {
+    let problemas = try ejecutarAuditoria(app, contexto).map(\.descripcion)
     guard !problemas.isEmpty else { return }
     let texto = XCTAttachment(string: problemas.joined(separator: "\n") + "\n\nJerarquía de accesibilidad:\n" + app.debugDescription)
     texto.name = "auditoria-\(contexto)-problemas"
@@ -30,6 +41,96 @@ private func auditar(_ app: XCUIApplication, _ contexto: String, testCase: XCTes
     captura.lifetime = .keepAlways
     testCase.add(captura)
     XCTFail("Auditoría de accesibilidad (\(contexto)): \(problemas.count) problema(s):\n" + problemas.joined(separator: "\n"), file: file, line: line)
+}
+
+/// Fase estable de la pantalla del accesorio (mismo estado y mismas etiquetas) con libro de contraste diferido. Solo la
+/// piden las auditorías de desplazamiento de esa pantalla; las demás siguen con `auditar`, que falla en el acto.
+/// Con la pila ansiosa, un nodo recortado bajo el área desplazable también llega a la auditoría nativa de contraste.
+/// Cada hallazgo lo clasifica `ClasificadorContraste` (ver `LibroContrasteDiferido.swift`): solo el contraste de un nodo
+/// único de la zona desplazable, recortado y que cabría entero en la vista se DIFIERE, y esa deuda obliga a medir el
+/// mismo nodo entero a la vista, con la auditoría completa, dentro de esta fase. Todo lo demás es fallo. Los fallos se
+/// acumulan hasta `cerrar` para que las fases siguientes también se ejecuten en esta pasada; las comprobaciones de
+/// geometría (`exponer`, `comprobarEnteros`) siguen siendo estrictas y abortan la prueba. Hay que cerrar CADA fase antes
+/// de cambiar de estado: una deuda sin cerrar no se puede saldar con la medición de otro estado.
+private final class FaseAuditada {
+    private let app: XCUIApplication
+    private let caso: XCTestCase
+    private(set) var libro: LibroContraste
+    /// Todo lo que la auditoría nativa reportó en esta fase, tal cual.
+    private(set) var hallazgos: [HallazgoAuditoria] = []
+
+    init(_ fase: String, app: XCUIApplication, caso: XCTestCase) {
+        self.app = app
+        self.caso = caso
+        libro = LibroContraste(fase: fase)
+    }
+
+    /// Una auditoría completa en la posición actual: la clasifica y anota qué nodos midió limpios y enteros a la vista.
+    func auditar(_ contexto: String) throws {
+        let nuevos = try ejecutarAuditoria(app, contexto)
+        hallazgos += nuevos
+        let contenido = app.scrollViews.firstMatch.frame
+        let vista = VistaAuditada(
+            arriba: max(app.navigationBars.firstMatch.frame.maxY, contenido.minY),
+            abajo: min(app.tabBars.firstMatch.frame.minY, contenido.maxY))
+        let zona = try nodos(de: app.scrollViews.firstMatch)
+        let aplicacion = try nodos(de: app)
+        let lineas = libro.registrar(contexto: contexto, hallazgos: nuevos, zona: zona, aplicacion: aplicacion, vista: vista)
+        adjuntar("auditoria-\(libro.fase)-\(contexto)-problemas", lineas.isEmpty ? "Sin problemas." : lineas.joined(separator: "\n"))
+    }
+
+    /// Nodos de la jerarquía nativa (instantánea) bajo `elemento`, él incluido.
+    private func nodos(de elemento: XCUIElement) throws -> [NodoJerarquia] {
+        func recorrer(_ nodo: XCUIElementSnapshot) -> [NodoJerarquia] {
+            [NodoJerarquia(identificador: nodo.identifier, etiqueta: nodo.label, marco: nodo.frame)]
+                + nodo.children.flatMap(recorrer)
+        }
+        return recorrer(try elemento.snapshot())
+    }
+
+    private func adjuntar(_ nombre: String, _ texto: String) {
+        let adjunto = XCTAttachment(string: texto)
+        adjunto.name = nombre
+        adjunto.lifetime = .keepAlways
+        caso.add(adjunto)
+    }
+
+    /// Remedición obligatoria: cada deuda se lleva entera a la vista (`exponer`) y se vuelve a auditar con todos los grupos.
+    /// El trabajo está acotado por los nodos que la fase llegó a tener (cada vuelta salda o da por fallida una deuda); si
+    /// quedan deudas, o el objetivo no se deja exponer, la fase falla. Sin reintentos ciegos ni más gestos que `exponer`.
+    func cerrarSinFallar(file: StaticString = #filePath, line: UInt = #line) throws {
+        var vueltas = 0
+        while let clave = libro.pendientes.first {
+            guard vueltas < libro.nodosMaximos else {
+                for pendiente in libro.pendientes {
+                    libro.darPorFallida(pendiente, motivo: "se agotaron las remediciones (una por nodo de la fase: \(libro.nodosMaximos))")
+                }
+                break
+            }
+            vueltas += 1
+            exponer(clave.identificador, en: app, file: file, line: line)
+            try auditar("remedicion-\(vueltas)-\(clave.identificador)")
+            if libro.pendientes.contains(clave) {
+                libro.darPorFallida(clave, motivo: "entero a la vista no quedó medido sin problema")
+            }
+        }
+        adjuntar("auditoria-\(libro.fase)-cobertura", libro.informe())
+    }
+
+    /// Cierra la fase y, si hubo algún fallo, lo registra SIN abortar la prueba (las fases siguientes también se ejecutan).
+    func cerrar(file: StaticString = #filePath, line: UInt = #line) throws {
+        try cerrarSinFallar(file: file, line: line)
+        guard !libro.fallos.isEmpty else { return }
+        adjuntar("auditoria-\(libro.fase)-jerarquia", app.debugDescription)
+        let captura = XCTAttachment(screenshot: app.screenshot())
+        captura.name = "auditoria-\(libro.fase)-pantalla"
+        captura.lifetime = .keepAlways
+        caso.add(captura)
+        let previo = caso.continueAfterFailure
+        caso.continueAfterFailure = true
+        XCTFail("Auditoría de accesibilidad (fase «\(libro.fase)»): \(libro.fallos.count) problema(s):\n" + libro.fallos.joined(separator: "\n"), file: file, line: line)
+        caso.continueAfterFailure = previo
+    }
 }
 
 /// Espera, con la espera nativa de XCTest, a que un predicado sobre el elemento se cumpla.
@@ -65,11 +166,11 @@ private func arrastrarContenido(_ desplazamiento: CGFloat, en app: XCUIApplicati
 }
 
 /// Busca el elemento y lo centra entre las barras. Máximo cuatro gestos.
-/// La pantalla del accesorio usa `LazyVStack` y se supone que puede descartar los elementos que quedan fuera de la
-/// vista, así que un objetivo que aún no existe se busca desplazando un paso: hacia delante (por defecto, en el orden
-/// de lectura) o, con `haciaAtras`, hacia atrás. `haciaAtras` solo cuenta mientras el objetivo no existe; si existe,
-/// el desplazamiento sale de su marco, igual en ambos casos. Nunca se da por hecho que un elemento sigue existiendo
-/// por haber pasado antes por él.
+/// En la pantalla del accesorio (pilas ansiosas) todo elemento existe siempre y se desplaza por su marco real. La
+/// consulta con texto de accesibilidad usa `LazyVStack` (`ContenedorControles`) y allí un objetivo puede no existir
+/// aún, así que si no existe se busca desplazando un paso: hacia delante (por defecto, en el orden de lectura) o, con
+/// `haciaAtras`, hacia atrás. `haciaAtras` solo cuenta mientras el objetivo no existe; si existe, el desplazamiento sale
+/// de su marco, igual en ambos casos. Nunca se da por hecho que un elemento sigue existiendo por haber pasado antes por él.
 /// `completo: false` es solo para textos que con `AccessibilityXXXL` miden más que el área visible (un aviso de
 /// ~200 caracteres ocupa más de 900 pt): pide que su COMIENZO quede a la vista y tocable por arriba, no entero.
 /// Todo lo demás (botones, interruptor, títulos) se sigue exigiendo entero y tocable.
@@ -90,8 +191,8 @@ private func exponer(_ identificador: String, en app: XCUIApplication, completo:
     }
     for _ in 0..<4 where !visible() {
         // Centrar deja margen a ambos lados para la zona muerta inicial del gesto.
-        // Un control de creación diferida aún no existe: no se lee su marco (sería una instantánea fallida), se da un
-        // paso en el sentido pedido (el objetivo puede quedar encima o debajo de la vista).
+        // Un control de creación diferida (la consulta) aún no existe: no se lee su marco (sería una instantánea fallida),
+        // se da un paso en el sentido pedido (el objetivo puede quedar encima o debajo de la vista).
         let desplazamiento: CGFloat
         if objetivo.exists {
             let ancla = completo ? objetivo.frame.midY - (arriba + abajo) / 2 : objetivo.frame.minY - (arriba + 40)
@@ -125,9 +226,9 @@ private func comprobarEnteros(_ ids: [String], en app: XCUIApplication, tocables
     }
 }
 
-/// Lleva la pantalla del accesorio al final de su contenido y comprueba que los `visibles` quedan enteros entre las barras.
-/// Con la creación diferida de la pantalla se espera que lo que queda bajo el área desplazable (entre su borde y la
-/// barra de pestañas) no llegue a crearse, y al final del contenido no queda nada debajo: es la auditoría «de abajo».
+/// Lleva la pantalla del accesorio al final de su contenido y comprueba que los `visibles` quedan enteros entre las barras:
+/// es la posición «de abajo». Al final del contenido no queda nada bajo el área desplazable, así que lo recortado en la
+/// posición de arriba (contraste diferido) se mide aquí entero y sin recorte.
 private func exponerAlFinal(visibles: [String], en app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
     exponer("aviso-sin-red", en: app, file: file, line: line)
     comprobarEnteros(visibles, en: app, file: file, line: line)
@@ -411,8 +512,8 @@ final class TransMiVozAccesorioUITests: XCTestCase {
         XCTAssertTrue(boton.isEnabled)
         XCTAssertEqual(boton.label, "Iniciar sesión")
         boton.tap()
-        // El botón está a la vista: su cambio de rótulo es la señal. El título del bloqueo puede quedar aún sin crear
-        // (creación diferida): se coloca a la vista antes de esperarlo.
+        // El botón está a la vista: su cambio de rótulo es la señal. El título del bloqueo queda más abajo: se coloca a
+        // la vista antes de esperarlo.
         esperar(boton, "label == %@", "Detener sesión", "La sesión no arrancó")
         exponer("titulo-estado-accesorio", en: app)
         esperarEtiqueta("Bloqueado: enlace no verificado")
@@ -483,29 +584,35 @@ final class TransMiVozAccesorioUITests: XCTestCase {
 
     // MARK: Auditoría de accesibilidad de la pantalla real
 
-    /// Con texto normal la auditoría se hace en DOS posiciones, cada una con todos los tipos y sin filtros: arriba
-    /// (avisos y los botones) y al final (estado y audio). Antes de cada una se comprueba que los elementos clave
-    /// quedan enteros entre las barras. La pantalla usa `LazyVStack`: se espera que lo recortado bajo el área
-    /// desplazable no exista y no se audite sin verse, pero esa creación diferida la decide SwiftUI.
+    /// Con texto normal la auditoría se hace en DOS posiciones por fase estable, cada una con todos los tipos y sin
+    /// filtros: arriba (avisos y botones) y al final (estado y audio). Antes de cada una se comprueba que los elementos
+    /// clave quedan enteros entre las barras. La pantalla usa pilas ansiosas: lo recortado bajo el área desplazable
+    /// también llega a la auditoría de contraste. Ese contraste recortado se DIFIERE en el libro de la fase
+    /// (`FaseAuditada`) y se mide de nuevo entero a la vista (la posición de abajo, o una remedición al cerrar); lo
+    /// visible o de otro tipo falla. Reposo y bloqueada son dos fases: no se cruzan deudas entre estados distintos.
     func testAuditoriaAccesibilidadSesionAccesorioEnReposoYBloqueada() throws {
         lanzar(["-PRUEBAS_UI_ACCESORIO_PERMISO_CONCEDIDO"])
         XCTAssertTrue(elemento("aviso-transporte-sintetico").waitForExistence(timeout: 10))
         // Reposo, arriba: los dos botones están inhabilitados porque no hay accesorio elegido, y deben pasar el contraste.
+        let reposo = FaseAuditada("reposo", app: app, caso: self)
         exponer("aviso-transporte-sintetico", en: app)
         comprobarEnteros(["aviso-seguridad-enlace", "boton-sesion-accesorio", "boton-reconectar"], en: app)
         XCTAssertFalse(elemento("boton-sesion-accesorio").isEnabled)
         XCTAssertFalse(elemento("boton-reconectar").isEnabled)
-        try auditar(app, "accesorio-reposo-arriba", testCase: self)
+        try reposo.auditar("accesorio-reposo-arriba")
         exponerAlFinal(visibles: ["estado-accesorio", "estado-audio"], en: app)
-        try auditar(app, "accesorio-reposo-abajo", testCase: self)
+        try reposo.auditar("accesorio-reposo-abajo")
+        try reposo.cerrar()
         buscarYElegir(conHoja: false)
         iniciarYEsperarBloqueo()
         // Tras iniciar, el título del bloqueo quedó centrado más abajo: el aviso de arriba queda encima.
+        let bloqueada = FaseAuditada("bloqueada", app: app, caso: self)
         exponer("aviso-transporte-sintetico", en: app, haciaAtras: true)
         comprobarEnteros(["aviso-seguridad-enlace", "boton-sesion-accesorio", "boton-reconectar"], en: app)
-        try auditar(app, "accesorio-bloqueado-arriba", testCase: self)
+        try bloqueada.auditar("accesorio-bloqueado-arriba")
         exponerAlFinal(visibles: ["estado-accesorio", "estado-audio"], en: app)
-        try auditar(app, "accesorio-bloqueado-abajo", testCase: self)
+        try bloqueada.auditar("accesorio-bloqueado-abajo")
+        try bloqueada.cerrar()
     }
 
     func testAuditoriaAccesibilidadPermisoDenegado() throws {
@@ -516,7 +623,8 @@ final class TransMiVozAccesorioUITests: XCTestCase {
         XCTAssertTrue(continuar.waitForExistence(timeout: 10))
         continuar.tap()
         XCTAssertTrue(continuar.waitForNonExistence(timeout: 10), "La hoja del permiso no se cerró")
-        // Arriba están el texto del permiso y «Abrir Ajustes»; se vuelve allí antes de esperarlos (creación diferida).
+        // Arriba están el texto del permiso y «Abrir Ajustes»; se vuelve allí antes de comprobarlos.
+        let denegado = FaseAuditada("permiso-denegado", app: app, caso: self)
         exponer("aviso-transporte-sintetico", en: app, haciaAtras: true)
         esperarEtiqueta("Sin permiso de Bluetooth. Actívalo en Ajustes, en TransMiVoz.")
         XCTAssertTrue(elemento("boton-abrir-ajustes").waitForExistence(timeout: 10))
@@ -526,9 +634,10 @@ final class TransMiVozAccesorioUITests: XCTestCase {
         for id in ["boton-sesion-accesorio", "boton-reconectar"] {
             XCTAssertFalse(elemento(id).isEnabled, "«\(id)» debe seguir inhabilitado sin accesorio elegido")
         }
-        try auditar(app, "accesorio-permiso-denegado-arriba", testCase: self)
+        try denegado.auditar("accesorio-permiso-denegado-arriba")
         exponerAlFinal(visibles: ["estado-accesorio", "estado-audio"], en: app)
-        try auditar(app, "accesorio-permiso-denegado-abajo", testCase: self)
+        try denegado.auditar("accesorio-permiso-denegado-abajo")
+        try denegado.cerrar()
     }
 
     func testAuditoriaAccesibilidadHojaDelPermisoDeBluetooth() throws {
@@ -564,6 +673,10 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         try auditar(app, "texto-muy-grande-Accesorio-hoja-permiso", testCase: self)
     }
 
+    /// Recorrido por fases estables, cada una con su libro de contraste diferido (`FaseAuditada`): reposo (avisos,
+    /// bloqueo, búsqueda), hallazgo (la lista con «Elegir») y bloqueada (controles, estado, audio, voz). Cada fase se
+    /// cierra ANTES de cambiar de estado: lo recortado que queda en deuda se lleva entero a la vista y se vuelve a
+    /// auditar con todos los grupos (remedición obligatoria). Lo visible, lo desconocido y todo lo que no es contraste falla.
     func testAuditoriaConTextoMuyGrande() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -576,45 +689,56 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         addTeardownBlock { app.terminate() }
         func elemento(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
 
-        // Se espera el primer aviso visible y se coloca después lo lejano, sin dar por hecho que ya exista.
         XCTAssertTrue(elemento("aviso-transporte-sintetico").waitForExistence(timeout: 10))
+        // Reposo: el aviso de pruebas queda entero a la vista (lo exige `exponer`) y el del sensor real, al menos su comienzo.
+        let reposo = FaseAuditada("reposo-texto-muy-grande", app: app, caso: self)
         exponer("aviso-transporte-sintetico", en: app)
-        // El aviso de pruebas queda entero a la vista (lo exige `exponer`) y el del sensor real, al menos su comienzo.
         comprobarEnteros(["aviso-accesorio-real"], en: app, comienzo: true)
-        try auditar(app, "texto-muy-grande-Accesorio-avisos-iniciales", testCase: self)
+        try reposo.auditar("texto-muy-grande-Accesorio-avisos-iniciales")
         for (id, contexto, completo) in [("aviso-seguridad-enlace", "bloqueo", false), ("boton-buscar", "busqueda", true)] {
             exponer(id, en: app, completo: completo)
-            try auditar(app, "texto-muy-grande-Accesorio-\(contexto)", testCase: self)
+            try reposo.auditar("texto-muy-grande-Accesorio-\(contexto)")
         }
+        try reposo.cerrar()
 
+        // Buscar cambia el estado (aparece la lista): fase nueva. El cierre de la fase pudo mover el desplazamiento: se
+        // vuelve a «Buscar» por el mismo ancla de seguridad de antes (directo, «Buscar» consume los cuatro gestos).
+        exponer("aviso-seguridad-enlace", en: app, completo: false)
+        exponer("boton-buscar", en: app)
         elemento("boton-buscar").tap()
         let elegir = elemento("elegir-SINTETICO-0001")
         XCTAssertTrue(elegir.waitForExistence(timeout: 10))
+        let hallazgo = FaseAuditada("hallazgo-texto-muy-grande", app: app, caso: self)
         exponer("elegir-SINTETICO-0001", en: app)
-        try auditar(app, "texto-muy-grande-Accesorio-hallazgo", testCase: self)
+        try hallazgo.auditar("texto-muy-grande-Accesorio-hallazgo")
+        try hallazgo.cerrar()
+        exponer("elegir-SINTETICO-0001", en: app)
         elegir.tap()
 
         exponer("boton-sesion-accesorio", en: app)
         let sesion = elemento("boton-sesion-accesorio")
         sesion.tap()
-        // El botón está a la vista: su rótulo es la señal. El título del bloqueo puede no existir aún: se coloca antes.
+        // El botón está a la vista: su rótulo es la señal. El título del bloqueo queda más abajo: se coloca antes.
         esperar(sesion, "label == %@", "Detener sesión", "La sesión no arrancó")
         exponer("titulo-estado-accesorio", en: app)
         let bloqueado = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Bloqueado: enlace no verificado")).firstMatch
         XCTAssertTrue(bloqueado.waitForExistence(timeout: 10), "No apareció el bloqueo")
-        // El título del bloqueo quedó centrado: los controles están encima (el resto, debajo).
+        // Bloqueada: el título del bloqueo quedó centrado, los controles están encima y el resto, debajo.
+        let bloqueada = FaseAuditada("bloqueada-texto-muy-grande", app: app, caso: self)
         for (id, contexto, completo, haciaAtras) in [
             ("boton-sesion-accesorio", "controles", true, true), ("titulo-estado-accesorio", "estado", true, false),
             ("estado-accesorio", "descripcion", false, false), ("estado-audio", "audio", false, false),
             ("interruptor-voz-app", "voz", true, false),
         ] {
             exponer(id, en: app, completo: completo, haciaAtras: haciaAtras)
-            try auditar(app, "texto-muy-grande-Accesorio-\(contexto)", testCase: self)
+            try bloqueada.auditar("texto-muy-grande-Accesorio-\(contexto)")
         }
+        try bloqueada.cerrar()
     }
 
-    /// Permiso denegado con el texto más grande: el texto del permiso y «Abrir Ajustes» se llevan a la vista de verdad
-    /// (enteros y tocables entre las barras) y solo entonces se audita, con todos los tipos y sin filtros.
+    /// Permiso denegado con el texto más grande: el texto del permiso (~546 pt) y «Abrir Ajustes» no caben a la vez
+    /// entre las barras, así que se llevan a la vista UNO por UNO, cada uno entero y tocable, y se audita en cada
+    /// posición con todos los tipos. Lo que quede recortado en una posición se mide entero en la otra o al cerrar la fase.
     func testAuditoriaPermisoDenegadoConTextoMuyGrande() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -638,17 +762,49 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         continuar.tap()
         XCTAssertTrue(continuar.waitForNonExistence(timeout: 10), "La hoja del permiso no se cerró")
 
-        // El texto queda encima de «Buscar» y puede no existir ya: se vuelve a él (hacia atrás). Centrarlo sacaría
-        // «Abrir Ajustes» de la vista (a este tamaño miden ~380 y ~160 pt): se sube el texto al borde superior.
-        exponer("estado-bluetooth", en: app, haciaAtras: true)
-        let arriba = app.navigationBars.firstMatch.frame.maxY
-        arrastrarContenido(elemento("estado-bluetooth").frame.minY - (arriba + 40), en: app,
-            arriba: arriba, abajo: app.scrollViews.firstMatch.frame.maxY)
-        let denegado = app.descendants(matching: .any).matching(NSPredicate(
-            format: "label == %@", "Sin permiso de Bluetooth. Actívalo en Ajustes, en TransMiVoz.")).firstMatch
-        XCTAssertTrue(denegado.waitForExistence(timeout: 10), "No apareció el texto de permiso denegado")
+        let denegado = FaseAuditada("permiso-denegado-texto-muy-grande", app: app, caso: self)
+        XCTAssertTrue(elemento("estado-bluetooth").waitForExistence(timeout: 10), "No apareció el texto de permiso denegado")
+        XCTAssertEqual(elemento("estado-bluetooth").label, "Sin permiso de Bluetooth. Actívalo en Ajustes, en TransMiVoz.")
         XCTAssertTrue(elemento("boton-abrir-ajustes").waitForExistence(timeout: 10), "Falta «Abrir Ajustes»")
-        comprobarEnteros(["estado-bluetooth", "boton-abrir-ajustes"], en: app, tocables: true)
-        try auditar(app, "texto-muy-grande-Accesorio-permiso-denegado", testCase: self)
+        // Dos posiciones, sin alineaciones a mano: primero el texto del permiso, entero y tocable...
+        exponer("estado-bluetooth", en: app)
+        comprobarEnteros(["estado-bluetooth"], en: app, tocables: true)
+        try denegado.auditar("texto-muy-grande-Accesorio-permiso-denegado-texto")
+        // ... y aparte «Abrir Ajustes», entero y tocable.
+        exponer("boton-abrir-ajustes", en: app)
+        comprobarEnteros(["boton-abrir-ajustes"], en: app, tocables: true)
+        try denegado.auditar("texto-muy-grande-Accesorio-permiso-denegado-ajustes")
+        try denegado.cerrar()
+    }
+}
+
+/// Control negativo NATIVO del libro de contraste diferido. La app se lanza con una pantalla de depuración
+/// (`-PRUEBAS_UI_CONTRASTE_MALO`, ver `FixtureContrasteMalo`) con un texto de contraste insuficiente A PROPÓSITO y entero a
+/// la vista. La prueba solo pasa si ve el rechazo: la auditoría nativa lo reporta y el mismo clasificador y libro lo
+/// rechazan por estar entero a la vista, sin diferirlo. No usa `cerrar()` porque ese fallo es el resultado esperado.
+final class TransMiVozContrasteNegativoUITests: XCTestCase {
+    func testElContrasteInsuficienteVisibleSeReportaYSeRechaza() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-PRUEBAS_UI_SIMULADAS", "-PRUEBAS_UI_CONTRASTE_MALO",
+            "-AppleLanguages", "(es)", "-AppleLocale", "es_CO",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
+        ]
+        app.launch()
+        addTeardownBlock { app.terminate() }
+        let id = "contraste-malo-sintetico"
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: id).firstMatch.waitForExistence(timeout: 10), "Falta el control negativo")
+        comprobarEnteros([id], en: app)
+
+        let fase = FaseAuditada("control-negativo", app: app, caso: self)
+        try fase.auditar("control-negativo-visible")
+        try fase.cerrarSinFallar()
+
+        XCTAssertTrue(fase.hallazgos.contains { $0.esContraste && $0.identificador == id },
+            "La auditoría nativa no reportó el contraste insuficiente del control. Hallazgos: \(fase.hallazgos.map(\.descripcion))")
+        XCTAssertTrue(fase.libro.fallos.contains { $0.contains("«\(id)»") && $0.contains("entero a la vista") },
+            "El libro no rechazó el contraste visible. Fallos: \(fase.libro.fallos)")
+        XCTAssertFalse(fase.libro.diferidos.keys.contains { $0.identificador == id }, "El contraste visible no puede diferirse")
     }
 }
