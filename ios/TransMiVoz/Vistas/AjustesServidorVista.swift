@@ -118,7 +118,7 @@ struct AjustesServidorVista: View {
             campoEnfocado = nil
             modelo.olvidarClave()
         } label: {
-            Text("Olvidar clave").foregroundStyle(.background)
+            Text("Olvidar clave").foregroundStyle(Color(uiColor: .systemBackground))
         }
         .font(.body)
         .buttonStyle(.borderedProminent)
