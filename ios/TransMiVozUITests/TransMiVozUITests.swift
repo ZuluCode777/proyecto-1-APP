@@ -1,27 +1,42 @@
 import XCTest
 
+/// Lo que devuelve una auditoría completa: los problemas y, si se pidió, lo observado justo antes y justo después del
+/// grupo de contraste (la única medición cuyo marco se usa para acreditar nodos limpios).
+private struct ResultadoAuditoria {
+    var hallazgos: [HallazgoAuditoria] = []
+    var antesDelContraste: ObservacionContraste?
+    var despuesDelContraste: ObservacionContraste?
+}
+
 /// Ejecuta TODOS los grupos de la auditoría nativa (todos los tipos, sin filtros ni exclusiones) y devuelve cada
 /// problema COMO VALOR, copiado dentro del manejador: más tarde la jerarquía ya es otra y no se vuelve a leer
 /// `problema.element`. El manejador devuelve `true` solo para seguir reuniendo; quien llama decide qué es un fallo.
-private func ejecutarAuditoria(_ app: XCUIApplication, _ contexto: String) throws -> [HallazgoAuditoria] {
-    var hallazgos: [HallazgoAuditoria] = []
-    // Separar las pruebas que cambian fuentes evita mezclar geometrías y acota cada petición nativa.
+/// `observar` (opcional) se llama antes y después del grupo de contraste, que va PRIMERO: así lo que se acredita como
+/// medido limpio es lo que había en pantalla mientras se medía el contraste, no lo que quede tras los grupos que cambian fuentes.
+private func ejecutarAuditoria(_ app: XCUIApplication, _ contexto: String, observar: (() throws -> ObservacionContraste)? = nil) throws -> ResultadoAuditoria {
+    var resultado = ResultadoAuditoria()
+    // Cuatro grupos que juntos son `.all`. Cada petición nativa tiene un límite de ~25 s y con el texto más grande de la
+    // pantalla del accesorio el grupo único «todo salvo Dynamic Type y texto recortado» lo agotó (código 56): el contraste
+    // va aparte. Dynamic Type y texto recortado siguen aislados porque cambian fuentes. Un tiempo agotado sigue siendo un fallo.
     let auditorias: [XCUIAccessibilityAuditType] = [
-        .all.subtracting([.dynamicType, .textClipped]), .dynamicType, .textClipped,
+        .contrast, .all.subtracting([.contrast, .dynamicType, .textClipped]), .dynamicType, .textClipped,
     ]
     for tipos in auditorias {
+        let esContraste = tipos == .contrast
+        if esContraste { resultado.antesDelContraste = try observar?() }
         try XCTContext.runActivity(named: "Auditoría \(contexto): \(tipos)") { _ in
             try app.performAccessibilityAudit(for: tipos) { problema in
                 let elemento = problema.element
-                hallazgos.append(HallazgoAuditoria(
+                resultado.hallazgos.append(HallazgoAuditoria(
                     tipo: "\(problema.auditType)", esContraste: problema.auditType == .contrast,
                     compacta: problema.compactDescription, detallada: problema.detailedDescription,
                     identificador: elemento?.identifier, etiqueta: elemento?.label, marco: elemento?.frame))
                 return true
             }
         }
+        if esContraste { resultado.despuesDelContraste = try observar?() }
     }
-    return hallazgos
+    return resultado
 }
 
 /// Auditoría real de accesibilidad de todos los tipos. Reúne TODOS los
@@ -30,7 +45,7 @@ private func ejecutarAuditoria(_ app: XCUIApplication, _ contexto: String) throw
 /// No ignora nada: si hay un problema, la prueba falla. Es el comportamiento de siempre; solo las auditorías de la
 /// pantalla del accesorio que lo piden usan además `FaseAuditada` (contraste recortado diferido, con remedición obligatoria).
 private func auditar(_ app: XCUIApplication, _ contexto: String, testCase: XCTestCase, file: StaticString = #filePath, line: UInt = #line) throws {
-    let problemas = try ejecutarAuditoria(app, contexto).map(\.descripcion)
+    let problemas = try ejecutarAuditoria(app, contexto).hallazgos.map(\.descripcion)
     guard !problemas.isEmpty else { return }
     let texto = XCTAttachment(string: problemas.joined(separator: "\n") + "\n\nJerarquía de accesibilidad:\n" + app.debugDescription)
     texto.name = "auditoria-\(contexto)-problemas"
@@ -65,18 +80,37 @@ private final class FaseAuditada {
         libro = LibroContraste(fase: fase)
     }
 
-    /// Una auditoría completa en la posición actual: la clasifica y anota qué nodos midió limpios y enteros a la vista.
-    func auditar(_ contexto: String) throws {
-        let nuevos = try ejecutarAuditoria(app, contexto)
-        hallazgos += nuevos
+    /// Zona visible bruta (entre las barras) y la medible de contraste (sin la banda del efecto de borde), de la instantánea actual.
+    private func observar() throws -> ObservacionContraste {
         let contenido = app.scrollViews.firstMatch.frame
-        let vista = VistaAuditada(
-            arriba: max(app.navigationBars.firstMatch.frame.maxY, contenido.minY),
-            abajo: min(app.tabBars.firstMatch.frame.minY, contenido.maxY))
         let zona = try nodos(de: app.scrollViews.firstMatch)
         let aplicacion = try nodos(de: app)
-        let lineas = libro.registrar(contexto: contexto, hallazgos: nuevos, zona: zona, aplicacion: aplicacion, vista: vista)
-        adjuntar("auditoria-\(libro.fase)-\(contexto)-problemas", lineas.isEmpty ? "Sin problemas." : lineas.joined(separator: "\n"))
+        let vista = VistaAuditada.medible(
+            arriba: max(app.navigationBars.firstMatch.frame.maxY, contenido.minY),
+            abajo: min(app.tabBars.firstMatch.frame.minY, contenido.maxY), zona: zona)
+        return ObservacionContraste(vista: vista, zona: zona, aplicacion: aplicacion)
+    }
+
+    /// Una auditoría completa en la posición actual: la clasifica y anota qué nodos midió limpios y enteros a la vista.
+    /// La clasificación y el crédito de nodos limpios usan lo observado alrededor del grupo de contraste; si la maquetación
+    /// cambió entre las dos observaciones, la fase falla y no se acredita nada de esa auditoría.
+    func auditar(_ contexto: String) throws {
+        let resultado = try ejecutarAuditoria(app, contexto, observar: observar)
+        hallazgos += resultado.hallazgos
+        guard let antes = resultado.antesDelContraste, let despues = resultado.despuesDelContraste else {
+            XCTFail("La auditoría «\(contexto)» no obtuvo las observaciones del contraste")
+            return
+        }
+        if let motivo = ObservacionContraste.deriva(antes: antes, despues: despues) {
+            libro.registrarDeriva(contexto: contexto, motivo: motivo, nodos: despues.zona.count)
+            adjuntar("auditoria-\(libro.fase)-\(contexto)-problemas",
+                "Deriva de maquetación: \(motivo)\n" + resultado.hallazgos.map(\.descripcion).joined(separator: "\n"))
+            return
+        }
+        let lineas = libro.registrar(
+            contexto: contexto, hallazgos: resultado.hallazgos, zona: despues.zona, aplicacion: despues.aplicacion, vista: despues.vista)
+        adjuntar("auditoria-\(libro.fase)-\(contexto)-problemas",
+            "Zona medible de contraste: \(despues.vista.arriba)…\(despues.vista.abajo)\n" + (lineas.isEmpty ? "Sin problemas." : lineas.joined(separator: "\n")))
     }
 
     /// Nodos de la jerarquía nativa (instantánea) bajo `elemento`, él incluido.
@@ -95,6 +129,22 @@ private final class FaseAuditada {
         caso.add(adjunto)
     }
 
+    /// Un nodo diferido puede estar muy lejos de donde quedó la vista (con el texto más grande, a más de cuatro pasos de
+    /// `exponer`). Antes de exponerlo se pasa por nodos únicos con identificador que están en el camino, en el orden de la
+    /// maquetación (`PlanRecorrido`), cada tramo dentro del tope de cuatro gestos de `exponer` y cada escala con su
+    /// comienzo a la vista. No cambia ninguna guarda: el `exponer` final del destino sigue exigiéndolo entero y tocable.
+    private func acercar(_ identificador: String, file: StaticString, line: UInt) throws {
+        let contenido = app.scrollViews.firstMatch.frame
+        let arriba = max(app.navigationBars.firstMatch.frame.maxY, contenido.minY)
+        let abajo = min(app.tabBars.firstMatch.frame.minY, contenido.maxY)
+        // Dos pasos de `exponer` (cada uno `abajo - arriba - 40`): la mitad del tope, para no depender de que cada gesto rinda entero.
+        let escalas = PlanRecorrido.escalas(
+            destino: identificador, zona: try nodos(de: app.scrollViews.firstMatch), aplicacion: try nodos(de: app),
+            arriba: arriba, abajo: abajo, alcance: 2 * (abajo - arriba - 40))
+        adjuntar("auditoria-\(libro.fase)-ruta-\(identificador)", escalas.isEmpty ? "Directo." : escalas.joined(separator: "\n"))
+        for escala in escalas { exponer(escala, en: app, completo: false, file: file, line: line) }
+    }
+
     /// Remedición obligatoria: cada deuda se lleva entera a la vista (`exponer`) y se vuelve a auditar con todos los grupos.
     /// El trabajo está acotado por los nodos que la fase llegó a tener (cada vuelta salda o da por fallida una deuda); si
     /// quedan deudas, o el objetivo no se deja exponer, la fase falla. Sin reintentos ciegos ni más gestos que `exponer`.
@@ -108,6 +158,7 @@ private final class FaseAuditada {
                 break
             }
             vueltas += 1
+            try acercar(clave.identificador, file: file, line: line)
             exponer(clave.identificador, en: app, file: file, line: line)
             try auditar("remedicion-\(vueltas)-\(clave.identificador)")
             if libro.pendientes.contains(clave) {

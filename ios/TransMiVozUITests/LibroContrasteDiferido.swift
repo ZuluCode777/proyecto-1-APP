@@ -36,6 +36,24 @@ struct VistaAuditada: Equatable {
 
     /// El marco cabría entero en la vista si se desplazara hasta ella.
     func cabe(_ marco: CGRect) -> Bool { Self.marcoValido(marco) && marco.height <= abajo - arriba }
+
+    /// Zona en la que una medición de contraste cuenta como «entero a la vista». Además del recorte por las barras, en
+    /// iOS 26 el sistema pinta bajo la barra de navegación un efecto de borde del área desplazable (desvanece y difumina
+    /// lo que pasa por debajo). En la jerarquía aparece como nodos anónimos del área, anclados a su borde superior,
+    /// del ancho del área y más bajos que ella (en el CI medían 170,8 pt con la barra hasta 116). Un nodo dentro de esa
+    /// banda no se mide con su aspecto real: se trata como no visible, así que un fallo de contraste allí se DIFIERE y
+    /// obliga a medirlo de nuevo fuera de la banda (la remedición lo centra). Solo estrecha la zona: nunca la amplía, y
+    /// si no hay nodos así, es la zona de siempre. `zona`: instantánea del área desplazable, con ella misma primero.
+    static func medible(arriba: CGFloat, abajo: CGFloat, zona: [NodoJerarquia]) -> VistaAuditada {
+        guard let area = zona.first, marcoValido(area.marco) else { return VistaAuditada(arriba: arriba, abajo: abajo) }
+        let borde = zona.dropFirst().filter {
+            $0.identificador.isEmpty && $0.etiqueta.isEmpty && marcoValido($0.marco)
+                && abs($0.marco.minY - area.marco.minY) <= tolerancia
+                && abs($0.marco.width - area.marco.width) <= tolerancia
+                && $0.marco.height < area.marco.height - tolerancia
+        }.map(\.marco.maxY).max() ?? arriba
+        return VistaAuditada(arriba: min(max(arriba, borde), abajo), abajo: abajo)
+    }
 }
 
 /// Un problema de la auditoría copiado COMO VALOR dentro del manejador nativo. Nunca se conserva el
@@ -69,6 +87,73 @@ struct NodoJerarquia {
     let marco: CGRect
 
     var clave: ClaveNodo? { identificador.isEmpty ? nil : ClaveNodo(identificador: identificador, etiqueta: etiqueta) }
+}
+
+/// Lo observado de la jerarquía nativa en un instante: zona medible, nodos del área desplazable y de toda la app.
+struct ObservacionContraste {
+    /// Deriva máxima (pt) entre dos observaciones para darlas por la misma maquetación.
+    static let derivaMaxima: CGFloat = 0.5
+    let vista: VistaAuditada
+    let zona: [NodoJerarquia]
+    let aplicacion: [NodoJerarquia]
+
+    /// Compara lo observado ANTES y DESPUÉS del grupo de contraste de una auditoría. Si algo con identificador cambió de
+    /// sitio, de etiqueta, apareció o desapareció, la medición de contraste no corresponde a ninguna de las dos
+    /// observaciones y devuelve el motivo: no se acredita ningún nodo como medido limpio. Los nodos sin identificador
+    /// (indicadores de desplazamiento, que aparecen y se desvanecen solos) no cuentan.
+    static func deriva(antes: ObservacionContraste, despues: ObservacionContraste) -> String? {
+        func cercanos(_ a: CGFloat, _ b: CGFloat) -> Bool { abs(a - b) <= derivaMaxima }
+        guard cercanos(antes.vista.arriba, despues.vista.arriba), cercanos(antes.vista.abajo, despues.vista.abajo) else {
+            return "la zona visible cambió: \(antes.vista.arriba)…\(antes.vista.abajo) y luego \(despues.vista.arriba)…\(despues.vista.abajo)"
+        }
+        for (nombre, a, d) in [("zona desplazable", antes.zona, despues.zona), ("aplicación", antes.aplicacion, despues.aplicacion)] {
+            let previos = a.filter { !$0.identificador.isEmpty }, siguientes = d.filter { !$0.identificador.isEmpty }
+            guard previos.count == siguientes.count else {
+                return "en la \(nombre) cambió el número de nodos con identificador: \(previos.count) y luego \(siguientes.count)"
+            }
+            for (x, y) in zip(previos, siguientes) {
+                let igual = x.identificador == y.identificador && x.etiqueta == y.etiqueta
+                    && cercanos(x.marco.minX, y.marco.minX) && cercanos(x.marco.minY, y.marco.minY)
+                    && cercanos(x.marco.width, y.marco.width) && cercanos(x.marco.height, y.marco.height)
+                guard igual else { return "en la \(nombre) se movió o cambió «\(x.identificador)»: \(x.marco) y luego \(y.marco)" }
+            }
+        }
+        return nil
+    }
+}
+
+/// Plan de escalas para llegar a un nodo lejano con el tope de gestos de `exponer` por tramo (cuatro). Un destino a
+/// más de ~4 pasos del tope no se alcanza de un solo `exponer`; el recorrido sigue el orden de la maquetación: de nodo
+/// único con identificador a nodo único con identificador, cada tramo de a lo sumo `alcance`, siempre hacia el destino.
+enum PlanRecorrido {
+    /// Identificadores intermedios, en orden. Vacío si el destino ya está a `alcance` o no hay ruta (entonces el
+    /// `exponer` final, estricto, es quien falla). `zona` y `aplicacion` son de la MISMA instantánea.
+    static func escalas(destino: String, zona: [NodoJerarquia], aplicacion: [NodoJerarquia], arriba: CGFloat, abajo: CGFloat, alcance: CGFloat) -> [String] {
+        guard let meta = zona.first(where: { $0.identificador == destino && VistaAuditada.marcoValido($0.marco) }) else { return [] }
+        let centro = (arriba + abajo) / 2
+        let ancla = arriba + 40
+        let unicos = Dictionary(grouping: aplicacion.filter { !$0.identificador.isEmpty }, by: \.identificador).filter { $0.value.count == 1 }
+        let candidatos = zona.filter { $0.identificador != destino && unicos[$0.identificador] != nil && VistaAuditada.marcoValido($0.marco) }
+        // `desplazado`: cuánto se ha desplazado ya el contenido respecto de la instantánea (positivo, hacia delante).
+        var desplazado: CGFloat = 0
+        var escalas: [String] = []
+        while abs(meta.marco.midY - centro - desplazado) > alcance {
+            let sentido: CGFloat = meta.marco.midY - centro > desplazado ? 1 : -1
+            // Cada escala deja su comienzo cerca del borde de arriba, como `exponer(completo: false)`.
+            var siguiente: (identificador: String, tramo: CGFloat)?
+            for candidato in candidatos where !escalas.contains(candidato.identificador) {
+                let tramo: CGFloat = candidato.marco.minY - ancla
+                let avance: CGFloat = sentido * (tramo - desplazado)
+                guard avance > 0, avance <= alcance else { continue }
+                if let actual = siguiente, sentido * actual.tramo >= sentido * tramo { continue }
+                siguiente = (candidato.identificador, tramo)
+            }
+            guard let siguiente else { return escalas }
+            escalas.append(siguiente.identificador)
+            desplazado = siguiente.tramo
+        }
+        return escalas
+    }
 }
 
 enum Veredicto: Equatable, CustomStringConvertible {
@@ -150,6 +235,13 @@ struct LibroContraste {
             }
         }
         return lineas
+    }
+
+    /// La maquetación cambió mientras se medía el contraste: no se clasifica ni se acredita nada de esa auditoría y la
+    /// fase falla. `nodos`: nodos de la zona desplazable vistos, para acotar el trabajo de cierre.
+    mutating func registrarDeriva(contexto: String, motivo: String, nodos: Int) {
+        nodosMaximos = max(nodosMaximos, nodos)
+        fallos.append("[\(fase)/\(contexto)] la maquetación cambió durante la medición de contraste y no se acredita nada de esa auditoría: \(motivo)")
     }
 
     /// Deudas sin saldar (la más reciente primero): diferidas, sin medición limpia entera a la vista y sin fallo ya registrado.

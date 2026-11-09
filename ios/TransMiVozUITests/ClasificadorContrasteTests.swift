@@ -171,4 +171,166 @@ final class ClasificadorContrasteTests: XCTestCase {
         XCTAssertTrue(libro.diferidos.isEmpty)
         XCTAssertEqual(libro.fallos.count, 1)
     }
+
+    // MARK: Zona medible (efecto de borde de iOS 26)
+
+    private func anonimo(_ marco: CGRect) -> NodoJerarquia { nodo("", "", marco) }
+    /// Como la jerarquía nativa del CI: área desplazable de 0 a 775, contenedor a su tamaño y bajo él el efecto de borde de 170,8.
+    private var areaConBorde: [NodoJerarquia] {
+        [anonimo(CGRect(x: 0, y: 0, width: 402, height: 775)),
+         anonimo(CGRect(x: 0, y: -249, width: 402, height: 1184.7)),
+         anonimo(CGRect(x: 0, y: 0, width: 402, height: 775)),
+         anonimo(CGRect(x: 0, y: 0, width: 402, height: 170.8)),
+         anonimo(CGRect(x: 0, y: 0, width: 402, height: 94.3)),
+         anonimo(CGRect(x: 369, y: 116, width: 30, height: 659)),
+         nodo("boton-sesion-accesorio", "Detener sesión", CGRect(x: 16, y: 117, width: 154.7, height: 50.3))]
+    }
+
+    func testLaZonaMedibleExcluyeLaBandaDelEfectoDeBorde() {
+        let medible = VistaAuditada.medible(arriba: 116, abajo: 775, zona: areaConBorde)
+        XCTAssertEqual(medible, VistaAuditada(arriba: 170.8, abajo: 775))
+    }
+
+    func testSinBandaLaZonaMedibleEsLaDeSiempreYNuncaSeAmplia() {
+        XCTAssertEqual(VistaAuditada.medible(arriba: 116, abajo: 775, zona: Array(areaConBorde.prefix(2))), vista)
+        XCTAssertEqual(VistaAuditada.medible(arriba: 116, abajo: 775, zona: []), vista)
+        // Un nodo anónimo más bajo que la barra no la amplía hacia arriba.
+        let corto = [areaConBorde[0], anonimo(CGRect(x: 0, y: 0, width: 402, height: 60))]
+        XCTAssertEqual(VistaAuditada.medible(arriba: 116, abajo: 775, zona: corto), vista)
+    }
+
+    func testNodosConIdentificadorOEnOtroSitioNoFormanLaBanda() {
+        let zona = [areaConBorde[0],
+                    nodo("estado", "", CGRect(x: 0, y: 0, width: 402, height: 300)),
+                    anonimo(CGRect(x: 0, y: 300, width: 402, height: 300)),
+                    anonimo(CGRect(x: 0, y: 0, width: 200, height: 300))]
+        XCTAssertEqual(VistaAuditada.medible(arriba: 116, abajo: 775, zona: zona), vista)
+    }
+
+    func testElBotonPegadoALaBarraFallaSinBandaYSeDifiereConBandaYSeSaldaCentrado() {
+        let marco = CGRect(x: 16, y: 117, width: 154.7, height: 50.3)
+        let enBanda = VistaAuditada.medible(arriba: 116, abajo: 775, zona: areaConBorde)
+        esFallo(ClasificadorContraste.clasificar(contraste("boton-sesion-accesorio", "Detener sesión", marco: marco), vista: vista, unico: true), "entero a la vista")
+        let veredicto = ClasificadorContraste.clasificar(contraste("boton-sesion-accesorio", "Detener sesión", marco: marco), vista: enBanda, unico: true)
+        XCTAssertEqual(veredicto, .diferido(ClaveNodo(identificador: "boton-sesion-accesorio", etiqueta: "Detener sesión")))
+        var libro = LibroContraste(fase: "bloqueada")
+        let zonaBanda = [nodo("boton-sesion-accesorio", "Detener sesión", marco)]
+        libro.registrar(contexto: "abajo", hallazgos: [contraste("boton-sesion-accesorio", "Detener sesión", marco: marco)], zona: zonaBanda, aplicacion: zonaBanda, vista: enBanda)
+        XCTAssertEqual(libro.pendientes.count, 1)
+        // Centrado sigue sin saldarse si el contraste sigue fallando: la banda no oculta un fallo real.
+        let centrado = CGRect(x: 16, y: 420, width: 154.7, height: 50.3)
+        let zonaCentro = [nodo("boton-sesion-accesorio", "Detener sesión", centrado)]
+        libro.registrar(contexto: "remedicion", hallazgos: [contraste("boton-sesion-accesorio", "Detener sesión", marco: centrado)], zona: zonaCentro, aplicacion: zonaCentro, vista: enBanda)
+        XCTAssertEqual(libro.fallos.count, 1)
+        XCTAssertTrue(libro.pendientes.isEmpty)
+        XCTAssertFalse(libro.limpios.contains(ClaveNodo(identificador: "boton-sesion-accesorio", etiqueta: "Detener sesión")))
+    }
+
+    func testUnNodoEnLaBandaNoSeAcreditaLimpio() {
+        var libro = LibroContraste(fase: "bloqueada")
+        let enBanda = VistaAuditada.medible(arriba: 116, abajo: 775, zona: areaConBorde)
+        let zona = [nodo("boton-sesion-accesorio", "Detener sesión", CGRect(x: 16, y: 117, width: 154.7, height: 50.3))]
+        libro.registrar(contexto: "abajo", hallazgos: [], zona: zona, aplicacion: zona, vista: enBanda)
+        XCTAssertTrue(libro.limpios.isEmpty)
+    }
+
+    // MARK: Deriva de la maquetación durante la medición
+
+    private func observacion(_ marcos: [CGRect], vista: VistaAuditada? = nil, indicador: Bool = false) -> ObservacionContraste {
+        var zona = [anonimo(CGRect(x: 0, y: 0, width: 402, height: 775))]
+        zona += marcos.enumerated().map { nodo("nodo-\($0.offset)", "Etiqueta", $0.element) }
+        if indicador { zona.append(anonimo(CGRect(x: 369, y: 116, width: 30, height: 659))) }
+        return ObservacionContraste(vista: vista ?? self.vista, zona: zona, aplicacion: zona)
+    }
+
+    func testObservacionesIgualesNoTienenDeriva() {
+        let marcos = [CGRect(x: 16, y: 300, width: 300, height: 40)]
+        XCTAssertNil(ObservacionContraste.deriva(antes: observacion(marcos), despues: observacion(marcos)))
+    }
+
+    func testUnIndicadorDeDesplazamientoQueApareceNoEsDeriva() {
+        let marcos = [CGRect(x: 16, y: 300, width: 300, height: 40)]
+        XCTAssertNil(ObservacionContraste.deriva(antes: observacion(marcos), despues: observacion(marcos, indicador: true)))
+    }
+
+    func testUnNodoMovidoMasQueLaDerivaMaximaEsDeriva() {
+        let antes = observacion([CGRect(x: 16, y: 300, width: 300, height: 40)])
+        XCTAssertNil(ObservacionContraste.deriva(antes: antes, despues: observacion([CGRect(x: 16, y: 300.4, width: 300, height: 40)])))
+        XCTAssertNotNil(ObservacionContraste.deriva(antes: antes, despues: observacion([CGRect(x: 16, y: 301, width: 300, height: 40)])))
+        XCTAssertNotNil(ObservacionContraste.deriva(antes: antes, despues: observacion([CGRect(x: 16, y: 300, width: 300, height: 52)])))
+    }
+
+    func testNodoQueApareceODesapareceOCambiaLaZonaVisibleEsDeriva() {
+        let marcos = [CGRect(x: 16, y: 300, width: 300, height: 40)]
+        XCTAssertNotNil(ObservacionContraste.deriva(antes: observacion(marcos), despues: observacion([])))
+        XCTAssertNotNil(ObservacionContraste.deriva(antes: observacion(marcos), despues: observacion(marcos, vista: VistaAuditada(arriba: 170.8, abajo: 775))))
+        XCTAssertNotNil(ObservacionContraste.deriva(antes: observacion(marcos), despues: observacion(marcos, vista: VistaAuditada(arriba: 116, abajo: .nan))))
+    }
+
+    func testLaDerivaFallaLaFaseSinClasificarNiAcreditarNada() {
+        var libro = LibroContraste(fase: "reposo")
+        libro.registrarDeriva(contexto: "arriba", motivo: "se movió", nodos: 12)
+        XCTAssertEqual(libro.fallos.count, 1)
+        XCTAssertTrue(libro.limpios.isEmpty)
+        XCTAssertTrue(libro.diferidos.isEmpty)
+        XCTAssertEqual(libro.nodosMaximos, 12)
+    }
+
+    // MARK: Plan de escalas hacia un nodo lejano
+
+    /// Nodos en columna, uno cada 100 pt desde `y = 150` (como una pantalla larga con el texto más grande).
+    private func columna(_ cantidad: Int, duplicado: Int? = nil) -> [NodoJerarquia] {
+        var nodos = [anonimo(CGRect(x: 0, y: 0, width: 402, height: 775))]
+        for i in 0..<cantidad { nodos.append(nodo("n\(i)", "e", CGRect(x: 16, y: 150 + CGFloat(i) * 100, width: 300, height: 40))) }
+        if let duplicado { nodos.append(nodo("n\(duplicado)", "otra", CGRect(x: 16, y: 150 + CGFloat(duplicado) * 100, width: 10, height: 10))) }
+        return nodos
+    }
+
+    private func escalas(_ destino: String, _ zona: [NodoJerarquia], aplicacion: [NodoJerarquia]? = nil, alcance: CGFloat = 1200) -> [String] {
+        PlanRecorrido.escalas(destino: destino, zona: zona, aplicacion: aplicacion ?? zona, arriba: 116, abajo: 775, alcance: alcance)
+    }
+
+    func testUnDestinoCercanoNoNecesitaEscalas() {
+        XCTAssertEqual(escalas("n5", columna(30)), [])
+    }
+
+    func testUnDestinoLejanoSeAlcanzaPorEscalasCadaUnaDentroDelAlcanceYHaciaElDestino() {
+        let zona = columna(40)
+        let plan = escalas("n39", zona)
+        XCTAssertFalse(plan.isEmpty)
+        let ancla: CGFloat = 116 + 40
+        var desplazado: CGFloat = 0
+        for id in plan {
+            let y = zona.first { $0.identificador == id }!.marco.minY - ancla
+            XCTAssertGreaterThan(y, desplazado, "cada escala avanza hacia el destino")
+            XCTAssertLessThanOrEqual(y - desplazado, 1200, "cada tramo cabe en el alcance")
+            desplazado = y
+        }
+        let meta = zona.first { $0.identificador == "n39" }!.marco.midY
+        XCTAssertLessThanOrEqual(meta - (116 + 775) / 2 - desplazado, 1200, "el último tramo hasta el destino también")
+    }
+
+    func testHaciaArribaTambienEscalonaSinRepetirNodos() {
+        // Vista ya desplazada: el destino queda muy por encima (y negativa).
+        var zona = [anonimo(CGRect(x: 0, y: 0, width: 402, height: 775))]
+        for i in 0..<40 { zona.append(nodo("n\(i)", "e", CGRect(x: 16, y: -3500 + CGFloat(i) * 100, width: 300, height: 40))) }
+        let plan = escalas("n0", zona)
+        XCTAssertFalse(plan.isEmpty)
+        XCTAssertEqual(Set(plan).count, plan.count)
+        XCTAssertFalse(plan.contains("n0"))
+    }
+
+    func testNodosAmbiguosOSinIdentificadorNoSirvenDeEscala() {
+        let zona = columna(40, duplicado: 20)
+        XCTAssertFalse(escalas("n39", zona).contains("n20"))
+        XCTAssertFalse(escalas("n39", zona).contains(""))
+    }
+
+    func testSinRutaOSinDestinoNoInventaEscalas() {
+        XCTAssertEqual(escalas("no-existe", columna(40)), [])
+        // Dos nodos separados por más que el alcance: no hay escala posible y el exponer final fallará estricto.
+        let separados = [anonimo(CGRect(x: 0, y: 0, width: 402, height: 775)),
+                         nodo("a", "e", CGRect(x: 0, y: 150, width: 10, height: 10)), nodo("b", "e", CGRect(x: 0, y: 5000, width: 10, height: 10))]
+        XCTAssertEqual(escalas("b", separados), [])
+    }
 }
