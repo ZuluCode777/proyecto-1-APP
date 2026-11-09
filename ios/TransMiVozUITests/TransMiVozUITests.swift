@@ -1,19 +1,27 @@
 import XCTest
 
-/// Auditoría real de accesibilidad (todos los tipos, sin excluir ninguno). Reúne TODOS los
+/// Auditoría real de accesibilidad de todos los tipos. Reúne TODOS los
 /// problemas y los adjunta como texto + captura antes de fallar, para que el resultado
 /// diga qué elemento falló (en Xcode, sin handler, solo se ve el primero y sin elemento).
 /// No ignora nada: si hay un problema, la prueba falla.
 private func auditar(_ app: XCUIApplication, _ contexto: String, testCase: XCTestCase, file: StaticString = #filePath, line: UInt = #line) throws {
     var problemas: [String] = []
-    try app.performAccessibilityAudit { problema in
-        let elemento = problema.element
-        problemas.append("[\(problema.auditType)] \(problema.compactDescription) | \(problema.detailedDescription) | "
-            + "id=«\(elemento?.identifier ?? "?")» etiqueta=«\(elemento?.label ?? "?")» marco=\(elemento.map { "\($0.frame)" } ?? "?")")
-        return true  // solo para seguir reuniendo; abajo se falla con todos
+    // Separar las pruebas que cambian fuentes evita mezclar geometrías y acota cada petición nativa.
+    let auditorias: [XCUIAccessibilityAuditType] = [
+        .all.subtracting([.dynamicType, .textClipped]), .dynamicType, .textClipped,
+    ]
+    for tipos in auditorias {
+        try XCTContext.runActivity(named: "Auditoría \(contexto): \(tipos)") { _ in
+            try app.performAccessibilityAudit(for: tipos) { problema in
+                let elemento = problema.element
+                problemas.append("[\(problema.auditType)] \(problema.compactDescription) | \(problema.detailedDescription) | "
+                    + "id=«\(elemento?.identifier ?? "?")» etiqueta=«\(elemento?.label ?? "?")» marco=\(elemento.map { "\($0.frame)" } ?? "?")")
+                return true  // solo para seguir reuniendo; abajo se falla con todos
+            }
+        }
     }
     guard !problemas.isEmpty else { return }
-    let texto = XCTAttachment(string: problemas.joined(separator: "\n"))
+    let texto = XCTAttachment(string: problemas.joined(separator: "\n") + "\n\nJerarquía de accesibilidad:\n" + app.debugDescription)
     texto.name = "auditoria-\(contexto)-problemas"
     texto.lifetime = .keepAlways
     testCase.add(texto)
@@ -33,36 +41,48 @@ private func esperar(_ elemento: XCUIElement, _ predicado: String, _ valor: Any,
 /// Toca el campo (fuera de su barra interna), espera foco de teclado real, escribe y espera a que el campo muestre el texto completo.
 /// `typeText` vuelve antes de que el teclado entregue todas las teclas (en CI llegó solo «e» de «error429»
 /// y se envió esa «e»); sin esta espera, la prueba enviaba un texto distinto del pedido.
-private func escribir(_ texto: String, en campo: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+private func escribir(_ texto: String, en campo: XCUIElement, app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
     esperar(campo, "isHittable == %@", true, "El campo no es tocable", file: file, line: line)
     // Un TextField vertical lleva una barra de desplazamiento horizontal dentro de su marco: el toque
     // por defecto (centro/esquina) cayó sobre ella (y 312,7…323,7 en un campo de y 304,7…326,7) y no
     // abrió el teclado. Se toca el tramo editable, arriba, dentro del propio marco del campo.
     campo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
-    esperar(campo, "hasKeyboardFocus == %@", true, "El campo no recibió el foco del teclado", file: file, line: line)
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10), "El teclado no apareció", file: file, line: line)
+    // typeText exige foco real en el campo; no se depende del atributo privado hasKeyboardFocus.
     campo.typeText(texto)
     esperar(campo, "value == %@", texto, "El campo no muestra el texto escrito «\(texto)»", file: file, line: line)
 }
 
-/// Desliza con gesto real (arrastre sin inercia) hasta que `objetivo` quede entero y tocable entre la barra
-/// de navegación y la barra de pestañas, que en iOS 26 flotan sobre el contenido. Pasos acotados, no reintentos.
-private func exponer(_ objetivo: XCUIElement, en app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+/// Busca hacia delante en el orden de lectura y centra el elemento entre las barras.
+/// Con tamaños de accesibilidad los controles de creación diferida pueden no existir hasta desplazarse. Máximo cuatro gestos.
+private func exponer(_ identificador: String, en app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+    let objetivo = app.descendants(matching: .any).matching(identifier: identificador).firstMatch
     let ventana = app.windows.firstMatch.frame
-    let arriba = app.navigationBars.firstMatch.frame.maxY
-    let abajo = app.tabBars.firstMatch.frame.minY
+    let contenido = app.scrollViews.firstMatch.frame
+    let limiteBarra = app.tabBars.firstMatch.frame.minY
+    XCTAssertLessThanOrEqual(contenido.maxY, limiteBarra,
+        "El área de desplazamiento invade la barra de pestañas: marco \(contenido), barra desde \(limiteBarra)", file: file, line: line)
+    let arriba = max(app.navigationBars.firstMatch.frame.maxY, contenido.minY)
+    let abajo = min(limiteBarra, contenido.maxY)
     let paso = abajo - arriba - 40
     func visible() -> Bool {
+        guard objetivo.exists else { return false }
         let marco = objetivo.frame
         return marco.minY >= arriba && marco.maxY <= abajo && objetivo.isHittable
     }
     for _ in 0..<4 where !visible() {
-        let desplazamiento = max(-paso, min(paso, objetivo.frame.minY - arriba - 8))
-        // Margen derecho del contenido (16 pt): el arrastre no cae sobre un campo ni un botón.
+        // Centrar deja margen a ambos lados para la zona muerta inicial del gesto.
+        let desplazamiento = objetivo.exists
+            ? max(-paso, min(paso, objetivo.frame.midY - (arriba + abajo) / 2)) : paso
+        // Arrastrar el contenido, lejos del indicador de desplazamiento del borde derecho.
         let inicio = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
-            .withOffset(CGVector(dx: ventana.width - 8, dy: desplazamiento > 0 ? abajo - 20 : arriba + 20))
-        inicio.press(forDuration: 0.1, thenDragTo: inicio.withOffset(CGVector(dx: 0, dy: -desplazamiento)))
+            .withOffset(CGVector(dx: ventana.width / 2, dy: desplazamiento > 0 ? abajo - 20 : arriba + 20))
+        // Mantener el dedo quieto antes de soltar evita añadir inercia al arrastre.
+        inicio.press(
+            forDuration: 0.1, thenDragTo: inicio.withOffset(CGVector(dx: 0, dy: -desplazamiento)),
+            withVelocity: .default, thenHoldForDuration: 0.5)
     }
-    XCTAssertTrue(visible(), "«\(objetivo.identifier)» no queda entero y tocable entre las barras: marco \(objetivo.frame), visible \(arriba)…\(abajo)", file: file, line: line)
+    XCTAssertTrue(visible(), "«\(identificador)» no queda entero y tocable entre las barras: marco \(objetivo.exists ? "\(objetivo.frame)" : "fuera de la jerarquía visible"), visible \(arriba)…\(abajo)", file: file, line: line)
 }
 
 /// Recorridos de interfaz en el Simulator, SIN red ni servidor: la app se lanza
@@ -96,13 +116,14 @@ final class TransMiVozUITests: XCTestCase {
         let pestana = app.tabBars.buttons[nombre]
         XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña \(nombre)")
         pestana.tap()
+        esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña \(nombre)")
     }
 
     private func preguntar(_ texto: String) {
         abrirPestana("Consulta")
         let campo = elemento("campo-pregunta")
         XCTAssertTrue(campo.waitForExistence(timeout: 10))
-        escribir(texto, en: campo)
+        escribir(texto, en: campo, app: app)
         elemento("boton-enviar").tap()
         // Enviar cierra el teclado: si no, tapa el resultado y la barra de pestañas.
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "El teclado debe cerrarse al enviar")
@@ -209,7 +230,7 @@ final class TransMiVozUITests: XCTestCase {
         abrirPestana("Servidor")
         let origen = elemento("campo-origen")
         XCTAssertTrue(origen.waitForExistence(timeout: 10))
-        escribir("http://servidor.ejemplo", en: origen)
+        escribir("http://servidor.ejemplo", en: origen, app: app)
         elemento("boton-aplicar").tap()
         XCTAssertTrue(app.staticTexts["La dirección debe empezar por https://. La app no usa conexiones sin cifrar."].waitForExistence(timeout: 5))
     }
@@ -256,10 +277,17 @@ final class TransMiVozTextoGrandeUITests: XCTestCase {
             let pestana = app.tabBars.buttons[nombre]
             XCTAssertTrue(pestana.waitForExistence(timeout: 10))
             pestana.tap()
+            esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña \(nombre)")
             if nombre == "Consulta" {
                 // La introducción mide ~500 pt: se audita entera y a la vista, y luego el campo con sus botones.
                 for (id, contexto) in [("introduccion-consulta", "introduccion"), ("boton-enviar", "campo")] {
-                    exponer(app.descendants(matching: .any).matching(identifier: id).firstMatch, en: app)
+                    exponer(id, en: app)
+                    if id == "boton-enviar" {
+                        let contador = app.staticTexts["contador-caracteres"]
+                        XCTAssertTrue(contador.isHittable, "El contador debe estar visible para auditarlo")
+                        XCTAssertGreaterThanOrEqual(contador.frame.minY, app.navigationBars.firstMatch.frame.maxY)
+                        XCTAssertLessThanOrEqual(contador.frame.maxY, app.scrollViews.firstMatch.frame.maxY)
+                    }
                     try auditar(app, "texto-muy-grande-Consulta-\(contexto)", testCase: self)
                 }
             } else {

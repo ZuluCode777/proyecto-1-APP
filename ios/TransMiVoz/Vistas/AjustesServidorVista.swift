@@ -102,12 +102,14 @@ struct AjustesServidorVista: View {
     }
 
     private var botonAplicar: some View {
-        Button("Aplicar") {
+        Button {
             campoEnfocado = nil
             modelo.aplicar()
+        } label: {
+            Text("Aplicar").foregroundStyle(Color(uiColor: .systemBackground))
         }
         .font(.body)
-        .buttonStyle(.bordered)
+        .buttonStyle(.borderedProminent)
         .controlSize(.large)
         .frame(minHeight: 44)
         .accessibilityIdentifier("boton-aplicar")
@@ -118,10 +120,10 @@ struct AjustesServidorVista: View {
             campoEnfocado = nil
             modelo.olvidarClave()
         } label: {
-            Text("Olvidar clave").foregroundStyle(Color.rojoAccesible)
+            Text("Olvidar clave").foregroundStyle(Color(uiColor: .systemBackground))
         }
         .font(.body)
-        .buttonStyle(.bordered)
+        .buttonStyle(.borderedProminent)
         .controlSize(.large)
         .tint(.rojoAccesible)
         .frame(minHeight: 44)

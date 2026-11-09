@@ -6,35 +6,18 @@ extension ShapeStyle where Self == Color {
     /// en texto pequeño. Parte de `label`, que el sistema adapta al modo, sin blanco ni negro fijos.
     static var textoSecundario: Color { Color(uiColor: .label).opacity(0.7) }
 
-    /// Rojo para acciones destructivas con contraste ≥ 4,5:1. El rojo del sistema
+    /// Rojo para acciones destructivas con contraste ≥ 7:1. El rojo del sistema
     /// (#FF383C) da ~3,6:1 sobre blanco y la auditoría lo marca "casi aprobado".
     static var rojoAccesible: Color {
         Color(uiColor: UIColor { rasgos in
             rasgos.userInterfaceStyle == .dark
                 ? UIColor(red: 1, green: 0.42, blue: 0.38, alpha: 1)
-                : UIColor(red: 0.72, green: 0, blue: 0.09, alpha: 1)
+                : UIColor(red: 0.70, green: 0, blue: 0.09, alpha: 1)
         })
     }
 }
 
-private struct BordeInferiorLegible: ViewModifier {
-    func body(content: Content) -> some View {
-        #if compiler(>=6.2)
-        if #available(iOS 26, *) {
-            // La barra de pestañas flota sobre el contenido: con texto muy grande una frase
-            // queda a medias bajo el vidrio y el contraste medido falla. El borde duro
-            // da a ese tramo un fondo opaco en vez de dejar ver el texto borroso.
-            content.scrollEdgeEffectStyle(.hard, for: .bottom)
-        } else {
-            content
-        }
-        #else
-        content
-        #endif
-    }
-}
-
 extension View {
-    /// Contenido que se desplaza bajo la barra de pestañas sin quedar ilegible.
-    func bordeInferiorLegible() -> some View { modifier(BordeInferiorLegible()) }
+    /// El margen exterior evita que ScrollView extienda su marco bajo la barra de pestañas.
+    func bordeInferiorLegible() -> some View { padding(.bottom) }
 }

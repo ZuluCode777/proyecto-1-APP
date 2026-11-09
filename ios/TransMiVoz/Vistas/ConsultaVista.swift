@@ -12,6 +12,8 @@ struct ConsultaVista: View {
 
     @AccessibilityFocusState private var foco: ZonaFocoConsulta?
     @FocusState private var campoEnfocado: Bool
+    /// Se fija al crear la vista y no cambia si el usuario cambia el tamaño de texto con la app abierta.
+    @State private var creacionDiferida = UIApplication.shared.preferredContentSizeCategory.isAccessibilityCategory
 
     var body: some View {
         NavigationStack {
@@ -32,35 +34,41 @@ struct ConsultaVista: View {
                         .font(.body)
                         .accessibilityIdentifier("introduccion-consulta")
 
-                    TextField("Pregunta", text: $modelo.texto, axis: .vertical)
-                        .lineLimit(1...5)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(minHeight: 44)
-                        .focused($campoEnfocado)
-                        .submitLabel(.send)
-                        .onSubmit { enviar() }
-                        .accessibilityLabel("Pregunta de transporte")
-                        .accessibilityHint("Máximo \(EntradaConsulta.maximoCaracteres) caracteres.")
-                        .accessibilityIdentifier("campo-pregunta")
-
-                    Text("\(modelo.texto.utf16.count) de \(EntradaConsulta.maximoCaracteres) caracteres")
-                        .font(.footnote)
-                        .foregroundStyle(.textoSecundario)
-                        .accessibilityIdentifier("contador-caracteres")
-
-                    HStack(spacing: 12) {
-                        Button("Enviar") { enviar() }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.large)
+                    // Solo con tamaños de accesibilidad los controles se crean al desplazarse: con texto muy grande
+                    // quedan bajo la barra de pestañas y la auditoría los evaluaría sin que se vean. Con tamaños normales
+                    // la pila diferida hizo fallar la auditoría de Dynamic Type en el contador y en «Enviar».
+                    // El resultado queda fuera para mantener su destino de foco.
+                    ContenedorControles(diferido: creacionDiferida) {
+                        TextField("Pregunta", text: $modelo.texto, axis: .vertical)
+                            .lineLimit(1...5)
+                            .textFieldStyle(.roundedBorder)
                             .frame(minHeight: 44)
-                            .disabled(modelo.estaEnviando)
-                            .accessibilityIdentifier("boton-enviar")
-                        if modelo.estaEnviando {
-                            Button("Cancelar") { modelo.cancelar() }
-                                .buttonStyle(.bordered)
+                            .focused($campoEnfocado)
+                            .submitLabel(.send)
+                            .onSubmit { enviar() }
+                            .accessibilityLabel("Pregunta de transporte")
+                            .accessibilityHint("Máximo \(EntradaConsulta.maximoCaracteres) caracteres.")
+                            .accessibilityIdentifier("campo-pregunta")
+
+                        Text("\(modelo.texto.utf16.count) de \(EntradaConsulta.maximoCaracteres) caracteres")
+                            .font(.footnote)
+                            .foregroundStyle(.textoSecundario)
+                            .accessibilityIdentifier("contador-caracteres")
+
+                        HStack(spacing: 12) {
+                            Button("Enviar") { enviar() }
+                                .buttonStyle(.borderedProminent)
                                 .controlSize(.large)
                                 .frame(minHeight: 44)
-                                .accessibilityIdentifier("boton-cancelar")
+                                .disabled(modelo.estaEnviando)
+                                .accessibilityIdentifier("boton-enviar")
+                            if modelo.estaEnviando {
+                                Button("Cancelar") { modelo.cancelar() }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.large)
+                                    .frame(minHeight: 44)
+                                    .accessibilityIdentifier("boton-cancelar")
+                            }
                         }
                     }
                 }
@@ -102,6 +110,20 @@ struct ConsultaVista: View {
         }
         AccessibilityNotification.Announcement(texto).post()
         if estado != .enviando { foco = .resultado }
+    }
+}
+
+/// Pila de los controles de la consulta: diferida o inmediata, con la misma disposición.
+private struct ContenedorControles<Contenido: View>: View {
+    let diferido: Bool
+    @ViewBuilder let contenido: Contenido
+
+    var body: some View {
+        if diferido {
+            LazyVStack(alignment: .leading, spacing: 16) { contenido }
+        } else {
+            VStack(alignment: .leading, spacing: 16) { contenido }
+        }
     }
 }
 
