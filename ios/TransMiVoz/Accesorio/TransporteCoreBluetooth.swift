@@ -7,8 +7,13 @@ import Foundation
 ///
 /// - El gestor se crea al primer uso (buscar o conectar), no al arrancar la app: así el aviso de
 ///   permiso de Bluetooth del sistema aparece cuando la persona lo pide.
-/// - Solo hay un periférico vigente. Todo callback de otro periférico, o llegado tras
-///   `desconectar`, se ignora.
+/// - Solo hay una conexión vigente. Qué conexión vale, con qué token y cuándo se puede abrir otra con el
+///   mismo periférico lo decide `CicloConexionNativa` (probado sin Core Bluetooth). Aquí solo se traducen
+///   sus órdenes a llamadas del sistema y los avisos del sistema a sus preguntas.
+/// - `cancelPeripheralConnection` es asíncrono y Core Bluetooth reutiliza el mismo `CBPeripheral`: una
+///   reconexión al mismo periférico espera el aviso de cierre de la anterior, y ese aviso no llega a la sesión.
+/// - Un aviso de servicio, característica o valor solo cuenta si es del periférico vigente Y del objeto
+///   (servicio y características) que se descubrió en ESTA conexión.
 /// - Todos los callbacks llegan en la cola principal.
 @MainActor
 final class TransporteCoreBluetooth: TransporteAccesorio {
@@ -20,15 +25,19 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
     /// transporte afirma `.desconocido` y la sesión rechaza el enlace. No hay ajuste que lo cambie.
     var nivelEnlace: NivelEnlace { .desconocido }
 
+    /// Leer la autorización no la provoca (a diferencia de crear el gestor).
+    var permisoPorPreguntar: Bool { CBManager.authorization == .notDetermined }
+
     private let servicio = CBUUID(string: IdentificadoresBLE.servicio)
     private let uuidInformacion = CBUUID(string: IdentificadoresBLE.caracteristicaInformacion)
     private let uuidMedicion = CBUUID(string: IdentificadoresBLE.caracteristicaMedicion)
 
     private let delegado = DelegadoCoreBluetooth()
     private var gestor: CBCentralManager?
-    private var descubiertos: [UUID: CBPeripheral] = [:]
-    private var periferico: CBPeripheral?
-    private var token = tokenSinConexion
+    /// Periféricos vistos o recuperados, por UUID en texto. El sistema no retiene los periféricos.
+    private var conocidos: [String: CBPeripheral] = [:]
+    private var ciclo = CicloConexionNativa()
+    private var servicioVigente: CBService?
     private var informacion: CBCharacteristic?
     private var medicion: CBCharacteristic?
     private var informacionPedida = false
@@ -51,41 +60,53 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
     }
 
     func conectar(id: String, token nuevo: Int) {
-        guard let gestor = gestorListo(), let uuid = UUID(uuidString: id) else { return }
-        // Idempotente: misma conexión pedida otra vez mientras sigue en curso.
-        if nuevo == token, periferico?.identifier == uuid, periferico?.state != CBPeripheralState.disconnected { return }
-        olvidarPeriferico()
-        guard let destino = descubiertos[uuid] ?? gestor.retrievePeripherals(withIdentifiers: [uuid]).first else {
-            token = nuevo
-            avisar(.fallo(.conexionFallida))
+        guard let uuid = UUID(uuidString: id) else {
+            receptor?(.fallo(.conexionFallida), nuevo)
             return
         }
-        token = nuevo
-        periferico = destino
+        guard let gestor = gestorListo() else { return }
+        // Idempotente: la misma conexión pedida otra vez mientras sigue en curso o esperando.
+        if ciclo.atiende(token: nuevo) { return }
+        cerrarVigente()
+        guard let destino = conocidos[id] ?? gestor.retrievePeripherals(withIdentifiers: [uuid]).first else {
+            receptor?(.fallo(.conexionFallida), nuevo)
+            return
+        }
+        conocidos[id] = destino
         destino.delegate = delegado
-        gestor.connect(destino, options: nil)
+        ejecutar(ciclo.pedir(id: id, token: nuevo))
     }
 
     func leerInformacion(token pedido: Int) {
-        guard pedido == token, let periferico, let informacion else { return }
+        guard pedido == ciclo.token, let periferico = perifericoVigente(), let informacion else { return }
         informacionPedida = true
         periferico.readValue(for: informacion)
     }
 
     func fijarNotificaciones(_ activas: Bool, token pedido: Int) {
-        guard pedido == token, let periferico, let medicion else { return }
-        periferico.setNotifyValue(activas, for: medicion)
+        guard pedido == ciclo.token, let periferico = perifericoVigente(), let medicion else { return }
+        switch clasificador.pedirNotificaciones(activas, activasEnSistema: medicion.isNotifying) {
+        case .pedir:
+            periferico.setNotifyValue(activas, for: medicion)
+        case .yaEstaba:
+            // Sin cambio de estado el sistema puede no avisar. Se confirma con un salto al siguiente turno
+            // (como un aviso real) y solo si la conexión sigue siendo la misma.
+            Task { @MainActor [weak self] in
+                guard let self, pedido == self.ciclo.token else { return }
+                self.receptor?(.notificacionesFijadas(activas), pedido)
+            }
+        }
     }
 
     func leerMedicion(token pedido: Int) {
-        guard pedido == token, let periferico, let medicion else { return }
+        guard pedido == ciclo.token, let periferico = perifericoVigente(), let medicion else { return }
         // Con notificaciones activas no se podría distinguir la respuesta: se rechaza.
         guard clasificador.pedirLectura() else { avisar(.fallo(.errorDeLectura)); return }
         periferico.readValue(for: medicion)
     }
 
     func desconectar() {
-        olvidarPeriferico()
+        cerrarVigente()
     }
 
     // MARK: Gestor
@@ -99,19 +120,46 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
         return gestor?.state == .poweredOn ? gestor : nil
     }
 
-    private func olvidarPeriferico() {
-        if let periferico {
-            periferico.delegate = nil
-            if let gestor, gestor.state == .poweredOn { gestor.cancelPeripheralConnection(periferico) }
+    private func perifericoVigente() -> CBPeripheral? {
+        ciclo.vigente.flatMap { conocidos[$0.id] }
+    }
+
+    private func ejecutar(_ ordenes: [CicloConexionNativa.Orden]) {
+        for orden in ordenes {
+            switch orden {
+            case .abrir(let id):
+                if let destino = conocidos[id] {
+                    destino.delegate = delegado
+                    gestor?.connect(destino, options: nil)
+                }
+            case .cerrar(let id):
+                if let destino = conocidos[id] { gestor?.cancelPeripheralConnection(destino) }
+            }
         }
-        periferico = nil
+    }
+
+    /// Cierra la conexión vigente (si la hay) y olvida lo descubierto en ella. El cierre nativo es
+    /// asíncrono: `ciclo` recuerda que el aviso final está pendiente.
+    private func cerrarVigente() {
+        let destino = perifericoVigente()
+        destino?.delegate = nil
+        let activo = destino.map { $0.state != .disconnected } ?? false
+        let ordenes = ciclo.cerrar(nativoActivo: activo)
+        olvidarDescubierto()
+        ejecutar(ordenes)
+    }
+
+    private func olvidarDescubierto() {
+        servicioVigente = nil
         informacion = nil
         medicion = nil
         informacionPedida = false
         clasificador.reiniciar()
     }
 
+    /// Los eventos de una conexión llevan SIEMPRE el token con el que se abrió, no el de «ahora».
     private func avisar(_ evento: EventoTransporte) {
+        guard let token = ciclo.token else { return }
         receptor?(evento, token)
     }
 
@@ -127,46 +175,59 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
         default: disponibilidad = .desconocida
         }
         if disponibilidad != .disponible {
-            // El sistema corta todas las conexiones: nada de lo anterior sigue vigente.
-            olvidarPeriferico()
-            descubiertos = [:]
+            // El sistema corta todas las conexiones: nada de lo anterior sigue vigente ni espera aviso.
+            ciclo.reiniciar()
+            olvidarDescubierto()
+            conocidos = [:]
         }
         receptor?(.disponibilidad(disponibilidad), tokenSinConexion)
     }
 
     fileprivate func descubierto(_ p: CBPeripheral, nombreAnunciado: String?) {
-        descubiertos[p.identifier] = p
+        conocidos[p.identifier.uuidString] = p
         let accesorio = AccesorioDetectado(id: p.identifier.uuidString, nombre: nombreAnunciado ?? p.name)
         receptor?(.encontrado(accesorio), tokenSinConexion)
     }
 
     fileprivate func conectado(_ p: CBPeripheral) {
-        guard p === periferico else { return }
+        guard ciclo.vale(p.identifier.uuidString) else { return }
         p.discoverServices([servicio])
     }
 
     fileprivate func fallaLaConexion(_ p: CBPeripheral) {
-        guard p === periferico else { return }
-        avisar(.fallo(.conexionFallida))
+        finalDeConexion(p, evento: .fallo(.conexionFallida))
     }
 
     fileprivate func desconectado(_ p: CBPeripheral) {
-        guard p === periferico else { return }
-        olvidarPeriferico()
-        avisar(.desconectado)
+        finalDeConexion(p, evento: .desconectado)
+    }
+
+    /// `didDisconnect` / `didFailToConnect`: o es el aviso del cierre que pedimos (se consume y, si había una
+    /// conexión esperando, se abre), o es el final de la conexión vigente (se avisa con su token).
+    private func finalDeConexion(_ p: CBPeripheral, evento: EventoTransporte) {
+        switch ciclo.terminal(p.identifier.uuidString) {
+        case .ignorar:
+            break
+        case .abrir(let id, _):
+            ejecutar([.abrir(id: id)])
+        case .avisar(let token):
+            olvidarDescubierto()
+            receptor?(evento, token)
+        }
     }
 
     fileprivate func serviciosDescubiertos(_ p: CBPeripheral, huboError: Bool) {
-        guard p === periferico else { return }
+        guard ciclo.vale(p.identifier.uuidString) else { return }
         guard !huboError, let encontrado = p.services?.first(where: { $0.uuid == servicio }) else {
             avisar(.fallo(.servicioNoEncontrado))
             return
         }
+        servicioVigente = encontrado
         p.discoverCharacteristics([uuidInformacion, uuidMedicion], for: encontrado)
     }
 
     fileprivate func caracteristicasDescubiertas(_ p: CBPeripheral, de s: CBService, huboError: Bool) {
-        guard p === periferico, s.uuid == servicio else { return }
+        guard ciclo.vale(p.identifier.uuidString), s === servicioVigente else { return }
         informacion = s.characteristics?.first { $0.uuid == uuidInformacion }
         medicion = s.characteristics?.first { $0.uuid == uuidMedicion }
         guard !huboError, informacion != nil, medicion != nil else {
@@ -177,13 +238,14 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
     }
 
     fileprivate func valorActualizado(_ p: CBPeripheral, _ c: CBCharacteristic, huboError: Bool) {
-        guard p === periferico else { return }
+        guard ciclo.vale(p.identifier.uuidString) else { return }
         let valor = huboError ? nil : c.value
-        if c.uuid == uuidInformacion {
+        // Solo las características descubiertas en esta conexión (no un objeto viejo con el mismo UUID).
+        if c === informacion {
             guard informacionPedida else { return }
             informacionPedida = false
             if let valor { avisar(.informacion(valor)) } else { avisar(.fallo(.errorDeLectura)) }
-        } else if c.uuid == uuidMedicion {
+        } else if c === medicion {
             // Lectura y notificación llegan por aquí; el clasificador las separa.
             switch clasificador.recibirValor(conError: valor == nil) {
             case .respuestaLectura: if let valor { avisar(.respuestaMedicion(valor)) }
@@ -195,7 +257,7 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
     }
 
     fileprivate func notificacionesActualizadas(_ p: CBPeripheral, _ c: CBCharacteristic, huboError: Bool) {
-        guard p === periferico, c.uuid == uuidMedicion else { return }
+        guard ciclo.vale(p.identifier.uuidString), c === medicion else { return }
         if huboError {
             avisar(.fallo(.errorDeSuscripcion))
             return

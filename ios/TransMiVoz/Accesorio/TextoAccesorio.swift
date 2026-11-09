@@ -110,14 +110,52 @@ enum TextoAccesorio {
         }
     }
 
-    static func audio(ruta: RutaAudio, interrumpido: Bool) -> String {
+    /// Estado del audio para la pantalla. El sistema no distingue unos auriculares Bluetooth de un
+    /// altavoz Bluetooth: «privada» no promete auriculares, y el texto lo dice.
+    static func audio(ruta: RutaAudio, interrumpido: Bool, audioNoDisponible: Bool = false, vozPropia: Bool = true) -> String {
+        if !vozPropia { return "Voz de la app apagada (con VoiceOver activo empieza apagada para no hablar dos veces). Los avisos quedan en pantalla." }
         if interrumpido { return "Audio: interrumpido (llamada u otra app). No se habla." }
+        if audioNoDisponible { return "Audio no disponible: el sistema no dejó activar el audio (llamada u otra app en curso). No se habla; el estado queda en pantalla." }
         switch ruta {
-        case .privada: return "Audio: auriculares. Los avisos se dicen en voz alta."
-        case .noPrivada: return "Audio: sin auriculares. No se habla en voz alta para no sonar en el altavoz; el estado se lee en pantalla."
+        case .privada: return "Audio: salida privada (auriculares con cable o Bluetooth). El iPhone no distingue unos auriculares de un altavoz Bluetooth: comprueba que sean auriculares. Los avisos se dicen en voz alta."
+        case .noPrivada: return "Audio: sin auriculares con cable ni Bluetooth. No se habla en voz alta para no sonar en el altavoz; el estado se lee en pantalla."
         case .desconocida: return "Audio: ruta desconocida. No se habla."
         }
     }
+
+    static let audioNoDisponibleAviso = "Audio no disponible: no se pueden decir avisos en voz alta. El estado queda en pantalla."
+    static let audioSinAuriculares = "Se perdió la salida privada de audio. Los avisos no se dicen por el altavoz; el estado queda en pantalla."
+
+    /// Anuncio de accesibilidad (VoiceOver, sin mover el foco) de un estado que NO es una medida: bloqueo,
+    /// fallo, desconexión, rechazo y Bluetooth. Las medidas y las alertas del sensor (objeto, presencia,
+    /// sin detección, sin datos, radar) no se anuncian así: por VoiceOver el sonido puede salir por el
+    /// altavoz; esas solo se dicen por la ruta privada de la voz propia y quedan en pantalla.
+    static func anuncioAccesible(_ e: EstadoAccesorio) -> String? {
+        switch e {
+        case .enlaceNoVerificado:
+            return "Avisos bloqueados: no se puede verificar la seguridad del enlace. Esto no es una detección."
+        case .rechazado:
+            return "Accesorio rechazado. Sin avisos."
+        case .falla(let motivo):
+            return "\(fallo(motivo)) Sin avisos. Usa Reconectar."
+        case .desconectado:
+            return "Accesorio desconectado. Se intenta reconectar."
+        case .bluetoothNoDisponible(let d):
+            return bluetooth(d)
+        default:
+            return nil
+        }
+    }
+
+    // MARK: Permiso de Bluetooth (se explica antes del aviso del sistema, EA-02 §8)
+
+    static let permisoBluetoothTitulo = "Permiso de Bluetooth"
+    static let permisoBluetoothExplicacion = "TransMiVoz usa Bluetooth para buscar y conectarse al accesorio de proximidad que tú elijas. No lo usa para nada más. A continuación iOS te pedirá permiso."
+    static let permisoBluetoothAlternativa = "Si prefieres no darlo, toca «Ahora no»: la consulta y los ajustes del servidor siguen funcionando. Puedes cambiarlo después en Ajustes, en TransMiVoz."
+
+    // MARK: Búsqueda
+
+    static let busquedaPendiente = "La búsqueda sigue pedida. Empieza cuando el Bluetooth esté disponible y la app esté en primer plano."
 
     private static func fallo(_ m: MotivoFalla) -> String {
         switch m {

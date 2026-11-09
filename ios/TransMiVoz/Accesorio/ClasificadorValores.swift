@@ -35,6 +35,23 @@ struct ClasificadorValores {
         notificando = activas
     }
 
+    enum PasoNotificacion: Equatable {
+        /// El sistema ya está en ese estado: no habrá aviso de cambio, se confirma aquí.
+        case yaEstaba
+        /// Hay que pedirlo al sistema y esperar su aviso.
+        case pedir
+    }
+
+    /// `setNotifyValue` con el estado que la característica ya tiene (p. ej. apagar una suscripción que
+    /// nunca se hizo) no tiene por qué producir `didUpdateNotificationStateFor`: la sesión esperaría un
+    /// aviso que no llega y fallaría por tiempo. En ese caso se confirma localmente, con el estado que el
+    /// propio sistema declara (`isNotifying`), nunca con el que la sesión supone.
+    mutating func pedirNotificaciones(_ activas: Bool, activasEnSistema: Bool) -> PasoNotificacion {
+        guard activas == activasEnSistema else { return .pedir }
+        notificando = activas
+        return .yaEstaba
+    }
+
     mutating func recibirValor(conError: Bool) -> Clase {
         if !pendientes.isEmpty {
             let id = pendientes.removeFirst()

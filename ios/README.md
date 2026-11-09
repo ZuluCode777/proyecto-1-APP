@@ -8,7 +8,7 @@ Es un corte mínimo para EA-09 (#35) con soporte de CI iOS-CI (#68). No es una a
 
 | Pestaña | Contenido | Necesita red |
 | --- | --- | --- |
-| Sesión | Accesorio **real** por Bluetooth: buscar y elegir, iniciar, detener, reconectar, estado, avisos hablados por auriculares. Hoy **bloqueada por diseño** (no se puede verificar la seguridad del enlace). Las pruebas de interfaz muestran en su lugar la sesión simulada. | No |
+| Sesión | Accesorio **real** por Bluetooth: buscar y elegir, iniciar, detener, reconectar, estado, avisos hablados por auriculares. Hoy **bloqueada por diseño** (no se puede verificar la seguridad del enlace). Una hoja explica el permiso de Bluetooth antes del aviso del sistema. Las pruebas de interfaz recorren esta misma pantalla con un transporte sintético rotulado (`-PRUEBAS_UI_ACCESORIO_SINTETICO`, solo depuración) y, aparte, la sesión simulada. | No |
 | Consulta | Texto → `POST /api/agent` del backend Next existente, con cancelar, reintentar y errores claros. | Sí |
 | Servidor | Origen HTTPS y clave opcional (Llavero si la persona lo pide). | No |
 
@@ -29,7 +29,7 @@ El texto de un viaje puede traer órdenes de abordaje sin parada, sentido ni vig
 
 ### Sesión con el accesorio real (EA-15, software)
 
-Core Bluetooth con los UUID y el contrato v1.0 existentes, sobre `SesionProximidad`. **El transporte afirma enlace `desconocido`, así que la sesión rechaza el accesorio y no hay medidas ni avisos del sensor** hasta que EA-12 dé evidencia (contrato §6). Voz solo por auriculares, cola de uno, corte por cambio de ruta e interrupción; sin segundo plano. Detalle, pruebas y lista de banco en [ea-15-ios-ble-audio.md](../docs/expoandes/ea-15-ios-ble-audio.md). **No hay prueba con hardware.**
+Core Bluetooth con los UUID y el contrato v1.0 existentes, sobre `SesionProximidad`. **El transporte afirma enlace `desconocido`, así que la sesión rechaza el accesorio y no hay medidas ni avisos del sensor** hasta que EA-12 dé evidencia (contrato §6). Voz solo por una salida privada (auriculares con cable o Bluetooth; el sistema no distingue un altavoz Bluetooth), cola de uno, corte por cambio de ruta e interrupción, fallo cerrado si el audio no se activa; sin segundo plano. Detalle, pruebas y lista de banco en [ea-15-ios-ble-audio.md](../docs/expoandes/ea-15-ios-ble-audio.md). **No hay prueba con hardware.**
 
 ### Sesión local simulada (solo pruebas de interfaz)
 
@@ -68,7 +68,7 @@ ios/scripts/comprobar-ios.sh todo         # compila, prueba y compila para iPhon
 
 Cada ejecución local escribe en una carpeta nueva `ios/salida/<fecha UTC>-<pid>/` (logs crudos de `xcodebuild`, `.xcresult`, `herramientas.txt`); el script imprime la ruta al empezar y **no borra ni pisa nada**. Para abrir un resultado: `open ios/salida/<carpeta>/pruebas-simulador.xcresult`. Pasos sueltos: `compilar-simulador`, `pruebas-simulador`, `compilar-dispositivo`; para que varios pasos compartan carpeta, fija `SALIDA=ios/salida/mi-corrida` (ruta que no exista aún: si ya hay un resultado del mismo paso, el script falla y te dice cuál). Limpiar resultados viejos es cosa tuya. Autocomprobación del script (sin Xcode): `ios/scripts/probar-comprobar-ios.sh`. Si tu Xcode o tu Simulator difieren de los de la CI, el script puede fallar al elegir destino a propósito; puedes fijar `SIMULADOR_NOMBRE` e `IOS_MAYOR_ESPERADO` (ver cabecera del script). En Xcode: elige el esquema **TransMiVoz** y un iPhone Simulator, Cmd+U ejecuta todas las pruebas.
 
-Las pruebas de interfaz arrancan la app con `-PRUEBAS_UI_SIMULADAS` (solo en compilaciones de depuración): cliente HTTP simulado, Llavero en memoria, sin red. Palabras clave de la consulta: `error401`, `error429`, `sinred`, `lento`, `viaje`, `orden`.
+Las pruebas de interfaz arrancan la app con `-PRUEBAS_UI_SIMULADAS` (solo en compilaciones de depuración): cliente HTTP simulado, Llavero en memoria, sin red, sesión simulada. Las de la pantalla del accesorio usan `-PRUEBAS_UI_ACCESORIO_SINTETICO` (con `-PRUEBAS_UI_ACCESORIO_PERMISO_CONCEDIDO` o `-PRUEBAS_UI_ACCESORIO_PERMISO_DENEGADO` para las variantes): la misma vista y sesión de producción con un transporte sintético que la pantalla rotula, sin Bluetooth, audio ni red y con el bloqueo por enlace no verificado intacto. Palabras clave de la consulta: `error401`, `error429`, `sinred`, `lento`, `viaje`, `orden`.
 
 ## Firmar, instalar y recuperar (iPhone real)
 

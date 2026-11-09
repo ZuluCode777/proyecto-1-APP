@@ -65,8 +65,13 @@ protocol TransporteAccesorio: AnyObject {
     /// expone: el transporte de producción devuelve `.desconocido` hasta que haya
     /// evidencia con la placa y el iPhone (contrato §6, EA-12).
     var nivelEnlace: NivelEnlace { get }
+    /// El sistema todavía no ha preguntado a la persona por el permiso de Bluetooth. Consultarlo no
+    /// lo provoca. La app lo usa para explicar el permiso ANTES de que aparezca el aviso del sistema.
+    var permisoPorPreguntar: Bool { get }
     func buscar()
     func dejarDeBuscar()
+    /// Pide la conexión. Si el cierre de una anterior con el mismo periférico sigue en curso, espera su
+    /// aviso (el plazo lo vigila la sesión). Todo evento de esta conexión lleva este `token`.
     func conectar(id: String, token: Int)
     func leerInformacion(token: Int)
     func fijarNotificaciones(_ activas: Bool, token: Int)

@@ -10,7 +10,7 @@ struct RaizVista: View {
     var body: some View {
         TabView {
             if let accesorio = entorno.accesorio {
-                SesionAccesorioVista(modelo: accesorio)
+                SesionAccesorioVista(modelo: accesorio, avisoSintetico: entorno.modoPruebas)
                     .tabItem { Label("Sesión", systemImage: "dot.radiowaves.left.and.right") }
             } else {
                 SesionVista(modelo: entorno.sesion, avisoModoPruebas: entorno.modoPruebas)

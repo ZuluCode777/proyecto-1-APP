@@ -55,7 +55,10 @@ private func escribir(_ texto: String, en campo: XCUIElement, app: XCUIApplicati
 
 /// Busca hacia delante en el orden de lectura y centra el elemento entre las barras.
 /// Con tamaños de accesibilidad los controles de creación diferida pueden no existir hasta desplazarse. Máximo cuatro gestos.
-private func exponer(_ identificador: String, en app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+/// `completo: false` es solo para textos que con `AccessibilityXXXL` miden más que el área visible (un aviso de
+/// ~200 caracteres ocupa más de 900 pt): pide que su COMIENZO quede a la vista y tocable por arriba, no entero.
+/// Todo lo demás (botones, interruptor, títulos) se sigue exigiendo entero y tocable.
+private func exponer(_ identificador: String, en app: XCUIApplication, completo: Bool = true, file: StaticString = #filePath, line: UInt = #line) {
     let objetivo = app.descendants(matching: .any).matching(identifier: identificador).firstMatch
     let ventana = app.windows.firstMatch.frame
     let contenido = app.scrollViews.firstMatch.frame
@@ -68,12 +71,13 @@ private func exponer(_ identificador: String, en app: XCUIApplication, file: Sta
     func visible() -> Bool {
         guard objetivo.exists else { return false }
         let marco = objetivo.frame
+        if !completo { return marco.minY >= arriba && marco.minY <= abajo - 80 }
         return marco.minY >= arriba && marco.maxY <= abajo && objetivo.isHittable
     }
     for _ in 0..<4 where !visible() {
         // Centrar deja margen a ambos lados para la zona muerta inicial del gesto.
-        let desplazamiento = objetivo.exists
-            ? max(-paso, min(paso, objetivo.frame.midY - (arriba + abajo) / 2)) : paso
+        let ancla = completo ? objetivo.frame.midY - (arriba + abajo) / 2 : objetivo.frame.minY - (arriba + 40)
+        let desplazamiento = objetivo.exists ? max(-paso, min(paso, ancla)) : paso
         // Arrastrar el contenido, lejos del indicador de desplazamiento del borde derecho.
         let inicio = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
             .withOffset(CGVector(dx: ventana.width / 2, dy: desplazamiento > 0 ? abajo - 20 : arriba + 20))
@@ -82,7 +86,7 @@ private func exponer(_ identificador: String, en app: XCUIApplication, file: Sta
             forDuration: 0.1, thenDragTo: inicio.withOffset(CGVector(dx: 0, dy: -desplazamiento)),
             withVelocity: .default, thenHoldForDuration: 0.5)
     }
-    XCTAssertTrue(visible(), "«\(identificador)» no queda entero y tocable entre las barras: marco \(objetivo.exists ? "\(objetivo.frame)" : "fuera de la jerarquía visible"), visible \(arriba)…\(abajo)", file: file, line: line)
+    XCTAssertTrue(visible(), "«\(identificador)» no queda \(completo ? "entero y tocable" : "con su comienzo a la vista") entre las barras: marco \(objetivo.exists ? "\(objetivo.frame)" : "fuera de la jerarquía visible"), visible \(arriba)…\(abajo)", file: file, line: line)
 }
 
 /// Recorridos de interfaz en el Simulator, SIN red ni servidor: la app se lanza
@@ -293,6 +297,194 @@ final class TransMiVozTextoGrandeUITests: XCTestCase {
             } else {
                 try auditar(app, "texto-muy-grande-\(nombre)", testCase: self)
             }
+        }
+    }
+}
+
+/// La pantalla REAL del accesorio (`SesionAccesorioVista`, la misma vista y la misma sesión que en producción)
+/// recorrida con un transporte SINTÉTICO que la pantalla rotula (`-PRUEBAS_UI_ACCESORIO_SINTETICO`, solo en
+/// depuración): sin Bluetooth, radio, audio ni red. El bloqueo por enlace no verificado sigue intacto. Demuestra
+/// la interfaz (elegir, iniciar, detener, reconectar, permiso); no prueba Bluetooth, audio ni VoiceOver reales.
+final class TransMiVozAccesorioUITests: XCTestCase {
+    private var app: XCUIApplication!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    private func lanzar(_ extra: [String] = [], categoria: String = "UICTContentSizeCategoryL") {
+        app = XCUIApplication()
+        app.launchArguments += ["-PRUEBAS_UI_ACCESORIO_SINTETICO"] + extra + [
+            "-AppleLanguages", "(es)", "-AppleLocale", "es_CO", "-UIPreferredContentSizeCategoryName", categoria,
+        ]
+        app.launch()
+        // Ciclo de vida acotado: cada prueba cierra su app y la siguiente arranca limpia.
+        addTeardownBlock { [app] in app?.terminate() }
+    }
+
+    private func elemento(_ identificador: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identificador).firstMatch
+    }
+
+    /// Cualquier elemento cuya etiqueta sea exactamente ese texto (un `Label` de SwiftUI no siempre sale como `staticText`).
+    private func etiquetado(_ texto: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", texto)).firstMatch
+    }
+
+    private func esperarEtiqueta(_ texto: String, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(etiquetado(texto).waitForExistence(timeout: 10), "No apareció «\(texto)»", file: file, line: line)
+    }
+
+    private func abrirPestana(_ nombre: String) {
+        let pestana = app.tabBars.buttons[nombre]
+        XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña \(nombre)")
+        pestana.tap()
+        esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña \(nombre)")
+    }
+
+    /// Buscar, aceptar la explicación del permiso si sale, y elegir el accesorio sintético.
+    private func buscarYElegir(conHoja: Bool) {
+        exponer("boton-buscar", en: app)
+        elemento("boton-buscar").tap()
+        if conHoja {
+            let continuar = elemento("boton-permiso-continuar")
+            XCTAssertTrue(continuar.waitForExistence(timeout: 10), "Falta la explicación previa al permiso de Bluetooth")
+            continuar.tap()
+            XCTAssertTrue(continuar.waitForNonExistence(timeout: 10), "La hoja del permiso no se cerró")
+        }
+        let elegir = elemento("elegir-SINTETICO-0001")
+        XCTAssertTrue(elegir.waitForExistence(timeout: 10), "No apareció el accesorio sintético")
+        exponer("elegir-SINTETICO-0001", en: app)
+        elegir.tap()
+        esperarEtiqueta("Accesorio elegido: Accesorio sintético (0001)")
+    }
+
+    private func iniciarYEsperarBloqueo() {
+        exponer("boton-sesion-accesorio", en: app)
+        let boton = elemento("boton-sesion-accesorio")
+        XCTAssertTrue(boton.isEnabled)
+        XCTAssertEqual(boton.label, "Iniciar sesión")
+        boton.tap()
+        esperarEtiqueta("Bloqueado: enlace no verificado")
+        XCTAssertEqual(boton.label, "Detener sesión")
+    }
+
+    // MARK: Recorrido
+
+    func testElegirIniciarBloqueadoDetenerYReconectar() throws {
+        lanzar()
+        XCTAssertTrue(elemento("aviso-transporte-sintetico").waitForExistence(timeout: 10), "el transporte sintético debe declararse")
+        XCTAssertTrue(elemento("aviso-seguridad-enlace").exists, "el bloqueo por enlace no verificado sigue activo")
+        XCTAssertFalse(elemento("boton-sesion-accesorio").isEnabled, "sin accesorio elegido no se puede iniciar")
+
+        buscarYElegir(conHoja: true)
+        iniciarYEsperarBloqueo()
+        XCTAssertTrue(etiquetado("Enlace autenticado: no verificado").exists)
+        XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "Objeto")).firstMatch.exists, "bloqueado: ninguna medida")
+
+        // Detener.
+        exponer("boton-sesion-accesorio", en: app)
+        let boton = elemento("boton-sesion-accesorio")
+        boton.tap()
+        esperarEtiqueta("Detenido")
+        XCTAssertEqual(boton.label, "Iniciar sesión")
+
+        // Reconectar: nueva conexión, mismo bloqueo.
+        exponer("boton-reconectar", en: app)
+        elemento("boton-reconectar").tap()
+        esperarEtiqueta("Bloqueado: enlace no verificado")
+        XCTAssertEqual(boton.label, "Detener sesión")
+    }
+
+    func testAhoraNoEnLaExplicacionDelPermisoNoPideNadaAlSistema() throws {
+        lanzar()
+        exponer("boton-buscar", en: app)
+        elemento("boton-buscar").tap()
+        let ahoraNo = elemento("boton-permiso-ahora-no")
+        XCTAssertTrue(ahoraNo.waitForExistence(timeout: 10))
+        ahoraNo.tap()
+        XCTAssertTrue(ahoraNo.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(etiquetado("Bluetooth: sin consultar todavía.").exists, "no se pidió nada al sistema")
+        XCTAssertFalse(elemento("buscando-accesorios").exists)
+        XCTAssertFalse(elemento("busqueda-pendiente").exists)
+        XCTAssertEqual(elemento("boton-buscar").label, "Buscar accesorios")
+    }
+
+    func testPermisoDenegadoDaAyudaYElRestoDeLaAppSigueFuncionando() throws {
+        lanzar(["-PRUEBAS_UI_ACCESORIO_PERMISO_DENEGADO"])
+        exponer("boton-buscar", en: app)
+        elemento("boton-buscar").tap()
+        let continuar = elemento("boton-permiso-continuar")
+        XCTAssertTrue(continuar.waitForExistence(timeout: 10))
+        continuar.tap()
+        esperarEtiqueta("Sin permiso de Bluetooth. Actívalo en Ajustes, en TransMiVoz.")
+        XCTAssertTrue(elemento("boton-abrir-ajustes").exists, "debe ofrecer cómo activarlo")
+        XCTAssertFalse(elemento("buscando-accesorios").exists, "con el permiso denegado nunca se presenta como buscando")
+        XCTAssertFalse(elemento("busqueda-pendiente").exists)
+        XCTAssertEqual(elemento("boton-buscar").label, "Buscar accesorios")
+        // Denegar nunca bloquea el resto de la app.
+        abrirPestana("Consulta")
+        XCTAssertTrue(elemento("campo-pregunta").waitForExistence(timeout: 10))
+    }
+
+    // MARK: Auditoría de accesibilidad de la pantalla real
+
+    func testAuditoriaAccesibilidadSesionAccesorioEnReposoYBloqueada() throws {
+        lanzar(["-PRUEBAS_UI_ACCESORIO_PERMISO_CONCEDIDO"])
+        XCTAssertTrue(elemento("aviso-seguridad-enlace").waitForExistence(timeout: 10))
+        try auditar(app, "accesorio-reposo", testCase: self)
+        buscarYElegir(conHoja: false)
+        iniciarYEsperarBloqueo()
+        try auditar(app, "accesorio-bloqueado", testCase: self)
+    }
+
+    func testAuditoriaAccesibilidadHojaDelPermisoDeBluetooth() throws {
+        lanzar()
+        exponer("boton-buscar", en: app)
+        elemento("boton-buscar").tap()
+        XCTAssertTrue(elemento("boton-permiso-continuar").waitForExistence(timeout: 10))
+        try auditar(app, "accesorio-hoja-permiso", testCase: self)
+    }
+}
+
+/// La pantalla real del accesorio con el texto más grande de Dynamic Type de accesibilidad, sección por sección.
+final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
+    func testAuditoriaConTextoMuyGrande() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-PRUEBAS_UI_ACCESORIO_SINTETICO", "-PRUEBAS_UI_ACCESORIO_PERMISO_CONCEDIDO",
+            "-AppleLanguages", "(es)", "-AppleLocale", "es_CO",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL",
+        ]
+        app.launch()
+        addTeardownBlock { app.terminate() }
+        func elemento(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
+
+        XCTAssertTrue(elemento("aviso-seguridad-enlace").waitForExistence(timeout: 10))
+        for (id, contexto, completo) in [("aviso-seguridad-enlace", "bloqueo", false), ("boton-buscar", "busqueda", true)] {
+            exponer(id, en: app, completo: completo)
+            try auditar(app, "texto-muy-grande-Accesorio-\(contexto)", testCase: self)
+        }
+
+        elemento("boton-buscar").tap()
+        let elegir = elemento("elegir-SINTETICO-0001")
+        XCTAssertTrue(elegir.waitForExistence(timeout: 10))
+        exponer("elegir-SINTETICO-0001", en: app)
+        try auditar(app, "texto-muy-grande-Accesorio-hallazgo", testCase: self)
+        elegir.tap()
+
+        exponer("boton-sesion-accesorio", en: app)
+        elemento("boton-sesion-accesorio").tap()
+        let bloqueado = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Bloqueado: enlace no verificado")).firstMatch
+        XCTAssertTrue(bloqueado.waitForExistence(timeout: 10), "No apareció el bloqueo")
+        for (id, contexto, completo) in [
+            ("boton-sesion-accesorio", "controles", true), ("titulo-estado-accesorio", "estado", true),
+            ("estado-accesorio", "descripcion", false), ("estado-audio", "audio", false),
+            ("interruptor-voz-app", "voz", true),
+        ] {
+            exponer(id, en: app, completo: completo)
+            try auditar(app, "texto-muy-grande-Accesorio-\(contexto)", testCase: self)
         }
     }
 }

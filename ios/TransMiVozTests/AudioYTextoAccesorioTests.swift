@@ -89,6 +89,73 @@ final class ControlVozTests: XCTestCase {
         XCTAssertEqual(control.anunciar("c"), .hablado)
     }
 
+    func testSiElSistemaNoDejaActivarLaSesionNoSeAfirmaQueSeHablo() {
+        let (control, salida, _) = crear(.privada)
+        salida.resultado = .sesionNoDisponible
+        XCTAssertEqual(control.anunciar("a"), .silenciado(.audioNoDisponible))
+        XCTAssertTrue(control.audioNoDisponible)
+        XCTAssertTrue(salida.dicho.isEmpty)
+
+        salida.resultado = .iniciada
+        XCTAssertEqual(control.anunciar("b"), .hablado)
+        XCTAssertFalse(control.audioNoDisponible)
+    }
+
+    func testSiAlActivarLaRutaYaNoEsPrivadaSeSilenciaSinMarcarAudioNoDisponible() {
+        let salida = SalidaVozFalsa()
+        salida.resultado = .rutaNoPrivada  // el sintetizador comprobó la ruta tras activar y ya no era privada
+        var consultas = 0
+        // Crear, y la consulta previa a hablar: privada. La que sigue al aviso del sintetizador: ya no.
+        let control = ControlVoz(salida: salida, consultarRuta: { consultas += 1; return consultas <= 2 ? .privada : .noPrivada })
+        XCTAssertEqual(control.anunciar("a"), .silenciado(.rutaNoPrivada))
+        XCTAssertTrue(salida.llamadas.contains("intento:a"), "sí intentó hablar: la ruta cambió al activar")
+        XCTAssertFalse(control.audioNoDisponible)
+        XCTAssertEqual(control.ruta, .noPrivada)
+        XCTAssertTrue(salida.dicho.isEmpty)
+    }
+
+    func testVozPropiaApagadaNoHablaPeroLaRutaSigueConsultada() {
+        let (control, salida, _) = crear(.privada)
+        control.permitida = { false }
+        XCTAssertEqual(control.anunciar("a"), .silenciado(.vozApagada))
+        XCTAssertTrue(salida.dicho.isEmpty)
+    }
+
+    func testCortarPorRutaConLaRutaPrivadaIntactaAvisaSoloSiHabiaLocucion() {
+        let (control, salida, _) = crear(.privada)
+        var avisos = 0
+        control.alRecuperarse = { avisos += 1 }
+        control.rutaCambio()
+        XCTAssertEqual(avisos, 0, "nada sonaba: nada que repetir")
+        control.anunciar("a")
+        control.rutaCambio()
+        XCTAssertEqual(avisos, 1, "sonaba y el sistema la cortó: se dice el estado de ahora")
+        salida.terminarSola()
+        control.rutaCambio()
+        XCTAssertEqual(avisos, 1)
+    }
+
+    func testPerderLaRutaPrivadaAvisaUnaVez() {
+        let (control, _, ruta) = crear(.privada)
+        var perdidas = 0
+        control.alPerderRuta = { perdidas += 1 }
+        ruta.valor = .noPrivada
+        control.rutaCambio()
+        control.rutaCambio()
+        XCTAssertEqual(perdidas, 1)
+    }
+
+    func testLaVueltaAPrimerPlanoLimpiaUnaInterrupcionSinFinSinAvisarALaSesion() {
+        let (control, _, _) = crear(.privada)
+        var avisos = 0
+        control.alRecuperarse = { avisos += 1 }
+        control.interrupcion(comenzo: true)
+        control.escenaVolvio()
+        XCTAssertFalse(control.interrumpido)
+        XCTAssertEqual(avisos, 0, "la propia vuelta a primer plano ya dice el estado")
+        XCTAssertEqual(control.anunciar("a"), .hablado)
+    }
+
     func testFinDeInterrupcionSinAuricularesNoAvisa() {
         let (control, _, ruta) = crear(.noPrivada)
         var avisos = 0
@@ -97,6 +164,54 @@ final class ControlVozTests: XCTestCase {
         control.interrupcion(comenzo: true)
         control.interrupcion(comenzo: false)
         XCTAssertEqual(avisos, 0)
+    }
+}
+
+/// Quién libera la sesión de audio al cortar o terminar locuciones (el sistema avisa tarde y en otro orden).
+final class TurnoLocucionTests: XCTestCase {
+    func testCortarYLlegarElAvisoDeLaCanceladaLiberaSiNoHayOtraMasNueva() {
+        var turno = TurnoLocucion<Int>()
+        turno.empezar(1)
+        XCTAssertFalse(turno.detener(sistemaCancelo: true), "todavía no: la locución se está cancelando")
+        XCTAssertFalse(turno.hablando)
+        XCTAssertTrue(turno.terminar(1), "didCancel sin otra locución: ahora sí se libera")
+    }
+
+    func testElAvisoDeLaCanceladaNuncaLiberaLaSesionDeUnaMasNueva() {
+        var turno = TurnoLocucion<Int>()
+        turno.empezar(1)
+        _ = turno.detener(sistemaCancelo: true)
+        turno.empezar(2)
+        XCTAssertFalse(turno.terminar(1), "la sesión es de la locución 2")
+        XCTAssertTrue(turno.hablando)
+        XCTAssertTrue(turno.terminar(2))
+    }
+
+    func testSiElSistemaNoTeniaNadaQueCortarSeLiberaYa() {
+        var turno = TurnoLocucion<Int>()
+        turno.empezar(1)
+        XCTAssertTrue(turno.detener(sistemaCancelo: false))
+        XCTAssertFalse(turno.terminar(1), "un aviso sin dueño no libera")
+    }
+
+    func testAvisosDeLocucionesDesconocidasYDetenerEnVacioNoHacenNada() {
+        var turno = TurnoLocucion<Int>()
+        XCTAssertFalse(turno.detener(sistemaCancelo: true))
+        XCTAssertFalse(turno.terminar(9))
+        turno.empezar(1)
+        XCTAssertFalse(turno.terminar(9))
+        XCTAssertTrue(turno.terminar(1), "didFinish de la vigente libera")
+        XCTAssertFalse(turno.hablando)
+    }
+
+    func testCortarDosVecesSeguidasSoloEsperaElAvisoDeLaUltimaCancelada() {
+        var turno = TurnoLocucion<Int>()
+        turno.empezar(1)
+        _ = turno.detener(sistemaCancelo: true)
+        turno.empezar(2)
+        _ = turno.detener(sistemaCancelo: true)
+        XCTAssertFalse(turno.terminar(1), "la 1 ya quedó atrás")
+        XCTAssertTrue(turno.terminar(2))
     }
 }
 
@@ -205,6 +320,34 @@ final class TextoAccesorioTests: XCTestCase {
         XCTAssertEqual(TextoAccesorio.locucion(.objetivo(distanciaMm: 2000, azimutCentesimas: -500))?.texto, "Objeto a 2 metros, a la izquierda.")
         XCTAssertEqual(TextoAccesorio.locucion(.objetivo(distanciaMm: 2000, azimutCentesimas: 500))?.texto, "Objeto a 2 metros, a la derecha.")
         XCTAssertEqual(TextoAccesorio.locucion(.objetivo(distanciaMm: 2000, azimutCentesimas: nil))?.texto, "Objeto a 2 metros.")
+    }
+
+    func testSoloLosEstadosQueNoSonMedidasSeAnuncianPorAccesibilidad() {
+        let anunciables: [EstadoAccesorio] = [
+            .enlaceNoVerificado, .rechazado(.enlaceNoAutenticado), .falla(.tiempoAgotado), .desconectado,
+            .bluetoothNoDisponible(.apagado), .bluetoothNoDisponible(.sinPermiso),
+        ]
+        for estado in anunciables { XCTAssertNotNil(TextoAccesorio.anuncioAccesible(estado), "\(estado)") }
+        let sensor: [EstadoAccesorio] = [
+            .sinDeteccion, .presencia, .objetivo(distanciaMm: 1000, azimutCentesimas: nil), .sinDatos(.vencido),
+            .radarNoDisponible(.iniciando), .conectando, .calibrando, .conectado, .detenido, .sinAccesorio,
+        ]
+        for estado in sensor { XCTAssertNil(TextoAccesorio.anuncioAccesible(estado), "\(estado)") }
+        XCTAssertEqual(Set(anunciables.compactMap(TextoAccesorio.anuncioAccesible)).count, anunciables.count, "cada estado anunciable tiene su texto")
+    }
+
+    func testElTextoDeAudioDistingueCadaSituacionYNoLlamaAuricularesATodoLoPrivado() {
+        let textos = [
+            TextoAccesorio.audio(ruta: .privada, interrumpido: false),
+            TextoAccesorio.audio(ruta: .noPrivada, interrumpido: false),
+            TextoAccesorio.audio(ruta: .desconocida, interrumpido: false),
+            TextoAccesorio.audio(ruta: .privada, interrumpido: true),
+            TextoAccesorio.audio(ruta: .privada, interrumpido: false, audioNoDisponible: true),
+            TextoAccesorio.audio(ruta: .privada, interrumpido: false, vozPropia: false),
+        ]
+        XCTAssertEqual(Set(textos).count, textos.count)
+        XCTAssertTrue(textos[0].contains("no distingue"), "un altavoz Bluetooth se ve igual que unos auriculares")
+        XCTAssertFalse(textos[0].hasPrefix("Audio: auriculares"))
     }
 
     func testElEstadoQueNoMideNadaNoTieneAvisoDeSensor() {

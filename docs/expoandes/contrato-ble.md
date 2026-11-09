@@ -149,6 +149,12 @@ Una sesión de demostración se crea con `modo: .simulada` y solo acepta tramas 
 7. Lectura **fresca** de Medición, midiendo `t0` justo antes de pedirla y `t1` al recibir la respuesta (reloj monotónico del iPhone) → `registrarReferencia`.
 8. Solo entonces se activa la sesión. Las notificaciones que lleguen antes de la referencia se descartan (`sinReferencia`) y no disparan avisos.
 
+**Aclaración de plataforma (iOS, EA-15). Es una propuesta del trabajo de software de EA-15: el responsable del contrato no la ha revisado ni aprobado.** Core Bluetooth entrega la respuesta de una lectura y cada notificación por el mismo callback (`didUpdateValueFor`), sin marca que diga cuál es cuál. Con la suscripción ya activa, una notificación emitida antes de pedir la lectura podría tomarse por la respuesta y anclar la referencia demasiado atrás: la cota de la [sección 5.2](#52-reloj-de-referencia-y-cota-de-antigüedad) **subestimaría** la demora BLE. Por eso el transporte de iOS, en lugar de los pasos 6 y 7 en ese orden, hace: (a) notificaciones **apagadas y confirmadas** por el sistema (si ya están apagadas, se confirma en local con `isNotifying`), (b) lectura fresca de referencia con `t0`/`t1` (paso 7), (c) notificaciones encendidas (paso 6). Lo que llegue como notificación antes de (c) no activa la sesión (paso 8). La misma secuencia sirve para la recalibración de 30 s, la vuelta del fondo y un identificador de arranque distinto.
+
+- **Qué no cambia:** ningún byte, la política de autenticación por defecto (§6), el límite de 200 ms de la lectura, la cota y los 500 ms de frescura. La sesión recibe las mismas llamadas con los mismos datos.
+- **Qué sí cambia:** el orden de los pasos 6 y 7. Mientras el responsable no lo apruebe, es una desviación de plataforma declarada, no una modificación del contrato.
+- **Frontera conservadora y evidencia que falta:** apagar primero evita confundir una notificación con la lectura solo si una notificación ya en vuelo llega ANTES de la confirmación de «apagadas» (el enlace ATT es ordenado y Core Bluetooth debería entregar los avisos en ese orden, pero no lo documenta). Si llegara después y con la lectura ya pedida, se tomaría por la respuesta. Tampoco está medido el hueco de notificaciones de cada recalibración (apagar, leer, encender). Lo cierra el paso de banco «apagar, leer y encender cada 30 s» de [EA-12](ea-12-ble.md#guion-de-banco-pendiente-lo-ejecuta-h3-con-h1); no hay prueba con hardware.
+
 ### 5.2 Reloj de referencia y cota de antigüedad
 
 No se resta el reloj del iPhone del reloj del ESP32. Con la referencia `(t0, t1, m_ref)`, para una trama con instante de emisión `m` recibida en `t`:
@@ -285,6 +291,7 @@ Decisiones tomadas al congelar. Ninguna cambia la distribución de bytes de §8.
 | B2: ¿el GPIO2 cambia antes que la trama? ¿retardo real? | H2 / H1 (EA-11) | Medición de banco; decide el conflicto de 1 Hz (sección 7). Hasta entonces la opción 1 es provisional. |
 | Trama real del SEN0395 y salud ante desconexión | H2 (B1) | Captura de UART cruda. |
 | Enlace cifrado y autenticado real, y qué evidencia lo afirma en iOS | H3 (EA-12) | Prueba con la placa y el iPhone. |
+| Orden de la referencia y la suscripción en iOS (aclaración de la [sección 5.1](#51-orden-obligatorio)) | Responsable del contrato, con H3 (EA-12) | Revisar la aclaración propuesta y ejecutar el paso de banco de 30 s de EA-12. Sin revisión y sin evidencia sigue siendo una propuesta de software. |
 | Transporte Core Bluetooth que use `SesionProximidad` | A2 (EA-11/EA-12) | Código y prueba en el iPhone desde el 11/11. |
 | Apertura manual del proyecto en Xcode (CI del paquete y la app ya verde) | A1 / A2 | El job de CI pasó en `97b7e819` ([ejecución](https://github.com/ZuluCode777/proyecto-1-APP/actions/runs/42345095722): 1054 comprobaciones de C++ + 7 pruebas de Swift en macOS). La integración en la app ya se comprobó en la [ejecución iOS](https://github.com/ZuluCode777/proyecto-1-APP/actions/runs/42345095644); falta abrir el proyecto a mano en Xcode. |
 | Pines, cableado y firmware de placa | H3 (EA-12) | `firmware/README.md` una vez recibida la placa. |

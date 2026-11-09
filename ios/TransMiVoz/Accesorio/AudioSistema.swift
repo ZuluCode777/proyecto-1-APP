@@ -1,43 +1,60 @@
 import AVFoundation
 import Foundation
+import UIKit
 
 /// Voz y sesión de audio del iPhone. El iPhone es el dueño de `AVSpeechSynthesizer`, de
 /// `AVAudioSession` y de la ruta; el accesorio solo manda datos.
 ///
 /// La política (quién puede hablar y cuándo) vive en `ControlVoz`. Aquí solo se habla:
-/// - se activa la sesión justo antes de hablar y se libera al terminar o al cortar;
-/// - si la sesión de audio no se deja configurar o activar, NO se habla (falla cerrado);
-/// - una locución cancelada o reemplazada nunca activa ni libera la sesión de la siguiente.
+/// - la categoría de audio se configura AQUÍ (al crear el sintetizador y, si cambió, antes de hablar);
+///   consultar la ruta solo lee `currentRoute` y no cambia nada, así no provoca avisos de ruta propios;
+/// - se activa la sesión justo antes de hablar y se libera cuando termina la última locución viva;
+/// - si la sesión de audio no se deja configurar o activar, NO se habla y se devuelve
+///   `sesionNoDisponible` (falla cerrado); la ruta se vuelve a comprobar tras activar;
+/// - una locución cancelada o reemplazada nunca libera la sesión de la siguiente (`TurnoLocucion`).
 @MainActor
 final class SintetizadorSistema: NSObject, SalidaVoz, AVSpeechSynthesizerDelegate {
     private let sintetizador = AVSpeechSynthesizer()
-    private var actual: AVSpeechUtterance?
+    private var turno = TurnoLocucion<AVSpeechUtterance>()
+
+    var hablando: Bool { turno.hablando }
 
     override init() {
         super.init()
         sintetizador.delegate = self
+        // Sin activar la sesión: no suena ni interrumpe nada. Deja la ruta consultable desde ya.
+        try? Self.configurar(AVAudioSession.sharedInstance())
     }
 
-    func hablar(_ texto: String) {
+    func hablar(_ texto: String) -> ResultadoHabla {
+        if turno.hablando { detener() }
         let sesion = AVAudioSession.sharedInstance()
         do {
             try Self.configurar(sesion)
             try sesion.setActive(true)
         } catch {
-            return
+            return .sesionNoDisponible
+        }
+        // Activar puede cambiar la ruta (p. ej. un altavoz Bluetooth que pasa a HFP o vuelve el integrado):
+        // se comprueba otra vez antes de que suene nada.
+        guard Self.rutaActual() == .privada else {
+            Self.liberar()
+            return .rutaNoPrivada
         }
         let locucion = AVSpeechUtterance(string: texto)
         locucion.voice = Self.vozEnEspanol()
         locucion.prefersAssistiveTechnologySettings = true
-        actual = locucion
+        turno.empezar(locucion)
         sintetizador.speak(locucion)
+        return .iniciada
     }
 
     func detener() {
-        let habiaVoz = actual != nil
-        actual = nil
-        sintetizador.stopSpeaking(at: .immediate)
-        if habiaVoz { Self.liberar() }
+        guard turno.hablando else { return }
+        // `didCancel` llega después; la sesión se libera allí, cuando la locución ya no suena y no hay otra
+        // más nueva. Si el sistema no tenía nada que cortar no habrá aviso: se libera ya.
+        let cancelo = sintetizador.stopSpeaking(at: .immediate)
+        if turno.detener(sistemaCancelo: cancelo) { Self.liberar() }
     }
 
     nonisolated func speechSynthesizer(_ sintetizador: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
@@ -49,19 +66,20 @@ final class SintetizadorSistema: NSObject, SalidaVoz, AVSpeechSynthesizerDelegat
     }
 
     private func terminar(_ locucion: AVSpeechUtterance) {
-        // Una locución vieja (ya reemplazada o cortada) no toca la sesión de la vigente.
-        guard locucion === actual else { return }
-        actual = nil
-        Self.liberar()
+        if turno.terminar(locucion) { Self.liberar() }
     }
 
     // MARK: Sesión de audio y ruta
 
-    /// `.playback` con modo de avisos de voz: baja el volumen de lo demás mientras habla.
+    /// `.playback` con modo de avisos de voz: baja el volumen de lo demás mientras habla. Solo escribe si
+    /// algo difiere, para no provocar avisos de cambio de categoría sin necesidad.
     nonisolated private static func configurar(_ sesion: AVAudioSession) throws {
+        if sesion.category == .playback && sesion.mode == .voicePrompt && sesion.categoryOptions.contains(.duckOthers) { return }
         try sesion.setCategory(.playback, mode: .voicePrompt, options: [.duckOthers])
     }
 
+    /// Sin reintentos: si el sistema no deja liberar (todavía hay audio en curso), la sesión sigue
+    /// activa hasta la próxima locución o hasta que el sistema la libere.
     nonisolated private static func liberar() {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
@@ -73,12 +91,9 @@ final class SintetizadorSistema: NSObject, SalidaVoz, AVSpeechSynthesizerDelegat
         return nil
     }
 
-    /// Ruta de salida de ahora. Se consulta en cada locución, no se guarda.
+    /// Ruta de salida de ahora. Solo lee: no cambia la categoría ni activa nada.
     nonisolated static func rutaActual() -> RutaAudio {
-        let sesion = AVAudioSession.sharedInstance()
-        // Con la categoría de reproducción puesta, la ruta es la que se usaría para hablar.
-        try? configurar(sesion)
-        return RutaAudio.clasificar(sesion.currentRoute.outputs.map { tipo($0.portType) })
+        RutaAudio.clasificar(AVAudioSession.sharedInstance().currentRoute.outputs.map { tipo($0.portType) })
     }
 
     nonisolated private static func tipo(_ puerto: AVAudioSession.Port) -> TipoSalida {
@@ -101,7 +116,12 @@ final class MonitorAudioSistema {
 
     init(control: ControlVoz) {
         let centro = NotificationCenter.default
-        observadores.append(centro.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { _ in
+        observadores.append(centro.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { nota in
+            let motivo = (nota.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt)
+                .flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
+            // El cambio de categoría lo provoca la propia configuración de la app; la ruta se vuelve a
+            // comprobar al empezar cada locución y tras activar la sesión. Cortar aquí podría enredarse con ella.
+            guard motivo != .categoryChange else { return }
             Task { @MainActor in control.rutaCambio() }
         })
         observadores.append(centro.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { nota in
@@ -113,5 +133,15 @@ final class MonitorAudioSistema {
         observadores.append(centro.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { _ in
             Task { @MainActor in control.rutaCambio() }
         })
+    }
+}
+
+extension AvisosAccesibles {
+    /// Avisos reales: anuncio de accesibilidad (no mueve el foco) y háptica de advertencia.
+    @MainActor static var sistema: AvisosAccesibles {
+        AvisosAccesibles(
+            anunciar: { UIAccessibility.post(notification: .announcement, argument: $0) },
+            vibrar: { UINotificationFeedbackGenerator().notificationOccurred(.warning) },
+            voiceOverActivo: { UIAccessibility.isVoiceOverRunning })
     }
 }

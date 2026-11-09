@@ -3,8 +3,11 @@ import SwiftUI
 
 /// Pantalla de la sesión con el accesorio REAL por Bluetooth. Funciona sin red ni servidor.
 /// El accesorio se elige a mano; iniciar, detener y reconectar son botones aparte.
+/// Es la misma vista en producción y en las pruebas de interfaz; en estas, `avisoSintetico` rotula que el
+/// transporte es sintético (sin Bluetooth, radio ni audio) y el bloqueo por enlace no verificado sigue igual.
 struct SesionAccesorioVista: View {
     let modelo: SesionAccesorioModelo
+    var avisoSintetico = false
 
     @Environment(\.openURL) private var abrirURL
 
@@ -12,6 +15,13 @@ struct SesionAccesorioVista: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    if avisoSintetico {
+                        Label("Modo de pruebas: transporte sintético. No hay Bluetooth, radio, audio ni accesorio reales; el enlace sigue sin verificarse.", systemImage: "testtube.2")
+                            .font(.footnote)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("aviso-transporte-sintetico")
+                    }
+
                     Label("Sensor real por Bluetooth. Los avisos hablados solo salen por auriculares. Con la pantalla bloqueada o la app en segundo plano la sesión se detiene; al volver se sincroniza de nuevo.", systemImage: "dot.radiowaves.left.and.right")
                         .font(.subheadline)
                         .fixedSize(horizontal: false, vertical: true)
@@ -28,16 +38,26 @@ struct SesionAccesorioVista: View {
                     seccionAccesorio
                     seccionControles
                     seccionEstado
+                    seccionVoz
 
                     Text("Esta pantalla no necesita internet ni el servidor de transporte.")
                         .font(.footnote)
                         .foregroundStyle(.textoSecundario)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(16)
             }
             .navigationTitle("Sesión")
             .navigationBarTitleDisplayMode(.inline)
             .bordeInferiorLegible()
+            .sheet(isPresented: Binding(
+                get: { modelo.explicacionPermiso != nil },
+                set: { if !$0 { modelo.cancelarExplicacion() } })
+            ) {
+                HojaPermisoBluetooth(
+                    continuar: { modelo.continuarTrasExplicacion() },
+                    ahoraNo: { modelo.cancelarExplicacion() })
+            }
         }
     }
 
@@ -65,21 +85,28 @@ struct SesionAccesorioVista: View {
             Text("Accesorio elegido: \(modelo.elegido?.etiqueta ?? "ninguno")")
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("accesorio-elegido")
-            Button(modelo.buscando ? "Dejar de buscar" : "Buscar accesorios") {
-                if modelo.buscando { modelo.dejarDeBuscar() } else { modelo.buscar() }
+            Button(modelo.busquedaPedida ? "Dejar de buscar" : "Buscar accesorios") {
+                if modelo.busquedaPedida { modelo.dejarDeBuscar() } else { modelo.buscar() }
             }
             .buttonStyle(.bordered)
             .frame(minHeight: 44)
             .accessibilityIdentifier("boton-buscar")
 
+            // «Buscando» solo con escaneo real; con la búsqueda pedida pero sin poder escanear se dice por qué.
             if modelo.buscando && modelo.encontrados.isEmpty {
                 Text("Buscando accesorios cercanos…")
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("buscando-accesorios")
+            } else if modelo.busquedaPedida && !modelo.buscando {
+                Text(TextoAccesorio.busquedaPendiente)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("busqueda-pendiente")
             }
             ForEach(modelo.encontrados) { accesorio in
                 Button("Elegir \(accesorio.etiqueta)") { modelo.elegir(accesorio) }
                     .buttonStyle(.bordered)
                     .frame(minHeight: 44)
+                    .accessibilityIdentifier("elegir-\(accesorio.id)")
             }
             Text("El nombre y el identificador no prueban que el accesorio sea el tuyo.")
                 .font(.footnote)
@@ -121,13 +148,65 @@ struct SesionAccesorioVista: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("estado-accesorio")
             Text("Origen de los datos: accesorio real por Bluetooth")
+                .fixedSize(horizontal: false, vertical: true)
             Text("Enlace autenticado: \(modelo.enlaceAutenticado ? "sí" : "no verificado")")
                 .accessibilityIdentifier("enlace-accesorio")
             Text("Tramas perdidas: \(modelo.tramasPerdidas)")
-            Text(TextoAccesorio.audio(ruta: modelo.voz.ruta, interrumpido: modelo.voz.interrumpido))
+            Text(TextoAccesorio.audio(
+                ruta: modelo.voz.ruta, interrumpido: modelo.voz.interrumpido,
+                audioNoDisponible: modelo.voz.audioNoDisponible, vozPropia: modelo.vozPropiaActiva))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("estado-audio")
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private var seccionVoz: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Avisos hablados por la app", isOn: Binding(
+                get: { modelo.vozPropiaActiva },
+                set: { modelo.fijarVozPropia($0) }))
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("interruptor-voz-app")
+            Text("Con VoiceOver activo empieza apagada para no hablar dos veces. Los avisos del sensor nunca se leen con VoiceOver: solo salen por auriculares y quedan en pantalla.")
+                .font(.footnote)
+                .foregroundStyle(.textoSecundario)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// Explicación del permiso de Bluetooth ANTES del aviso del sistema (EA-02 §8), con una salida sin permiso.
+struct HojaPermisoBluetooth: View {
+    let continuar: () -> Void
+    let ahoraNo: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(TextoAccesorio.permisoBluetoothExplicacion)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("texto-permiso-bluetooth")
+                    Button("Continuar", action: continuar)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("boton-permiso-continuar")
+                    Button("Ahora no", action: ahoraNo)
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("boton-permiso-ahora-no")
+                    Text(TextoAccesorio.permisoBluetoothAlternativa)
+                        .font(.footnote)
+                        .foregroundStyle(.textoSecundario)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(16)
+            }
+            .navigationTitle(TextoAccesorio.permisoBluetoothTitulo)
+            .navigationBarTitleDisplayMode(.inline)
+        }
     }
 }

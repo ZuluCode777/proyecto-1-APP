@@ -15,6 +15,7 @@ final class SesionAccesorioModeloTests: XCTestCase {
 
     func testFlujoCompletoLlamaAlTransporteEnOrdenYDiceCadaEstado() throws {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         let escenario = try objetivo()
         banco.iniciar()
         XCTAssertEqual(banco.modelo.estado, .conectando)
@@ -41,7 +42,6 @@ final class SesionAccesorioModeloTests: XCTestCase {
             "Objeto a 1,5 metros.",
             "Presencia detectada.",
         ])
-        banco.modelo.detener()
     }
 
     // MARK: Seguridad: producción no puede afirmar el enlace
@@ -49,6 +49,7 @@ final class SesionAccesorioModeloTests: XCTestCase {
     func testSinNivelDeEnlaceAfirmadoLaSesionSeBloqueaYNoSeLeeNiSeSuscribeNada() throws {
         for nivel in [NivelEnlace.desconocido, .sinCifrar, .cifradoSinAutenticar] {
             let banco = BancoAccesorio(nivel: nivel)
+            defer { banco.cerrar() }
             banco.iniciar()
             banco.transporte.emitir(.conectado(id: banco.accesorio.id))
 
@@ -66,21 +67,28 @@ final class SesionAccesorioModeloTests: XCTestCase {
             XCTAssertEqual(banco.modelo.estado, .enlaceNoVerificado)
             XCTAssertEqual(banco.salida.dicho.last, "Avisos bloqueados. No se puede verificar la seguridad del enlace.")
             XCTAssertFalse(banco.salida.dicho.contains { $0.hasPrefix("Objeto") || $0.hasPrefix("Presencia") || $0.hasPrefix("Sin detección") })
-            banco.modelo.detener()
         }
     }
 
     func testElTransporteRealNoAfirmaNingunNivelDeEnlace() {
         // Mientras no haya evidencia con la placa y el iPhone (contrato §6, EA-12), la app no puede
-        // marcar el enlace como verificable: la pantalla lo avisa y bloquea los avisos.
-        let banco = BancoAccesorio(nivel: .desconocido)
-        XCTAssertFalse(banco.modelo.enlaceVerificable)
+        // marcar el enlace como verificable: la pantalla lo avisa y bloquea los avisos. Se prueba con el
+        // transporte REAL de producción (su creación es perezosa: no crea el gestor ni pide permiso),
+        // no con el doble. Si alguien cambia `nivelEnlace` a `.cifradoAutenticado` esta prueba falla.
+        let real = TransporteCoreBluetooth()
+        XCTAssertEqual(real.nivelEnlace, .desconocido)
+        let voz = ControlVoz(salida: SalidaVozFalsa(), consultarRuta: { .privada })
+        let modelo = SesionAccesorioModelo(transporte: real, voz: voz)
+        XCTAssertFalse(modelo.enlaceVerificable)
+        XCTAssertEqual(modelo.estado, .sinAccesorio)
+        XCTAssertFalse(modelo.buscando, "crear la sesión no toca Core Bluetooth")
     }
 
     // MARK: Lo tardío y lo viejo se descarta
 
     func testEventosDeUnaConexionAnteriorSeDescartan() throws {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         banco.iniciar()
         let viejo = banco.transporte.tokenVigente
         banco.modelo.reconectar()
@@ -89,11 +97,11 @@ final class SesionAccesorioModeloTests: XCTestCase {
         banco.transporte.emitir(.conectado(id: banco.accesorio.id), token: viejo)
         XCTAssertEqual(banco.modelo.estado, .conectando)
         XCTAssertEqual(banco.transporte.veces("leerInformacion"), 0)
-        banco.modelo.detener()
     }
 
     func testDetenerDescartaLoQueLlegueDespues() throws {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         let escenario = try objetivo()
         banco.iniciar()
         banco.sincronizar(escenario)
@@ -111,6 +119,7 @@ final class SesionAccesorioModeloTests: XCTestCase {
 
     func testCambiarDeAccesorioDetieneLaSesionAnteriorYNoArrastraNada() throws {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         let escenario = try objetivo()
         banco.iniciar()
         banco.sincronizar(escenario)
@@ -129,6 +138,7 @@ final class SesionAccesorioModeloTests: XCTestCase {
 
     func testNotificacionesAntesDeLaReferenciaNoCuentan() throws {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         let escenario = try objetivo()
         banco.iniciar()
         banco.transporte.emitir(.conectado(id: banco.accesorio.id))
@@ -137,13 +147,13 @@ final class SesionAccesorioModeloTests: XCTestCase {
         banco.transporte.emitir(.notificacionMedicion(escenario.entregas[0].datos))
         XCTAssertEqual(banco.modelo.estado, .calibrando)
         XCTAssertFalse(banco.salida.dicho.contains { $0.hasPrefix("Objeto") })
-        banco.modelo.detener()
     }
 
     // MARK: Referencia fresca (≤ 200 ms) y reintentos
 
     func testReferenciaDeExactamente200msPasa() throws {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         let escenario = try objetivo()
         banco.iniciar()
         banco.transporte.emitir(.conectado(id: banco.accesorio.id))
@@ -154,11 +164,11 @@ final class SesionAccesorioModeloTests: XCTestCase {
         banco.transporte.emitir(.respuestaMedicion(escenario.referencias[0].datos))
         XCTAssertEqual(banco.modelo.estado, .sinDeteccion)
         XCTAssertEqual(banco.transporte.llamadas.last, "notificaciones:true")
-        banco.modelo.detener()
     }
 
     func testReferenciaLentaSePideOtraYTrasTresIntentosFalla() throws {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         let escenario = try objetivo()
         banco.iniciar()
         banco.transporte.emitir(.conectado(id: banco.accesorio.id))
@@ -181,8 +191,30 @@ final class SesionAccesorioModeloTests: XCTestCase {
         XCTAssertEqual(banco.salida.dicho.last, "Fallo del accesorio. Sin avisos.")
     }
 
+    /// Una notificación que ya venía en camino cuando se apagaron las notificaciones no puede convertirse en
+    /// la referencia fresca: mientras se espera la lectura, solo cuenta la respuesta a ella.
+    func testUnaNotificacionRezagadaDuranteLaLecturaNoEsLaReferencia() throws {
+        let banco = BancoAccesorio()
+        defer { banco.cerrar() }
+        let escenario = try objetivo()
+        banco.iniciar()
+        banco.transporte.emitir(.conectado(id: banco.accesorio.id))
+        banco.transporte.emitir(.informacion(escenario.informaciones[0]))
+        banco.reloj.fijar(escenario.referencias[0].inicio)
+        banco.transporte.emitir(.notificacionesFijadas(false))
+
+        banco.transporte.emitir(.notificacionMedicion(escenario.entregas[0].datos))
+        XCTAssertEqual(banco.modelo.estado, .calibrando, "sin referencia no hay sesión")
+        XCTAssertEqual(banco.transporte.veces("notificaciones:true"), 0)
+
+        banco.reloj.fijar(escenario.referencias[0].fin)
+        banco.transporte.emitir(.respuestaMedicion(escenario.referencias[0].datos))
+        XCTAssertEqual(banco.modelo.estado, .sinDeteccion, "la respuesta a la lectura sí es la referencia")
+    }
+
     func testRespuestaTardiaDeUnaLecturaNoSeTomaPorLaReferencia() throws {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         let escenario = try objetivo()
         banco.iniciar()
         banco.transporte.emitir(.conectado(id: banco.accesorio.id))
@@ -191,13 +223,13 @@ final class SesionAccesorioModeloTests: XCTestCase {
         banco.transporte.emitir(.respuestaMedicion(escenario.referencias[0].datos))
         XCTAssertEqual(banco.modelo.estado, .calibrando)
         XCTAssertEqual(banco.transporte.veces("leerMedicion"), 0)
-        banco.modelo.detener()
     }
 
     // MARK: Reinicio del accesorio, recalibración y latido
 
     func testOtroIdentificadorDeArranqueRelleeLaInformacionYVuelveASincronizar() throws {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         let escenario = try EscenarioBLE.cargar("reinicio-del-accesorio")
         banco.iniciar()
         banco.sincronizar(escenario)
@@ -212,11 +244,11 @@ final class SesionAccesorioModeloTests: XCTestCase {
         banco.reloj.fijar(2030)
         banco.transporte.emitir(.respuestaMedicion(escenario.referencias[1].datos))
         XCTAssertEqual(banco.modelo.estado, .sinDeteccion)
-        banco.modelo.detener()
     }
 
     func testLaReferenciaSeRepiteCadaTreintaSegundos() throws {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         let escenario = try objetivo()
         banco.iniciar()
         banco.sincronizar(escenario)
@@ -224,11 +256,11 @@ final class SesionAccesorioModeloTests: XCTestCase {
         banco.reloj.fijar(escenario.referencias[0].fin + 30_001)
         banco.modelo.evaluar()
         XCTAssertEqual(banco.transporte.llamadas.last, "notificaciones:false")
-        banco.modelo.detener()
     }
 
     func testSinTramasPasaASinDatosYNoRepiteLaUltimaMedida() throws {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         let escenario = try objetivo()
         banco.iniciar()
         banco.sincronizar(escenario)
@@ -237,11 +269,11 @@ final class SesionAccesorioModeloTests: XCTestCase {
         banco.modelo.evaluar()
         XCTAssertEqual(banco.modelo.estado, .sinDatos(.sinRecepcion))
         XCTAssertEqual(banco.salida.dicho.last, "Sin datos del sensor.")
-        banco.modelo.detener()
     }
 
     func testUnPasoSinRespuestaFallaPorTiempo() {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         banco.iniciar()
         banco.transporte.emitir(.conectado(id: banco.accesorio.id))
         banco.reloj.avanzar(SesionAccesorioModelo.plazoPasoMs + 1)
@@ -250,19 +282,55 @@ final class SesionAccesorioModeloTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(banco.transporte.veces("desconectar"), 1)
     }
 
-    func testUnaConexionPendienteNoCaducaPorTiempo() {
+    /// El transporte solo emite `.conectado` cuando también terminó de descubrir el servicio y sus dos
+    /// características, así que este plazo cubre la conexión Y el descubrimiento.
+    func testUnaConexionPendienteCaducaPorTiempoYSePuedeReconectar() {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
+        banco.iniciar()
+        let viejo = banco.transporte.tokenVigente
+
+        banco.reloj.avanzar(SesionAccesorioModelo.plazoPasoMs)
+        banco.modelo.evaluar()
+        XCTAssertEqual(banco.modelo.estado, .conectando, "justo en el plazo todavía espera")
+        banco.reloj.avanzar(1)
+        banco.modelo.evaluar()
+        XCTAssertEqual(banco.modelo.estado, .falla(.tiempoAgotado))
+        XCTAssertGreaterThanOrEqual(banco.transporte.veces("desconectar"), 1, "se cancela la conexión pendiente")
+        XCTAssertEqual(banco.salida.dicho.last, "Fallo del accesorio. Sin avisos.")
+
+        // Una conexión tardía de la que ya se rindió no resucita nada.
+        banco.transporte.emitir(.conectado(id: banco.accesorio.id), token: viejo)
+        XCTAssertEqual(banco.modelo.estado, .falla(.tiempoAgotado))
+        XCTAssertEqual(banco.transporte.veces("leerInformacion"), 0)
+
+        banco.modelo.reconectar()
+        XCTAssertEqual(banco.modelo.estado, .conectando)
+        XCTAssertNotEqual(banco.transporte.tokenVigente, viejo)
+        banco.reloj.avanzar(SesionAccesorioModelo.plazoPasoMs + 1)
+        banco.modelo.evaluar()
+        XCTAssertEqual(banco.modelo.estado, .falla(.tiempoAgotado), "el plazo vuelve a contar en cada intento")
+    }
+
+    func testElPlazoNoCuentaMientrasSeEsperaElPermisoOElBluetooth() {
+        let banco = BancoAccesorio()
+        defer { banco.cerrar() }
+        banco.transporte.emitir(.disponibilidad(.apagado), token: tokenSinConexion)
         banco.iniciar()
         banco.reloj.avanzar(60_000)
         banco.modelo.evaluar()
-        XCTAssertEqual(banco.modelo.estado, .conectando)
-        banco.modelo.detener()
+        XCTAssertEqual(banco.modelo.estado, .bluetoothNoDisponible(.apagado), "se dice que falta el Bluetooth, no que el accesorio no respondió")
+        banco.transporte.emitir(.disponibilidad(.disponible), token: tokenSinConexion)
+        banco.reloj.avanzar(SesionAccesorioModelo.plazoPasoMs)
+        banco.modelo.evaluar()
+        XCTAssertEqual(banco.modelo.estado, .conectando, "el plazo empieza al volver el Bluetooth")
     }
 
     // MARK: Desconexión y reconexión
 
     func testDesconexionReconectaConSesionNuevaSinAvisosHistoricos() throws {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         let escenario = try objetivo()
         banco.iniciar()
         banco.sincronizar(escenario)
@@ -284,11 +352,11 @@ final class SesionAccesorioModeloTests: XCTestCase {
         banco.sincronizar(escenario)
         XCTAssertEqual(banco.modelo.estado, .sinDeteccion)
         XCTAssertEqual(Array(banco.salida.dicho.suffix(2)), ["Accesorio conectado. Calibrando. Aún sin avisos.", "Sin detección en este momento."])
-        banco.modelo.detener()
     }
 
     func testElFalloDeConexionNoReintentaSolo() {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         banco.iniciar()
         banco.transporte.emitir(.fallo(.conexionFallida))
         XCTAssertEqual(banco.modelo.estado, .falla(.conexionFallida))
@@ -296,13 +364,13 @@ final class SesionAccesorioModeloTests: XCTestCase {
         banco.modelo.reconectar()
         XCTAssertEqual(banco.transporte.veces("conectar:acc-1"), 2)
         XCTAssertEqual(banco.modelo.estado, .conectando)
-        banco.modelo.detener()
     }
 
     // MARK: Bluetooth y permisos
 
     func testBluetoothApagadoSeDiceYAlVolverReconecta() throws {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         let escenario = try objetivo()
         banco.iniciar()
         banco.sincronizar(escenario)
@@ -317,23 +385,23 @@ final class SesionAccesorioModeloTests: XCTestCase {
         banco.transporte.emitir(.disponibilidad(.disponible), token: tokenSinConexion)
         XCTAssertEqual(banco.transporte.veces("conectar:acc-1"), 2)
         XCTAssertEqual(banco.modelo.estado, .conectando)
-        banco.modelo.detener()
     }
 
     func testSinPermisoSeDiceYNoSeConecta() {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         banco.transporte.emitir(.disponibilidad(.sinPermiso), token: tokenSinConexion)
         banco.iniciar()
         XCTAssertEqual(banco.modelo.estado, .bluetoothNoDisponible(.sinPermiso))
         banco.transporte.emitir(.conectado(id: banco.accesorio.id))
         XCTAssertEqual(banco.modelo.estadoSesion, .desconectada)
-        banco.modelo.detener()
     }
 
     // MARK: Elección explícita y búsqueda
 
     func testSinAccesorioElegidoNoSePuedeIniciar() {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         XCTAssertEqual(banco.modelo.estado, .sinAccesorio)
         banco.modelo.iniciar()
         XCTAssertFalse(banco.modelo.activa)
@@ -342,6 +410,7 @@ final class SesionAccesorioModeloTests: XCTestCase {
 
     func testLaBusquedaListaSinRepetirYElegirLaDetiene() {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         banco.modelo.buscar()
         banco.transporte.emitir(.encontrado(banco.accesorio), token: tokenSinConexion)
         banco.transporte.emitir(.encontrado(banco.accesorio), token: tokenSinConexion)
@@ -357,6 +426,7 @@ final class SesionAccesorioModeloTests: XCTestCase {
 
     func testEscenaInactivaCallaYAlVolverResincroniza() throws {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         let escenario = try EscenarioBLE.cargar("reanudar-desde-suspension")
         banco.iniciar()
         banco.sincronizar(escenario)
@@ -384,11 +454,11 @@ final class SesionAccesorioModeloTests: XCTestCase {
         banco.transporte.emitir(.respuestaMedicion(referencia.datos))
         banco.transporte.emitir(.notificacionesFijadas(true))
         XCTAssertEqual(banco.modelo.estado, .sinDeteccion)
-        banco.modelo.detener()
     }
 
     func testEnlaceCaidoDuranteLaSuspensionSeReconectaDeCero() throws {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         let escenario = try objetivo()
         banco.iniciar()
         banco.sincronizar(escenario)
@@ -397,23 +467,23 @@ final class SesionAccesorioModeloTests: XCTestCase {
         banco.modelo.escenaActiva(true)
         XCTAssertEqual(banco.transporte.veces("conectar:acc-1"), 2)
         XCTAssertEqual(banco.modelo.estado, .conectando)
-        banco.modelo.detener()
     }
 
     func testSincronizacionAMediasDuranteLaSuspensionSeReiniciaDeCero() {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         banco.iniciar()
         banco.transporte.emitir(.conectado(id: banco.accesorio.id))
         banco.modelo.escenaActiva(false)
         banco.modelo.escenaActiva(true)
         XCTAssertEqual(banco.transporte.veces("conectar:acc-1"), 2)
-        banco.modelo.detener()
     }
 
     // MARK: Audio
 
     func testSinAuricularesNoSeHablaPeroElEstadoSigueVisible() throws {
         let banco = BancoAccesorio(ruta: .noPrivada)
+        defer { banco.cerrar() }
         let escenario = try objetivo()
         banco.iniciar()
         banco.sincronizar(escenario)
@@ -425,11 +495,11 @@ final class SesionAccesorioModeloTests: XCTestCase {
         banco.ruta.valor = .privada
         banco.modelo.voz.rutaCambio()
         XCTAssertEqual(banco.salida.dicho, ["Objeto a 1,5 metros."])
-        banco.modelo.detener()
     }
 
     func testUnaInterrupcionCortaYAlTerminarSoloSeDiceElEstadoActual() throws {
         let banco = BancoAccesorio()
+        defer { banco.cerrar() }
         let escenario = try objetivo()
         banco.iniciar()
         banco.sincronizar(escenario)
@@ -439,7 +509,6 @@ final class SesionAccesorioModeloTests: XCTestCase {
         XCTAssertEqual(banco.salida.dicho.last, "Objeto a 1 metro, a la izquierda.", "durante la llamada no se dice la nueva medida")
         banco.modelo.voz.interrupcion(comenzo: false)
         XCTAssertEqual(banco.salida.dicho.last, "Objeto a 1,5 metros.")
-        banco.modelo.detener()
     }
 
 }

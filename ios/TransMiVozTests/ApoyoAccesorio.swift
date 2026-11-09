@@ -14,6 +14,8 @@ extension RelojFalso {
 final class TransporteFalso: TransporteAccesorio {
     var receptor: (@MainActor (EventoTransporte, Int) -> Void)?
     var nivelEnlace: NivelEnlace
+    /// Por defecto el permiso ya se preguntó: las pruebas que lo exigen lo activan.
+    var permisoPorPreguntar = false
     private(set) var llamadas: [String] = []
     private(set) var tokenVigente = 0
 
@@ -34,10 +36,37 @@ final class TransporteFalso: TransporteAccesorio {
 @MainActor
 final class SalidaVozFalsa: SalidaVoz {
     private(set) var llamadas: [String] = []
+    private(set) var hablando = false
+    /// Lo que responde el «sistema» al intentar hablar (por ejemplo, la sesión de audio rechazada).
+    var resultado: ResultadoHabla = .iniciada
     var dicho: [String] { llamadas.compactMap { $0.hasPrefix("hablar:") ? String($0.dropFirst(7)) : nil } }
     var cortes: Int { llamadas.filter { $0 == "detener" }.count }
-    func hablar(_ texto: String) { llamadas.append("hablar:\(texto)") }
-    func detener() { llamadas.append("detener") }
+    func hablar(_ texto: String) -> ResultadoHabla {
+        guard resultado == .iniciada else { llamadas.append("intento:\(texto)"); return resultado }
+        llamadas.append("hablar:\(texto)")
+        hablando = true
+        return .iniciada
+    }
+    func detener() { llamadas.append("detener"); hablando = false }
+    /// La locución terminó sola (no la cortó nadie).
+    func terminarSola() { hablando = false }
+}
+
+/// Avisos accesibles falsos: anotan lo que la app anunciaría por VoiceOver y las vibraciones.
+@MainActor
+final class AvisosFalsos {
+    private(set) var anuncios: [String] = []
+    private(set) var vibraciones = 0
+    var voiceOver = false
+    /// Sin las confirmaciones de elección y de hallazgo (esas las pide la persona).
+    var deEstado: [String] { anuncios.filter { !$0.hasPrefix("Accesorio elegido") && !$0.hasPrefix("Accesorio encontrado") } }
+
+    var avisos: AvisosAccesibles {
+        AvisosAccesibles(
+            anunciar: { [self] in anuncios.append($0) },
+            vibrar: { [self] in vibraciones += 1 },
+            voiceOverActivo: { [self] in voiceOver })
+    }
 }
 
 final class RutaFalsa: @unchecked Sendable {
@@ -98,9 +127,10 @@ struct BancoAccesorio {
     let salida: SalidaVozFalsa
     let ruta: RutaFalsa
     let reloj: RelojFalso
+    let avisos = AvisosFalsos()
     let accesorio = AccesorioDetectado(id: "acc-1", nombre: "Visionaria")
 
-    init(nivel: NivelEnlace = .cifradoAutenticado, ruta rutaInicial: RutaAudio = .privada) {
+    init(nivel: NivelEnlace = .cifradoAutenticado, ruta rutaInicial: RutaAudio = .privada, voiceOver: Bool = false) {
         transporte = TransporteFalso(nivel: nivel)
         salida = SalidaVozFalsa()
         ruta = RutaFalsa(rutaInicial)
@@ -108,12 +138,17 @@ struct BancoAccesorio {
         let rutaCapturada = ruta
         let voz = ControlVoz(salida: salida, consultarRuta: { rutaCapturada.valor })
         let relojCapturado = reloj
-        // La pausa del temporizador no vuelve nunca: las pruebas llaman `evaluar()` a mano.
+        avisos.voiceOver = voiceOver
+        // La pausa del temporizador no vuelve sola: las pruebas llaman `evaluar()` a mano. Cada prueba
+        // termina con `cerrar()`, que cancela la tarea; la espera se interrumpe al cancelarla.
         modelo = SesionAccesorioModelo(
-            transporte: transporte, voz: voz, reloj: { relojCapturado.ahora },
+            transporte: transporte, voz: voz, avisos: avisos.avisos, reloj: { relojCapturado.ahora },
             pausa: { _ in try? await Task.sleep(nanoseconds: 3_600_000_000_000) })
         transporte.emitir(.disponibilidad(.disponible), token: tokenSinConexion)
     }
+
+    /// Para el temporizador y la voz de la sesión. Cada prueba lo pide con `defer`.
+    func cerrar() { modelo.detener() }
 
     /// Elige el accesorio e inicia la sesión. Deja la conexión pedida y sin responder.
     func iniciar() {
