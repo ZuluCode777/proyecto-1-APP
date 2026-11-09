@@ -227,6 +227,18 @@ private func arrastrarContenido(_ desplazamiento: CGFloat, en app: XCUIApplicati
         withVelocity: velocidad, thenHoldForDuration: 0.5)
 }
 
+/// Adjunta un texto con nombre a la actividad nativa y lo conserva en el `.xcresult`.
+private func anotar(_ actividad: XCTActivity, _ nombre: String, _ texto: String) {
+    let adjunto = XCTAttachment(string: texto)
+    adjunto.name = nombre
+    adjunto.lifetime = .keepAlways
+    actividad.add(adjunto)
+}
+
+private func textoMarco(_ marco: CGRect?) -> String {
+    marco.map { "\($0)" } ?? "fuera de la jerarquía visible"
+}
+
 /// Busca el elemento y lo centra entre las barras. Máximo cuatro gestos.
 /// En la pantalla del accesorio (pilas ansiosas) todo elemento existe siempre y se desplaza por su marco real. La
 /// consulta con texto de accesibilidad usa `LazyVStack` (`ContenedorControles`) y allí un objetivo puede no existir
@@ -252,20 +264,52 @@ private func exponer(_ identificador: String, en app: XCUIApplication, completo:
         if !completo { return marco.minY >= arriba && marco.minY <= abajo - 80 }
         return marco.minY >= arriba && marco.maxY <= abajo && objetivo.isHittable
     }
-    for _ in 0..<4 where !visible() {
+    for intento in 1...4 where !visible() {
         // Centrar deja margen a ambos lados para la zona muerta inicial del gesto.
         // Un control de creación diferida (la consulta) aún no existe: no se lee su marco (sería una instantánea fallida),
         // se da un paso en el sentido pedido (el objetivo puede quedar encima o debajo de la vista).
         let desplazamiento: CGFloat
-        if objetivo.exists {
-            let ancla = completo ? objetivo.frame.midY - (arriba + abajo) / 2 : objetivo.frame.minY - (arriba + 40)
-            desplazamiento = max(-paso, min(paso, ancla))
+        let existe = objetivo.exists
+        let marco: CGRect? = existe ? objetivo.frame : nil
+        let ancla: CGFloat?
+        if let marco = marco {
+            let calculada = completo ? marco.midY - (arriba + abajo) / 2 : marco.minY - (arriba + 40)
+            ancla = calculada
+            desplazamiento = max(-paso, min(paso, calculada))
         } else {
+            ancla = nil
             desplazamiento = haciaAtras ? -paso : paso
         }
-        arrastrarContenido(desplazamiento, en: app, arriba: arriba, abajo: abajo, velocidad: velocidad)
+        guard velocidad == .slow else {
+            arrastrarContenido(desplazamiento, en: app, arriba: arriba, abajo: abajo, velocidad: velocidad)
+            continue
+        }
+        // Por qué: el registro nativo del gesto da sus coordenadas, pero no el marco del objetivo que generó cada solicitud ni
+        // dónde quedó después; sin eso un fallo nativo no distingue un objetivo en movimiento, bloqueado o resuelto tarde.
+        // Solo se observa (sin esperas, aserciones ni reintentos) y solo en las exposiciones lentas de `AccessibilityXXXL`.
+        XCTContext.runActivity(named: "Exposición lenta «\(identificador)», intento \(intento) de 4") { actividad in
+            anotar(actividad, "exponer-\(identificador)-\(intento)-antes",
+                "objetivo: \(identificador)\nintento: \(intento) de 4\ncompleto: \(completo), haciaAtras: \(haciaAtras)\n"
+                + "velocidad nativa: \(velocidad.rawValue)\nvista usada: \(arriba)…\(abajo), paso: \(paso)\n"
+                + "existe: \(existe), marco: \(textoMarco(marco))\nancla: \(ancla.map { "\($0)" } ?? "sin marco")\nsolicitud: \(desplazamiento)")
+            arrastrarContenido(desplazamiento, en: app, arriba: arriba, abajo: abajo, velocidad: velocidad)
+            let existeDespues = objetivo.exists
+            anotar(actividad, "exponer-\(identificador)-\(intento)-despues",
+                "existe: \(existeDespues), marco: \(textoMarco(existeDespues ? objetivo.frame : nil))")
+        }
     }
-    XCTAssertTrue(visible(), "«\(identificador)» no queda \(completo ? "entero y tocable" : "con su comienzo a la vista") entre las barras: marco \(objetivo.exists ? "\(objetivo.frame)" : "fuera de la jerarquía visible"), visible \(arriba)…\(abajo)", file: file, line: line)
+    let queda = visible()
+    if !queda && velocidad == .slow {
+        // Antes de que `XCTAssertTrue` aborte: dónde empezó el arrastre y qué nodo y geometría se resolvieron.
+        XCTContext.runActivity(named: "Exposición lenta fallida «\(identificador)»") { actividad in
+            anotar(actividad, "exponer-\(identificador)-jerarquia", app.scrollViews.firstMatch.debugDescription)
+            let captura = XCTAttachment(screenshot: app.screenshot())
+            captura.name = "exponer-\(identificador)-pantalla"
+            captura.lifetime = .keepAlways
+            actividad.add(captura)
+        }
+    }
+    XCTAssertTrue(queda, "«\(identificador)» no queda \(completo ? "entero y tocable" : "con su comienzo a la vista") entre las barras: marco \(objetivo.exists ? "\(objetivo.frame)" : "fuera de la jerarquía visible"), visible \(arriba)…\(abajo)", file: file, line: line)
 }
 
 /// Comprueba, sin desplazar, que cada elemento queda entero entre las barras (y tocable si `tocables`). Con `comienzo`
