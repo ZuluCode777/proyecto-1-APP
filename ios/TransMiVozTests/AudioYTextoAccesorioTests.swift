@@ -310,6 +310,18 @@ final class TextoAccesorioTests: XCTestCase {
         XCTAssertEqual(TextoAccesorio.locucion(.enlaceNoVerificado)?.texto, "Avisos bloqueados. No se puede verificar la seguridad del enlace.")
     }
 
+    /// Contrato del aviso fijo de la pantalla: dos párrafos que, unidos con un espacio, dan el texto literal de siempre, con
+    /// sus dos frases, su orden y su puntuación, sin añadir ni quitar nada.
+    func testElAvisoDeSeguridadSePintaEnDosParrafosYSuTextoCompletoNoCambia() {
+        XCTAssertEqual(TextoAccesorio.parrafosAvisoEnlace, [
+            "Esta versión todavía no puede verificar que el enlace sea cifrado y autenticado",
+            "(falta la prueba con la placa). Por eso bloquea las medidas y los avisos del sensor.",
+        ])
+        XCTAssertEqual(
+            TextoAccesorio.parrafosAvisoEnlace.joined(separator: " "),
+            "Esta versión todavía no puede verificar que el enlace sea cifrado y autenticado (falta la prueba con la placa). Por eso bloquea las medidas y los avisos del sensor.")
+    }
+
     /// Solo el bloqueo se reparte: los demás estados se pintan con su descripción entera en un único párrafo.
     func testLosDemasEstadosConservanSuDescripcionEnUnSoloParrafo() {
         for estado in todos where estado != .enlaceNoVerificado {

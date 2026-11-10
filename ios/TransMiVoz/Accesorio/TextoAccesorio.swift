@@ -124,6 +124,15 @@ enum TextoAccesorio {
         e == .enlaceNoVerificado ? frasesEnlaceNoVerificado : [descripcion(e)]
     }
 
+    /// El aviso fijo de la pantalla mientras el enlace no se puede verificar, repartido en párrafos. Con el texto más grande
+    /// de accesibilidad el aviso en un solo bloque medía 869 pt, más que el área visible (659 pt), y no había posición que
+    /// lo mostrara entero. Se corta donde acaba la afirmación; la aclaración entre paréntesis queda con la frase que le sigue.
+    /// Unidos con un espacio dan exactamente el texto de siempre: las dos frases, en su orden y con su puntuación.
+    static let parrafosAvisoEnlace = [
+        "Esta versión todavía no puede verificar que el enlace sea cifrado y autenticado",
+        "(falta la prueba con la placa). Por eso bloquea las medidas y los avisos del sensor.",
+    ]
+
     /// Estado del audio para la pantalla. El sistema no distingue unos auriculares Bluetooth de un
     /// altavoz Bluetooth: «privada» no promete auriculares, y el texto lo dice.
     static func audio(ruta: RutaAudio, interrumpido: Bool, audioNoDisponible: Bool = false, vozPropia: Bool = true) -> String {

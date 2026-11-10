@@ -40,10 +40,24 @@ struct SesionAccesorioVista: View {
                         .accessibilityIdentifier("aviso-accesorio-real")
 
                     if !modelo.enlaceVerificable {
-                        Label("Esta versión todavía no puede verificar que el enlace sea cifrado y autenticado (falta la prueba con la placa). Por eso bloquea las medidas y los avisos del sensor.", systemImage: "lock.trianglebadge.exclamationmark")
-                            .font(.headline)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("aviso-seguridad-enlace")
+                        // Un `Text` por párrafo, con la misma fuente, para que con el texto más grande cada párrafo quepa entero
+                        // en el área visible. Un `Label` solo admite un título: el icono pasa a un `Image` decorativo, oculto a
+                        // VoiceOver (el `Label` era un único nodo de texto en la jerarquía nativa) y sin identificador, para que
+                        // cada identificador sea un único nodo de texto. El primer párrafo conserva «aviso-seguridad-enlace»;
+                        // los demás añaden su posición.
+                        // Sin espacio entre párrafos, para no agrandar el aviso con el texto normal.
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Image(systemName: "lock.trianglebadge.exclamationmark")
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(Array(TextoAccesorio.parrafosAvisoEnlace.enumerated()), id: \.offset) { posicion, parrafo in
+                                    Text(parrafo)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .accessibilityIdentifier(posicion == 0 ? "aviso-seguridad-enlace" : "aviso-seguridad-enlace-\(posicion)")
+                                }
+                            }
+                        }
+                        .font(.headline)
                     }
 
                     seccionBluetooth

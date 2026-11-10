@@ -360,6 +360,14 @@ private let parrafosBloqueo: [(id: String, frase: String)] = [
     ("estado-accesorio-2", "Esto no es una detección ni significa camino libre."),
 ]
 
+/// Los párrafos del aviso fijo de seguridad tal como los pinta la pantalla del accesorio mientras el enlace no se puede
+/// verificar: identificador y texto exacto, en orden. Unidos con un espacio son el aviso de siempre. En un solo bloque medía
+/// 869 pt con el texto más grande, más que el área visible (659 pt): cada párrafo tiene su identificador y su posición.
+private let parrafosAvisoSeguridad: [(id: String, frase: String)] = [
+    ("aviso-seguridad-enlace", "Esta versión todavía no puede verificar que el enlace sea cifrado y autenticado"),
+    ("aviso-seguridad-enlace-1", "(falta la prueba con la placa). Por eso bloquea las medidas y los avisos del sensor."),
+]
+
 /// El título del bloqueo es un `Label`: su icono («Advertencia») y su texto llevan el mismo identificador. Lo que mide la
 /// auditoría y lo que el libro cobra es el texto, no el icono: se expone por identificador Y etiqueta exacta.
 private let tituloBloqueo = (id: "titulo-estado-accesorio", etiqueta: "Bloqueado: enlace no verificado")
@@ -662,7 +670,11 @@ final class TransMiVozAccesorioUITests: XCTestCase {
     func testElegirIniciarBloqueadoDetenerYReconectar() throws {
         lanzar()
         XCTAssertTrue(elemento("aviso-transporte-sintetico").waitForExistence(timeout: 10), "el transporte sintético debe declararse")
-        XCTAssertTrue(elemento("aviso-seguridad-enlace").exists, "el bloqueo por enlace no verificado sigue activo")
+        // El aviso de seguridad son dos párrafos, cada uno con su advertencia exacta.
+        for (id, frase) in parrafosAvisoSeguridad {
+            XCTAssertTrue(elemento(id).exists, "el bloqueo por enlace no verificado sigue activo: falta «\(id)»")
+            XCTAssertEqual(elemento(id).label, frase, "«\(id)»")
+        }
         exponer("boton-sesion-accesorio", en: app)
         XCTAssertFalse(elemento("boton-sesion-accesorio").isEnabled, "sin accesorio elegido no se puede iniciar")
 
@@ -736,7 +748,7 @@ final class TransMiVozAccesorioUITests: XCTestCase {
         // Reposo, arriba: los dos botones están inhabilitados porque no hay accesorio elegido, y deben pasar el contraste.
         let reposo = FaseAuditada("reposo", app: app, caso: self)
         exponer("aviso-transporte-sintetico", en: app)
-        comprobarEnteros(["aviso-seguridad-enlace", "boton-sesion-accesorio", "boton-reconectar"], en: app)
+        comprobarEnteros(parrafosAvisoSeguridad.map { $0.id } + ["boton-sesion-accesorio", "boton-reconectar"], en: app)
         XCTAssertFalse(elemento("boton-sesion-accesorio").isEnabled)
         XCTAssertFalse(elemento("boton-reconectar").isEnabled)
         try reposo.auditar("accesorio-reposo-arriba")
@@ -748,7 +760,7 @@ final class TransMiVozAccesorioUITests: XCTestCase {
         // Tras iniciar, el título del bloqueo quedó centrado más abajo: el aviso de arriba queda encima.
         let bloqueada = FaseAuditada("bloqueada", app: app, caso: self)
         exponer("aviso-transporte-sintetico", en: app, haciaAtras: true)
-        comprobarEnteros(["aviso-seguridad-enlace", "boton-sesion-accesorio", "boton-reconectar"], en: app)
+        comprobarEnteros(parrafosAvisoSeguridad.map { $0.id } + ["boton-sesion-accesorio", "boton-reconectar"], en: app)
         try bloqueada.auditar("accesorio-bloqueado-arriba")
         exponerAlFinal(visibles: parrafosBloqueo.map { $0.id } + ["estado-audio"], en: app)
         try bloqueada.auditar("accesorio-bloqueado-abajo")
@@ -835,11 +847,21 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         exponer("aviso-transporte-sintetico", en: app)
         comprobarEnteros(["aviso-accesorio-real"], en: app, comienzo: true)
         try reposo.auditar("texto-muy-grande-Accesorio-avisos-iniciales")
-        for (id, contexto, completo) in [("aviso-seguridad-enlace", "bloqueo", false), ("boton-buscar", "busqueda", true)] {
-            exponer(id, en: app, completo: completo)
-            try reposo.auditar("texto-muy-grande-Accesorio-\(contexto)")
+        // El aviso de seguridad son dos párrafos y cada uno tiene su posición: entero y tocable (`completo`), expuesto por su
+        // identificador y su texto exacto y con la auditoría completa. Ninguno se deja a la remedición de otra posición.
+        var avisoSinMedir: [String] = []
+        for (posicion, parrafo) in parrafosAvisoSeguridad.enumerated() {
+            try reposo.exponerPorEscalas(parrafo.id, etiqueta: parrafo.frase)
+            try reposo.auditar("texto-muy-grande-Accesorio-bloqueo-\(posicion + 1)")
+            // Al terminar la auditoría de su posición, el párrafo tiene que constar como medido entero a la vista y sin problema.
+            if !reposo.libro.limpios.contains(ClaveNodo(identificador: parrafo.id, etiqueta: parrafo.frase)) {
+                avisoSinMedir.append(parrafo.id)
+            }
         }
+        exponer("boton-buscar", en: app)
+        try reposo.auditar("texto-muy-grande-Accesorio-busqueda")
         try reposo.cerrar()
+        XCTAssertEqual(avisoSinMedir, [], "Cada párrafo del aviso de seguridad debe quedar medido entero a la vista, con su texto exacto, en su propia posición")
 
         // Buscar cambia el estado (aparece la lista): fase nueva. El cierre de la fase pudo mover el desplazamiento: se
         // vuelve a «Buscar» por el mismo ancla de seguridad de antes (directo, «Buscar» consume los cuatro gestos).
