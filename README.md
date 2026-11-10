@@ -18,7 +18,8 @@ pasos que sigue para responder.
 Se generó originalmente con v0; ahora se desarrolla y se aloja desde este
 repositorio. Ver [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md) para correrlo en
 Windows y [docs/DEMO.md](docs/DEMO.md) para la presentación.
-Para publicar una demostración en Render Free (sin Ollama) ver
+Para publicar una demostración en Render Free (con las reglas del asistente;
+el modelo de Ollama es opcional) ver
 [docs/RENDER.md](docs/RENDER.md).
 
 ## Los dos modos

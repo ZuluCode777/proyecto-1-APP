@@ -133,7 +133,8 @@ export async function POST(req: Request) {
     try {
       intentDelModelo = await parseIntentWithOllama(message, data)
     } catch (error) {
-      console.warn("[agente] Ollama no respondió, uso las reglas:", error)
+      // Solo el mensaje: el objeto de error de `fetch` trae en `cause` la dirección de Ollama.
+      console.warn("[agente] Ollama no respondió, uso las reglas:", error instanceof Error ? error.message : "error desconocido")
     }
   }
 
