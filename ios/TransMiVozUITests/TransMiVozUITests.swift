@@ -144,10 +144,10 @@ private final class FaseAuditada {
             let contenido = app.scrollViews.firstMatch.frame
             let arriba = max(app.navigationBars.firstMatch.frame.maxY, contenido.minY)
             let abajo = min(app.tabBars.firstMatch.frame.minY, contenido.maxY)
-            // Dos pasos de `exponer` (cada uno `abajo - arriba - 40`): la mitad del tope, para no depender de que cada gesto rinda entero.
+            // El alcance lo fija `PlanRecorrido.alcance`: tres pasos de `exponer`, y el cuarto gesto del tope queda para corregir.
             let escalas = PlanRecorrido.escalas(
                 destino: identificador, zona: try nodos(de: app.scrollViews.firstMatch), aplicacion: try nodos(de: app),
-                arriba: arriba, abajo: abajo, alcance: 2 * (abajo - arriba - 40), excluir: Set(recorridas))
+                arriba: arriba, abajo: abajo, alcance: PlanRecorrido.alcance(arriba: arriba, abajo: abajo), excluir: Set(recorridas))
             guard let siguiente = escalas.first else { break }
             recorridas.append(siguiente)
             exponer(siguiente, en: app, completo: false, velocidad: velocidad, file: file, line: line)

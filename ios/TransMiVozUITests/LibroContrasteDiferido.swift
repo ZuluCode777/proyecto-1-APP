@@ -111,6 +111,13 @@ struct ObservacionContraste {
 /// cualquier posición del comienzo dentro de la vista: solo la primera escala vale para la instantánea que se midió.
 /// Quien recorre el plan lo recalcula con una instantánea nueva tras cada escala (`excluir`: las ya recorridas).
 enum PlanRecorrido {
+    /// Tramo máximo entre escalas, y de la última al destino, para una vista: TRES pasos de `exponer` (cada uno
+    /// `abajo - arriba - 40`). De los cuatro gestos del tope, tres recorren el tramo y el cuarto corrige lo que los gestos
+    /// dejan sin recorrer (en la corrida nativa de `8734600`, 609 pt de cada 619 pedidos). Con dos pasos el plan se
+    /// quedaba sin ruta: una escala con el comienzo ya a la vista no mueve nada y la siguiente caía 8,3 pt fuera del
+    /// alcance, con el destino a 2813 pt, más de lo que recorren los cuatro gestos del `exponer` final.
+    static func alcance(arriba: CGFloat, abajo: CGFloat) -> CGFloat { 3 * (abajo - arriba - 40) }
+
     /// Identificadores intermedios, en orden. Vacío si el destino ya está a `alcance` o no hay ruta (entonces el
     /// `exponer` final, estricto, es quien falla). `zona` y `aplicacion` son de la MISMA instantánea.
     static func escalas(destino: String, zona: [NodoJerarquia], aplicacion: [NodoJerarquia], arriba: CGFloat, abajo: CGFloat, alcance: CGFloat, excluir: Set<String> = []) -> [String] {

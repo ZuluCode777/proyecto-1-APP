@@ -369,4 +369,98 @@ final class ClasificadorContrasteTests: XCTestCase {
         XCTAssertFalse(sin.contains("boton-abrir-ajustes"))
         XCTAssertFalse(sin.contains("interruptor-voz-app"))
     }
+
+    // MARK: Recorrido del reposo real cuando la primera escala ya está a la vista
+
+    /// Nodos con identificador de la jerarquía nativa adjunta al fallo de `8734600` (reposo, `AccessibilityXXXL`): `y` y alto.
+    /// Esa jerarquía es de DESPUÉS de los cuatro gestos fallidos hacia «boton-reconectar» (4 × 609 pt): `reposoReal` le suma
+    /// esos 2436 pt para volver a la instantánea que vio el plan. «titulo-estado-accesorio» sale dos veces, como en la real.
+    private let reposoTrasElFallo: [(String, CGFloat, CGFloat)] = [
+        ("aviso-transporte-sintetico", -2573.0, 520.7), ("aviso-accesorio-real", -2036.3, 986.7), ("aviso-seguridad-enlace", -1033.7, 869.3),
+        ("estado-bluetooth", -148.3, 187.3), ("encabezado-accesorio", 55.0, 63.3), ("accesorio-elegido", 126.3, 125.3),
+        ("boton-buscar", 259.7, 139.3), ("nota-identificador-accesorio", 407.0, 260.7), ("boton-sesion-accesorio", 683.7, 87.3),
+        ("boton-reconectar", 779.0, 87.3), ("encabezado-estado-accesorio", 882.3, 125.3), ("titulo-estado-accesorio", 1020.7, 56.0),
+        ("titulo-estado-accesorio", 1015.7, 130.7), ("estado-accesorio", 1154.3, 435.3), ("origen-datos-accesorio", 1597.7, 249.3),
+        ("enlace-accesorio", 1855.0, 187.3), ("tramas-perdidas-accesorio", 2050.3, 125.3), ("estado-audio", 2183.7, 621.3),
+        ("interruptor-voz-app", 2821.0, 187.3), ("etiqueta-interruptor-voz-app", 2821.0, 187.3), ("nota-voz-app", 3016.3, 572.7),
+        ("aviso-sin-red", 3605.0, 208.7),
+    ]
+
+    private var reposoReal: [NodoJerarquia] {
+        reposoTrasElFallo.map { nodo($0.0, "e", CGRect(x: 16, y: $0.1 + 2436, width: 370, height: $0.2)) }
+    }
+
+    /// Réplica pura de `exponer` (`TransMiVozUITests.swift`) sobre una instantánea: mismo paso, mismo tope de cuatro gestos,
+    /// misma solicitud y misma condición de parada, salvo `isHittable` y el final del contenido, que solo existen en el
+    /// simulador. Cada gesto mueve 10 pt menos de lo pedido, como en la corrida nativa (619 pedidos y 609 movidos; 566,3 y
+    /// 556,3). Devuelve la instantánea desplazada y el marco del objetivo antes de cada gesto.
+    private func exponerSimulado(_ id: String, en inicial: [NodoJerarquia], completo: Bool) -> (nodos: [NodoJerarquia], antes: [CGRect], queda: Bool) {
+        let paso = vista.abajo - vista.arriba - 40
+        var nodos = inicial
+        var antes: [CGRect] = []
+        func marco() -> CGRect { nodos.first { $0.identificador == id }!.marco }
+        func visible() -> Bool {
+            marco().minY >= vista.arriba && (completo ? marco().maxY <= vista.abajo : marco().minY <= vista.abajo - 80)
+        }
+        for _ in 1...4 where !visible() {
+            antes.append(marco())
+            let pedido = max(-paso, min(paso, completo ? marco().midY - (vista.arriba + vista.abajo) / 2 : marco().minY - (vista.arriba + 40)))
+            let movido = pedido - max(-10, min(10, pedido))
+            nodos = nodos.map { nodo($0.identificador, $0.etiqueta, $0.marco.offsetBy(dx: 0, dy: -movido)) }
+        }
+        return (nodos, antes, visible())
+    }
+
+    /// Réplica pura de `FaseAuditada.acercar` seguido del `exponer` final: se planea con la instantánea de cada momento, se
+    /// recorre solo la primera escala (`completo: false`) y no se repite ninguna. `antes` y `final` son marcos del destino.
+    private func recorrer(hasta destino: String, desde inicial: [NodoJerarquia], alcance: CGFloat) -> (escalas: [String], gestosDeEscalas: Int, antes: [CGRect], final: CGRect, queda: Bool) {
+        var nodos = inicial
+        var escalas: [String] = []
+        var gestos = 0
+        while let siguiente = PlanRecorrido.escalas(
+            destino: destino, zona: nodos, aplicacion: nodos, arriba: vista.arriba, abajo: vista.abajo, alcance: alcance, excluir: Set(escalas)).first {
+            escalas.append(siguiente)
+            let escala = exponerSimulado(siguiente, en: nodos, completo: false)
+            XCTAssertTrue(escala.queda, "la escala «\(siguiente)» no quedó con su comienzo a la vista en cuatro gestos")
+            gestos += escala.antes.count
+            nodos = escala.nodos
+        }
+        let ultimo = exponerSimulado(destino, en: nodos, completo: true)
+        return (escalas, gestos, ultimo.antes, ultimo.nodos.first { $0.identificador == destino }!.marco, ultimo.queda)
+    }
+
+    func testElReposoRealLlegaAReconectarAunqueLaPrimeraEscalaYaEsteALaVista() throws {
+        let inicial = reposoReal
+        let paso = vista.abajo - vista.arriba - 40
+        let destino = try XCTUnwrap(inicial.first { $0.identificador == "boton-reconectar" })
+        XCTAssertGreaterThan(destino.marco.midY - (vista.arriba + vista.abajo) / 2, 4 * paso, "sin escalas, los cuatro gestos del `exponer` final no llegan")
+
+        // Con dos pasos de alcance (el de `8734600`) la réplica da los marcos de la corrida nativa: la única escala al alcance
+        // ya tenía su comienzo a la vista y no movió nada, la siguiente caía 8,3 pt fuera y el destino se quedó en y 779.
+        let viejo = recorrer(hasta: "boton-reconectar", desde: inicial, alcance: 2 * paso)
+        XCTAssertEqual(viejo.escalas, ["aviso-accesorio-real"])
+        XCTAssertEqual(viejo.gestosDeEscalas, 0)
+        XCTAssertEqual(viejo.antes.map(\.minY), [3215, 2606, 1997, 1388])
+        XCTAssertEqual(viejo.final.minY, 779)
+        XCTAssertFalse(viejo.queda)
+
+        // Con el alcance que usa `acercar`, la escala es el aviso siguiente y el destino queda entero entre las barras.
+        let nuevo = recorrer(hasta: "boton-reconectar", desde: inicial, alcance: PlanRecorrido.alcance(arriba: vista.arriba, abajo: vista.abajo))
+        XCTAssertEqual(nuevo.escalas, ["aviso-seguridad-enlace"])
+        XCTAssertTrue(nuevo.queda, "«boton-reconectar» quedó en \(nuevo.final)")
+        XCTAssertGreaterThanOrEqual(nuevo.final.minY, vista.arriba)
+        XCTAssertLessThanOrEqual(nuevo.final.maxY, vista.abajo)
+        XCTAssertLessThanOrEqual(nuevo.antes.count, 3, "sobra un gesto del tope para corregir")
+    }
+
+    /// Las demás deudas del cierre salen de esa misma posición: cada nodo único que cabe en la vista tiene que alcanzarse.
+    func testDesdeEsaInstantaneaDelReposoSeAlcanzaCadaNodoUnicoQueCabeEnLaVista() {
+        let inicial = reposoReal
+        let alcance = PlanRecorrido.alcance(arriba: vista.arriba, abajo: vista.abajo)
+        let unicos = Dictionary(grouping: inicial, by: \.identificador).filter { $0.value.count == 1 }
+        for destino in inicial where unicos[destino.identificador] != nil && vista.cabe(destino.marco) {
+            let recorrido = recorrer(hasta: destino.identificador, desde: inicial, alcance: alcance)
+            XCTAssertTrue(recorrido.queda, "«\(destino.identificador)» quedó en \(recorrido.final) tras las escalas \(recorrido.escalas)")
+        }
+    }
 }
