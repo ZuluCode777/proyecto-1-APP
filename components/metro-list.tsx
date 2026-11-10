@@ -64,7 +64,7 @@ export function MetroList({ onBack }: MetroListProps) {
         {ESTACIONES_METRO_L1.map((estacion) => (
           <li key={estacion.clave}>
             <details className="group rounded-2xl border-3 border-border bg-card p-4">
-              <summary className="flex min-h-12 cursor-pointer items-center justify-between gap-3 text-xl font-bold">
+              <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 text-xl font-bold [&::-webkit-details-marker]:hidden">
                 <span className="flex flex-col gap-1">
                   <span>
                     {estacion.idOficial} · {nombreEstacion(estacion)}

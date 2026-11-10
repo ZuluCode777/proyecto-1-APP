@@ -176,6 +176,10 @@ export type EstacionMetro = {
   fuentes: string[]
 }
 
+/** Lo que dice F18 (comunicación de marzo de 2026) sobre las conexiones por proximidad. */
+const NOTA_F18 =
+  "Una comunicación de marzo de 2026 habla de dos conexiones por proximidad sin identificarlas; no se deduce que sean estas."
+
 const sinConexion: ConexionMetro = {
   estado: "no_acreditada",
   detalle: "No encontré evidencia de una conexión con TransMilenio; eso no prueba que nunca vaya a existir.",
@@ -239,7 +243,7 @@ export const ESTACIONES_METRO_L1: readonly EstacionMetro[] = [
   estacion(6, "Avenida Boyacá", "anunciado", ["F6"], "Av Boyaca-06", "Primero de Mayo; avenida Boyacá–carrera 72C", {
     estado: "por_verificar",
     detalle:
-      "Un plano muestra una futura troncal de TransMilenio junto a esta estación; la modalidad de la conexión y su disponibilidad están pendientes. Una comunicación de marzo de 2026 habla de dos conexiones por proximidad sin identificarlas; no se deduce que sean estas.",
+      `Un plano muestra una futura troncal de TransMilenio junto a esta estación; la modalidad de la conexión y su disponibilidad están pendientes. ${NOTA_F18}`,
     fuentes: ["F14", "F18"],
     contraparteTm: null,
     habilitadaParaRuteo: false,
@@ -247,7 +251,7 @@ export const ESTACIONES_METRO_L1: readonly EstacionMetro[] = [
   estacion(7, null, "pendiente", ["F6"], "Av 68-07", "Primero de Mayo; avenida 68–carrera 52C", {
     estado: "por_verificar",
     detalle:
-      "Hay una integración futura acreditada y un plano muestra una futura estación de la troncal de la avenida 68; el nombre y la modalidad final están pendientes. Una comunicación de marzo de 2026 habla de dos conexiones por proximidad sin identificarlas; no se deduce que sean estas.",
+      `Hay una integración futura acreditada y un plano muestra una futura estación de la troncal de la avenida 68; el nombre y la modalidad final están pendientes. ${NOTA_F18}`,
     fuentes: ["F6", "F15", "F18"],
     contraparteTm: null,
     habilitadaParaRuteo: false,
@@ -324,7 +328,7 @@ export const LINEA_2: LineaMetro & { estacionesProyectadas: 11; detalle: string 
 // ---------------------------------------------------------------------------
 
 /** Aviso de homónimos; igual en la ficha del asistente y en el listado. */
-export const TEXTO_HOMONIMO = "Una estación de TransMilenio con el mismo nombre es otra estación."
+export const TEXTO_HOMONIMO = "Si una estación de TransMilenio tiene el mismo nombre, es otra estación."
 
 export const TEXTO_FUENTE = `Fuentes: Portal Bogotá y Empresa Metro de Bogotá, con datos al ${METRO_CORTE_HABLADO}.`
 
@@ -497,6 +501,15 @@ export function interpretarMetro(texto: string): ConsultaMetro | null {
   if (frase(t, HORARIO)) return { tipo: "servicio", tema: "horario" }
   if (frase(t, VIAJE) || DE_A_DESTINO.test(t) || nombradas.length >= 2) return { tipo: "servicio", tema: "viaje" }
 
+  // Una palabra ambigua («kennedy») que ningún nombre ya reconocido contiene pide aclarar,
+  // aunque otro nombre o un número también aparezcan; solo un número candidato la resuelve.
+  const ambigua = [...PALABRAS_AMBIGUAS].find(
+    ([p]) => ` ${t} `.includes(` ${p} `) && !nombradas.some((h) => normalize(h.estacion.nombre ?? "").split(" ").includes(p)),
+  )
+  if (ambigua && !(numero && ambigua[1].some((e) => e.numero === Number(numero[1])))) {
+    return { tipo: "estacion_ambigua", claves: ambigua[1].map((e) => e.clave) }
+  }
+
   if (nombradas.length === 1) {
     const { estacion } = nombradas[0]
     // Un número que no coincide con el nombre no se descarta en silencio: se pide aclarar.
@@ -507,10 +520,6 @@ export function interpretarMetro(texto: string): ConsultaMetro | null {
     const n = Number(numero[1])
     const encontrada = ESTACIONES_METRO_L1.find((e) => e.numero === n)
     return encontrada ? { tipo: "estacion", clave: encontrada.clave } : { tipo: "estacion_inexistente", numero: n }
-  }
-
-  for (const [palabra, candidatas] of PALABRAS_AMBIGUAS) {
-    if (` ${t} `.includes(` ${palabra} `)) return { tipo: "estacion_ambigua", claves: candidatas.map((e) => e.clave) }
   }
 
   // «¿Cuándo abre?» sin estación: pregunta por la previsión de la Línea 1, no por un servicio.

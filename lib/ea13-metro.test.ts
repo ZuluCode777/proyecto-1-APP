@@ -9,12 +9,12 @@ import {
   interpretCommand,
   parseIntent,
   respuestaSinImperativos,
+  runIntent,
   type AgentReply,
 } from "./local-agent"
 import { intencionUsaUbicacion, requiereModelo } from "./seleccion-interprete"
 import { ESTACIONES_METRO_L1, FUENTES_METRO, LINEA_1, LINEA_2, TEXTO_HOMONIMO, interpretarMetro } from "./metro"
 import { TransmilenioDataSchema } from "./transmilenio"
-import { runIntent } from "./local-agent"
 
 const data = TransmilenioDataSchema.parse(snapshot)
 const responder = (frase: string, now = new Date("2026-11-07T10:00:00-05:00")): AgentReply =>
@@ -271,7 +271,9 @@ test("número y nombre de estación que no coinciden piden aclarar en vez de ele
 
 test("«kennedy» suelto con contexto de Metro es ambiguo entre E03 y E05 y pide aclarar", () => {
   const ambigua = { tipo: "estacion_ambigua", claves: ["metro-bogota:l1:e03", "metro-bogota:l1:e05"] }
-  for (const frase of ["metro kennedy", "cuándo abre kennedy metro"]) {
+  // También cuando otro nombre o un número ajeno a «kennedy» aparece en la misma frase.
+  const frases = ["metro kennedy", "cuándo abre kennedy metro", "metro hospital kennedy", "metro estación kennedy hospital", "metro estación 7 kennedy", "metro timiza kennedy"]
+  for (const frase of frases) {
     assert.deepEqual(interpretarMetro(frase), ambigua, frase)
     const respuesta = responder(frase)
     assert.equal(respuesta.action, "none", frase)
@@ -280,8 +282,16 @@ test("«kennedy» suelto con contexto de Metro es ambiguo entre E03 y E05 y pide
     assert.deepEqual(AgentReplySchema.parse(respuesta), respuesta, frase)
   }
   // Nombre completo, o número, resuelven; sin contexto de Metro no es Metro.
-  assert.deepEqual(interpretarMetro("metro hospital de kennedy"), { tipo: "estacion", clave: "metro-bogota:l1:e05" })
-  assert.deepEqual(interpretarMetro("metro estación 3 kennedy"), { tipo: "estacion", clave: "metro-bogota:l1:e03" })
+  for (const [frase, clave] of [
+    ["metro hospital de kennedy", "metro-bogota:l1:e05"],
+    ["metro estación 3 kennedy", "metro-bogota:l1:e03"],
+    ["metro e5 kennedy", "metro-bogota:l1:e05"],
+    ["metro ciudad kennedy", "metro-bogota:l1:e03"],
+  ]) {
+    assert.deepEqual(interpretarMetro(frase), { tipo: "estacion", clave }, frase)
+  }
+  // El rechazo de viaje sigue ganando.
+  assert.deepEqual(interpretarMetro("quiero ir de Ciudad Kennedy a Timiza en el metro"), { tipo: "servicio", tema: "viaje" })
   assert.equal(interpretarMetro("kennedy"), null)
 })
 
@@ -367,13 +377,15 @@ const OMITIDOS = ["lib/metro.ts", ...IMPORTADORES_PERMITIDOS]
 
 test("ningún código de producción fuera del agente y del listado importa el catálogo de Metro", () => {
   const raiz = process.cwd()
-  const archivos = ["lib", "components", "hooks", "app"]
+  // `scripts/` construye `data/transmilenio.json`; `proxy.ts` e `instrumentation.ts` viven en la raíz.
+  const archivos = ["lib", "components", "hooks", "app", "scripts"]
     .flatMap((dir) => readdirSync(`${raiz}/${dir}`, { recursive: true, encoding: "utf8" }).map((f) => `${dir}/${f.replaceAll("\\", "/")}`))
-    .filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f))
+    .concat("proxy.ts", "instrumentation.ts")
+    .filter((f) => /\.(?:tsx?|mjs)$/.test(f) && !/\.test\.tsx?$/.test(f))
   assert.ok(archivos.length > 30, `el rastreo solo vio ${archivos.length} archivos`)
   for (const permitido of OMITIDOS) assert.ok(archivos.includes(permitido), `falta ${permitido}`)
 
-  const importaMetro = /(?:from|import|require)\s*\(?\s*["'](?:@\/lib\/metro|\.\.?\/(?:lib\/)?metro)(?:\.tsx?)?["']/
+  const importaMetro = /(?:from|import|require)\s*\(?\s*["'](?:@\/lib\/metro|(?:\.\.?\/)+(?:lib\/)?metro)(?:\.tsx?)?["']/
   const infractores = archivos.filter((f) => !OMITIDOS.includes(f) && importaMetro.test(readFileSync(`${raiz}/${f}`, "utf8")))
   assert.deepEqual(infractores, [], "el catálogo de Metro no debe llegar a GPS, paradas ni planTrip")
   for (const permitido of IMPORTADORES_PERMITIDOS) {

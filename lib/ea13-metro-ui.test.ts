@@ -107,7 +107,9 @@ test("MetroList: cada estación lleva un indicador decorativo que gira al abrirs
     const [resumen] = nodos(d, (n) => n.type === "summary")
     const iconos = nodos(resumen, (n) => n.props["aria-hidden"] === "true" && /group-open:rotate-180/.test(String(n.props.className)))
     assert.equal(iconos.length, 1, texto(resumen))
-    assert.doesNotMatch(String(resumen.props.className), /flex-col/, "flex-col en el resumen oculta el triángulo nativo")
+    const clases = String(resumen.props.className)
+    assert.match(clases, /\blist-none\b/, "sin ocultar el marcador nativo habría dos indicadores")
+    assert.ok(clases.includes("[&::-webkit-details-marker]:hidden"), "sin ocultar el marcador nativo de WebKit habría dos indicadores")
   }
 })
 
