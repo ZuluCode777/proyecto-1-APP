@@ -503,11 +503,9 @@ export function interpretarMetro(texto: string): ConsultaMetro | null {
 
   // Una palabra ambigua («kennedy») que ningún nombre ya reconocido contiene pide aclarar,
   // aunque otro nombre o un número también aparezcan; solo un número candidato la resuelve.
-  const ambigua = [...PALABRAS_AMBIGUAS].find(
-    ([p]) => ` ${t} `.includes(` ${p} `) && !nombradas.some((h) => normalize(h.estacion.nombre ?? "").split(" ").includes(p)),
-  )
-  if (ambigua && !(numero && ambigua[1].some((e) => e.numero === Number(numero[1])))) {
-    return { tipo: "estacion_ambigua", claves: ambigua[1].map((e) => e.clave) }
+  for (const [palabra, candidatas] of PALABRAS_AMBIGUAS) {
+    if (!` ${t} `.includes(` ${palabra} `) || nombradas.some((h) => candidatas.includes(h.estacion))) continue
+    if (!(numero && candidatas.some((e) => e.numero === Number(numero[1])))) return { tipo: "estacion_ambigua", claves: candidatas.map((e) => e.clave) }
   }
 
   if (nombradas.length === 1) {
