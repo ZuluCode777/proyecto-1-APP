@@ -295,6 +295,7 @@ test("«kennedy» suelto con contexto de Metro es ambiguo entre E03 y E05 y pide
   // «kennedy» ambiguo no se salta el rechazo de viaje, tarifa ni horario (el orden importa).
   assert.deepEqual(interpretarMetro("cómo llego a kennedy en metro"), { tipo: "servicio", tema: "viaje" })
   assert.deepEqual(interpretarMetro("cuánto cuesta el pasaje del metro a kennedy"), { tipo: "servicio", tema: "tarifa" })
+  assert.deepEqual(interpretarMetro("horario del metro a kennedy"), { tipo: "servicio", tema: "horario" })
   assert.equal(interpretarMetro("kennedy"), null)
 })
 

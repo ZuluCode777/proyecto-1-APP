@@ -56,12 +56,13 @@ Las respuestas de Metro no cambian la forma del contrato HTTP: `action: "none"`,
 decodificador `ios/TransMiVoz/Dominio/RespuestaAgente.swift` rechaza un `reply` vacío o
 de más de `maximoCaracteresTexto = 10_000` caracteres y más de `maximoPasos = 50` pasos.
 
-Medido al cerrar #39 (10 de noviembre de 2026) con las frases de Metro de `lib/ea13-metro.test.ts` (estaciones por
-nombre y número, líneas, rechazos de viaje, tarifa y horario, aclaraciones), por el mismo
-camino que `POST /api/agent` (`parseIntent` y `runIntent`): el máximo es **1058
-caracteres** (ficha de E13 Central) y **8 pasos**, muy por debajo de los límites. Son
-cifras de esa fecha; la fuente de verdad es la prueba, que falla si una respuesta de Metro
-supera cualquiera de los dos límites o añade un campo.
+Medido al cerrar #39 (10 de noviembre de 2026) con las frases de Metro de
+`lib/ea13-metro.test.ts` (estaciones por nombre y número, líneas, rechazos de viaje,
+tarifa y horario, aclaraciones), por el mismo camino que `POST /api/agent`
+(`parseIntent` y `runIntent`): el máximo es **1058 caracteres** (ficha de E13 Central) y
+**8 pasos**, muy por debajo de los límites. Son cifras de esa fecha; la fuente de verdad
+es la prueba, que falla si una respuesta de Metro supera cualquiera de los dos límites o
+añade un campo.
 
 ## Límites de la verificación
 
