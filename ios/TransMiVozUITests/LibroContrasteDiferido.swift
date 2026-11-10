@@ -120,8 +120,10 @@ enum PlanRecorrido {
 
     /// Identificadores intermedios, en orden. Vacío si el destino ya está a `alcance` o no hay ruta (entonces el
     /// `exponer` final, estricto, es quien falla). `zona` y `aplicacion` son de la MISMA instantánea.
-    static func escalas(destino: String, zona: [NodoJerarquia], aplicacion: [NodoJerarquia], arriba: CGFloat, abajo: CGFloat, alcance: CGFloat, excluir: Set<String> = []) -> [String] {
-        guard let meta = zona.first(where: { $0.identificador == destino && VistaAuditada.marcoValido($0.marco) }) else { return [] }
+    /// `etiqueta`: identidad exacta del destino (identificador Y etiqueta, como `ClaveNodo`). Hace falta cuando varios nodos
+    /// comparten el identificador (el icono y el texto de un `Label`): sin ella el destino es el primero, que puede ser otro.
+    static func escalas(destino: String, etiqueta: String? = nil, zona: [NodoJerarquia], aplicacion: [NodoJerarquia], arriba: CGFloat, abajo: CGFloat, alcance: CGFloat, excluir: Set<String> = []) -> [String] {
+        guard let meta = zona.first(where: { $0.identificador == destino && (etiqueta == nil || $0.etiqueta == etiqueta) && VistaAuditada.marcoValido($0.marco) }) else { return [] }
         let centro = (arriba + abajo) / 2
         let ancla = arriba + 40
         let unicos = Dictionary(grouping: aplicacion.filter { !$0.identificador.isEmpty }, by: \.identificador).filter { $0.value.count == 1 }

@@ -370,6 +370,38 @@ final class ClasificadorContrasteTests: XCTestCase {
         XCTAssertFalse(sin.contains("interruptor-voz-app"))
     }
 
+    // MARK: Destino con identificador compartido por icono y texto
+
+    /// Marcos reales de la jerarquía nativa de `20dc3dc` (`AccessibilityXXXL`): el `Label` del título del bloqueo da un icono
+    /// (`Image` «Advertencia», 57,3 × 52) y un texto (`StaticText`, 359,3 × 195,7) con el MISMO identificador. El icono va
+    /// primero y su comienzo queda 7 pt más abajo que el del texto. Aquí el icono está justo al alcance y el texto no.
+    func testUnIdentificadorCompartidoPlaneaHaciaElNodoDeLaEtiquetaPedida() throws {
+        let titulo = "titulo-estado-accesorio", texto = "Bloqueado: enlace no verificado"
+        let escena = [
+            nodo("boton-sesion-accesorio", "Detener sesión", CGRect(x: 16, y: 1856.5, width: 250.3, height: 155.3)),
+            nodo("boton-reconectar", "Reconectar", CGRect(x: 16, y: 2019.8, width: 317, height: 93.3)),
+            nodo("encabezado-estado-accesorio", "Estado del accesorio", CGRect(x: 16, y: 2129.2, width: 258.3, height: 125.3)),
+            nodo(titulo, "Advertencia", CGRect(x: 21.3, y: 2269.5, width: 57.3, height: 52)),
+            nodo(titulo, texto, CGRect(x: 21.3, y: 2262.5, width: 359.3, height: 195.7)),
+        ]
+        let alcance = PlanRecorrido.alcance(arriba: 116, abajo: 775)
+        let centro: CGFloat = (116 + 775) / 2
+        let icono = try XCTUnwrap(escena.first { $0.etiqueta == "Advertencia" })
+        let nodoTexto = try XCTUnwrap(escena.first { $0.etiqueta == texto })
+        XCTAssertLessThanOrEqual(icono.marco.midY - centro, alcance, "el icono está al alcance")
+        XCTAssertGreaterThan(nodoTexto.marco.midY - centro, alcance, "el texto, no")
+
+        // Sin etiqueta el destino es el primero con ese identificador, el icono, y el plan da el destino por alcanzado.
+        XCTAssertEqual(
+            PlanRecorrido.escalas(destino: titulo, zona: escena, aplicacion: escena, arriba: 116, abajo: 775, alcance: alcance), [])
+        // Con la etiqueta el destino es el texto: hace falta una escala y desde ella el texto queda al alcance.
+        let plan = PlanRecorrido.escalas(destino: titulo, etiqueta: texto, zona: escena, aplicacion: escena, arriba: 116, abajo: 775, alcance: alcance)
+        XCTAssertEqual(plan, ["boton-sesion-accesorio"])
+        let tramo = try XCTUnwrap(escena.first { $0.identificador == plan[0] }).marco.minY - (116 + 40)
+        XCTAssertLessThanOrEqual(tramo, alcance)
+        XCTAssertLessThanOrEqual(nodoTexto.marco.midY - centro - tramo, alcance)
+    }
+
     // MARK: Recorrido del reposo real cuando la primera escala ya está a la vista
 
     /// Nodos con identificador de la jerarquía nativa adjunta al fallo de `8734600` (reposo, `AccessibilityXXXL`): `y` y alto.

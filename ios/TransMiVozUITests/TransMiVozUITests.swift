@@ -138,7 +138,7 @@ private final class FaseAuditada {
     /// deja el comienzo de la escala en cualquier punto de la vista, no en `arriba + 40` como supone el plan: por eso tras
     /// CADA escala se toma una instantánea nueva y se vuelve a planear desde donde quedó la vista de verdad, sin repetir
     /// escalas. No cambia ninguna guarda: el `exponer` final del destino sigue exigiéndolo entero y tocable.
-    private func acercar(_ identificador: String, file: StaticString, line: UInt) throws {
+    private func acercar(_ identificador: String, etiqueta: String?, file: StaticString, line: UInt) throws {
         var recorridas: [String] = []
         while true {
             let contenido = app.scrollViews.firstMatch.frame
@@ -146,7 +146,7 @@ private final class FaseAuditada {
             let abajo = min(app.tabBars.firstMatch.frame.minY, contenido.maxY)
             // El alcance lo fija `PlanRecorrido.alcance`: tres pasos de `exponer`, y el cuarto gesto del tope queda para corregir.
             let escalas = PlanRecorrido.escalas(
-                destino: identificador, zona: try nodos(de: app.scrollViews.firstMatch), aplicacion: try nodos(de: app),
+                destino: identificador, etiqueta: etiqueta, zona: try nodos(de: app.scrollViews.firstMatch), aplicacion: try nodos(de: app),
                 arriba: arriba, abajo: abajo, alcance: PlanRecorrido.alcance(arriba: arriba, abajo: abajo), excluir: Set(recorridas))
             guard let siguiente = escalas.first else { break }
             recorridas.append(siguiente)
@@ -160,9 +160,11 @@ private final class FaseAuditada {
     /// una auditoría nativa puede dejarla lejos. En la corrida nativa de `87c80e8`, tras auditar los controles con el texto
     /// más grande, el `exponer` directo dejó «titulo-estado-accesorio» en y 1334 (vista 116…775) al agotar los cuatro gestos.
     /// La usan la remedición del cierre y las posiciones de una fase que se exponen entre auditorías.
-    func exponerPorEscalas(_ identificador: String, completo: Bool = true, haciaAtras: Bool = false, file: StaticString = #filePath, line: UInt = #line) throws {
-        try acercar(identificador, file: file, line: line)
-        exponer(identificador, en: app, completo: completo, haciaAtras: haciaAtras, velocidad: velocidad, file: file, line: line)
+    /// `etiqueta`: identidad exacta del nodo (identificador Y etiqueta, como la clave del libro). Si varios nodos comparten el
+    /// identificador, `exponer` solo por identificador resuelve el primero, que puede ser otro nodo que el medido.
+    func exponerPorEscalas(_ identificador: String, etiqueta: String? = nil, completo: Bool = true, haciaAtras: Bool = false, file: StaticString = #filePath, line: UInt = #line) throws {
+        try acercar(identificador, etiqueta: etiqueta, file: file, line: line)
+        exponer(identificador, en: app, completo: completo, haciaAtras: haciaAtras, etiqueta: etiqueta, velocidad: velocidad, file: file, line: line)
     }
 
     /// Remedición obligatoria: cada deuda se lleva entera a la vista (`exponer`) y se vuelve a auditar con todos los grupos.
@@ -178,7 +180,8 @@ private final class FaseAuditada {
                 break
             }
             vueltas += 1
-            try exponerPorEscalas(clave.identificador, file: file, line: line)
+            // La deuda es de la clave exacta (identificador y etiqueta): se expone ese nodo, no el primero con ese identificador.
+            try exponerPorEscalas(clave.identificador, etiqueta: clave.etiqueta, file: file, line: line)
             try auditar("remedicion-\(vueltas)-\(clave.identificador)")
             if libro.pendientes.contains(clave) {
                 libro.darPorFallida(clave, motivo: "entero a la vista no quedó medido sin problema")
@@ -259,8 +262,14 @@ private func textoMarco(_ marco: CGRect?) -> String {
 /// Todo lo demás (botones, interruptor, títulos) se sigue exigiendo entero y tocable.
 /// `velocidad` se pasa tal cual a cada gesto: solo las fases de la auditoría del accesorio con el texto más grande
 /// (`FaseAuditada`: remedición y exposición por escalas) la bajan a `.slow`.
-private func exponer(_ identificador: String, en app: XCUIApplication, completo: Bool = true, haciaAtras: Bool = false, velocidad: XCUIGestureVelocity = .default, file: StaticString = #filePath, line: UInt = #line) {
-    let objetivo = app.descendants(matching: .any).matching(identifier: identificador).firstMatch
+/// `etiqueta` (opcional) acota el objetivo por identificador Y etiqueta exacta (nunca solo por etiqueta). Hace falta cuando
+/// varios nodos comparten el identificador: el `Label` del título del bloqueo da un icono (`Image`, 52 pt) y un texto
+/// (`StaticText`, 195,7 pt) con el mismo, y sin ella el objetivo es el primero, el icono, que queda entero a la vista con el
+/// texto aún recortado. Sin `etiqueta` el comportamiento es el de siempre.
+private func exponer(_ identificador: String, en app: XCUIApplication, completo: Bool = true, haciaAtras: Bool = false, etiqueta: String? = nil, velocidad: XCUIGestureVelocity = .default, file: StaticString = #filePath, line: UInt = #line) {
+    var consulta = app.descendants(matching: .any).matching(identifier: identificador)
+    if let etiqueta { consulta = consulta.matching(NSPredicate(format: "label == %@", etiqueta)) }
+    let objetivo = consulta.firstMatch
     let contenido = app.scrollViews.firstMatch.frame
     let limiteBarra = app.tabBars.firstMatch.frame.minY
     XCTAssertLessThanOrEqual(contenido.maxY, limiteBarra,
@@ -299,7 +308,7 @@ private func exponer(_ identificador: String, en app: XCUIApplication, completo:
         // Solo se observa (sin esperas, aserciones ni reintentos) y solo en las exposiciones lentas de `AccessibilityXXXL`.
         XCTContext.runActivity(named: "Exposición lenta «\(identificador)», intento \(intento) de 4") { actividad in
             anotar(actividad, "exponer-\(identificador)-\(intento)-antes",
-                "objetivo: \(identificador)\nintento: \(intento) de 4\ncompleto: \(completo), haciaAtras: \(haciaAtras)\n"
+                "objetivo: \(identificador)\netiqueta: \(etiqueta ?? "sin acotar")\nintento: \(intento) de 4\ncompleto: \(completo), haciaAtras: \(haciaAtras)\n"
                 + "velocidad nativa: \(velocidad.rawValue)\nvista usada: \(arriba)…\(abajo), paso: \(paso)\n"
                 + "existe: \(existe), marco: \(textoMarco(marco))\nancla: \(ancla.map { "\($0)" } ?? "sin marco")\nsolicitud: \(desplazamiento)")
             arrastrarContenido(desplazamiento, en: app, arriba: arriba, abajo: abajo, velocidad: velocidad)
@@ -350,6 +359,10 @@ private let parrafosBloqueo: [(id: String, frase: String)] = [
     ("estado-accesorio-1", "No se usa ninguna medida."),
     ("estado-accesorio-2", "Esto no es una detección ni significa camino libre."),
 ]
+
+/// El título del bloqueo es un `Label`: su icono («Advertencia») y su texto llevan el mismo identificador. Lo que mide la
+/// auditoría y lo que el libro cobra es el texto, no el icono: se expone por identificador Y etiqueta exacta.
+private let tituloBloqueo = (id: "titulo-estado-accesorio", etiqueta: "Bloqueado: enlace no verificado")
 
 /// Lleva la pantalla del accesorio al final de su contenido y comprueba que los `visibles` quedan enteros entre las barras:
 /// es la posición «de abajo». Al final del contenido no queda nada bajo el área desplazable, así que lo recortado en la
@@ -862,7 +875,7 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
             ("estado-accesorio-2", "descripcion-sin-deteccion", true, false), ("estado-audio", "audio", false, false),
             ("interruptor-voz-app", "voz", true, false),
         ] {
-            try bloqueada.exponerPorEscalas(id, completo: completo, haciaAtras: haciaAtras)
+            try bloqueada.exponerPorEscalas(id, etiqueta: id == tituloBloqueo.id ? tituloBloqueo.etiqueta : nil, completo: completo, haciaAtras: haciaAtras)
             try bloqueada.auditar("texto-muy-grande-Accesorio-\(contexto)")
             // Al terminar la auditoría de su posición, el párrafo tiene que constar como medido entero a la vista y sin
             // problema, con su texto exacto. Se anota y se exige tras el cierre, para que el libro informe primero.
