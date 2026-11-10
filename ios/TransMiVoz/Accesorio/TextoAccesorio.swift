@@ -88,7 +88,7 @@ enum TextoAccesorio {
         case .calibrando:
             return "Calibrando: sincronizando el reloj con el accesorio. Aún no hay avisos."
         case .enlaceNoVerificado:
-            return "Avisos bloqueados: esta versión no puede verificar que el enlace con el accesorio sea cifrado y autenticado. No se usa ninguna medida. Esto no es una detección ni significa camino libre."
+            return frasesEnlaceNoVerificado.joined(separator: " ")
         case .rechazado(let motivo):
             return "Accesorio rechazado (\(motivo.etiqueta)). Sus datos no se usan y esto no es una detección."
         case .falla(let motivo):
@@ -108,6 +108,20 @@ enum TextoAccesorio {
         case .radarNoDisponible(let salud):
             return TextoEstadoSesion.descripcion(.radarNoDisponible(salud))
         }
+    }
+
+    /// Las frases del bloqueo, en orden y en un solo sitio: `descripcion` las une con un espacio y la pantalla pinta una por párrafo.
+    private static let frasesEnlaceNoVerificado = [
+        "Avisos bloqueados: esta versión no puede verificar que el enlace con el accesorio sea cifrado y autenticado.",
+        "No se usa ninguna medida.",
+        "Esto no es una detección ni significa camino libre.",
+    ]
+
+    /// La descripción repartida en párrafos para la pantalla. Solo el bloqueo lleva más de uno: con el texto más grande
+    /// de accesibilidad su descripción en un solo bloque medía 869 pt, más que el área visible (659 pt), y no había
+    /// posición que la mostrara entera. Los demás estados conservan su descripción tal cual, en un único párrafo.
+    static func parrafos(_ e: EstadoAccesorio) -> [String] {
+        e == .enlaceNoVerificado ? frasesEnlaceNoVerificado : [descripcion(e)]
     }
 
     /// Estado del audio para la pantalla. El sistema no distingue unos auriculares Bluetooth de un

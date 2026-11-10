@@ -162,9 +162,13 @@ struct SesionAccesorioVista: View {
             Label(TextoAccesorio.titulo(estado), systemImage: TextoAccesorio.icono(estado))
                 .font(.title3.weight(.semibold))
                 .accessibilityIdentifier("titulo-estado-accesorio")
-            Text(TextoAccesorio.descripcion(estado))
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("estado-accesorio")
+            // Un `Text` por párrafo, con la misma fuente, para que con el texto más grande cada párrafo del bloqueo quepa
+            // entero en el área visible. El primero conserva «estado-accesorio»; los demás añaden su posición.
+            ForEach(Array(TextoAccesorio.parrafos(estado).enumerated()), id: \.offset) { posicion, parrafo in
+                Text(parrafo)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(posicion == 0 ? "estado-accesorio" : "estado-accesorio-\(posicion)")
+            }
             Text("Origen de los datos: accesorio real por Bluetooth")
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("origen-datos-accesorio")

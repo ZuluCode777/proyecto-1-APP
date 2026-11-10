@@ -343,6 +343,14 @@ private func comprobarEnteros(_ ids: [String], en app: XCUIApplication, tocables
     }
 }
 
+/// Los párrafos del bloqueo tal como los pinta la pantalla del accesorio: identificador y texto exacto, en orden. La
+/// descripción del bloqueo va repartida en tres para que, con el texto más grande, cada advertencia quepa entera a la vista.
+private let parrafosBloqueo: [(id: String, frase: String)] = [
+    ("estado-accesorio", "Avisos bloqueados: esta versión no puede verificar que el enlace con el accesorio sea cifrado y autenticado."),
+    ("estado-accesorio-1", "No se usa ninguna medida."),
+    ("estado-accesorio-2", "Esto no es una detección ni significa camino libre."),
+]
+
 /// Lleva la pantalla del accesorio al final de su contenido y comprueba que los `visibles` quedan enteros entre las barras:
 /// es la posición «de abajo». Al final del contenido no queda nada bajo el área desplazable, así que lo recortado en la
 /// posición de arriba (contraste diferido) se mide aquí entero y sin recorte.
@@ -647,6 +655,8 @@ final class TransMiVozAccesorioUITests: XCTestCase {
 
         buscarYElegir(conHoja: true)
         iniciarYEsperarBloqueo()
+        // El bloqueo se pinta en tres párrafos, cada uno con su advertencia exacta.
+        for (id, frase) in parrafosBloqueo { XCTAssertEqual(elemento(id).label, frase, "«\(id)»") }
         exponer("enlace-accesorio", en: app)
         XCTAssertTrue(etiquetado("Enlace autenticado: no verificado").exists)
         XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "Objeto")).firstMatch.exists, "bloqueado: ninguna medida")
@@ -727,7 +737,7 @@ final class TransMiVozAccesorioUITests: XCTestCase {
         exponer("aviso-transporte-sintetico", en: app, haciaAtras: true)
         comprobarEnteros(["aviso-seguridad-enlace", "boton-sesion-accesorio", "boton-reconectar"], en: app)
         try bloqueada.auditar("accesorio-bloqueado-arriba")
-        exponerAlFinal(visibles: ["estado-accesorio", "estado-audio"], en: app)
+        exponerAlFinal(visibles: parrafosBloqueo.map { $0.id } + ["estado-audio"], en: app)
         try bloqueada.auditar("accesorio-bloqueado-abajo")
         try bloqueada.cerrar()
     }
@@ -842,16 +852,27 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         XCTAssertTrue(bloqueado.waitForExistence(timeout: 10), "No apareció el bloqueo")
         // Bloqueada: el título del bloqueo quedó centrado, los controles están encima y el resto, debajo. Cada posición se
         // expone por escalas: tras una auditoría la vista puede quedar a más de cuatro gestos de la posición siguiente.
+        // La descripción del bloqueo son tres párrafos y cada uno tiene su posición: entero y tocable (`completo`), con la
+        // auditoría completa. Ninguno se deja a la remedición de una deuda de otra posición.
         let bloqueada = FaseAuditada("bloqueada-texto-muy-grande", app: app, caso: self, velocidad: .slow)
+        var parrafosSinMedir: [String] = []
         for (id, contexto, completo, haciaAtras) in [
             ("boton-sesion-accesorio", "controles", true, true), ("titulo-estado-accesorio", "estado", true, false),
-            ("estado-accesorio", "descripcion", false, false), ("estado-audio", "audio", false, false),
+            ("estado-accesorio", "descripcion", true, false), ("estado-accesorio-1", "descripcion-sin-medidas", true, false),
+            ("estado-accesorio-2", "descripcion-sin-deteccion", true, false), ("estado-audio", "audio", false, false),
             ("interruptor-voz-app", "voz", true, false),
         ] {
             try bloqueada.exponerPorEscalas(id, completo: completo, haciaAtras: haciaAtras)
             try bloqueada.auditar("texto-muy-grande-Accesorio-\(contexto)")
+            // Al terminar la auditoría de su posición, el párrafo tiene que constar como medido entero a la vista y sin
+            // problema, con su texto exacto. Se anota y se exige tras el cierre, para que el libro informe primero.
+            if let frase = parrafosBloqueo.first(where: { $0.id == id })?.frase,
+               !bloqueada.libro.limpios.contains(ClaveNodo(identificador: id, etiqueta: frase)) {
+                parrafosSinMedir.append(id)
+            }
         }
         try bloqueada.cerrar()
+        XCTAssertEqual(parrafosSinMedir, [], "Cada párrafo del bloqueo debe quedar medido entero a la vista, con su texto exacto, en su propia posición")
     }
 
     /// Permiso denegado con el texto más grande: el texto del permiso (~546 pt) y «Abrir Ajustes» no caben a la vez

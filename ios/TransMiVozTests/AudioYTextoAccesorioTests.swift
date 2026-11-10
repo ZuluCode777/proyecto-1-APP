@@ -292,6 +292,31 @@ final class TextoAccesorioTests: XCTestCase {
         }
     }
 
+    /// Contrato del bloqueo en pantalla: tres párrafos con las tres advertencias exactas y en orden (no se puede verificar
+    /// la seguridad, no se usa ninguna medida, no es una detección ni camino libre). La descripción canónica sigue siendo
+    /// el mismo texto de siempre, y el anuncio de accesibilidad y la locución no cambian.
+    func testElBloqueoSePintaEnTresParrafosYSuDescripcionCanonicaNoCambia() {
+        XCTAssertEqual(TextoAccesorio.parrafos(.enlaceNoVerificado), [
+            "Avisos bloqueados: esta versión no puede verificar que el enlace con el accesorio sea cifrado y autenticado.",
+            "No se usa ninguna medida.",
+            "Esto no es una detección ni significa camino libre.",
+        ])
+        XCTAssertEqual(
+            TextoAccesorio.descripcion(.enlaceNoVerificado),
+            "Avisos bloqueados: esta versión no puede verificar que el enlace con el accesorio sea cifrado y autenticado. No se usa ninguna medida. Esto no es una detección ni significa camino libre.")
+        XCTAssertEqual(
+            TextoAccesorio.anuncioAccesible(.enlaceNoVerificado),
+            "Avisos bloqueados: no se puede verificar la seguridad del enlace. Esto no es una detección.")
+        XCTAssertEqual(TextoAccesorio.locucion(.enlaceNoVerificado)?.texto, "Avisos bloqueados. No se puede verificar la seguridad del enlace.")
+    }
+
+    /// Solo el bloqueo se reparte: los demás estados se pintan con su descripción entera en un único párrafo.
+    func testLosDemasEstadosConservanSuDescripcionEnUnSoloParrafo() {
+        for estado in todos where estado != .enlaceNoVerificado {
+            XCTAssertEqual(TextoAccesorio.parrafos(estado), [TextoAccesorio.descripcion(estado)], "\(estado)")
+        }
+    }
+
     func testLosCincoEstadosPedidosSeDistinguenEnPantallaYEnVoz() {
         let cinco: [EstadoAccesorio] = [.calibrando, .sinDeteccion, .falla(.tiempoAgotado), .desconectado, .objetivo(distanciaMm: 1000, azimutCentesimas: nil)]
         XCTAssertEqual(Set(cinco.map(TextoAccesorio.titulo)).count, cinco.count)
