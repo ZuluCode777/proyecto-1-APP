@@ -36,6 +36,28 @@ struct VistaAuditada: Equatable {
 
     /// El marco cabría entero en la vista si se desplazara hasta ella.
     func cabe(_ marco: CGRect) -> Bool { Self.marcoValido(marco) && marco.height <= abajo - arriba }
+
+    /// Qué hacer para que TODOS los `marcos` queden a la vez enteros en la vista. Sin tolerancia: lo mismo que exigen las
+    /// guardas de las pruebas (`comprobarEnteros`), que comparan con los bordes exactos.
+    /// `desplazar` centra el conjunto entre las barras, que es la posición con más margen por ambos lados para el error de
+    /// un gesto; el desplazamiento es positivo hacia delante (el contenido sube), como el de `arrastrarContenido`.
+    func encaje(de marcos: [CGRect]) -> Encaje {
+        guard let primero = marcos.first, marcos.allSatisfy(Self.marcoValido) else { return .marcoInvalido }
+        let conjunto = marcos.dropFirst().reduce(primero) { $0.union($1) }
+        if conjunto.minY >= arriba && conjunto.maxY <= abajo { return .yaEncaja }
+        guard conjunto.height <= abajo - arriba else { return .noCabe(alto: conjunto.height) }
+        return .desplazar(conjunto.midY - (arriba + abajo) / 2)
+    }
+}
+
+/// Resultado de `VistaAuditada.encaje(de:)`.
+enum Encaje: Equatable {
+    case yaEncaja
+    case desplazar(CGFloat)
+    /// El conjunto es más alto que la vista: ninguna posición lo muestra entero.
+    case noCabe(alto: CGFloat)
+    /// Sin marcos, o alguno vacío o no finito: no hay conjunto que medir.
+    case marcoInvalido
 }
 
 /// Un problema de la auditoría copiado COMO VALOR dentro del manejador nativo. Nunca se conserva el

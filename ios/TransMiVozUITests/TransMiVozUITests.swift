@@ -352,6 +352,44 @@ private func comprobarEnteros(_ ids: [String], en app: XCUIApplication, tocables
     }
 }
 
+/// Lleva a la vista, a la vez, enteros y entre las barras, todos los elementos de `ids`: un solo gesto que centra el conjunto
+/// (`VistaAuditada.encaje`), a partir de sus marcos reales de ahora. `exponer` lleva UN elemento a la vista y centrarlo puede
+/// dejar fuera a otro del conjunto; aquí el movimiento sale del conjunto entero. No comprueba nada de lo que deja a la vista:
+/// quien lo llama sigue exigiendo cada elemento con `comprobarEnteros` (y lo que haga falta) justo después, y esas guardas
+/// fallan si el gesto se pasó o el conjunto no cabe. Solo falla por sí mismo si no existe un elemento, si los marcos no son
+/// válidos o si el conjunto es más alto que la vista.
+private func encajar(_ ids: [String], en app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+    let contenido = app.scrollViews.firstMatch.frame
+    let limiteBarra = app.tabBars.firstMatch.frame.minY
+    XCTAssertLessThanOrEqual(contenido.maxY, limiteBarra,
+        "El área de desplazamiento invade la barra de pestañas: marco \(contenido), barra desde \(limiteBarra)", file: file, line: line)
+    let vista = VistaAuditada(arriba: max(app.navigationBars.firstMatch.frame.maxY, contenido.minY), abajo: min(limiteBarra, contenido.maxY))
+    var marcos: [CGRect] = []
+    for id in ids {
+        let objetivo = app.descendants(matching: .any).matching(identifier: id).firstMatch
+        guard objetivo.waitForExistence(timeout: 10) else { return XCTFail("«\(id)» no existe: no se puede encajar el conjunto \(ids)", file: file, line: line) }
+        marcos.append(objetivo.frame)
+    }
+    let resumen = zip(ids, marcos).map { "\($0): \($1)" }.joined(separator: "\n")
+    switch vista.encaje(de: marcos) {
+    case .yaEncaja:
+        XCTContext.runActivity(named: "Encaje de \(ids.count) elementos: ya caben") { anotar($0, "encajar-antes", "vista: \(vista.arriba)…\(vista.abajo)\n\(resumen)") }
+    case .desplazar(let desplazamiento):
+        // Como `exponer`: un gesto no pide más que un paso (`abajo - arriba - 40`), para que su recorrido quede dentro de la vista.
+        let paso = vista.abajo - vista.arriba - 40
+        let solicitud = max(-paso, min(paso, desplazamiento))
+        XCTContext.runActivity(named: "Encaje de \(ids.count) elementos: desplazar \(solicitud)") { actividad in
+            anotar(actividad, "encajar-antes", "vista: \(vista.arriba)…\(vista.abajo)\nencaje: \(desplazamiento), solicitud: \(solicitud)\n\(resumen)")
+            arrastrarContenido(solicitud, en: app, arriba: vista.arriba, abajo: vista.abajo)
+            anotar(actividad, "encajar-despues", ids.map { "\($0): \(app.descendants(matching: .any).matching(identifier: $0).firstMatch.frame)" }.joined(separator: "\n"))
+        }
+    case .noCabe(let alto):
+        XCTFail("Los elementos \(ids) no caben a la vez entre las barras: alto del conjunto \(alto), visible \(vista.arriba)…\(vista.abajo)\n\(resumen)", file: file, line: line)
+    case .marcoInvalido:
+        XCTFail("Marcos no válidos para encajar \(ids):\n\(resumen)", file: file, line: line)
+    }
+}
+
 /// Los párrafos del bloqueo tal como los pinta la pantalla del accesorio: identificador y texto exacto, en orden. La
 /// descripción del bloqueo va repartida en tres para que, con el texto más grande, cada advertencia quepa entera a la vista.
 private let parrafosBloqueo: [(id: String, frase: String)] = [
@@ -780,6 +818,12 @@ final class TransMiVozAccesorioUITests: XCTestCase {
         exponer("aviso-transporte-sintetico", en: app, haciaAtras: true)
         esperarEtiqueta("Sin permiso de Bluetooth. Actívalo en Ajustes, en TransMiVoz.")
         XCTAssertTrue(elemento("boton-abrir-ajustes").waitForExistence(timeout: 10))
+        // Desde el aviso de arriba (desplazamiento 0), con el permiso denegado «Reconectar» queda 6,67 pt bajo la barra de
+        // pestañas (maxY 781,67 en una vista de 116…775; ejecución nativa 42839307435). El aviso de modo de pruebas no es lo
+        // exigido aquí: el texto del permiso, «Abrir Ajustes» y los dos botones sí, a la vez. Se centran los cuatro entre las
+        // barras (ocupan unos 365 pt de los 659 de la vista) y las guardas de abajo siguen exigiéndolos enteros. Lo que así
+        // queda recortado por arriba (al menos el aviso de modo de pruebas) se difiere y se mide al cerrar la fase.
+        encajar(["estado-bluetooth", "boton-abrir-ajustes", "boton-sesion-accesorio", "boton-reconectar"], en: app)
         comprobarEnteros(["estado-bluetooth", "boton-abrir-ajustes"], en: app, tocables: true)
         // Sin accesorio elegido los dos botones siguen inhabilitados y también quedan enteros (no hace falta que sean tocables).
         comprobarEnteros(["boton-sesion-accesorio", "boton-reconectar"], en: app)

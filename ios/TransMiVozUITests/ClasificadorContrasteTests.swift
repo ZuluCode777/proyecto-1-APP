@@ -495,4 +495,63 @@ final class ClasificadorContrasteTests: XCTestCase {
             XCTAssertTrue(recorrido.queda, "«\(destino.identificador)» quedó en \(recorrido.final) tras las escalas \(recorrido.escalas)")
         }
     }
+
+    // MARK: Encaje de un conjunto de elementos entre las barras
+
+    /// Permiso denegado con texto normal, desplazamiento 0 (ejecución nativa 42839307435, vista 116…775). «boton-reconectar» es
+    /// el marco exacto del fallo (maxY 781,67, 6,67 pt de más); el resto sale de píxeles del vídeo de esa ejecución (÷3) y es
+    /// aproximado: el texto del permiso son dos líneas y los botones miden 44,33 pt.
+    private var permisoDenegadoNormal: [CGRect] {
+        [CGRect(x: 16, y: 418.2, width: 370, height: 40.7), CGRect(x: 16, y: 466.9, width: 121.3, height: 44.3),
+         CGRect(x: 16, y: 685.0, width: 127.3, height: 44.3), CGRect(x: 16, y: 737.3333, width: 127.3333, height: 44.3334)]
+    }
+
+    private func moverContenido(_ marcos: [CGRect], _ desplazamiento: CGFloat) -> [CGRect] {
+        marcos.map { $0.offsetBy(dx: 0, dy: -desplazamiento) }
+    }
+
+    func testElConjuntoDelPermisoDenegadoNoEncajaSinMoverseYSeCentraConMargenAmbosLados() throws {
+        let marcos = permisoDenegadoNormal
+        XCTAssertGreaterThan(marcos.map(\.maxY).max() ?? 0, vista.abajo, "tal como queda sin desplazar, «Reconectar» sobresale")
+        guard case .desplazar(let d) = vista.encaje(de: marcos) else { return XCTFail("Debía pedir un desplazamiento: \(vista.encaje(de: marcos))") }
+        XCTAssertEqual(d, 154.4, accuracy: 1, "centra el conjunto entre las barras")
+        let despues = moverContenido(marcos, d)
+        XCTAssertGreaterThan(despues.map(\.minY).min()! - vista.arriba, 140, "margen por arriba")
+        XCTAssertGreaterThan(vista.abajo - despues.map(\.maxY).max()!, 140, "margen por abajo")
+        XCTAssertEqual(vista.encaje(de: despues), .yaEncaja)
+    }
+
+    /// Por qué no basta `exponer` sobre un solo elemento del conjunto: centrar «Reconectar» (lo que hace) deja el texto del
+    /// permiso recortado por arriba (estimado, ver `permisoDenegadoNormal`).
+    func testCentrarSoloElUltimoBotonDejaElTextoDelPermisoRecortadoPorArriba() {
+        let marcos = permisoDenegadoNormal
+        let solo = moverContenido(marcos, marcos[3].midY - (vista.arriba + vista.abajo) / 2)
+        XCTAssertLessThan(solo[0].minY, vista.arriba)
+        XCTAssertNotEqual(vista.encaje(de: solo), .yaEncaja, "el conjunto ya no cabe tras centrar solo ese botón")
+    }
+
+    func testUnConjuntoQueYaEstaEnteroNoSeMueveYUnoPorEncimaPideIrHaciaAtras() {
+        XCTAssertEqual(vista.encaje(de: [CGRect(x: 16, y: 116, width: 100, height: 40), CGRect(x: 16, y: 735, width: 100, height: 40)]), .yaEncaja)
+        guard case .desplazar(let d) = vista.encaje(de: [CGRect(x: 16, y: -300, width: 100, height: 40), CGRect(x: 16, y: -100, width: 100, height: 40)]) else {
+            return XCTFail("Debía pedir un desplazamiento")
+        }
+        XCTAssertLessThan(d, 0, "el conjunto está encima de la vista: el contenido baja")
+    }
+
+    func testSinToleranciaUnPuntoDeMasYaNoEncaja() {
+        XCTAssertEqual(vista.encaje(de: [CGRect(x: 16, y: 735, width: 100, height: 40)]), .yaEncaja)
+        XCTAssertNotEqual(vista.encaje(de: [CGRect(x: 16, y: 735.1, width: 100, height: 40)]), .yaEncaja)
+        XCTAssertNotEqual(vista.encaje(de: [CGRect(x: 16, y: 115.9, width: 100, height: 40)]), .yaEncaja)
+    }
+
+    func testUnConjuntoMasAltoQueLaVistaNoCabeYNoSeFingeQueCabe() {
+        XCTAssertEqual(vista.encaje(de: [CGRect(x: 16, y: 0, width: 100, height: 40), CGRect(x: 16, y: 700, width: 100, height: 40)]), .noCabe(alto: 740))
+    }
+
+    func testSinMarcosOConMarcosVaciosONoFinitosNoHayConjunto() {
+        XCTAssertEqual(vista.encaje(de: []), .marcoInvalido)
+        XCTAssertEqual(vista.encaje(de: [CGRect(x: 16, y: 300, width: 0, height: 40)]), .marcoInvalido)
+        XCTAssertEqual(vista.encaje(de: [CGRect(x: 16, y: 300, width: 100, height: 40), CGRect(x: 16, y: CGFloat.nan, width: 100, height: 40)]), .marcoInvalido)
+    }
 }
+
