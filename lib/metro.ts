@@ -238,16 +238,17 @@ export const ESTACIONES_METRO_L1: readonly EstacionMetro[] = [
   estacion(5, "Hospital de Kennedy", "anunciado", ["F6"], "Kennedy-05", "Primero de Mayo; calles 40 sur–39 sur", sinConexion),
   estacion(6, "Avenida Boyacá", "anunciado", ["F6"], "Av Boyaca-06", "Primero de Mayo; avenida Boyacá–carrera 72C", {
     estado: "por_verificar",
-    detalle: "Un plano muestra una futura troncal de TransMilenio junto a esta estación; la modalidad de la conexión y su disponibilidad están pendientes.",
-    fuentes: ["F14"],
+    detalle:
+      "Un plano muestra una futura troncal de TransMilenio junto a esta estación; la modalidad de la conexión y su disponibilidad están pendientes. Una comunicación de marzo de 2026 habla de dos conexiones por proximidad sin identificarlas; no se deduce que sean estas.",
+    fuentes: ["F14", "F18"],
     contraparteTm: null,
     habilitadaParaRuteo: false,
   }),
   estacion(7, null, "pendiente", ["F6"], "Av 68-07", "Primero de Mayo; avenida 68–carrera 52C", {
     estado: "por_verificar",
     detalle:
-      "Hay una integración futura acreditada y un plano muestra una futura estación de la troncal de la avenida 68; el nombre y la modalidad final están pendientes.",
-    fuentes: ["F6", "F15"],
+      "Hay una integración futura acreditada y un plano muestra una futura estación de la troncal de la avenida 68; el nombre y la modalidad final están pendientes. Una comunicación de marzo de 2026 habla de dos conexiones por proximidad sin identificarlas; no se deduce que sean estas.",
+    fuentes: ["F6", "F15", "F18"],
     contraparteTm: null,
     habilitadaParaRuteo: false,
   }),
@@ -322,6 +323,9 @@ export const LINEA_2: LineaMetro & { estacionesProyectadas: 11; detalle: string 
 // Texto compartido por la pantalla y el asistente (texto y voz dicen lo mismo).
 // ---------------------------------------------------------------------------
 
+/** Aviso de homónimos; igual en la ficha del asistente y en el listado. */
+export const TEXTO_HOMONIMO = "Una estación de TransMilenio con el mismo nombre es otra estación."
+
 export const TEXTO_FUENTE = `Fuentes: Portal Bogotá y Empresa Metro de Bogotá, con datos al ${METRO_CORTE_HABLADO}.`
 
 /** Estado de la Línea 1 con su previsión; igual en pantalla y en voz. */
@@ -369,7 +373,7 @@ export function describirEstacion(e: EstacionMetro): string {
     `Corredor y tramo publicado: ${e.corredor}.`,
     `La Línea 1 está ${LINEA_1.estadoTexto}; la apertura prevista para marzo de 2028 es solo una previsión.`,
     describirConexion(e),
-    "No tengo ubicación exacta ni accesos de esta estación. Una estación de TransMilenio con el mismo nombre es otra estación.",
+    `No tengo ubicación exacta ni accesos de esta estación. ${TEXTO_HOMONIMO}`,
     TEXTO_FUENTE,
   ].join(" ")
 }
@@ -401,6 +405,8 @@ export type ConsultaMetro =
   | { tipo: "estacion_inexistente"; numero: number }
   /** El número y el nombre dichos apuntan a estaciones distintas (o el número no existe). */
   | { tipo: "estacion_contradictoria"; numero: number; clave: string }
+  /** Un nombre suelto que coincide con varias estaciones: se pide aclarar, no se elige. */
+  | { tipo: "estacion_ambigua"; claves: string[] }
   | { tipo: "linea"; linea: 1 | 2 }
   | { tipo: "listado" }
   | { tipo: "general" }
@@ -425,6 +431,9 @@ const APERTURA = ["abre", "abra", "abren", "abrir", "abrira", "inaugura", "inaug
 const DE_A_DESTINO = /\bde\b.+\b(?:a|al|hacia)\b/
 const LISTADO = ["estaciones", "lista", "listado", "cuales son", "todas"]
 
+/** Palabra suelta que está en varios nombres públicos («kennedy») → estaciones candidatas. */
+const PALABRAS_AMBIGUAS = new Map<string, EstacionMetro[]>()
+
 /** Clave de búsqueda → estación, para nombres públicos y alias del archivo SIG. */
 const CLAVES_ESTACION = (() => {
   const nombresPublicos = ESTACIONES_METRO_L1.flatMap((e) => (e.nombre ? [normalize(e.nombre)] : []))
@@ -440,6 +449,7 @@ const CLAVES_ESTACION = (() => {
     const corto = normalize(e.aliasSig.replace(/-\d{2}$/, ""))
     const ambigua = !corto.includes(" ") && nombresPublicos.some((n) => n !== corto && n.split(" ").includes(corto))
     if (!ambigua) agregar(corto, e)
+    else PALABRAS_AMBIGUAS.set(corto, ESTACIONES_METRO_L1.filter((x) => x.nombre && normalize(x.nombre).split(" ").includes(corto)))
   }
   // «Hospital» solo, sin «de Kennedy», es el HOMI (E11).
   agregar("hospital", ESTACIONES_METRO_L1[10])
@@ -499,6 +509,10 @@ export function interpretarMetro(texto: string): ConsultaMetro | null {
     return encontrada ? { tipo: "estacion", clave: encontrada.clave } : { tipo: "estacion_inexistente", numero: n }
   }
 
+  for (const [palabra, candidatas] of PALABRAS_AMBIGUAS) {
+    if (` ${t} `.includes(` ${palabra} `)) return { tipo: "estacion_ambigua", claves: candidatas.map((e) => e.clave) }
+  }
+
   // «¿Cuándo abre?» sin estación: pregunta por la previsión de la Línea 1, no por un servicio.
   // Va después de servicio e identidad de estación para no saltarse sus validaciones.
   if (frase(t, APERTURA)) return { tipo: "linea", linea: 1 }
@@ -539,6 +553,13 @@ export function responderMetro(consulta: ConsultaMetro): RespuestaMetro {
       const e = ESTACIONES_METRO_L1.find((x) => x.clave === consulta.clave)!
       return {
         reply: `Mencionaste la estación ${consulta.numero} y también ${e.nombre ?? e.aliasSig}, que es la ${e.idOficial}. No coinciden y no sé cuál quieres. Pregunta por una sola: por número, de E01 a E16, o por nombre. ${TEXTO_FUENTE}`,
+        steps: [base],
+      }
+    }
+    case "estacion_ambigua": {
+      const candidatas = ESTACIONES_METRO_L1.filter((x) => consulta.claves.includes(x.clave)).map((x) => `${x.idOficial}, ${nombreEstacion(x)}`)
+      return {
+        reply: `Ese nombre puede ser más de una estación del Metro: ${candidatas.join(" o ")}. No sé cuál quieres. Pregunta por una sola: por número, de E01 a E16, o por el nombre completo. ${TEXTO_FUENTE}`,
         steps: [base],
       }
     }
