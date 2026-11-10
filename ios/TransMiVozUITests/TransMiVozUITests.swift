@@ -358,6 +358,9 @@ private func comprobarEnteros(_ ids: [String], en app: XCUIApplication, tocables
 /// quien lo llama sigue exigiendo cada elemento con `comprobarEnteros` (y lo que haga falta) justo después, y esas guardas
 /// fallan si el gesto se pasó o el conjunto no cabe. Solo falla por sí mismo si no existe un elemento, si los marcos no son
 /// válidos o si el conjunto es más alto que la vista.
+/// Su único gesto es `.slow` (250 px/s). En el Simulator iPhone 17 / iOS 26.0, a la velocidad por defecto (500 px/s) pidió
+/// 153,54 pt y el contenido se movió 321,0 pt (×2,09); en la misma corrida, de los 63 gestos `.slow` de las pruebas con
+/// `AccessibilityXXXL`, 62 movieron lo pedido menos 9,8–15,3 pt (razón 0,91–0,98) y el otro llegó al final del contenido.
 private func encajar(_ ids: [String], en app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
     let contenido = app.scrollViews.firstMatch.frame
     let limiteBarra = app.tabBars.firstMatch.frame.minY
@@ -373,15 +376,17 @@ private func encajar(_ ids: [String], en app: XCUIApplication, file: StaticStrin
     let resumen = zip(ids, marcos).map { "\($0): \($1)" }.joined(separator: "\n")
     switch vista.encaje(de: marcos) {
     case .yaEncaja:
-        XCTContext.runActivity(named: "Encaje de \(ids.count) elementos: ya caben") { anotar($0, "encajar-antes", "vista: \(vista.arriba)…\(vista.abajo)\n\(resumen)") }
+        XCTContext.runActivity(named: "Encaje de \(ids.count) elementos: ya caben") { anotar($0, "encajar-antes", "vista: \(vista.arriba)…\(vista.abajo)\nvelocidad: sin gesto, ya caben\n\(resumen)") }
     case .desplazar(let desplazamiento):
         // Como `exponer`: un gesto no pide más que un paso (`abajo - arriba - 40`), para que su recorrido quede dentro de la vista.
         let paso = vista.abajo - vista.arriba - 40
         let solicitud = max(-paso, min(paso, desplazamiento))
         XCTContext.runActivity(named: "Encaje de \(ids.count) elementos: desplazar \(solicitud)") { actividad in
-            anotar(actividad, "encajar-antes", "vista: \(vista.arriba)…\(vista.abajo)\nencaje: \(desplazamiento), solicitud: \(solicitud)\n\(resumen)")
-            arrastrarContenido(solicitud, en: app, arriba: vista.arriba, abajo: vista.abajo)
-            anotar(actividad, "encajar-despues", ids.map { "\($0): \(app.descendants(matching: .any).matching(identifier: $0).firstMatch.frame)" }.joined(separator: "\n"))
+            anotar(actividad, "encajar-antes", "vista: \(vista.arriba)…\(vista.abajo)\nencaje: \(desplazamiento), solicitud: \(solicitud), velocidad: lenta (.slow)\n\(resumen)")
+            arrastrarContenido(solicitud, en: app, arriba: vista.arriba, abajo: vista.abajo, velocidad: .slow)
+            let marcosDespues = ids.map { app.descendants(matching: .any).matching(identifier: $0).firstMatch.frame }
+            let medido = marcos[0].minY - marcosDespues[0].minY
+            anotar(actividad, "encajar-despues", "velocidad: lenta (.slow), solicitud: \(solicitud), desplazamiento medido de «\(ids[0])»: \(medido)\n" + zip(ids, marcosDespues).map { "\($0): \($1)" }.joined(separator: "\n"))
         }
     case .noCabe(let alto):
         XCTFail("Los elementos \(ids) no caben a la vez entre las barras: alto del conjunto \(alto), visible \(vista.arriba)…\(vista.abajo)\n\(resumen)", file: file, line: line)
@@ -798,6 +803,10 @@ final class TransMiVozAccesorioUITests: XCTestCase {
         // Tras iniciar, el título del bloqueo quedó centrado más abajo: el aviso de arriba queda encima.
         let bloqueada = FaseAuditada("bloqueada", app: app, caso: self)
         exponer("aviso-transporte-sintetico", en: app, haciaAtras: true)
+        // En un iPhone 12 real (iOS 26.6.2, vista 101…745) «boton-reconectar» quedó en (16; 706,33; 127,33 × 50,33), maxY 756,67:
+        // 11,67 pt por debajo de la vista. Si el conjunto ya cabe (como en el Simulator iPhone 17, 116…775), `encajar` no mueve
+        // nada. Lo que quede recortado por arriba se difiere y se mide al cerrar la fase, igual que en permiso denegado.
+        encajar(parrafosAvisoSeguridad.map { $0.id } + ["boton-sesion-accesorio", "boton-reconectar"], en: app)
         comprobarEnteros(parrafosAvisoSeguridad.map { $0.id } + ["boton-sesion-accesorio", "boton-reconectar"], en: app)
         try bloqueada.auditar("accesorio-bloqueado-arriba")
         exponerAlFinal(visibles: parrafosBloqueo.map { $0.id } + ["estado-audio"], en: app)
@@ -820,7 +829,8 @@ final class TransMiVozAccesorioUITests: XCTestCase {
         XCTAssertTrue(elemento("boton-abrir-ajustes").waitForExistence(timeout: 10))
         // Desde el aviso de arriba (desplazamiento 0), con el permiso denegado «Reconectar» queda 6,67 pt bajo la barra de
         // pestañas (maxY 781,67 en una vista de 116…775; ejecución nativa 42839307435). El aviso de modo de pruebas no es lo
-        // exigido aquí: el texto del permiso, «Abrir Ajustes» y los dos botones sí, a la vez. Se centran los cuatro entre las
+        // exigido aquí: el texto del permiso, «Abrir Ajustes» y los dos botones sí, a la vez. El gesto de centrado es lento
+        // (`.slow`) porque a velocidad por defecto se pasaba (ver el comentario de `encajar`). Se centran los cuatro entre las
         // barras (ocupan unos 365 pt de los 659 de la vista) y las guardas de abajo siguen exigiéndolos enteros. Lo que así
         // queda recortado por arriba (al menos el aviso de modo de pruebas) se difiere y se mide al cerrar la fase.
         encajar(["estado-bluetooth", "boton-abrir-ajustes", "boton-sesion-accesorio", "boton-reconectar"], en: app)
