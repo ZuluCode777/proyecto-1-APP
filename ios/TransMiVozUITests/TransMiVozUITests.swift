@@ -155,6 +155,16 @@ private final class FaseAuditada {
         adjuntar("auditoria-\(libro.fase)-ruta-\(identificador)", recorridas.isEmpty ? "Directo." : recorridas.joined(separator: "\n"))
     }
 
+    /// Exposición por escalas, a la velocidad de la fase: `acercar` y después el `exponer` de siempre, con sus mismas
+    /// exigencias (`completo`, `haciaAtras`) y su tope de cuatro gestos. Llega al objetivo sin suponer dónde quedó la vista:
+    /// una auditoría nativa puede dejarla lejos. En la corrida nativa de `87c80e8`, tras auditar los controles con el texto
+    /// más grande, el `exponer` directo dejó «titulo-estado-accesorio» en y 1334 (vista 116…775) al agotar los cuatro gestos.
+    /// La usan la remedición del cierre y las posiciones de una fase que se exponen entre auditorías.
+    func exponerPorEscalas(_ identificador: String, completo: Bool = true, haciaAtras: Bool = false, file: StaticString = #filePath, line: UInt = #line) throws {
+        try acercar(identificador, file: file, line: line)
+        exponer(identificador, en: app, completo: completo, haciaAtras: haciaAtras, velocidad: velocidad, file: file, line: line)
+    }
+
     /// Remedición obligatoria: cada deuda se lleva entera a la vista (`exponer`) y se vuelve a auditar con todos los grupos.
     /// El trabajo está acotado por los nodos que la fase llegó a tener (cada vuelta salda o da por fallida una deuda); si
     /// quedan deudas, o el objetivo no se deja exponer, la fase falla. Sin reintentos ciegos ni más gestos que `exponer`.
@@ -168,8 +178,7 @@ private final class FaseAuditada {
                 break
             }
             vueltas += 1
-            try acercar(clave.identificador, file: file, line: line)
-            exponer(clave.identificador, en: app, velocidad: velocidad, file: file, line: line)
+            try exponerPorEscalas(clave.identificador, file: file, line: line)
             try auditar("remedicion-\(vueltas)-\(clave.identificador)")
             if libro.pendientes.contains(clave) {
                 libro.darPorFallida(clave, motivo: "entero a la vista no quedó medido sin problema")
@@ -248,7 +257,8 @@ private func textoMarco(_ marco: CGRect?) -> String {
 /// `completo: false` es solo para textos que con `AccessibilityXXXL` miden más que el área visible (un aviso de
 /// ~200 caracteres ocupa más de 900 pt): pide que su COMIENZO quede a la vista y tocable por arriba, no entero.
 /// Todo lo demás (botones, interruptor, títulos) se sigue exigiendo entero y tocable.
-/// `velocidad` se pasa tal cual a cada gesto: solo la remedición de la auditoría del accesorio la baja a `.slow`.
+/// `velocidad` se pasa tal cual a cada gesto: solo las fases de la auditoría del accesorio con el texto más grande
+/// (`FaseAuditada`: remedición y exposición por escalas) la bajan a `.slow`.
 private func exponer(_ identificador: String, en app: XCUIApplication, completo: Bool = true, haciaAtras: Bool = false, velocidad: XCUIGestureVelocity = .default, file: StaticString = #filePath, line: UInt = #line) {
     let objetivo = app.descendants(matching: .any).matching(identifier: identificador).firstMatch
     let contenido = app.scrollViews.firstMatch.frame
@@ -830,14 +840,15 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         exponer("titulo-estado-accesorio", en: app)
         let bloqueado = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Bloqueado: enlace no verificado")).firstMatch
         XCTAssertTrue(bloqueado.waitForExistence(timeout: 10), "No apareció el bloqueo")
-        // Bloqueada: el título del bloqueo quedó centrado, los controles están encima y el resto, debajo.
+        // Bloqueada: el título del bloqueo quedó centrado, los controles están encima y el resto, debajo. Cada posición se
+        // expone por escalas: tras una auditoría la vista puede quedar a más de cuatro gestos de la posición siguiente.
         let bloqueada = FaseAuditada("bloqueada-texto-muy-grande", app: app, caso: self, velocidad: .slow)
         for (id, contexto, completo, haciaAtras) in [
             ("boton-sesion-accesorio", "controles", true, true), ("titulo-estado-accesorio", "estado", true, false),
             ("estado-accesorio", "descripcion", false, false), ("estado-audio", "audio", false, false),
             ("interruptor-voz-app", "voz", true, false),
         ] {
-            exponer(id, en: app, completo: completo, haciaAtras: haciaAtras)
+            try bloqueada.exponerPorEscalas(id, completo: completo, haciaAtras: haciaAtras)
             try bloqueada.auditar("texto-muy-grande-Accesorio-\(contexto)")
         }
         try bloqueada.cerrar()
