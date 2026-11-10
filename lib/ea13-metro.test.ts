@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { readdirSync, readFileSync } from "node:fs"
 import test from "node:test"
 import snapshot from "../data/transmilenio.json" with { type: "json" }
 import { findPlaces, nearestStations, planTrip } from "./routes"
@@ -11,8 +12,9 @@ import {
   type AgentReply,
 } from "./local-agent"
 import { intencionUsaUbicacion, requiereModelo } from "./seleccion-interprete"
-import { ESTACIONES_METRO_L1, FUENTES_METRO, LINEA_1, LINEA_2, interpretarMetro } from "./metro"
+import { ESTACIONES_METRO_L1, FUENTES_METRO, LINEA_1, LINEA_2, TEXTO_HOMONIMO, interpretarMetro } from "./metro"
 import { TransmilenioDataSchema } from "./transmilenio"
+import { runIntent } from "./local-agent"
 
 const data = TransmilenioDataSchema.parse(snapshot)
 const responder = (frase: string, now = new Date("2026-11-07T10:00:00-05:00")): AgentReply =>
@@ -64,6 +66,14 @@ test("ocho conexiones directas previstas, E06/E07 por verificar, ninguna habilit
   }
 })
 
+test("F18 (dos conexiones por proximidad sin identificar) respalda a E06 y E07, no a las conexiones directas", () => {
+  assert.deepEqual(
+    ESTACIONES_METRO_L1.filter((e) => e.fuentes.includes("F18")).map((e) => e.idOficial),
+    ["E06", "E07"],
+  )
+  for (const id of ["E06", "E07"]) assert.match(estacion(id).conexion.detalle, /dos conexiones por proximidad sin identificarlas/, id)
+})
+
 test("líneas: la 1 en construcción y la 2 en contratación, ninguna con servicio comercial", () => {
   assert.equal(LINEA_1.estado, "en_construccion")
   assert.equal(LINEA_2.estado, "contratacion_precalificacion")
@@ -110,6 +120,23 @@ test("Calle 72 sin contexto de Metro sigue siendo la estación de TransMilenio; 
   const metro = parseIntent("estación Calle 72 del metro", data)
   assert.deepEqual(metro, { type: "metro", consulta: { tipo: "estacion", clave: "metro-bogota:l1:e16" } })
   assert.match(responder("estación Calle 72 del metro").reply, /otra estación/)
+})
+
+test("toda estación del Metro cuyo nombre público también existe en TransMilenio exige la palabra «metro»", () => {
+  // Solo nombres públicos: es lo que `findPlaces` de TransMilenio sabe buscar.
+  const homonimas = ESTACIONES_METRO_L1.filter((e) => e.nombre && findPlaces(e.nombre, data).length > 0)
+  assert.ok(homonimas.length >= 11, `esperaba al menos 11 homónimas y hay ${homonimas.length}`)
+  for (const e of homonimas) {
+    const nombre = e.nombre!
+    for (const sin of [nombre, `estación ${nombre}`, `cómo llego a ${nombre}`]) {
+      assert.equal(interpretarMetro(sin), null, sin)
+      assert.notEqual(parseIntent(sin, data).type, "metro", sin)
+    }
+    const con = `estación ${nombre} del metro`
+    assert.deepEqual(interpretarMetro(con), { tipo: "estacion", clave: e.clave }, con)
+    assert.deepEqual(parseIntent(con, data), { type: "metro", consulta: { tipo: "estacion", clave: e.clave } }, con)
+    assert.ok(responder(con).reply.includes(TEXTO_HOMONIMO), con)
+  }
 })
 
 test("peticiones de viaje reales por Metro, mixtas, tarifa y horario explican indisponibilidad sin abordaje ni navegación", () => {
@@ -242,6 +269,22 @@ test("número y nombre de estación que no coinciden piden aclarar en vez de ele
   assert.deepEqual(interpretarMetro("de E3 a Calle 72 en metro"), { tipo: "servicio", tema: "viaje" })
 })
 
+test("«kennedy» suelto con contexto de Metro es ambiguo entre E03 y E05 y pide aclarar", () => {
+  const ambigua = { tipo: "estacion_ambigua", claves: ["metro-bogota:l1:e03", "metro-bogota:l1:e05"] }
+  for (const frase of ["metro kennedy", "cuándo abre kennedy metro"]) {
+    assert.deepEqual(interpretarMetro(frase), ambigua, frase)
+    const respuesta = responder(frase)
+    assert.equal(respuesta.action, "none", frase)
+    assert.match(respuesta.reply, /E03, Ciudad Kennedy o E05, Hospital de Kennedy/, frase)
+    assert.match(respuesta.reply, /No sé cuál quieres/, frase)
+    assert.deepEqual(AgentReplySchema.parse(respuesta), respuesta, frase)
+  }
+  // Nombre completo, o número, resuelven; sin contexto de Metro no es Metro.
+  assert.deepEqual(interpretarMetro("metro hospital de kennedy"), { tipo: "estacion", clave: "metro-bogota:l1:e05" })
+  assert.deepEqual(interpretarMetro("metro estación 3 kennedy"), { tipo: "estacion", clave: "metro-bogota:l1:e03" })
+  assert.equal(interpretarMetro("kennedy"), null)
+})
+
 test("preguntas de apertura pasan por la misma prioridad de servicio e identidad de estación", () => {
   const e16 = "metro-bogota:l1:e16"
   const e03 = "metro-bogota:l1:e03"
@@ -267,4 +310,73 @@ test("preguntas de apertura pasan por la misma prioridad de servicio e identidad
   assert.deepEqual(interpretarMetro("cuándo abre la línea 2 del metro"), { tipo: "linea", linea: 2 })
   assert.match(responder("cuándo abre la línea 2 del metro").reply, /contratación y precalificación/)
   assert.match(responder("cuándo abre el metro").reply, /marzo de 2028; es una previsión/)
+})
+
+// --- Contrato iOS ---------------------------------------------------------
+
+/** Frases de Metro de estas pruebas: estación por nombre y número, líneas, rechazos, aclaraciones. */
+const FRASES_METRO = [
+  ...ESTACIONES_METRO_L1.map((e) => `metro estación ${e.numero}`),
+  ...ESTACIONES_METRO_L1.flatMap((e) => (e.nombre ? [`estación ${e.nombre} del metro`] : [])),
+  "estación E3 del metro",
+  "metro carrera 80",
+  "metro estación E7",
+  "estación de la avenida 68 del metro",
+  "metro",
+  "línea 1 del metro",
+  "línea 2 del metro",
+  "estación 5 de la línea 2 del metro",
+  "qué estaciones tiene el metro",
+  "estación 17 del metro",
+  "cómo llego de Calle 45 a Central en metro",
+  "viaje en metro y transmilenio de Portal Américas a Central",
+  "cuánto cuesta el pasaje del metro",
+  "horario del metro Calle 72",
+  "cuánto demora el metro",
+  "estación E3 Calle 72 del metro",
+  "estación E17 Ciudad Kennedy del metro",
+  "metro kennedy",
+  "cuándo abre el metro",
+  "cuándo abre la línea 2 del metro",
+]
+
+// Límites del decodificador iOS: `RespuestaAgente.maximoCaracteresTexto` y `maximoPasos`.
+const IOS_MAXIMO_CARACTERES_TEXTO = 10_000
+const IOS_MAXIMO_PASOS = 50
+
+test("contrato iOS: toda respuesta de Metro es action none, con la forma de siempre y dentro de los límites del decodificador", () => {
+  for (const frase of FRASES_METRO) {
+    // Mismo recorrido que `POST /api/agent`: reglas (`parseIntent`) y luego `runIntent`.
+    const intent = parseIntent(frase, data)
+    assert.equal(intent.type, "metro", frase)
+    const respuesta = runIntent(intent, { data, context: { now: new Date("2026-11-07T10:00:00-05:00") }, engine: "reglas" })
+    assert.equal(respuesta.action, "none", frase)
+    assert.equal(respuesta.engine, "reglas", frase)
+    assert.deepEqual(Object.keys(respuesta).sort(), ["action", "engine", "reply", "steps"], `${frase}: sin campos nuevos`)
+    assert.ok(respuesta.reply.trim().length > 0 && respuesta.reply.length <= IOS_MAXIMO_CARACTERES_TEXTO, `${frase}: ${respuesta.reply.length} caracteres`)
+    assert.ok(respuesta.steps.length <= IOS_MAXIMO_PASOS, `${frase}: ${respuesta.steps.length} pasos`)
+    for (const paso of respuesta.steps) assert.ok(Object.keys(paso).every((k) => k === "label" || k === "detail"), frase)
+  }
+})
+
+// --- Separación del catálogo ----------------------------------------------
+
+/** Solo estos archivos de producción pueden importar el catálogo: el agente que lo consulta y su listado. */
+const IMPORTADORES_PERMITIDOS = ["lib/local-agent.ts", "components/metro-list.tsx"]
+const OMITIDOS = ["lib/metro.ts", ...IMPORTADORES_PERMITIDOS]
+
+test("ningún código de producción fuera del agente y del listado importa el catálogo de Metro", () => {
+  const raiz = process.cwd()
+  const archivos = ["lib", "components", "hooks", "app"]
+    .flatMap((dir) => readdirSync(`${raiz}/${dir}`, { recursive: true, encoding: "utf8" }).map((f) => `${dir}/${f.replaceAll("\\", "/")}`))
+    .filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f))
+  assert.ok(archivos.length > 30, `el rastreo solo vio ${archivos.length} archivos`)
+  for (const permitido of OMITIDOS) assert.ok(archivos.includes(permitido), `falta ${permitido}`)
+
+  const importaMetro = /(?:from|import|require)\s*\(?\s*["'](?:@\/lib\/metro|\.\.?\/(?:lib\/)?metro)(?:\.tsx?)?["']/
+  const infractores = archivos.filter((f) => !OMITIDOS.includes(f) && importaMetro.test(readFileSync(`${raiz}/${f}`, "utf8")))
+  assert.deepEqual(infractores, [], "el catálogo de Metro no debe llegar a GPS, paradas ni planTrip")
+  for (const permitido of IMPORTADORES_PERMITIDOS) {
+    assert.match(readFileSync(`${raiz}/${permitido}`, "utf8"), importaMetro, `${permitido} deja de importar el catálogo: actualiza la lista`)
+  }
 })
