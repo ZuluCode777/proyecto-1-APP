@@ -21,6 +21,8 @@ struct RaizVista: View {
                 resumenServidor: entorno.modoPruebas ? "Modo de pruebas: sin servidor." : entorno.ajustes.resumen,
                 avisoModoPruebas: entorno.modoPruebas)
                 .tabItem { Label("Consulta", systemImage: "bubble.left.and.text.bubble.right") }
+            LupaVista(modelo: entorno.lupa, avisoSintetico: entorno.modoPruebas)
+                .tabItem { Label("Lupa", systemImage: "magnifyingglass") }
             AjustesServidorVista(modelo: entorno.ajustes, avisoModoPruebas: entorno.modoPruebas)
                 .tabItem { Label("Servidor", systemImage: "server.rack") }
         }
