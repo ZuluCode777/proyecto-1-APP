@@ -1,0 +1,163 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { X } from "lucide-react"
+import { Modal } from "@/components/modal"
+import { useSpeech } from "@/hooks/use-speech"
+import { AnunciosRespuestaSchema, ETIQUETA_EFECTO, fechaLegible, type AnunciosRespuesta } from "@/lib/anuncios"
+import { procedenciaCatalogo, type TransmilenioData } from "@/lib/transmilenio"
+
+/** Espera máxima por `/api/anuncios` (la fuente tiene la suya, menor). */
+const CONSULTA_TIMEOUT_MS = 12_000
+
+const TEXTO_NO_CONSULTADO =
+  "No pude consultar los anuncios de TransMilenio. Esto no significa que no haya novedades en el servicio."
+const TEXTO_CONSULTANDO = "Consultando los anuncios de TransMilenio."
+/** Escenario fijo de la app: el Metro no tiene servicio comercial y no genera anuncios. */
+const TEXTO_ESCENARIO_METRO =
+  "El Metro de Bogotá es un escenario educativo, sin servicio comercial. No genera anuncios ni indica horarios o abordaje."
+
+type Consulta = { tipo: "consultando" } | { tipo: "error" } | { tipo: "ok"; datos: AnunciosRespuesta }
+
+type AvisosProps = {
+  open: boolean
+  onClose: () => void
+  /** Catálogo de rutas, para el aviso propio de la app sobre la procedencia de sus datos. */
+  catalogo: TransmilenioData | null
+  /** La última actualización del catálogo falló. */
+  errorCatalogo: boolean
+}
+
+/** Marca de origen, siempre en texto (no solo color) para que la lea el lector de pantalla. */
+function Origen({ children }: { children: string }) {
+  return <span className="inline-block rounded-lg border-3 border-border bg-bar px-2 py-0.5 text-sm font-bold">{children}</span>
+}
+
+/**
+ * Panel que abre la campana (EA-26, #52). Separa tres orígenes que nunca se
+ * mezclan: anuncios OFICIALES del operador (con el estado de su fuente), avisos
+ * PROPIOS de la app y el escenario SIMULADO del Metro. Sin fuente conectada o
+ * con la consulta caída no dice que no haya incidentes: dice que no puede saberlo.
+ */
+export function Avisos({ open, onClose, catalogo, errorCatalogo }: AvisosProps) {
+  const { speak } = useSpeech()
+  const [consulta, setConsulta] = useState<Consulta>({ tipo: "consultando" })
+
+  useEffect(() => {
+    if (!open) return
+    setConsulta({ tipo: "consultando" })
+    let vigente = true
+    const controlador = new AbortController()
+    const limite = setTimeout(() => controlador.abort(), CONSULTA_TIMEOUT_MS)
+    speak(TEXTO_CONSULTANDO)
+    void (async () => {
+      try {
+        const res = await fetch("/api/anuncios", { signal: controlador.signal })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const datos = AnunciosRespuestaSchema.parse(await res.json())
+        if (!vigente) return
+        setConsulta({ tipo: "ok", datos })
+        speak(datos.fuente.mensaje)
+      } catch {
+        if (!vigente) return // se cerró el panel: nadie espera este resultado
+        setConsulta({ tipo: "error" })
+        speak(TEXTO_NO_CONSULTADO)
+      }
+    })()
+    return () => {
+      vigente = false
+      clearTimeout(limite)
+      controlador.abort()
+    }
+  }, [open, speak])
+
+  const avisoCatalogo = errorCatalogo
+    ? "No pude actualizar las rutas de TransMilenio. Sigues viendo los últimos datos cargados."
+    : catalogo?.source === "snapshot"
+      ? procedenciaCatalogo(catalogo)
+      : null
+
+  return (
+    <Modal open={open} onClose={onClose} label="Avisos" className="open:flex open:flex-col">
+      <div className="flex items-center justify-between border-b-3 border-border bg-bar px-4 pb-3 pt-5">
+        <h2 className="text-2xl font-bold tracking-tight">Avisos</h2>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Cerrar avisos"
+          className="flex size-12 items-center justify-center rounded-2xl border-3 border-border bg-bar transition active:scale-95"
+        >
+          <X className="size-6" aria-hidden="true" />
+        </button>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4">
+        <section aria-labelledby="avisos-operador" className="flex flex-col gap-3">
+          <h3 id="avisos-operador" className="text-xl font-bold">
+            Anuncios del operador
+          </h3>
+          <div role="status" className="rounded-2xl border-3 border-border bg-card p-4 text-base">
+            {consulta.tipo === "consultando" && <p>{TEXTO_CONSULTANDO}</p>}
+            {consulta.tipo === "error" && <p>{TEXTO_NO_CONSULTADO}</p>}
+            {consulta.tipo === "ok" && (
+              <>
+                <p className="font-bold">
+                  {consulta.datos.fuente.estado === "activa"
+                    ? "Fuente conectada"
+                    : consulta.datos.fuente.estado === "degradada"
+                      ? "Fuente con problemas · confianza baja"
+                      : "Sin fuente conectada"}
+                </p>
+                <p className="mt-1">{consulta.datos.fuente.mensaje}</p>
+                {consulta.datos.fuente.consultadoEn && (
+                  <p className="mt-1 text-sm">
+                    Última consulta exitosa: {fechaLegible(consulta.datos.fuente.consultadoEn)}. Fuente: {consulta.datos.fuente.entidad}.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+          {consulta.tipo === "ok" && consulta.datos.anuncios.length > 0 && (
+            <ul className="flex flex-col gap-3">
+              {consulta.datos.anuncios.map((a) => (
+                <li key={a.identificador} className="flex flex-col gap-1 rounded-2xl border-3 border-border bg-card p-4">
+                  <Origen>{`Anuncio oficial · ${a.entidad}`}</Origen>
+                  <p className="text-lg font-bold">{a.titulo}</p>
+                  {a.descripcion && a.descripcion !== a.titulo && <p className="text-base">{a.descripcion}</p>}
+                  <p className="text-base">
+                    Afectación: {ETIQUETA_EFECTO[a.afectacion.efecto]}
+                    {a.afectacion.rutas.length > 0 && `. Servicios (identificador de la fuente): ${a.afectacion.rutas.join(", ")}`}
+                  </p>
+                  <p className="text-sm">
+                    Vigente desde {fechaLegible(a.fecha)}
+                    {a.vigenciaHasta ? ` hasta ${fechaLegible(a.vigenciaHasta)}` : " sin fecha de fin"}. Identificador {a.identificador}.
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section aria-labelledby="avisos-app" className="flex flex-col gap-3">
+          <h3 id="avisos-app" className="text-xl font-bold">
+            Avisos de la app
+          </h3>
+          <div className="flex flex-col gap-1 rounded-2xl border-3 border-border bg-card p-4 text-base">
+            <Origen>Aviso de la app</Origen>
+            <p>{avisoCatalogo ?? "La app no tiene avisos propios ahora. No es un anuncio del operador."}</p>
+          </div>
+        </section>
+
+        <section aria-labelledby="avisos-simulado" className="flex flex-col gap-3">
+          <h3 id="avisos-simulado" className="text-xl font-bold">
+            Escenario simulado
+          </h3>
+          <div className="flex flex-col gap-1 rounded-2xl border-3 border-border bg-card p-4 text-base">
+            <Origen>Simulado</Origen>
+            <p>{TEXTO_ESCENARIO_METRO}</p>
+          </div>
+        </section>
+      </div>
+    </Modal>
+  )
+}
