@@ -3,7 +3,7 @@ import { decidirAccesoDeEntorno, respuestaDeDecision } from "@/lib/autenticacion
 import { leerCuerpoLimitado } from "@/lib/cuerpo-peticion"
 import { claveCliente } from "@/lib/identidad-cliente"
 import { parseIntent, plainReply, runIntent, type AgentContext, type Intent } from "@/lib/local-agent"
-import { OLLAMA_MODEL, ollamaConfigured, ollamaStatus, parseIntentWithOllama } from "@/lib/ollama"
+import { OLLAMA_MODEL, ollamaConfigured, ollamaStatus, parseIntentWithOllama, warmUpOllama } from "@/lib/ollama"
 import { createRateLimiter } from "@/lib/rate-limit"
 import { elegirIntent, requiereModelo } from "@/lib/seleccion-interprete"
 import { getTransmilenioData } from "@/lib/transmilenio-data"
@@ -124,9 +124,9 @@ export async function POST(req: Request) {
   // Hallazgo 15 (EA-08): las REGLAS interpretan primero. Si reconocen la frase,
   // se usan y no se consulta el modelo: responde más rápido y un `unknown` del
   // modelo no puede anular una intención conocida. El modelo solo se consulta
-  // cuando las reglas no entienden, con un presupuesto corto y respaldo
-  // inmediato a la respuesta de desconocimiento de reglas. Siempre una sola
-  // acción validada por pregunta.
+  // cuando las reglas no entienden, con una espera acotada (`TIMEOUT_MS` en
+  // `lib/ollama.ts`) y respaldo a la respuesta de desconocimiento de reglas.
+  // Siempre una sola acción validada por pregunta.
   const intentDeReglas = parseIntent(message, data)
   let intentDelModelo: Intent | null = null
   if (ollamaConfigured() && requiereModelo(intentDeReglas)) {
@@ -135,6 +135,9 @@ export async function POST(req: Request) {
     } catch (error) {
       // Solo el mensaje: el objeto de error de `fetch` trae en `cause` la dirección de Ollama.
       console.warn("[agente] Ollama no respondió, uso las reglas:", error instanceof Error ? error.message : "error desconocido")
+      // Si el modelo no estaba cargado, agotar la espera aborta la carga y la
+      // siguiente pregunta fallaría igual: se precarga aparte, sin esperarla.
+      void warmUpOllama()
     }
   }
 

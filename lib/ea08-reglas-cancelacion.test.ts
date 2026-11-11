@@ -45,6 +45,8 @@ async function conEndpoint(modoModelo: "unknown" | "colgado" | "gps" | "trip-des
   globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
     const u = String(url)
     if (u.includes("/api/chat")) {
+      // La precarga (sin mensajes) que sigue a un fallo del modelo no es una consulta.
+      if (JSON.parse(String(init?.body)).messages.length === 0) return new Response("{}")
       llamadasChat++
       if (modoModelo === "colgado") {
         // Nunca responde: el presupuesto del modelo (TIMEOUT_MS) lo abortará y
@@ -116,7 +118,7 @@ test("AC1 (endpoint real): un unknown del modelo no anula una regla conocida", a
 
 test("AC2 (endpoint real): frase desconocida con modelo colgado responde con reglas dentro del presupuesto", async () => {
   // El modelo se consulta (reglas no entienden) pero se cuelga; el presupuesto
-  // del servidor lo aborta y responde con reglas. Tolera el plazo real (~2 s).
+  // del servidor lo aborta y responde con reglas. Tolera el plazo real (4,5 s).
   const e = await conEndpoint("colgado")
   try {
     const t0 = performance.now()
@@ -125,7 +127,7 @@ test("AC2 (endpoint real): frase desconocida con modelo colgado responde con reg
     assert.equal(e.llamadas(), 1, "las reglas no entendían: sí se consultó el modelo")
     assert.equal(json.engine, "reglas")
     assert.match(json.reply, /No te entendí/)
-    assert.ok(ms < 5_000, `el presupuesto del modelo debe liberar pronto; tardó ${Math.round(ms)} ms`)
+    assert.ok(ms < 5_500, `el presupuesto del modelo debe liberar antes que la espera del cliente (6 s); tardó ${Math.round(ms)} ms`)
   } finally {
     e.restaurar()
   }

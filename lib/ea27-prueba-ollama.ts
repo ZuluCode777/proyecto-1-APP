@@ -14,6 +14,12 @@ export const TOKEN = "token-de-prueba-0123456789"
 export const URL_TUNEL = "https://tunel-secreto.example"
 let contadorCaso = 0
 
+/** ¿Es la precarga del modelo (`warmUpOllama`)? Es el único `/api/chat` sin mensajes. */
+export function esPrecarga(llamada: Llamada): boolean {
+  const mensajes = llamada.cuerpo?.messages
+  return llamada.url.endsWith("/api/chat") && Array.isArray(mensajes) && mensajes.length === 0
+}
+
 export type Llamada = {
   url: string
   autorizacion: string | null
@@ -73,11 +79,8 @@ function simularOllama(llamadas: Llamada[], plazos: WeakMap<AbortSignal, number>
     const direccion = String(url)
     const esChat = direccion.endsWith("/api/chat")
     if (opciones.real && (esChat || direccion.endsWith("/api/tags"))) return fetchReal(url, init)
-    if (esChat && opciones.chatFalla) {
-      // Como el real: la dirección viaja en `cause`.
-      throw new TypeError("fetch failed", { cause: new Error("getaddrinfo ENOTFOUND tunel-secreto.example") })
-    }
     if (!esChat && !direccion.endsWith("/api/tags")) throw new Error("sin red (ArcGIS simulado): usa la copia")
+    // Se anota antes de fallar: un intento que falla también es una llamada.
     llamadas.push({
       url: direccion,
       autorizacion: new Headers(init?.headers).get("authorization"),
@@ -85,6 +88,10 @@ function simularOllama(llamadas: Llamada[], plazos: WeakMap<AbortSignal, number>
       cuerpo: typeof init?.body === "string" ? JSON.parse(init.body) : null,
       plazoMs: init?.signal ? plazos.get(init.signal) : undefined,
     })
+    if (esChat && opciones.chatFalla) {
+      // Como el real: la dirección viaja en `cause`.
+      throw new TypeError("fetch failed", { cause: new Error("getaddrinfo ENOTFOUND tunel-secreto.example") })
+    }
     if (!esChat) return new Response(JSON.stringify({ models: [{ name: "qwen2.5:3b" }] }))
     const contenido = { intent: "gps", origin: "", destination: "", routeCode: "" }
     return new Response(JSON.stringify({ message: { content: JSON.stringify(contenido) } }))
