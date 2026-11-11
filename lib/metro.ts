@@ -79,6 +79,13 @@ export const FUENTES_METRO: Record<string, FuenteMetro> = {
     url: "https://datosabiertos.bogota.gov.co/dataset/estaciones-de-la-primera-linea-del-metro-de-bogota",
     fecha: "dato 18-04-2022; metadato 16-06-2026",
   },
+  F9: {
+    id: "F9",
+    entidad: "Datos Abiertos Bogotá / EMB",
+    titulo: "Catálogo del trazado de la primera línea (licencia CC BY 4.0)",
+    url: "https://datosabiertos.bogota.gov.co/dataset/trazado-primera-linea-del-metro-de-bogota",
+    fecha: "dato 18-04-2022; metadato 05-10-2026",
+  },
   F10: {
     id: "F10",
     entidad: "Datos Abiertos Bogotá / EMB",
@@ -132,7 +139,7 @@ export const FUENTES_METRO: Record<string, FuenteMetro> = {
 
 /** Atribución de los datos abiertos reutilizados (licencia CC BY 4.0, F8/F10/F22). */
 export const ATRIBUCION_METRO =
-  "Identificadores y nombres técnicos: Empresa Metro de Bogotá (EMB), Datos Abiertos Bogotá, licencia CC BY 4.0. Se transcribieron sin modificar su geometría, que no se usa."
+  "Identificadores y nombres técnicos: Empresa Metro de Bogotá (EMB), Datos Abiertos Bogotá, licencia CC BY 4.0. Se transcribieron sin modificar; la geometría del mapa lleva su propia atribución."
 
 export type EstadoConexionMetro = "directa_prevista" | "por_verificar" | "no_acreditada"
 
@@ -170,7 +177,10 @@ export type EstacionMetro = {
   /** Corredor y tramo vial publicados; no es la dirección de un acceso peatonal. */
   corredor: string
   conexion: ConexionMetro
-  /** Geometría y accesos: ausentes hasta validar CRS, transformación y fuente. */
+  /**
+   * El catálogo no lleva geometría. La huella ilustrativa verificada vive aparte,
+   * en `lib/metro-cartografia.ts` (EA-24); los accesos siguen ausentes.
+   */
   geometria: null
   accesos: null
   fuentes: string[]

@@ -5,11 +5,13 @@ import vm from "node:vm"
 import * as jsx from "react/jsx-runtime"
 import ts from "typescript"
 import * as metro from "./metro"
+import * as cartografia from "./metro-cartografia"
 
 /**
  * Regresión de EA-13 en la UI: ejecuta el TSX real de `MetroList` y de
  * `PartialHome` con dobles mínimos (sin navegador ni dependencias nuevas) y
- * comprueba el listado accesible sin mapa, las fuentes visibles y la voz.
+ * comprueba el listado accesible, las fuentes visibles y la voz. El mapa
+ * ilustrativo de EA-24 se prueba en `ea24-cartografia.test.ts`.
  */
 
 type Elemento = { type: unknown; props: Record<string, unknown> }
@@ -22,6 +24,7 @@ function compilar(archivo: string, dobles: Record<string, unknown>) {
   const require = (nombre: string) => {
     if (nombre === "react/jsx-runtime") return jsx
     if (nombre === "@/lib/metro") return metro
+    if (nombre === "@/lib/metro-cartografia") return cartografia
     if (nombre in dobles) return dobles[nombre]
     if (nombre === "lucide-react" || nombre.startsWith("@/components/")) return new Proxy({}, { get: (_o, n) => function Componente() { void n } })
     throw new Error(`Import no previsto: ${nombre}`)
@@ -72,7 +75,7 @@ function dobleCiclo() {
   }
 }
 
-test("MetroList: 16 estaciones sin mapa, estado visible, fuentes con enlace y la misma voz que el texto", () => {
+test("MetroList: 16 estaciones en lista, estado visible, fuentes con enlace y la misma voz que el texto", () => {
   const { voz, dobles } = dobleCiclo()
   const { MetroList } = compilar("components/metro-list.tsx", dobles)
   const arbol = MetroList({ onBack() {} })
@@ -90,7 +93,7 @@ test("MetroList: 16 estaciones sin mapa, estado visible, fuentes con enlace y la
   const enlaces = nodos(arbol, (n) => n.type === "a").map((n) => n.props.href)
   assert.deepEqual(enlaces, Object.values(metro.FUENTES_METRO).map((f) => f.url), "todas las fuentes enlazadas")
   assert.ok(visible.includes("CC BY 4.0"), "atribución de datos visible")
-  assert.equal(nodos(arbol, (n) => n.type === "canvas" || n.type === "svg" || n.props?.["data-mapa"] !== undefined).length, 0)
+  assert.equal(nodos(arbol, (n) => n.type === "canvas" || n.type === "svg").length, 0, "el listado no depende de un dibujo; el mapa de EA-24 es aparte")
 
   assert.equal(voz.length, 1)
   const [nota] = nodos(arbol, (n) => n.props?.role === "note")

@@ -3,6 +3,7 @@
 import { useEffect } from "react"
 import { ChevronDown, ExternalLink, Info, TrainFront } from "lucide-react"
 import { ScreenHeader } from "@/components/screen-header"
+import { TransitMap, type MapOverlay } from "@/components/transit-map"
 import { esUltimaLocucion, useSpeech } from "@/hooks/use-speech"
 import {
   ATRIBUCION_METRO,
@@ -18,19 +19,45 @@ import {
   describirNombre,
   nombreEstacion,
 } from "@/lib/metro"
+import {
+  ATRIBUCION_MAPA_METRO,
+  ATRIBUCION_MAPA_METRO_CORTA,
+  CARTOGRAFIA_METRO,
+  ROTULO_MAPA_METRO,
+  TEXTO_HUELLA_METRO,
+  TEXTO_MAPA_METRO,
+  type Posicion,
+} from "@/lib/metro-cartografia"
 
 /** Lo que dice la voz al entrar y lo que muestra la nota de arriba: el mismo texto. */
-const TEXTO_ESTADO = `${TEXTO_LINEA_1} ${TEXTO_LIMITES} Datos al ${METRO_CORTE_HABLADO}.`
+const TEXTO_ESTADO = `${TEXTO_LINEA_1} ${TEXTO_LIMITES} ${TEXTO_MAPA_METRO} Datos al ${METRO_CORTE_HABLADO}.`
+
+/** Leaflet espera [latitud, longitud]; la cartografía guarda [longitud, latitud]. */
+const aLeaflet = (puntos: Posicion[]) => puntos.map(([lon, lat]): [number, number] => [lat, lon])
+
+/** Trazado y huellas verificados (EA-24): una ilustración, nunca una ruta ni un acceso. */
+const CAPA_METRO: MapOverlay = {
+  label: ROTULO_MAPA_METRO,
+  attribution: ATRIBUCION_MAPA_METRO_CORTA,
+  lines: [aLeaflet(CARTOGRAFIA_METRO.trazado)],
+  polygons: CARTOGRAFIA_METRO.huellas.map(({ id, huella }) => {
+    const estacion = ESTACIONES_METRO_L1.find((e) => e.idOficial === id)!
+    return { ring: aLeaflet(huella), label: `${id} · ${nombreEstacion(estacion)}: ${TEXTO_HUELLA_METRO}` }
+  }),
+}
 
 type MetroListProps = {
   onBack: () => void
 }
 
 /**
- * Listado accesible del Metro de Bogotá (EA-13). Es una pantalla de consulta,
- * sin mapa: cada estación se abre con el teclado o el lector de pantalla, y la
- * voz dice el mismo estado que muestra el texto. No usa las rutas, el GPS ni el
- * planificador de TransMilenio.
+ * Listado accesible del Metro de Bogotá (EA-13). Es una pantalla de consulta:
+ * cada estación se abre con el teclado o el lector de pantalla, y la voz dice el
+ * mismo estado que muestra el texto. No usa las rutas, el GPS ni el planificador
+ * de TransMilenio.
+ *
+ * El mapa (EA-24) es un complemento ilustrativo del proyecto futuro; el listado
+ * sigue siendo la representación completa y no depende de él.
  */
 export function MetroList({ onBack }: MetroListProps) {
   const { speak, cancel } = useSpeech()
@@ -58,6 +85,10 @@ export function MetroList({ onBack }: MetroListProps) {
         <Info className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
         <span>{TEXTO_ESTADO}</span>
       </p>
+
+      <h3 className="mb-2 text-xl font-extrabold">Mapa del proyecto</h3>
+      <TransitMap overlay={CAPA_METRO} label={`Mapa ilustrativo. ${ROTULO_MAPA_METRO}`} className="h-72 shrink-0" />
+      <p className="mb-6 mt-2 text-base text-muted-foreground">{ATRIBUCION_MAPA_METRO}</p>
 
       <h3 className="mb-2 text-xl font-extrabold">Estaciones de la Línea 1</h3>
       <ol className="flex flex-col gap-3" aria-label="Estaciones de la Línea 1 del Metro, de E01 a E16">

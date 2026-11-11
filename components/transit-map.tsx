@@ -17,9 +17,24 @@ export type MapMarker = {
   kind: "station" | "user" | "target"
 }
 
+/**
+ * Capa ilustrativa, como un proyecto sin servicio. Se dibuja punteada, con su
+ * rótulo siempre visible y su atribución; nunca con el estilo de una ruta en
+ * servicio. El rótulo y la atribución son obligatorios.
+ */
+export type MapOverlay = {
+  /** Rótulo permanente sobre el mapa. */
+  label: string
+  /** Fuente, licencia y fecha: se suma a la atribución del mapa. */
+  attribution: string
+  lines: [number, number][][]
+  polygons: { ring: [number, number][]; label: string }[]
+}
+
 type TransitMapProps = {
   lines?: MapLine[]
   markers?: MapMarker[]
+  overlay?: MapOverlay
   /** Descripción para lectores de pantalla. */
   label: string
   className?: string
@@ -34,7 +49,7 @@ const BOGOTA: [number, number] = [4.65, -74.1]
  * Los marcadores son círculos grandes con borde grueso para que se distingan
  * con baja visión; no usan imágenes, así que no dependen de rutas a archivos.
  */
-export function TransitMap({ lines = [], markers = [], label, className = "" }: TransitMapProps) {
+export function TransitMap({ lines = [], markers = [], overlay, label, className = "" }: TransitMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<LeafletMap | null>(null)
   const layerRef = useRef<LayerGroup | null>(null)
@@ -63,11 +78,11 @@ export function TransitMap({ lines = [], markers = [], label, className = "" }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Redibuja cuando cambian las líneas o los marcadores.
+  // Redibuja cuando cambian las líneas, los marcadores o la capa ilustrativa.
   useEffect(() => {
     draw()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lines, markers])
+  }, [lines, markers, overlay])
 
   function draw() {
     const L = leafletRef.current
@@ -81,6 +96,19 @@ export function TransitMap({ lines = [], markers = [], label, className = "" }: 
     const ink = styles.getPropertyValue("--foreground").trim() || "#1b1b1b"
 
     const bounds: [number, number][] = []
+    if (overlay) {
+      for (const path of overlay.lines) {
+        L.polyline(path, { color: ink, weight: 5, opacity: 0.85, dashArray: "2 10", attribution: overlay.attribution })
+          .bindTooltip(overlay.label, { permanent: true, direction: "center" })
+          .addTo(layer)
+        bounds.push(...path)
+      }
+      for (const polygon of overlay.polygons) {
+        L.polygon(polygon.ring, { color: ink, weight: 2, dashArray: "4 4", fillColor: ink, fillOpacity: 0.15 })
+          .bindTooltip(polygon.label)
+          .addTo(layer)
+      }
+    }
     for (const line of lines) {
       L.polyline(line.path, {
         color: line.secondary ? ink : brand,
