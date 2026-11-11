@@ -5,6 +5,8 @@ import Foundation
 final class EntornoApp {
     let ajustes: AjustesServidorModelo
     let consulta: ConsultaModelo
+    /// Rutas favoritas, guardadas en este iPhone. La pantalla de rutas las agregará con `agregar`.
+    let favoritas: FavoritasModelo
     /// Sesión SIMULADA: solo se muestra en las pruebas de interfaz (`modoPruebas`).
     let sesion: SesionLocalModelo
     /// Sesión con el accesorio real por Bluetooth. `nil` solo en las pruebas de interfaz de la sesión simulada;
@@ -17,10 +19,12 @@ final class EntornoApp {
 
     init(
         ajustes: AjustesServidorModelo, consulta: ConsultaModelo, sesion: SesionLocalModelo,
-        accesorio: SesionAccesorioModelo? = nil, monitorAudio: MonitorAudioSistema? = nil, modoPruebas: Bool
+        accesorio: SesionAccesorioModelo? = nil, monitorAudio: MonitorAudioSistema? = nil, modoPruebas: Bool,
+        favoritas: FavoritasModelo? = nil
     ) {
         self.ajustes = ajustes
         self.consulta = consulta
+        self.favoritas = favoritas ?? FavoritasModelo(almacen: AlmacenFavoritasUserDefaults())
         self.sesion = sesion
         self.accesorio = accesorio
         self.monitorAudio = monitorAudio
@@ -55,7 +59,8 @@ final class EntornoApp {
         let ajustes = AjustesServidorModelo(almacen: AlmacenClaveEnMemoria(), preferencias: preferencias)
         return EntornoApp(
             ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado()),
-            sesion: SesionLocalModelo(), modoPruebas: true)
+            sesion: SesionLocalModelo(), modoPruebas: true,
+            favoritas: favoritasDePruebas(preferencias, argumentos: ProcessInfo.processInfo.arguments))
     }
 
     /// Pantalla de producción del accesorio (`SesionAccesorioVista`) con un transporte sintético rotulado:
@@ -74,7 +79,18 @@ final class EntornoApp {
             ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado()),
             sesion: SesionLocalModelo(),
             accesorio: SesionAccesorioModelo(transporte: TransporteSintetico(permiso: permiso), voz: voz),
-            modoPruebas: true)
+            modoPruebas: true, favoritas: favoritasDePruebas(preferencias, argumentos: argumentos))
+    }
+
+    /// Favoritas en la suite limpia de las pruebas. Con `-PRUEBAS_UI_FAVORITAS_SEMILLA` parten con dos rutas inventadas
+    /// (Z99 y Z98) para recorrer la lista y «Quitar»; sin él parten vacías.
+    private static func favoritasDePruebas(_ preferencias: UserDefaults, argumentos: [String]) -> FavoritasModelo {
+        let modelo = FavoritasModelo(almacen: AlmacenFavoritasUserDefaults(preferencias: preferencias))
+        if argumentos.contains("-PRUEBAS_UI_FAVORITAS_SEMILLA") {
+            modelo.agregar("Z99")
+            modelo.agregar("Z98")
+        }
+        return modelo
     }
     #endif
 }

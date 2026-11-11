@@ -565,7 +565,7 @@ final class TransMiVozUITests: XCTestCase {
     // MARK: Servidor
 
     func testServidorRechazaHttpYAceptaHttps() throws {
-        abrirPestana("Servidor")
+        abrirPestana("Ajustes")
         let origen = elemento("campo-origen")
         XCTAssertTrue(origen.waitForExistence(timeout: 10))
         escribir("http://servidor.ejemplo", en: origen, app: app)
@@ -594,7 +594,7 @@ final class TransMiVozUITests: XCTestCase {
     }
 
     func testAuditoriaAccesibilidadServidor() throws {
-        abrirPestana("Servidor")
+        abrirPestana("Ajustes")
         XCTAssertTrue(elemento("campo-origen").waitForExistence(timeout: 10))
         try auditar(app, "servidor", testCase: self)
     }
@@ -1035,4 +1035,98 @@ final class TransMiVozContrasteNegativoUITests: XCTestCase {
             "El libro no rechazó el contraste visible. Fallos: \(fase.libro.fallos)")
         XCTAssertFalse(fase.libro.diferidos.keys.contains { $0.identificador == id }, "El contraste visible no puede diferirse")
     }
+}
+
+/// Preferencias, Favoritas y Ayuda de la pestaña Ajustes, en el Simulator y sin red. Se abren desde el menú «Más ajustes».
+/// Solo las pantallas cortas (Favoritas vacía, Preferencias) pasan la auditoría completa: la Ayuda y la lista de favoritas
+/// ocupan más que el área visible con texto grande y se comprueban por contenido. Nada de esto prueba VoiceOver real.
+final class TransMiVozAjustesUITests: XCTestCase {
+    private var app: XCUIApplication!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    private func lanzar(_ argumentos: [String]) {
+        app = XCUIApplication()
+        app.launchArguments += argumentos + [
+            "-AppleLanguages", "(es)", "-AppleLocale", "es_CO", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
+        ]
+        app.launch()
+        addTeardownBlock { [app] in app?.terminate() }
+    }
+
+    private func elemento(_ identificador: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identificador).firstMatch
+    }
+
+    /// Abre la pestaña Ajustes y, desde el menú «Más ajustes», la sección pedida.
+    private func abrirSeccion(_ nombre: String) {
+        let pestana = app.tabBars.buttons["Ajustes"]
+        XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña Ajustes")
+        pestana.tap()
+        let menu = elemento("menu-mas-ajustes")
+        XCTAssertTrue(menu.waitForExistence(timeout: 10), "No existe el menú Más ajustes")
+        menu.tap()
+        let opcion = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", nombre)).firstMatch
+        XCTAssertTrue(opcion.waitForExistence(timeout: 10), "El menú no ofrece «\(nombre)»")
+        opcion.tap()
+    }
+
+    func testElServidorSigueEnLaPrimeraPantallaDeAjustes() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS"])
+        let pestana = app.tabBars.buttons["Ajustes"]
+        XCTAssertTrue(pestana.waitForExistence(timeout: 10))
+        pestana.tap()
+        for id in ["campo-origen", "campo-clave", "interruptor-recordar", "boton-aplicar", "boton-olvidar", "resumen-ajustes"] {
+            XCTAssertTrue(elemento(id).waitForExistence(timeout: 10), "Falta «\(id)» en Ajustes")
+        }
+    }
+
+    func testFavoritasVaciaExplicaComoSeAgregan() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS"])
+        abrirSeccion("Favoritas")
+        XCTAssertTrue(elemento("favoritas-vacio").waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts[TextoFavoritasPrueba.comoSeAgregan].exists)
+        try auditar(app, "ajustes-favoritas-vacia", testCase: self)
+    }
+
+    func testQuitarFavoritasLasSacaDeLaListaHastaVaciarla() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS", "-PRUEBAS_UI_FAVORITAS_SEMILLA"])
+        abrirSeccion("Favoritas")
+        XCTAssertTrue(elemento("favorita-Z99").waitForExistence(timeout: 10))
+        XCTAssertTrue(elemento("favorita-Z98").exists)
+        XCTAssertEqual(elemento("quitar-favorita-Z99").label, "Quitar la ruta Z99 de favoritas")
+
+        elemento("quitar-favorita-Z99").tap()
+        XCTAssertTrue(elemento("favorita-Z99").waitForNonExistence(timeout: 5))
+        XCTAssertTrue(elemento("favorita-Z98").exists)
+
+        elemento("quitar-favorita-Z98").tap()
+        XCTAssertTrue(elemento("favoritas-vacio").waitForExistence(timeout: 5))
+    }
+
+    func testAyudaSeAbreConSuPrimerTitulo() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS"])
+        abrirSeccion("Ayuda")
+        let titulo = elemento("ayuda-titulo-0")
+        XCTAssertTrue(titulo.waitForExistence(timeout: 10))
+        XCTAssertEqual(titulo.label, "Qué hace la app")
+    }
+
+    func testPreferenciasMuestraLaVozDelAccesorioYSePuedeCambiar() throws {
+        lanzar(["-PRUEBAS_UI_ACCESORIO_SINTETICO"])
+        abrirSeccion("Preferencias")
+        let interruptor = elemento("interruptor-voz-preferencias")
+        XCTAssertTrue(interruptor.waitForExistence(timeout: 10))
+        let antes = interruptor.value as? String
+        interruptor.tap()
+        esperar(interruptor, "value != %@", antes ?? "", "El interruptor no cambió de valor")
+        try auditar(app, "ajustes-preferencias", testCase: self)
+    }
+}
+
+/// Texto que la prueba compara; copia a propósito (no importa la app) para que un cambio del texto obligue a revisar la prueba.
+private enum TextoFavoritasPrueba {
+    static let comoSeAgregan = "Las rutas se guardan desde el detalle de cada ruta, con el botón «Guardar». En el iPhone esa pantalla todavía no está disponible, así que por ahora esta lista seguirá vacía."
 }
