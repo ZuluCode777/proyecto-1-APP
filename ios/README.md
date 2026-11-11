@@ -9,19 +9,26 @@ Es un corte mínimo para EA-09 (#35) con soporte de CI iOS-CI (#68). No es una a
 | Pestaña | Contenido | Necesita red |
 | --- | --- | --- |
 | Sesión | Accesorio **real** por Bluetooth: buscar y elegir, iniciar, detener, reconectar, estado, avisos hablados por auriculares. Hoy **bloqueada por diseño** (no se puede verificar la seguridad del enlace). Una hoja explica el permiso de Bluetooth antes del aviso del sistema. Las pruebas de interfaz recorren esta misma pantalla con un transporte sintético rotulado (`-PRUEBAS_UI_ACCESORIO_SINTETICO`, solo depuración) y, aparte, la sesión simulada. | No |
-| Consulta | Texto → `POST /api/agent` del backend Next existente, con cancelar, reintentar y errores claros. | Sí |
+| Consulta | Texto → `POST /api/agent` del backend Next existente, con cancelar, reintentar y errores claros. Un botón cambia al escenario **Metro (futuro)**, aparte del transporte de hoy. | Sí |
 | Servidor | Origen HTTPS y clave opcional (Llavero si la persona lo pide). | No |
 
-Todas las reglas de transporte siguen en el backend (`lib/local-agent.ts`). La app solo envía el texto, valida la respuesta y la muestra. Esta primera versión **no envía ubicación**.
+Todas las reglas de transporte siguen en el backend (`lib/local-agent.ts`). La app solo envía el texto, valida la respuesta y la muestra. Esta versión **no envía ni pide ubicación** (sin CoreLocation ni permiso): el origen de un viaje se escribe en la pregunta, así que negar la ubicación no existe como bloqueo.
 
 ### Contrato HTTP usado
 
 - `POST {origen}/api/agent`, cuerpo `{"message": "..."}`, `Content-Type: application/json`. Sin reintentos automáticos.
 - Entrada validada antes de enviar: no vacía y hasta 300 unidades UTF-16 (igual que el recorte del servidor; la app **rechaza**, no recorta en silencio). Cuerpo ≤ 4.000 bytes.
-- Respuesta `AgentReplySchema` (`reply`, `steps`, `engine`, `action` ∈ `none|frequent|gps|search|route|trip`). El decodificador rechaza acciones desconocidas, campos faltantes y textos vacíos o desmedidos.
+- Respuesta `AgentReplySchema` (`reply`, `steps`, `engine`, `action` ∈ `none|frequent|gps|search|route|trip`, y `catalogo` opcional). El decodificador rechaza acciones desconocidas, campos faltantes y textos vacíos o desmedidos. `catalogo` (`{procedencia, antiguo}`, EA-17) llega solo en respuestas con datos de ruta, estación o viaje: la frase con la fuente y la fecha, y si el servidor respondió con la copia guardada o con datos en vivo de más de 6 h. La app no calcula fechas ni vigencias; un servidor sin `catalogo` sigue siendo compatible.
 - Autenticación: HTTP Basic con usuario fijo `transmivoz` y la clave de la persona (el servidor ignora el usuario). Solo HTTPS, sin credenciales en la URL, y **no se sigue ninguna redirección** para que `Authorization` no viaje a otro origen.
 - Errores: 400, 401, 413, 429 (con `Retry-After` en segundos), 503, 5xx, sin conexión, TLS, plazo de 12 s y respuesta incompatible. Cada uno trae mensaje y recuperación. Cancelar, reemplazar o enviar una entrada inválida invalida la consulta vigente, y salir de la pestaña Consulta la cancela: su respuesta tardía se descarta.
-- Plazo total de 12 s (propuesta de `arquitectura-y-experimentos.md`, criterio de UX, no una latencia medida).
+- Plazo total de 12 s (propuesta de `arquitectura-y-experimentos.md`, criterio de UX, no una latencia medida). Si vence (un servidor que arranca en frío), la pantalla dice que puede estar arrancando, **conserva la pregunta** y espera un «Reintentar» explícito; no hay reintentos automáticos.
+
+### Acciones sin pantalla propia y Metro (EA-17)
+
+- Se reconocen las seis acciones. La web abre una pantalla para `frequent`, `gps`, `search`, `route` y `trip`; el iPhone todavía no las tiene, así que la app muestra el texto del servidor y **dice el límite** («Esta app todavía no tiene la pantalla de…») sin navegar a ninguna. Los textos están en `TransMiVoz/Dominio/PresentacionRespuesta.swift`.
+- Un viaje sin confirmar (la guardia retira las órdenes de abordaje) conserva la fecha y la procedencia del catálogo: se muestran aparte porque el texto del servidor no se presenta.
+- **Catálogo antiguo:** con `catalogo.antiguo` la respuesta lleva «Datos antiguos», el motivo y un botón «Volver a consultar»; VoiceOver lo oye en el anuncio de la respuesta.
+- **Metro:** el botón «Preguntar por el Metro (futuro)» antepone «Metro: » a la pregunta (`TransMiVoz/Dominio/EscenarioConsulta.swift`) para que el servidor la trate como Metro (`interpretarMetro` en `lib/metro.ts`; lo comprueba `lib/ea17-procedencia.test.ts`). La pantalla y el anuncio dicen que el Metro es un **escenario futuro, sin servicio**. El servidor responde con `action: none`; si llegara una ruta, estación o viaje de TransMilenio, la app lo trata como respuesta incompatible en vez de presentarlo como Metro. Nunca se promete una ruta de Metro en servicio. La indicación del prefijo resta 7 caracteres al máximo (293).
 
 ### Respuestas de viaje (`action: trip`)
 
@@ -68,7 +75,7 @@ ios/scripts/comprobar-ios.sh todo         # compila, prueba y compila para iPhon
 
 Cada ejecución local escribe en una carpeta nueva `ios/salida/<fecha UTC>-<pid>/` (logs crudos de `xcodebuild`, `.xcresult`, `herramientas.txt`); el script imprime la ruta al empezar y **no borra ni pisa nada**. Para abrir un resultado: `open ios/salida/<carpeta>/pruebas-simulador.xcresult`. Pasos sueltos: `compilar-simulador`, `pruebas-simulador`, `compilar-dispositivo`; para que varios pasos compartan carpeta, fija `SALIDA=ios/salida/mi-corrida` (ruta que no exista aún: si ya hay un resultado del mismo paso, el script falla y te dice cuál). Limpiar resultados viejos es cosa tuya. Autocomprobación del script (sin Xcode): `ios/scripts/probar-comprobar-ios.sh`. Si tu Xcode o tu Simulator difieren de los de la CI, el script puede fallar al elegir destino a propósito; puedes fijar `SIMULADOR_NOMBRE` e `IOS_MAYOR_ESPERADO` (ver cabecera del script). En Xcode: elige el esquema **TransMiVoz** y un iPhone Simulator, Cmd+U ejecuta todas las pruebas.
 
-Las pruebas de interfaz arrancan la app con `-PRUEBAS_UI_SIMULADAS` (solo en compilaciones de depuración): cliente HTTP simulado, Llavero en memoria, sin red, sesión simulada. Las de la pantalla del accesorio usan `-PRUEBAS_UI_ACCESORIO_SINTETICO` (con `-PRUEBAS_UI_ACCESORIO_PERMISO_CONCEDIDO` o `-PRUEBAS_UI_ACCESORIO_PERMISO_DENEGADO` para las variantes): la misma vista y sesión de producción con un transporte sintético que la pantalla rotula, sin Bluetooth, audio ni red y con el bloqueo por enlace no verificado intacto. Palabras clave de la consulta: `error401`, `error429`, `sinred`, `lento`, `viaje`, `orden`.
+Las pruebas de interfaz arrancan la app con `-PRUEBAS_UI_SIMULADAS` (solo en compilaciones de depuración): cliente HTTP simulado, Llavero en memoria, sin red, sesión simulada. Las de la pantalla del accesorio usan `-PRUEBAS_UI_ACCESORIO_SINTETICO` (con `-PRUEBAS_UI_ACCESORIO_PERMISO_CONCEDIDO` o `-PRUEBAS_UI_ACCESORIO_PERMISO_DENEGADO` para las variantes): la misma vista y sesión de producción con un transporte sintético que la pantalla rotula, sin Bluetooth, audio ni red y con el bloqueo por enlace no verificado intacto. Palabras clave de la consulta: `error401`, `error429`, `sinred`, `lento`, `viaje`, `orden`, `gps`, `frio` (el primer intento agota el plazo, el reintento responde; simula un servidor arrancando, no es Render) y `antiguo` (el primer intento trae la copia guardada, «Volver a consultar» trae datos recientes). En el escenario Metro, cualquier pregunta devuelve una respuesta de Metro simulada.
 
 ## Firmar, instalar y recuperar (iPhone real)
 
@@ -99,4 +106,6 @@ Recuperación (solo estas):
 
 Esta carpeta, el Simulator y el build sin firma permiten detectar errores de código, de contrato y de interfaz. **No** validan: firma ni instalación en iPhone, enlace BLE o radar reales, emparejamiento, latencia sensor→auricular, dictado, VoiceOver real, audio por auriculares, permisos de micrófono/ubicación (la app no los solicita; el de Bluetooth sí, al buscar o iniciar, sin probar en un iPhone), segundo plano ni autonomía. Un artefacto del Simulator o el build `generic/platform=iOS` sin firma **no se instala en un iPhone**. Esas pruebas siguen abiertas en #35, #48 y los demás issues de producto.
 
-Fuera de este corte: mapas, rediseño completo, dictado, unificación de avisos (EA-20), ubicación en la consulta.
+Fuera de este corte: mapas y origen/destino estructurado (#51), rediseño completo, dictado, unificación de avisos (EA-20), ubicación en la consulta.
+
+Los cambios de EA-17 (#43) no se compilaron ni se ejecutaron donde se escribieron (no había Xcode): la CI iOS es la primera compilación. Siguen pendientes en un iPhone real: VoiceOver con la consulta y el Metro, Dynamic Type en el dispositivo y la consulta contra el Render real en frío. Los resultados simulados (`frio`, `antiguo`) no sustituyen esa última prueba.

@@ -10,11 +10,12 @@ enum EntradaConsulta {
     /// `MAXIMO_BYTES_CUERPO` de `app/api/agent/route.ts`.
     static let maximoBytesCuerpo = 4_000
 
-    static func validar(_ texto: String) -> Result<String, ErrorConsulta> {
+    /// `maximo` es menor que el del servidor cuando el escenario antepone su contexto a la pregunta.
+    static func validar(_ texto: String, maximo: Int = maximoCaracteres) -> Result<String, ErrorConsulta> {
         let limpio = texto.trimmingCharacters(in: .whitespacesAndNewlines)
         if limpio.isEmpty { return .failure(.entradaInvalida(.vacia)) }
-        if limpio.utf16.count > maximoCaracteres {
-            return .failure(.entradaInvalida(.demasiadoLarga(maximo: maximoCaracteres)))
+        if limpio.utf16.count > maximo {
+            return .failure(.entradaInvalida(.demasiadoLarga(maximo: maximo)))
         }
         return .success(limpio)
     }

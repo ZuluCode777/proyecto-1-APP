@@ -560,6 +560,57 @@ final class TransMiVozUITests: XCTestCase {
         preguntar("viaje")
         XCTAssertTrue(elemento("aviso-viaje").waitForExistence(timeout: 10))
         XCTAssertFalse(app.staticTexts["[SIMULADO] Texto de viaje que la app no debe mostrar."].exists)
+        // El texto del viaje no se muestra, pero su fecha y procedencia sí.
+        XCTAssertEqual(elemento("procedencia-catalogo").label, "[SIMULADO] Datos consultados hoy.")
+    }
+
+    // MARK: Consulta de transporte y Metro (EA-17), con respuestas simuladas
+
+    func testMetroSePresentaComoEscenarioFuturo() throws {
+        abrirPestana("Consulta")
+        let escenario = elemento("boton-escenario")
+        XCTAssertTrue(escenario.waitForExistence(timeout: 10))
+        XCTAssertEqual(escenario.label, "Preguntar por el Metro (futuro)")
+        escenario.tap()
+        esperar(escenario, "label == %@", "Volver a transporte de hoy", "No se cambió al escenario del Metro")
+        XCTAssertTrue(
+            elemento("introduccion-consulta").label.hasPrefix("Escenario futuro: el Metro de Bogotá aún no presta servicio."),
+            "la pantalla debe decir que el Metro es futuro antes de preguntar")
+        try auditar(app, "consulta-escenario-metro", testCase: self)
+
+        preguntar("estaciones")
+        esperarTexto("Metro de Bogotá: escenario futuro")
+        XCTAssertTrue(elemento("aviso-metro-futuro").exists, "el resultado debe decir que el Metro no presta servicio")
+        XCTAssertTrue(app.staticTexts["[SIMULADO] Metro de Bogotá, Línea 1: en construcción y sin servicio comercial."].exists)
+    }
+
+    /// Servidor arrancando SIMULADO (no es Render): el plazo vence, la pregunta se conserva y el reintento responde.
+    func testPlazoVencidoConservaLaPreguntaYReintentarResponde() throws {
+        preguntar("frio")
+        esperarTexto("El servidor no respondió a tiempo.")
+        XCTAssertEqual(elemento("campo-pregunta").value as? String, "frio", "la pregunta debe conservarse")
+        elemento("boton-reintentar").tap()
+        esperarTexto("[SIMULADO] Respuesta tras reintentar.")
+        XCTAssertFalse(elemento("boton-reintentar").exists)
+    }
+
+    func testDatosAntiguosSeAvisanYSePuedeVolverAConsultar() throws {
+        preguntar("antiguo")
+        XCTAssertTrue(elemento("aviso-catalogo-antiguo").waitForExistence(timeout: 10), "los datos antiguos deben avisarse")
+        XCTAssertTrue(elemento("limite-accion").exists, "una ruta no tiene pantalla propia: debe decirse")
+        elemento("boton-volver-a-consultar").tap()
+        esperarTexto("[SIMULADO] La ruta Z99 es de prueba. [SIMULADO] Datos consultados hoy.")
+        XCTAssertFalse(elemento("aviso-catalogo-antiguo").exists, "con datos recientes el aviso desaparece")
+    }
+
+    func testAccionSinPantallaInformaElLimiteYNoNavega() throws {
+        preguntar("gps")
+        esperarTexto("[SIMULADO] Voy a abrir el GPS auditivo.")
+        let limite = elemento("limite-accion")
+        XCTAssertTrue(limite.exists, "falta el límite de la acción")
+        XCTAssertTrue(limite.label.contains("no usa tu ubicación"))
+        XCTAssertTrue(limite.label.contains("desde qué estación sales"), "sin ubicación, el origen se escribe")
+        XCTAssertTrue(app.tabBars.buttons["Consulta"].isSelected, "la app no navega a ninguna pantalla")
     }
 
     // MARK: Servidor

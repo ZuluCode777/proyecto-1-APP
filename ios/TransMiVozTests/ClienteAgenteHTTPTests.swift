@@ -161,6 +161,19 @@ final class ClienteAgenteHTTPTests: XCTestCase {
         await esperarError(.tiempoAgotado, cliente: cliente(esperaMaxima: 0.3))
     }
 
+    /// Servidor arrancando (simulado): el primer intento agota el plazo; el siguiente, con el servidor listo, responde.
+    func testTrasAgotarElPlazoElSiguienteIntentoResponde() async throws {
+        ProtocoloSimulado.manejador = { _ in .colgar }
+        let cliente = self.cliente(esperaMaxima: 0.3)
+        await esperarError(.tiempoAgotado, cliente: cliente)
+        XCTAssertEqual(ProtocoloSimulado.peticiones.count, 1, "el cliente no reintenta por su cuenta")
+
+        responder(200, FixturesHTTP.ninguna)
+        let r = try await cliente.consultar(texto: "hola")
+        XCTAssertEqual(r.accion, .ninguna)
+        XCTAssertEqual(ProtocoloSimulado.peticiones.count, 2)
+    }
+
     func testCancelacionDeLaTareaLanzaCancelada() async {
         ProtocoloSimulado.manejador = { _ in .colgar }
         let cliente = self.cliente(esperaMaxima: 30)

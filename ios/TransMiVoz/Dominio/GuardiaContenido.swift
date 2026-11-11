@@ -64,10 +64,12 @@ extension RespuestaAgente {
     /// Lo que la app puede mostrar. Un viaje (`trip`) se presenta solo como
     /// información (su texto y pasos no se muestran), así que pasa tal cual. Una
     /// respuesta de otra acción con órdenes de abordaje en el texto o en algún
-    /// paso se sustituye por el aviso seguro, sin pasos ni datos de la acción.
+    /// paso se sustituye por el aviso seguro, sin pasos ni datos de la acción;
+    /// la procedencia del catálogo se conserva.
     func saneada() -> RespuestaAgente {
         if case .viaje = accion { return self }
         guard !GuardiaContenido.esSegura(self) else { return self }
-        return RespuestaAgente(texto: GuardiaContenido.avisoNoConfirmable, pasos: [], motor: motor, accion: .ninguna)
+        return RespuestaAgente(
+            texto: GuardiaContenido.avisoNoConfirmable, pasos: [], motor: motor, accion: .ninguna, catalogo: catalogo)
     }
 }
