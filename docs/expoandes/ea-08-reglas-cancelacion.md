@@ -276,10 +276,11 @@ nuevas, `node:test`:
   medición del Ollama real. Desde EA-27 (#53) es de 4,5 s, un presupuesto
   elegido con lo medido contra el Ollama real el 10/11/2026, cuando la espera
   era de 2 s: de 8 consultas desde Render, una agotó los 2 s y las otras
-  tardaron entre 0,8 y 2,5 s en total. La espera de 4,5 s no se ha comprobado
-  todavía en Render. Deja 1,5 s de margen bajo los 6 s que espera la web. El
-  `warmUpOllama` del servidor usa su propio plazo de 60 s para la precarga,
-  fuera del camino de respuesta.
+  tardaron entre 0,8 y 2,5 s en total. Con la espera de 4,5 s ya desplegada en
+  Render, el 11/11/2026 ninguna de veinte preguntas la agotó (ver
+  `ollama-tunel-feria.md`). Deja 1,5 s de margen bajo los 6 s que espera la
+  web. El `warmUpOllama` del servidor usa su propio plazo de 60 s para la
+  precarga, fuera del camino de respuesta.
 - **Decisión B:** una frase que solo el modelo resolvería como `gps`/viaje sin
   origen pierde la ubicación (no se adjunta para `unknown`). Es la contrapartida
   directa de AC4; el servidor responde pidiendo origen o permiso.

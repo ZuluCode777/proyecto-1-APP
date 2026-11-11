@@ -55,7 +55,7 @@ async function conEndpoint(modoModelo: "unknown" | "colgado" | "gps" | "trip-des
     const u = String(url)
     if (u.includes("/api/chat")) {
       // La precarga (sin mensajes) que sigue a un fallo del modelo no es una consulta.
-      if (JSON.parse(String(init?.body)).messages.length === 0) return new Response("{}")
+      if (JSON.parse(String(init?.body)).messages.length === 0) return new Response(JSON.stringify({ message: { content: "" }, done: true }))
       llamadasChat++
       if (modoModelo === "colgado") {
         // Nunca responde: el presupuesto del modelo (TIMEOUT_MS) lo abortará y

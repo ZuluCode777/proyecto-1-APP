@@ -143,10 +143,12 @@ type EstadoOllama = {
   /** Precarga en curso, para no lanzar otra mientras tanto. */
   precarga: Promise<void> | null
   /**
-   * ¿Respondió bien la última precarga o consulta? Empieza en falso. Una
-   * respuesta HTTP correcta y recibida entera lo deja en verdadero, aunque su
-   * contenido no sirva; un error de red, un plazo agotado, un cuerpo que no
-   * llega entero o un estado HTTP de error lo dejan en falso.
+   * ¿Respondió Ollama a la última precarga o consulta? Empieza en falso. Lo
+   * deja en verdadero una respuesta HTTP correcta, recibida entera y con la
+   * forma de las de Ollama (`ChatResponseSchema`), aunque lo que diga el
+   * modelo no sirva. Lo dejan en falso un error de red, un plazo agotado, un
+   * estado HTTP de error, un cuerpo que no llega entero y un 200 con otra cosa
+   * (la página de un proxy, por ejemplo).
    */
   cargado: boolean
 }
@@ -181,9 +183,9 @@ export function warmUpOllama(): Promise<void> {
     signal: AbortSignal.timeout(60_000),
   })
     .then(async (response) => {
-      // La respuesta solo cuenta si llega entera.
-      await response.arrayBuffer()
-      return response.ok
+      // Solo cuenta si llega entera y es de Ollama: un 200 con otra cosa no es el modelo.
+      const cuerpo: unknown = await response.json()
+      return response.ok && ChatResponseSchema.safeParse(cuerpo).success
     })
     .then(
       (ok) => {
@@ -215,12 +217,12 @@ export async function ollamaStatus(): Promise<{ reachable: boolean; hasModel: bo
 }
 
 /**
- * Pide al modelo la intención de una frase. Devuelve `null` si el modelo no
- * responde o si lo que devuelve no cuadra con los datos, para que quien llama
- * use las reglas.
+ * Pide al modelo la intención de una frase. Devuelve `null` si lo que dice el
+ * modelo no cuadra con los datos, y falla si Ollama no responde o responde algo
+ * que no es suyo; en los dos casos quien llama usa las reglas.
  */
 export async function parseIntentWithOllama(text: string, data: TransmilenioData): Promise<Intent | null> {
-  let cuerpo: unknown
+  let contenido: string
   try {
     const response = await fetchOllama("/api/chat", {
       method: "POST",
@@ -239,7 +241,9 @@ export async function parseIntentWithOllama(text: string, data: TransmilenioData
       signal: AbortSignal.timeout(TIMEOUT_MS),
     })
     if (!response.ok) throw new Error(`Ollama: HTTP ${response.status}`)
-    cuerpo = await response.json()
+    const chat = ChatResponseSchema.safeParse(await response.json())
+    if (!chat.success) throw new Error("Ollama: la respuesta no es de Ollama")
+    contenido = chat.data.message.content
   } catch (error) {
     // También si el cuerpo no llega entero: el plazo puede vencer mientras se lee.
     estado.cargado = false
@@ -247,11 +251,9 @@ export async function parseIntentWithOllama(text: string, data: TransmilenioData
   }
   estado.cargado = true
 
-  const chat = ChatResponseSchema.safeParse(cuerpo)
-  if (!chat.success) return null
   let content: unknown
   try {
-    content = JSON.parse(chat.data.message.content)
+    content = JSON.parse(contenido)
   } catch {
     return null
   }

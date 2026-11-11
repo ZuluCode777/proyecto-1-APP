@@ -101,6 +101,8 @@ export type OpcionesFetch = {
   estadoChat?: number
   /** Cuerpo completo de la respuesta de chat, sin el envoltorio `message.content` (p. ej. uno sin `message`). */
   cuerpo?: unknown
+  /** Cuerpo de la respuesta de chat tal cual, sin pasarlo a JSON (p. ej. la página HTML de un proxy). */
+  cuerpoCrudo?: string
   /** Lo que «devuelve» el modelo en `message.content`: un objeto (se envía como JSON) o texto crudo. */
   contenido?: unknown
 }
@@ -142,6 +144,7 @@ function simularOllama(llamadas: Llamada[], plazos: WeakMap<AbortSignal, number>
       const cortado = new ReadableStream({ start: (control) => control.error(new TypeError("terminated")) })
       return new Response(cortado, { status: opciones.estadoChat ?? 200 })
     }
+    if (opciones.cuerpoCrudo !== undefined) return new Response(opciones.cuerpoCrudo, { status: opciones.estadoChat ?? 200 })
     if (opciones.cuerpo !== undefined) return new Response(JSON.stringify(opciones.cuerpo), { status: opciones.estadoChat ?? 200 })
     const contenido = opciones.contenido ?? CONTENIDO_GPS
     const texto = typeof contenido === "string" ? contenido : JSON.stringify(contenido)

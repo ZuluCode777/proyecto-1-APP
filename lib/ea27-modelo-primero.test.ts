@@ -119,7 +119,7 @@ test("modeloListo: una precarga que falla (red o estado HTTP de error) lo desact
   })
 })
 
-test("modeloListo: una consulta correcta lo activa, aunque su contenido no sirva", async () => {
+test("modeloListo: una consulta correcta lo activa, aunque lo que diga el modelo no sirva", async () => {
   await conOllama(ENTORNO, async (ollama, _llamadas, opciones) => {
     assert.equal(ollama.modeloListo(), false)
     assert.deepEqual(await ollama.parseIntentWithOllama("hola", data), { type: "gps" })
@@ -130,11 +130,27 @@ test("modeloListo: una consulta correcta lo activa, aunque su contenido no sirva
       assert.equal(await ollama.parseIntentWithOllama("hola", data), null)
       assert.equal(ollama.modeloListo(), true, JSON.stringify(contenido))
     }
+  })
+})
 
-    opciones.contenido = undefined
-    opciones.cuerpo = { sin: "mensaje" }
-    assert.equal(await ollama.parseIntentWithOllama("hola", data), null)
-    assert.equal(ollama.modeloListo(), true, "respuesta sin message")
+test("modeloListo: un 200 que no es de Ollama lo desactiva, en la consulta y en la precarga", async () => {
+  await conOllama(ENTORNO, async (ollama, _llamadas, opciones) => {
+    const ajenos: [string, Pick<OpcionesFetch, "cuerpo" | "cuerpoCrudo">][] = [
+      ["la página de un proxy", { cuerpoCrudo: "<html><body>Entrar</body></html>" }],
+      ["JSON sin message", { cuerpo: { sin: "mensaje" } }],
+    ]
+    for (const [nombre, ajeno] of ajenos) {
+      for (const paso of ["consulta", "precarga"]) {
+        Object.assign(opciones, { cuerpo: undefined, cuerpoCrudo: undefined })
+        await ollama.warmUpOllama()
+        assert.equal(ollama.modeloListo(), true, "parte con el modelo cargado")
+
+        Object.assign(opciones, ajeno)
+        if (paso === "consulta") await assert.rejects(ollama.parseIntentWithOllama("hola", data))
+        else await ollama.warmUpOllama()
+        assert.equal(ollama.modeloListo(), false, `${paso}: ${nombre}`)
+      }
+    }
   })
 })
 
@@ -328,6 +344,21 @@ test("modelo no cargado: la respuesta no espera a la precarga, y mientras dura n
     assert.equal(ollama.modeloListo(), true)
     const json = await (await preguntar("información de la B23")).json()
     assert.equal(json.engine, "ollama", "con la precarga terminada, responde el modelo")
+  })
+})
+
+test("un 200 que no es de Ollama: tras la primera consulta responden las reglas sin volver a consultar", async () => {
+  await conRuta(ENTORNO, {}, async ({ preguntar, llamadas, fijarModelo, ollama, opciones }) => {
+    await fijarModelo(true)
+    opciones.cuerpoCrudo = "<html><body>Entrar</body></html>"
+    for (let pregunta = 1; pregunta <= 3; pregunta++) {
+      const json = await (await preguntar("información de la B23")).json()
+      assert.equal(json.engine, "reglas", `pregunta ${pregunta}`)
+      // Deja terminar la precarga que lanzó la pregunta.
+      await ollama.warmUpOllama()
+    }
+    assert.equal(consultas(llamadas), 1, "solo la primera pregunta consulta al modelo")
+    assert.equal(ollama.modeloListo(), false)
   })
 })
 
