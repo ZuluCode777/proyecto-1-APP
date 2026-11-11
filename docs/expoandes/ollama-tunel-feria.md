@@ -443,7 +443,8 @@ recibe 403 y responde con reglas. Un token nunca se reutiliza.
   La consulta espera hasta 4,5 s (`TIMEOUT_MS` en `lib/ollama.ts`), 1,5 s menos
   que los 6 s que espera la web. Si el equipo está apagado, el túnel caído o el
   modelo tarda más, responden las reglas, el modelo se da por no cargado y se
-  lanza su precarga.
+  lanza su precarga. Lo mismo pasa si el túnel responde 200 con algo que no es
+  de Ollama, como la página de un proxy: no cuenta como modelo cargado.
 - Cargar el modelo en memoria tarda más que esa espera. Mientras el servidor
   lo da por no cargado (al arrancar, hasta que termina la precarga, o tras un
   fallo), las reglas responden al instante y cada pregunta lanza la precarga
@@ -485,6 +486,15 @@ v2.11.9) y contra el servicio de Render:
   preguntas seguidas cayeron en reglas y el modelo siguió sin cargarse: agotar
   la espera aborta la carga. Por eso un fallo del modelo lanza ahora la
   precarga.
+- Las dos mediciones, repetidas el 11/11/2026 con «el modelo primero»
+  desplegado en Render (`8fa09c5`). De las mismas veinte preguntas, el modelo
+  respondió 17 y las reglas 3. Ninguna agotó la espera: las tres de reglas
+  tardaron menos de 1 s, y las del modelo, entre 0,6 y 1,4 s en total, salvo la
+  primera tras despertar el servidor, que tardó 3,9 s. Con el modelo sacado de
+  la memoria (`keep_alive: 0`), la primera pregunta lo cargó y la respondió el
+  modelo en 3,1 s; las dos siguientes, en 1,1 s.
+- En local, con el servidor compilado (`next start`) y un Ollama simulado: una
+  sola precarga al arrancar, y la primera pregunta ya la responde el modelo.
 - `ollama ps` mostró 2,01 GB para qwen2.5:3b con contexto 4096 el 10/11/2026.
 - Con Caddy parado, la dirección del 8443 respondió 502 en centésimas de
   segundo (medido desde un equipo de la tailnet el 11/11/2026). El caso del
@@ -508,10 +518,11 @@ v2.11.9) y contra el servicio de Render:
 
 Sin comprobar:
 
-- La política de «el modelo primero» en Render: hay que desplegar este cambio y
-  repetir las mediciones.
-- La espera de 4,5 s y la precarga tras un fallo, en Render: hay que desplegar
-  este cambio y repetir las dos mediciones.
+- La precarga tras un fallo, en Render: en la medición del 11/11/2026 ninguna
+  consulta falló, así que no llegó a usarse.
+- Que la primera pregunta tras arrancar el servidor vaya al modelo sin abrir
+  antes `/diagnostico`: en Render se midió después de un `GET /api/agent`, que
+  también precarga. Solo está comprobado en local.
 - Qué tarda en fallar la consulta con el equipo apagado. Si el túnel no
   responde enseguida, la primera pregunta tras el apagado esperaría los 4,5 s
   antes de la respuesta de reglas; después el modelo se da por no cargado y las

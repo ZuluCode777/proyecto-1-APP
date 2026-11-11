@@ -101,6 +101,8 @@ export type OpcionesFetch = {
   estadoChat?: number
   /** Cuerpo completo de la respuesta de chat, sin el envoltorio `message.content` (p. ej. uno sin `message`). */
   cuerpo?: unknown
+  /** Cuerpo de la respuesta de chat tal cual, sin pasarlo a JSON (p. ej. la página HTML de un proxy). */
+  cuerpoCrudo?: string
   /** Lo que «devuelve» el modelo en `message.content`: un objeto (se envía como JSON) o texto crudo. */
   contenido?: unknown
 }
@@ -142,6 +144,7 @@ function simularOllama(llamadas: Llamada[], plazos: WeakMap<AbortSignal, number>
       const cortado = new ReadableStream({ start: (control) => control.error(new TypeError("terminated")) })
       return new Response(cortado, { status: opciones.estadoChat ?? 200 })
     }
+    if (opciones.cuerpoCrudo !== undefined) return new Response(opciones.cuerpoCrudo, { status: opciones.estadoChat ?? 200 })
     if (opciones.cuerpo !== undefined) return new Response(JSON.stringify(opciones.cuerpo), { status: opciones.estadoChat ?? 200 })
     const contenido = opciones.contenido ?? CONTENIDO_GPS
     const texto = typeof contenido === "string" ? contenido : JSON.stringify(contenido)
@@ -157,7 +160,7 @@ async function conSimulacion<T>(entorno: EntornoPrueba, opciones: OpcionesFetch,
   const llamadas: Llamada[] = []
   // Cada caso parte sin modelo cargado. Se cambia el mismo objeto, sin borrarlo:
   // la copia de `lib/ollama.ts` que la ruta dejó en caché lo sigue usando.
-  const estado = (globalThis as { __transmivozOllama?: { precarga: Promise<void> | null; cargado: boolean } }).__transmivozOllama
+  const estado = estadoDeOllama()
   if (estado) {
     await estado.precarga
     estado.cargado = false
@@ -170,6 +173,16 @@ async function conSimulacion<T>(entorno: EntornoPrueba, opciones: OpcionesFetch,
     deshacerPlazos()
     restaurar()
   }
+}
+
+/** El estado que `lib/ollama.ts` comparte en `globalThis`, si alguna copia lo creó ya. */
+function estadoDeOllama() {
+  return (globalThis as { __transmivozOllama?: { precarga: Promise<void> | null; cargado: boolean } }).__transmivozOllama
+}
+
+/** Espera la precarga que esté en curso, sin lanzar otra. */
+export async function esperarPrecarga(): Promise<void> {
+  await estadoDeOllama()?.precarga
 }
 
 /** Carga una copia nueva de `lib/ollama.ts`, que lee el entorno de ese momento. */
