@@ -22,8 +22,8 @@ final class SesionAccesorioModeloTests: XCTestCase {
         banco.sincronizar(escenario)
 
         XCTAssertEqual(banco.transporte.llamadas, [
-            "conectar:acc-1", "leerInformacion", "notificaciones:false", "leerMedicion", "notificaciones:true",
-        ], "orden: Información, notificaciones apagadas, lectura fresca, notificaciones")
+            "conectar:acc-1", "comprobarEnlace", "leerInformacion", "notificaciones:false", "leerMedicion", "notificaciones:true",
+        ], "orden: comprobación del enlace, Información, notificaciones apagadas, lectura fresca, notificaciones")
         XCTAssertEqual(banco.modelo.estado, .sinDeteccion)
         XCTAssertTrue(banco.modelo.enlaceAutenticado)
 
@@ -70,16 +70,20 @@ final class SesionAccesorioModeloTests: XCTestCase {
         }
     }
 
-    func testElTransporteRealNoAfirmaNingunNivelDeEnlace() {
-        // Mientras no haya evidencia con la placa y el iPhone (contrato §6, EA-12), la app no puede
-        // marcar el enlace como verificable: la pantalla lo avisa y bloquea los avisos. Se prueba con el
-        // transporte REAL de producción (su creación es perezosa: no crea el gestor ni pide permiso),
-        // no con el doble. Si alguien cambia `nivelEnlace` a `.cifradoAutenticado` esta prueba falla.
+    func testElTransporteRealSoloAfirmaNivelConEvidenciaDeSuConexionYNuncaElAutenticado() {
+        // La regla: `.desconocido` al crearlo y en todo estado sin evidencia; la única evidencia (la lectura protegida de
+        // comprobación de la conexión vigente, ver `EvidenciaEnlace`) sube como mucho a `.cifradoSinAutenticar`. Se prueba
+        // con el transporte REAL de producción (su creación es perezosa: no crea el gestor ni pide permiso), no con el
+        // doble. Si alguien lo cambia para afirmar `.cifradoAutenticado` sin evidencia, esta prueba falla.
         let real = TransporteCoreBluetooth()
+        XCTAssertEqual(real.nivelEnlace, .desconocido)
+        // Sin conexión vigente, pedir la comprobación no hace nada ni afirma nada.
+        real.comprobarEnlace(token: 1)
         XCTAssertEqual(real.nivelEnlace, .desconocido)
         let voz = ControlVoz(salida: SalidaVozFalsa(), consultarRuta: { .privada })
         let modelo = SesionAccesorioModelo(transporte: real, voz: voz)
         XCTAssertFalse(modelo.enlaceVerificable)
+        XCTAssertEqual(modelo.nivelAfirmado, .desconocido)
         XCTAssertEqual(modelo.estado, .sinAccesorio)
         XCTAssertFalse(modelo.buscando, "crear la sesión no toca Core Bluetooth")
     }

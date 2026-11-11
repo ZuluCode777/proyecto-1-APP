@@ -18,10 +18,16 @@ enum FaseConexion: Equatable {
 ///
 /// Reglas de esta capa:
 /// - Política de autenticación fija y cerrada (`.exigirAutenticado`). No hay ajuste, bandera ni
-///   preferencia que la cambie. Con el transporte de producción (`.desconocido`) la sesión
-///   queda rechazada en cuanto conecta y no se lee ni se suscribe nada (contrato §6).
+///   preferencia que la cambie. El transporte de producción nunca afirma `.cifradoAutenticado`
+///   (`EvidenciaEnlace`: como mucho `.cifradoSinAutenticar`, y solo tras la lectura protegida de comprobación),
+///   así que la sesión queda rechazada en cuanto conecta y no se lee ni se suscribe nada (contrato §6).
 /// - Cada conexión lleva un `token` nuevo. Todo evento con otro token se descarta: devoluciones
 ///   tardías de un periférico anterior, de una sesión detenida o de una reconexión.
+/// - Comprobación del enlace: tras `.conectado` y ANTES de abrir la sesión del contrato, una lectura protegida
+///   de comprobación (Información). Si el enlace no está protegido, iOS empareja por su cuenta y pide la clave a
+///   la persona; hasta que termine no se afirma ningún nivel. Su resultado fija el nivel con el que se llama a
+///   `SesionProximidad.conectar(accesorio:enlace:)`. Es una aclaración de plataforma propuesta, pendiente de
+///   revisión por el responsable del contrato (H3); ver contrato-ble.md §5.1 y §6.
 /// - Orden de sincronización: Información → notificaciones apagadas y confirmadas → lectura
 ///   fresca de referencia → notificaciones encendidas. El contrato lista la suscripción antes
 ///   de la referencia (§5.1, pasos 6 y 7); aquí va al revés, como aclaración de plataforma: Core
@@ -33,6 +39,7 @@ enum FaseConexion: Equatable {
 /// - Plazos: la conexión (incluido el descubrimiento de servicio y características, que el transporte
 ///   cierra con `.conectado`) y cada paso de la sincronización vencen a los `plazoPasoMs`, contados
 ///   con el reloj monotónico inyectado. Vencer falla con «no respondió a tiempo»; no hay espera eterna.
+///   La comprobación del enlace tiene plazo propio (`plazoEmparejamientoMs`): la persona escribe una clave.
 ///   Esperar la respuesta del permiso o a que el Bluetooth esté disponible no cuenta como conexión.
 /// - Búsqueda: la INTENCIÓN de buscar (`busquedaPedida`) es de la persona y sobrevive a lo transitorio
 ///   (aviso de permiso del sistema que deja la escena inactiva, Bluetooth apagado); el escaneo real
@@ -47,11 +54,17 @@ final class SesionAccesorioModelo {
     /// Una respuesta que tarde más que esto se trata como fallo, no como espera eterna. Vale también
     /// para conectar y descubrir el servicio. Es una propuesta de software, sin medir (banco de EA-12).
     static let plazoPasoMs: Milisegundos = 5_000
+    /// Plazo de la comprobación del enlace, que puede incluir escribir la clave en la solicitud de iOS. Supera la
+    /// gracia de 30 s del firmware (`kGraciaSeguridadMs`) para que sea el accesorio quien corte primero. Propuesta de
+    /// software, sin medir (banco).
+    static let plazoEmparejamientoMs: Milisegundos = 35_000
     static let intentosMaximosReferencia = 3
 
     private enum Paso: Equatable {
         case ninguno
         case conectando
+        /// Lectura protegida de comprobación en curso; `id` es el accesorio que conectó.
+        case comprobandoEnlace(id: String)
         case leyendoInformacion
         case apagandoNotificaciones
         case leyendoReferencia(inicioMs: Milisegundos)
@@ -126,8 +139,10 @@ final class SesionAccesorioModelo {
     /// persona puede encenderla. Sin VoiceOver empieza encendida.
     var vozPropiaActiva: Bool { eleccionVozPropia ?? !avisos.voiceOverActivo() }
 
-    /// Falso mientras el transporte no pueda afirmar un nivel de seguridad del enlace.
-    var enlaceVerificable: Bool { transporte.nivelEnlace != .desconocido }
+    /// Falso mientras el transporte no pueda afirmar un enlace cifrado Y autenticado. Un nivel menor
+    /// (`.cifradoSinAutenticar`, lo más que afirma el transporte real) no lo hace verificable: el aviso fijo de la
+    /// pantalla sigue visible mientras sea falso.
+    var enlaceVerificable: Bool { transporte.nivelEnlace == .cifradoAutenticado }
 
     var estado: EstadoAccesorio {
         guard activa else { return elegido == nil ? .sinAccesorio : .detenido }
@@ -140,7 +155,9 @@ final class SesionAccesorioModelo {
         case .falla(let motivo): return .falla(motivo)
         case .conectada:
             switch estadoSesion {
-            case .desconectada: return .conectando
+            case .desconectada:
+                if case .comprobandoEnlace = paso { return .comprobandoEnlace }
+                return .conectando
             case .esperandoInformacion: return .conectado
             case .sincronizando: return .calibrando
             case .rechazada(.enlaceNoAutenticado): return .enlaceNoVerificado
@@ -296,6 +313,8 @@ final class SesionAccesorioModelo {
         switch paso {
         case .conectando, .leyendoInformacion, .apagandoNotificaciones, .leyendoReferencia, .encendiendoNotificaciones:
             if ahora - inicioPasoMs > Self.plazoPasoMs { fallar(.tiempoAgotado) }
+        case .comprobandoEnlace:
+            if ahora - inicioPasoMs > Self.plazoEmparejamientoMs { fallar(.enlaceSeguroFallido) }
         case .suscrito:
             if sesion?.necesitaReferencia(ahoraMs: ahora) == true { empezarReferencia() }
         case .ninguno:
@@ -351,9 +370,14 @@ final class SesionAccesorioModelo {
         switch evento {
         case .conectado(let id):
             guard paso == .conectando else { return }
+            // Todavía no se afirma ningún nivel: primero la lectura protegida de comprobación (puede pedir la clave).
+            fase = .conectada
+            esperar(.comprobandoEnlace(id: id))
+            transporte.comprobarEnlace(token: conexion)
+        case .lecturaProtegidaSuperada:
+            guard case .comprobandoEnlace(let id) = paso else { return }
             nivelAfirmado = transporte.nivelEnlace
             let resultado = sesion?.conectar(accesorio: id, enlace: nivelAfirmado)
-            fase = .conectada
             if case .rechazado? = resultado { cerrarPorRechazo(); return }
             esperar(.leyendoInformacion)
             transporte.leerInformacion(token: conexion)
@@ -384,7 +408,9 @@ final class SesionAccesorioModelo {
             default: break
             }
         case .desconectado:
-            perderEnlace()
+            // Un corte durante la comprobación es parte del fallo de seguridad (alta cerrada, clave mala, solicitud
+            // cancelada): no se reconecta solo, cada intento volvería a pedir la clave.
+            if case .comprobandoEnlace = paso { fallar(.enlaceSeguroFallido) } else { perderEnlace() }
         case .fallo(let motivo):
             fallar(motivo)
         case .disponibilidad, .encontrado:

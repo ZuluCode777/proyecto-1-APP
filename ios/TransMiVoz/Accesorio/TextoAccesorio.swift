@@ -9,6 +9,8 @@ enum EstadoAccesorio: Equatable {
     case detenido
     case bluetoothNoDisponible(DisponibilidadBluetooth)
     case conectando
+    /// Lectura protegida de comprobación en curso: iOS puede estar pidiendo la clave de emparejamiento.
+    case comprobandoEnlace
     case conectado
     case calibrando
     /// La seguridad del enlace no se puede verificar: ninguna medida cuenta.
@@ -47,6 +49,7 @@ enum TextoAccesorio {
         case .detenido: return "Detenido"
         case .bluetoothNoDisponible: return "Bluetooth no disponible"
         case .conectando: return "Conectando"
+        case .comprobandoEnlace: return "Comprobando el enlace"
         case .conectado: return "Conectado"
         case .calibrando: return "Calibrando"
         case .enlaceNoVerificado: return "Bloqueado: enlace no verificado"
@@ -66,6 +69,7 @@ enum TextoAccesorio {
         case .sinAccesorio, .detenido: return "pause.circle"
         case .bluetoothNoDisponible, .desconectado: return "wifi.slash"
         case .conectando, .conectado: return "dot.radiowaves.left.and.right"
+        case .comprobandoEnlace: return "key"
         case .calibrando: return "slider.horizontal.3"
         case .enlaceNoVerificado, .rechazado, .falla, .radarNoDisponible: return "exclamationmark.triangle"
         case .sinDeteccion, .sinDatos: return "questionmark.circle"
@@ -83,6 +87,8 @@ enum TextoAccesorio {
             return "\(bluetooth(d)) No hay medidas."
         case .conectando:
             return "Conectando con el accesorio elegido. No hay medidas."
+        case .comprobandoEnlace:
+            return frasesComprobandoEnlace.joined(separator: " ")
         case .conectado:
             return "Accesorio conectado. Leyendo su información. Aún no hay medidas."
         case .calibrando:
@@ -92,6 +98,7 @@ enum TextoAccesorio {
         case .rechazado(let motivo):
             return "Accesorio rechazado (\(motivo.etiqueta)). Sus datos no se usan y esto no es una detección."
         case .falla(let motivo):
+            if let frases = frasesFalloSeguro(motivo) { return frases.joined(separator: " ") }
             return "\(fallo(motivo)) No hay medidas. Usa Reconectar. \(recuperacionRepetida)"
         case .desconectado:
             return "Accesorio desconectado. Se intenta reconectar. No hay medidas."
@@ -117,11 +124,54 @@ enum TextoAccesorio {
         "Esto no es una detección ni significa camino libre.",
     ]
 
-    /// La descripción repartida en párrafos para la pantalla. Solo el bloqueo lleva más de uno: con el texto más grande
-    /// de accesibilidad su descripción en un solo bloque medía 869 pt, más que el área visible (659 pt), y no había
-    /// posición que la mostrara entera. Los demás estados conservan su descripción tal cual, en un único párrafo.
+    /// Qué verá y qué hará la persona mientras se comprueba el enlace. Lo que iOS muestra (la solicitud de emparejamiento
+    /// que pide la clave de 6 dígitos) no se ha visto con la placa: está sin comprobar en banco. El accesorio no tiene
+    /// pantalla y no muestra la clave; el botón y los 60 s son los del firmware (ea-12-ble.md).
+    private static let frasesComprobandoEnlace = [
+        "Comprobando el enlace seguro con el accesorio. Aún no hay medidas.",
+        "Si iOS muestra una solicitud de emparejamiento, escribe el código de 6 dígitos de este accesorio.",
+        "El accesorio no tiene pantalla y no muestra el código.",
+        "Si es la primera vez, mantén pulsado su botón de 3 a 10 segundos: solo acepta emparejar durante 60 segundos.",
+    ]
+
+    /// Emparejamiento cancelado, clave incorrecta, ventana de alta cerrada, corte o plazo vencido. No hay medidas.
+    private static let frasesEnlaceSeguroFallido = [
+        fallo(.enlaceSeguroFallido),
+        "Pudo cancelarse, el código pudo ser incorrecto o el accesorio tenía cerrada su ventana de emparejamiento.",
+        "Mantén pulsado su botón de 3 a 10 segundos, toca Reconectar y escribe el código de 6 dígitos que pida iOS.",
+        "Si sigue fallando, mantén el botón 10 segundos o más para borrar los vínculos del accesorio y empareja de nuevo.",
+        "No hay medidas.",
+    ]
+
+    /// El vínculo se borró en el accesorio y el iPhone aún lo conserva. El caso contrario (el iPhone lo olvidó y el
+    /// accesorio no) se presenta como emparejamiento fallido: lo cubre `frasesEnlaceSeguroFallido`.
+    private static let frasesVinculoBorrado = [
+        fallo(.vinculoBorradoEnAccesorio),
+        "En el iPhone abre Ajustes > Bluetooth, toca la «i» junto al accesorio y elige «Olvidar este dispositivo».",
+        "Luego mantén pulsado el botón del accesorio de 3 a 10 segundos, toca Reconectar y escribe el código de 6 dígitos que pida iOS.",
+        "No hay medidas.",
+    ]
+
+    /// Las frases de recuperación propias de los fallos del enlace seguro; nil si el fallo usa el texto general.
+    private static func frasesFalloSeguro(_ m: MotivoFalla) -> [String]? {
+        switch m {
+        case .enlaceSeguroFallido: return frasesEnlaceSeguroFallido
+        case .vinculoBorradoEnAccesorio: return frasesVinculoBorrado
+        default: return nil
+        }
+    }
+
+    /// La descripción repartida en párrafos para la pantalla. Llevan más de uno el bloqueo, la comprobación del enlace y
+    /// los fallos del enlace seguro: con el texto más grande de accesibilidad el bloqueo en un solo bloque medía 869 pt,
+    /// más que el área visible (659 pt), y no había posición que lo mostrara entero. Los demás estados conservan su
+    /// descripción tal cual, en un único párrafo.
     static func parrafos(_ e: EstadoAccesorio) -> [String] {
-        e == .enlaceNoVerificado ? frasesEnlaceNoVerificado : [descripcion(e)]
+        switch e {
+        case .enlaceNoVerificado: return frasesEnlaceNoVerificado
+        case .comprobandoEnlace: return frasesComprobandoEnlace
+        case .falla(let motivo): return frasesFalloSeguro(motivo) ?? [descripcion(e)]
+        default: return [descripcion(e)]
+        }
     }
 
     /// El aviso fijo de la pantalla mientras el enlace no se puede verificar, repartido en párrafos. Con el texto más grande
@@ -163,7 +213,10 @@ enum TextoAccesorio {
             return "Avisos bloqueados: no se puede verificar la seguridad del enlace. Esto no es una detección."
         case .rechazado:
             return "Accesorio rechazado. Sin avisos."
+        case .comprobandoEnlace:
+            return "Comprobando el enlace seguro. Si iOS pide un código de 6 dígitos, escríbelo."
         case .falla(let motivo):
+            if frasesFalloSeguro(motivo) != nil { return "\(fallo(motivo)) Sin avisos. La pantalla explica cómo reintentar." }
             return "\(fallo(motivo)) Sin avisos. Usa Reconectar. \(recuperacionRepetida)"
         case .desconectado:
             return "Accesorio desconectado. Se intenta reconectar."
@@ -192,6 +245,8 @@ enum TextoAccesorio {
         case .errorDeSuscripcion: return "Falló la suscripción a las medidas."
         case .tiempoAgotado: return "El accesorio no respondió a tiempo."
         case .referenciaNoValida: return "No se logró sincronizar con el accesorio."
+        case .enlaceSeguroFallido: return "No se completó el emparejamiento seguro con el accesorio."
+        case .vinculoBorradoEnAccesorio: return "El accesorio ya no reconoce el emparejamiento guardado en este iPhone."
         }
     }
 
@@ -203,6 +258,7 @@ enum TextoAccesorio {
         case .sinAccesorio, .detenido, .conectado: return nil
         case .bluetoothNoDisponible: return Locucion(texto: "Bluetooth no disponible. Sin avisos.")
         case .conectando: return Locucion(texto: "Conectando con el accesorio.")
+        case .comprobandoEnlace: return Locucion(texto: "Comprobando el enlace seguro. Si iOS pide un código de 6 dígitos, escríbelo.")
         case .calibrando: return Locucion(texto: "Accesorio conectado. Calibrando. Aún sin avisos.")
         case .enlaceNoVerificado: return Locucion(texto: "Avisos bloqueados. No se puede verificar la seguridad del enlace.")
         case .rechazado: return Locucion(texto: "Accesorio rechazado. Sin avisos.")

@@ -271,10 +271,11 @@ final class ClasificadorValoresTests: XCTestCase {
 final class TextoAccesorioTests: XCTestCase {
     private let todos: [EstadoAccesorio] = [
         .sinAccesorio, .detenido, .bluetoothNoDisponible(.apagado), .bluetoothNoDisponible(.sinPermiso),
-        .bluetoothNoDisponible(.restringido), .bluetoothNoDisponible(.noSoportado), .conectando, .conectado,
-        .calibrando, .enlaceNoVerificado, .rechazado(.enlaceNoAutenticado), .falla(.tiempoAgotado),
+        .bluetoothNoDisponible(.restringido), .bluetoothNoDisponible(.noSoportado), .conectando, .comprobandoEnlace,
+        .conectado, .calibrando, .enlaceNoVerificado, .rechazado(.enlaceNoAutenticado), .falla(.tiempoAgotado),
         .falla(.conexionFallida), .falla(.servicioNoEncontrado), .falla(.errorDeLectura),
-        .falla(.errorDeSuscripcion), .falla(.referenciaNoValida), .desconectado, .sinDeteccion, .presencia,
+        .falla(.errorDeSuscripcion), .falla(.referenciaNoValida), .falla(.enlaceSeguroFallido),
+        .falla(.vinculoBorradoEnAccesorio), .desconectado, .sinDeteccion, .presencia,
         .objetivo(distanciaMm: 1200, azimutCentesimas: -3000), .objetivo(distanciaMm: 900, azimutCentesimas: nil),
         .sinDatos(.sinRecepcion), .sinDatos(.vencido), .sinDatos(.sinResultado), .radarNoDisponible(.iniciando),
     ]
@@ -322,10 +323,44 @@ final class TextoAccesorioTests: XCTestCase {
             "Esta versión todavía no puede verificar que el enlace sea cifrado y autenticado (falta la prueba con la placa). Por eso bloquea las medidas y los avisos del sensor.")
     }
 
-    /// Solo el bloqueo se reparte: los demás estados se pintan con su descripción entera en un único párrafo.
+    /// Solo se reparten el bloqueo, la comprobación del enlace y los fallos del enlace seguro: los demás estados se pintan
+    /// con su descripción entera en un único párrafo.
     func testLosDemasEstadosConservanSuDescripcionEnUnSoloParrafo() {
-        for estado in todos where estado != .enlaceNoVerificado {
+        let repartidos: [EstadoAccesorio] = [
+            .enlaceNoVerificado, .comprobandoEnlace, .falla(.enlaceSeguroFallido), .falla(.vinculoBorradoEnAccesorio),
+        ]
+        for estado in todos where !repartidos.contains(estado) {
             XCTAssertEqual(TextoAccesorio.parrafos(estado), [TextoAccesorio.descripcion(estado)], "\(estado)")
+        }
+        for estado in repartidos {
+            XCTAssertEqual(TextoAccesorio.parrafos(estado).joined(separator: " "), TextoAccesorio.descripcion(estado), "\(estado)")
+        }
+    }
+
+    /// Qué verá la persona en iOS, qué hacer y cómo recuperarse. Cada párrafo es corto: con el texto más grande un solo nodo
+    /// largo no cabe a la vista (ver el bloqueo). El código de emparejamiento nunca se escribe en un texto.
+    func testElEmparejamientoExplicaLaSolicitudDeIOSYLaRecuperacion() {
+        let comprobando = TextoAccesorio.parrafos(.comprobandoEnlace)
+        XCTAssertEqual(comprobando.count, 4)
+        XCTAssertTrue(comprobando[1].contains("solicitud de emparejamiento") && comprobando[1].contains("6 dígitos"), comprobando[1])
+        XCTAssertTrue(comprobando[2].contains("no tiene pantalla"), comprobando[2])
+        XCTAssertTrue(comprobando[3].contains("botón") && comprobando[3].contains("3 a 10 segundos"), comprobando[3])
+
+        let fallido = TextoAccesorio.descripcion(.falla(.enlaceSeguroFallido))
+        for pista in ["Reconectar", "3 a 10 segundos", "6 dígitos", "10 segundos o más", "No hay medidas"] {
+            XCTAssertTrue(fallido.contains(pista), "falta «\(pista)» en: \(fallido)")
+        }
+        let borrado = TextoAccesorio.descripcion(.falla(.vinculoBorradoEnAccesorio))
+        for pista in ["Ajustes > Bluetooth", "Olvidar este dispositivo", "Reconectar", "3 a 10 segundos", "No hay medidas"] {
+            XCTAssertTrue(borrado.contains(pista), "falta «\(pista)» en: \(borrado)")
+        }
+        XCTAssertNotEqual(fallido, borrado)
+
+        for estado in [EstadoAccesorio.comprobandoEnlace, .falla(.enlaceSeguroFallido), .falla(.vinculoBorradoEnAccesorio)] {
+            for parrafo in TextoAccesorio.parrafos(estado) {
+                XCTAssertLessThanOrEqual(parrafo.count, 130, "párrafo largo: \(parrafo)")
+                XCTAssertNil(parrafo.range(of: "[0-9]{6}", options: .regularExpression), "ningún texto escribe un código: \(parrafo)")
+            }
         }
     }
 
@@ -362,7 +397,8 @@ final class TextoAccesorioTests: XCTestCase {
     func testSoloLosEstadosQueNoSonMedidasSeAnuncianPorAccesibilidad() {
         let anunciables: [EstadoAccesorio] = [
             .enlaceNoVerificado, .rechazado(.enlaceNoAutenticado), .falla(.tiempoAgotado), .desconectado,
-            .bluetoothNoDisponible(.apagado), .bluetoothNoDisponible(.sinPermiso),
+            .bluetoothNoDisponible(.apagado), .bluetoothNoDisponible(.sinPermiso), .comprobandoEnlace,
+            .falla(.enlaceSeguroFallido), .falla(.vinculoBorradoEnAccesorio),
         ]
         for estado in anunciables { XCTAssertNotNil(TextoAccesorio.anuncioAccesible(estado), "\(estado)") }
         let sensor: [EstadoAccesorio] = [

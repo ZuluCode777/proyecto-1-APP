@@ -8,8 +8,9 @@ extension RelojFalso {
     func fijar(_ instante: Milisegundos) { avanzar(instante - ahora) }
 }
 
-/// Doble del transporte: anota las llamadas y deja que la prueba emita eventos con cualquier token.
-/// Permite recorrer también la ruta AUTENTICADA, que el transporte real no puede afirmar todavía.
+/// Doble del transporte (simulado, no es un accesorio ni Core Bluetooth): anota las llamadas y deja que la prueba
+/// emita eventos con cualquier token. Permite recorrer también la ruta AUTENTICADA, que el transporte real no puede
+/// afirmar.
 @MainActor
 final class TransporteFalso: TransporteAccesorio {
     var receptor: (@MainActor (EventoTransporte, Int) -> Void)?
@@ -18,12 +19,19 @@ final class TransporteFalso: TransporteAccesorio {
     var permisoPorPreguntar = false
     private(set) var llamadas: [String] = []
     private(set) var tokenVigente = 0
+    /// Responde sola a la lectura protegida de comprobación, como si la lectura terminara bien al instante. Una prueba que
+    /// quiera controlar ese paso (emparejamiento pendiente, cancelado, fallido) la apaga y emite ella el evento.
+    var respondeComprobacion = true
 
     init(nivel: NivelEnlace) { nivelEnlace = nivel }
 
     func buscar() { llamadas.append("buscar") }
     func dejarDeBuscar() { llamadas.append("dejarDeBuscar") }
     func conectar(id: String, token: Int) { llamadas.append("conectar:\(id)"); tokenVigente = token }
+    func comprobarEnlace(token: Int) {
+        llamadas.append("comprobarEnlace")
+        if respondeComprobacion { receptor?(.lecturaProtegidaSuperada, token) }
+    }
     func leerInformacion(token: Int) { llamadas.append("leerInformacion") }
     func fijarNotificaciones(_ activas: Bool, token: Int) { llamadas.append("notificaciones:\(activas)") }
     func leerMedicion(token: Int) { llamadas.append("leerMedicion") }

@@ -29,7 +29,7 @@ El texto de un viaje puede traer órdenes de abordaje sin parada, sentido ni vig
 
 ### Sesión con el accesorio real (EA-15, software)
 
-Core Bluetooth con los UUID y el contrato v1.0 existentes, sobre `SesionProximidad`. **El transporte afirma enlace `desconocido`, así que la sesión rechaza el accesorio y no hay medidas ni avisos del sensor** hasta que EA-12 dé evidencia (contrato §6). Voz solo por una salida privada (auriculares con cable o Bluetooth; el sistema no distingue un altavoz Bluetooth), cola de uno, corte por cambio de ruta e interrupción, fallo cerrado si el audio no se activa; sin segundo plano. Detalle, pruebas y lista de banco en [ea-15-ios-ble-audio.md](../docs/expoandes/ea-15-ios-ble-audio.md). **No hay prueba con hardware.**
+Core Bluetooth con los UUID y el contrato v1.0 existentes, sobre `SesionProximidad`. **El transporte afirma enlace `desconocido` y, solo tras una lectura protegida de comprobación que termine bien, como mucho `cifradoSinAutenticar` (nunca `cifradoAutenticado`: la app no puede distinguir a un impostor sin protección), así que la sesión rechaza el accesorio y no hay medidas ni avisos del sensor** (contrato §6; ver «Seguridad del enlace» en ea-15-ios-ble-audio.md). Voz solo por una salida privada (auriculares con cable o Bluetooth; el sistema no distingue un altavoz Bluetooth), cola de uno, corte por cambio de ruta e interrupción, fallo cerrado si el audio no se activa; sin segundo plano. Detalle, pruebas y lista de banco en [ea-15-ios-ble-audio.md](../docs/expoandes/ea-15-ios-ble-audio.md). **No hay prueba con hardware.**
 
 ### Sesión local simulada (solo pruebas de interfaz)
 
