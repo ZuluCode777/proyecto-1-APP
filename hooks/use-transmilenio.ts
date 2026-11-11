@@ -5,6 +5,7 @@ import {
   LAYER_TIMEOUT_MS,
   motivoCatalogoNoUsable,
   TransmilenioDataSchema,
+  VIGENCIA_CATALOGO_VIVO_MS,
   type TransmilenioData,
 } from "@/lib/transmilenio"
 
@@ -35,7 +36,7 @@ import {
  */
 
 /** Vigencia de un catálogo en vivo, igual que `LIVE_TTL_MS` del servidor. */
-const FRESCO_VIVO_MS = 6 * 60 * 60 * 1000
+const FRESCO_VIVO_MS = VIGENCIA_CATALOGO_VIVO_MS
 /** Espera entre intentos con respaldo, dato viejo o fallo (`RETRY_MS` del servidor). */
 const REINTENTO_MS = 5 * 60 * 1000
 /** Cada cuánto, con el hook montado, se comprueba (sin red) si toca renovar. */

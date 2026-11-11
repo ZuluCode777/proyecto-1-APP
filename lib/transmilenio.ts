@@ -557,3 +557,17 @@ export function procedenciaCatalogo(data: Pick<TransmilenioData, "source" | "fet
     ? `Datos de TransMilenio consultados el ${cuando}.`
     : `Datos de una copia guardada de TransMilenio del ${cuando} (sin conexión al servicio en vivo).`
 }
+
+/** Vigencia de un catálogo en vivo desde su `fetchedAt`; pasada, toca renovarlo. */
+export const VIGENCIA_CATALOGO_VIVO_MS = 6 * 60 * 60 * 1000
+
+/**
+ * ¿El catálogo es ANTIGUO? Lo es la copia guardada, y también un dato en vivo
+ * sin fecha válida o consultado hace más de `VIGENCIA_CATALOGO_VIVO_MS` (el
+ * servidor lo sigue sirviendo mientras renueva o si la renovación falla). Habla
+ * de la frescura del catálogo, no de la operación de ninguna ruta.
+ */
+export function catalogoAntiguo(data: Pick<TransmilenioData, "source" | "fetchedAt">, ahora: Date): boolean {
+  const consultado = Date.parse(data.fetchedAt)
+  return data.source !== "live" || !Number.isFinite(consultado) || ahora.getTime() - consultado > VIGENCIA_CATALOGO_VIVO_MS
+}

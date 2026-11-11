@@ -1,6 +1,6 @@
 import snapshot from "@/data/transmilenio.json" with { type: "json" }
 import { aplicarEvidenciaGtfs } from "@/lib/evidencia-gtfs"
-import { fetchTransmilenio, TransmilenioDataSchema, type TransmilenioData } from "@/lib/transmilenio"
+import { fetchTransmilenio, TransmilenioDataSchema, VIGENCIA_CATALOGO_VIVO_MS, type TransmilenioData } from "@/lib/transmilenio"
 
 /**
  * Datos de TransMilenio para las rutas del servidor.
@@ -21,7 +21,7 @@ import { fetchTransmilenio, TransmilenioDataSchema, type TransmilenioData } from
  * incompleta en identificadores/geometría o con referencias inválidas, así que
  * lo que llega aquí como éxito es un catálogo usable.
  */
-const LIVE_TTL_MS = 6 * 60 * 60 * 1000
+const LIVE_TTL_MS = VIGENCIA_CATALOGO_VIVO_MS
 const RETRY_MS = 5 * 60 * 1000
 
 /** Catálogo vigente y hasta cuándo se considera fresco. */
