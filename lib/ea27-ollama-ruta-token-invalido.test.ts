@@ -11,7 +11,8 @@ import { URL_TUNEL, conRuta } from "./ea27-prueba-ollama"
 const TOKEN_CON_SALTO = "parte-uno-secreta\nparte-dos-secreta"
 
 test("un token con salto de línea interno no se registra ni se devuelve, y la app responde con reglas", async () => {
-  await conRuta({ OLLAMA_MODEL: "qwen2.5:3b", OLLAMA_BASE_URL: URL_TUNEL, OLLAMA_TOKEN: TOKEN_CON_SALTO }, { real: true }, async ({ GET, preguntar, registros }) => {
+  await conRuta({ OLLAMA_MODEL: "qwen2.5:3b", OLLAMA_BASE_URL: URL_TUNEL, OLLAMA_TOKEN: TOKEN_CON_SALTO }, { real: true }, async ({ GET, preguntar, registros, fijarModelo }) => {
+    await fijarModelo(true)
     const get = await (await GET(new Request("http://localhost/api/agent"))).text()
     const post = await preguntar("quiero ir al planeta marte")
     const cuerpo = await post.text()

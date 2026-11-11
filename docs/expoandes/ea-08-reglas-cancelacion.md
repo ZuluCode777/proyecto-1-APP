@@ -27,6 +27,18 @@ desconocimiento de reglas. Una sola acción validada por pregunta. La política
 vive en `lib/seleccion-interprete.ts` (`requiereModelo`, `elegirIntent`), pura y
 reutilizada por `app/api/agent/route.ts`.
 
+**Actualización (EA-27, #53), decisión de A1 del 10/11/2026:** la política de
+arriba, «las reglas primero», se reemplazó por «el modelo primero cuando está
+cargado». Con el modelo cargado se consulta toda pregunta; solo responden las
+reglas cuando no hay modelo cargado (`modeloListo` en `lib/ollama.ts`; en ese
+caso se responde al instante y se lanza la precarga). Dos excepciones: `metro` y
+`trip_missing_destination` los resuelven siempre las reglas, porque las
+intenciones del modelo no pueden expresarlas (invariante de EA-13: una consulta
+del Metro nunca es viaje, GPS ni abordaje); y se conserva la protección de este
+hallazgo, porque un `unknown` del modelo, o una salida que no valida contra los
+datos, no anula la intención de las reglas. El texto de arriba y la tabla de
+plazos describen EA-08; la política vigente es esta.
+
 ### Decisiones A y E — salir calla la voz; navegar por la respuesta no (AC3)
 
 El desmontaje de `TotalAgent` distingue dos causas, sin pausas:
@@ -72,10 +84,11 @@ de la ronda 1 que adjuntaba la coordenada en caché para `unknown`.)
 
 El estado del motor en `/diagnostico` se reporta según la SALUD de
 `GET /api/agent` (`reachable` + `hasModel`), no según el `engine` de una
-respuesta `POST`. Con reglas-primero, una frase conocida no llega al modelo, y un
-modelo sano que clasifica `unknown` una frase fuera de tema daría
-`engine: reglas`; inferir de ahí el estado del modelo producía avisos falsos
-(«no respondió», «no interpretó a tiempo»). Ahora: modelo alcanzable y con su
+respuesta `POST`. Con reglas-primero (la política de EA-08; ver la actualización
+de EA-27 arriba), una frase conocida no llega al modelo, y un modelo sano que
+clasifica `unknown` una frase fuera de tema daría `engine: reglas`; inferir de
+ahí el estado del modelo producía avisos falsos («no respondió», «no interpretó
+a tiempo»). Ahora: modelo alcanzable y con su
 modelo → «alcanzable y con el modelo listo»; caído o sin modelo → aviso real. La
 lógica es pura (`lib/estado-motor.ts`, `mensajeMotor`) y no cambia el JSON de
 `POST /api/agent`.
@@ -113,7 +126,8 @@ cancelación, la cota de 15 s del permiso pendiente, o el fin de la consulta.
 ### Esperas acotadas y pausas retiradas (AC2)
 
 - **Modelo (servidor):** `lib/ollama.ts` baja la espera de 8 s a **2 s**, con
-  respaldo inmediato a las reglas.
+  respaldo inmediato a las reglas. **Actualización (EA-27, #53):** la espera es
+  ahora de **4,5 s**; ver «Plazos elegidos y por qué».
 - **Cliente:** `lib/consulta-agente.ts` añade una **espera máxima de 6 s** con
   `AbortController` para `/api/agent`. Con datos cargados y servidor que tarda,
   falla, devuelve error o JSON inválido, el intérprete de reglas resuelve en el
@@ -153,8 +167,8 @@ cancelación, la cota de 15 s del permiso pendiente, o el fin de la consulta.
 
 | Plazo | Valor | Motivo |
 | --- | --- | --- |
-| Espera del modelo (servidor) | 2 s | El modelo solo corre si las reglas no entienden, con respaldo inmediato a las reglas. |
-| Espera máxima del cliente por `/api/agent` | 6 s | Más que el modelo (2 s) y menos que `maxDuration` (30 s). El servidor puede tardar más (p. ej. tras un reinicio); al vencer, el cliente responde con reglas locales. No se compara con el techo de datos (`LAYER_TIMEOUT_MS = 15 s`): esa es la espera de `/api/transmilenio`, y los datos ya están cargados cuando se pregunta. |
+| Espera del modelo (servidor) | 4,5 s | Con respaldo a las reglas al agotarse. Eran 2 s, con el modelo consultado solo si las reglas no entendían (EA-08). EA-27 (#53) la subió el 10/11/2026 por decisión de A1: de 8 consultas medidas desde Render, una agotó los 2 s (ver `ollama-tunel-feria.md`). Deja 1,5 s de margen bajo la espera del cliente. |
+| Espera máxima del cliente por `/api/agent` | 6 s | Más que el modelo (4,5 s) y menos que `maxDuration` (30 s). El servidor puede tardar más (p. ej. tras un reinicio); al vencer, el cliente responde con reglas locales. No se compara con el techo de datos (`LAYER_TIMEOUT_MS = 15 s`): esa es la espera de `/api/transmilenio`, y los datos ya están cargados cuando se pregunta. |
 | Posición con permiso concedido | 2 s | Acota `getCurrentPosition` tras el permiso; al vencer, se sigue sin coordenada. |
 | Cota del permiso pendiente | 15 s | `UBICACION_PERMISO_ESPERA_MS`: tope total con el permiso en `prompt`; al vencer se sigue sin coordenada y se libera `busyRef`. Cancelable con un toque. |
 | Arranque de escucha | 650 ms / 900 ms | Separa el anuncio del inicio de la captura. No medido como suficiente; margen inicial. |
@@ -162,7 +176,7 @@ cancelación, la cota de 15 s del permiso pendiente, o el fin de la consulta.
 **Peor caso de la primera consulta con ubicación** (permiso aún sin conceder):
 la espera del permiso pendiente está acotada a 15 s (cancelable con un toque en
 cualquier momento, y `busyRef` libre al vencer); después, la consulta tiene su
-espera de 6 s (con el modelo ≤ 2 s dentro). El peor caso total aproximado es
+espera de 6 s (con el modelo ≤ 4,5 s dentro). El peor caso total aproximado es
 **≈ 15 s + 6 s** antes de caer al respaldo local; con el permiso ya concedido,
 ≈ 2 s + 6 s. Son sumas nominales, no mediciones de dispositivo. Si el permiso se
 concede más tarde, esa pregunta no lo usa; la siguiente sí (la posición queda
@@ -197,8 +211,9 @@ Pruebas con reloj y proveedor (`fetch`/Ollama) simulados, sin dependencias
 nuevas, `node:test`:
 
 - `lib/ea08-reglas-cancelacion.test.ts`: endpoint real `POST /api/agent` con el
-  `/api/chat` de Ollama simulado (comando conocido → 0 llamadas al modelo y
-  reglas; `unknown` del modelo no anula regla; modelo colgado → reglas en ~2 s);
+  `/api/chat` de Ollama simulado (con el modelo cargado, un comando conocido
+  se consulta al modelo (EA-27; en EA-08 eran 0 llamadas); `unknown` del modelo
+  no anula regla; modelo colgado → reglas en ~4,5 s);
   **decisión B** (el modelo resuelve `gps`/viaje sin coordenada → camino de falta
   de ubicación/origen); política pura y respaldo/cancelación de `consultarAgente`.
 - `lib/ea08-cancelacion-ui.test.ts`: TSX real de `TotalAgent`/`VoiceOverlay` con
@@ -257,10 +272,14 @@ nuevas, `node:test`:
 - Los dobles de React, red y reconocimiento no son evidencia de hardware ni de
   voz real; no se probó reconocimiento real, VoiceOver, micrófono físico ni
   recorrido en calle.
-- La espera del modelo (2 s) es un presupuesto propuesto, no una medición del
-  Ollama real; no se llamó a un modelo real ni se inspeccionó el Ollama de
-  Windows. El `warmUpOllama` del servidor usa su propio plazo de 60 s para la
-  precarga, fuera del camino de respuesta.
+- En EA-08 la espera del modelo era un presupuesto propuesto de 2 s, sin
+  medición del Ollama real. Desde EA-27 (#53) es de 4,5 s, un presupuesto
+  elegido con lo medido contra el Ollama real el 10/11/2026, cuando la espera
+  era de 2 s: de 8 consultas desde Render, una agotó los 2 s y las otras
+  tardaron entre 0,8 y 2,5 s en total. La espera de 4,5 s no se ha comprobado
+  todavía en Render. Deja 1,5 s de margen bajo los 6 s que espera la web. El
+  `warmUpOllama` del servidor usa su propio plazo de 60 s para la precarga,
+  fuera del camino de respuesta.
 - **Decisión B:** una frase que solo el modelo resolvería como `gps`/viaje sin
   origen pierde la ubicación (no se adjunta para `unknown`). Es la contrapartida
   directa de AC4; el servidor responde pidiendo origen o permiso.

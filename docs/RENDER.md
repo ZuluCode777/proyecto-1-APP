@@ -133,9 +133,10 @@ panel de Render, en *Environment* del servicio:
 | `OLLAMA_BASE_URL` | `https://<máquina>.<tailnet>.ts.net:8443`: con el puerto si no es el 443, sin barra final ni ruta |
 | `OLLAMA_TOKEN` | el token del proxy, como secreto |
 
-Guarda y despliega (*Manual Deploy > Deploy latest commit*, o reinicia el
-servicio). Render puede mostrar los valores de las variables a quien tenga
-acceso al servicio (no verificado): da ese acceso solo al equipo.
+Guarda y despliega (*Save, rebuild, and deploy*, o *Manual Deploy > Deploy
+latest commit*). Render muestra el valor de una variable en claro mientras se
+edita, a quien tenga acceso al servicio: da ese acceso solo al equipo y no
+hagas capturas de pantalla de esa página.
 
 Reglas del código (`lib/ollama.ts`):
 

@@ -9,6 +9,11 @@ import { findPlaces, findRouteByCode, shortName, type TransmilenioData } from "@
  * clasifica la frase y extrae nombres; la respuesta la arma `runIntent` con
  * los datos reales. Cualquier salida del modelo se valida contra los datos:
  * una estación o una ruta que no existe se descarta y se vuelve a las reglas.
+ *
+ * EA-27 (#53), decisión de A1 del 10/11/2026: con el modelo cargado, responde
+ * primero (salvo las dos intenciones que solo las reglas expresan; ver
+ * `lib/seleccion-interprete.ts`). Sin el modelo cargado responden las reglas al
+ * instante y se lanza su precarga. Si está cargado lo dice `modeloListo`.
  */
 export const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434"
 export const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? ""
@@ -23,20 +28,22 @@ const OLLAMA_TOKEN = (process.env.OLLAMA_TOKEN ?? "").trim()
 const HOSTS_LOCALES = new Set(["127.0.0.1", "[::1]", "localhost"])
 
 /**
- * Tiempo máximo de espera por el modelo. Ya cargado, qwen2.5:3b responde en
- * unos 150 ms en una RTX 3080; si tarda más, es que se está cargando, y el
- * asistente responde con las reglas en vez de dejar a la persona esperando.
+ * Tiempo máximo de espera por el modelo ya cargado; al agotarse, responden las
+ * reglas (ver `lib/seleccion-interprete.ts`).
  *
- * EA-08: presupuesto de 2 s con respaldo inmediato a las reglas. El modelo solo
- * se consulta cuando las reglas no entienden la frase (ver
- * `lib/seleccion-interprete.ts`), así que agotar esta espera no deja a la
- * persona sin respuesta: devuelve la de desconocimiento de reglas enseguida. Es
- * el presupuesto que fija la auditoría frente a los 8 s anteriores; no es una
- * medición del modelo real.
+ * EA-27 (#53), decisión de A1 del 10/11/2026: con el modelo en marcha, ninguna
+ * pregunta debe caer en las reglas por esta espera. De 8 consultas medidas
+ * desde Render contra el Ollama del equipo por el túnel, una agotó los 2 s del
+ * presupuesto anterior (EA-08); las otras tardaron entre 0,8 y 2,5 s en total.
+ * Los 4,5 s dejan 1,5 s de margen bajo la espera de la web (6 s,
+ * `ESPERA_MAXIMA_CLIENTE_MS`) y caben en los 12 s de la app de iPhone.
  */
-const TIMEOUT_MS = 2_000
-/** Cuánto tiempo mantiene Ollama el modelo en memoria sin uso. */
-const KEEP_ALIVE = "1h"
+const TIMEOUT_MS = 4_500
+/**
+ * Cuánto tiempo mantiene Ollama el modelo en memoria sin uso. Cargarlo tarda
+ * más que `TIMEOUT_MS`: un día cubre la jornada sin recargas a mitad.
+ */
+const KEEP_ALIVE = "24h"
 
 /**
  * Intenciones que el modelo puede devolver. El esquema y el prompt salen de
@@ -132,21 +139,64 @@ async function fetchOllama(ruta: string, init: RequestInit & { headers?: Record<
   }
 }
 
+type EstadoOllama = {
+  /** Precarga en curso, para no lanzar otra mientras tanto. */
+  precarga: Promise<void> | null
+  /**
+   * ¿Respondió bien la última precarga o consulta? Empieza en falso. Una
+   * respuesta HTTP correcta y recibida entera lo deja en verdadero, aunque su
+   * contenido no sirva; un error de red, un plazo agotado, un cuerpo que no
+   * llega entero o un estado HTTP de error lo dejan en falso.
+   */
+  cargado: boolean
+}
+/**
+ * El estado vive en `globalThis` y no en variables del módulo: Next compila
+ * una copia de este archivo para `instrumentation.ts` y otra para la ruta, y
+ * con variables del módulo la precarga del arranque no contaba para la primera
+ * pregunta.
+ */
+const almacen = globalThis as typeof globalThis & { __transmivozOllama?: EstadoOllama }
+const estado = (almacen.__transmivozOllama ??= { precarga: null, cargado: false })
+
+/**
+ * ¿Se puede consultar el modelo ahora? Ollama está configurado (con una
+ * dirección segura) y la última precarga o consulta respondió bien. Si no,
+ * responden las reglas sin esperar.
+ */
+export function modeloListo(): boolean {
+  return ollamaConfigured() && estado.cargado
+}
+
 /**
  * Carga el modelo en memoria sin generar nada. La primera carga tarda varios
  * segundos; hacerla antes evita que la primera pregunta real caiga en las
- * reglas por tiempo de espera.
+ * reglas por tiempo de espera. Solo hay una precarga a la vez.
  */
 export function warmUpOllama(): Promise<void> {
-  return fetchOllama("/api/chat", {
+  estado.precarga ??= fetchOllama("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: OLLAMA_MODEL, messages: [], keep_alive: KEEP_ALIVE }),
     signal: AbortSignal.timeout(60_000),
-  }).then(
-    () => undefined,
-    () => undefined,
-  )
+  })
+    .then(async (response) => {
+      // La respuesta solo cuenta si llega entera.
+      await response.arrayBuffer()
+      return response.ok
+    })
+    .then(
+      (ok) => {
+        estado.cargado = ok
+      },
+      () => {
+        estado.cargado = false
+      },
+    )
+    .finally(() => {
+      estado.precarga = null
+    })
+  return estado.precarga
 }
 
 /** Comprueba que Ollama responde y que el modelo está descargado, y lo precarga. */
@@ -170,25 +220,34 @@ export async function ollamaStatus(): Promise<{ reachable: boolean; hasModel: bo
  * use las reglas.
  */
 export async function parseIntentWithOllama(text: string, data: TransmilenioData): Promise<Intent | null> {
-  const response = await fetchOllama("/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: OLLAMA_MODEL,
-      stream: false,
-      format: z.toJSONSchema(Extraction),
-      options: { temperature: 0 },
-      keep_alive: KEEP_ALIVE,
-      messages: [
-        { role: "system", content: system(data) },
-        { role: "user", content: text },
-      ],
-    }),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  })
-  if (!response.ok) throw new Error(`Ollama: HTTP ${response.status}`)
+  let cuerpo: unknown
+  try {
+    const response = await fetchOllama("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        stream: false,
+        format: z.toJSONSchema(Extraction),
+        options: { temperature: 0 },
+        keep_alive: KEEP_ALIVE,
+        messages: [
+          { role: "system", content: system(data) },
+          { role: "user", content: text },
+        ],
+      }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    })
+    if (!response.ok) throw new Error(`Ollama: HTTP ${response.status}`)
+    cuerpo = await response.json()
+  } catch (error) {
+    // También si el cuerpo no llega entero: el plazo puede vencer mientras se lee.
+    estado.cargado = false
+    throw error
+  }
+  estado.cargado = true
 
-  const chat = ChatResponseSchema.safeParse(await response.json())
+  const chat = ChatResponseSchema.safeParse(cuerpo)
   if (!chat.success) return null
   let content: unknown
   try {

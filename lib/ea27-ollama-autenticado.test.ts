@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import snapshot from "../data/transmilenio.json" with { type: "json" }
-import { TOKEN, URL_TUNEL, conOllama, conRuta } from "./ea27-prueba-ollama"
+import { TOKEN, URL_TUNEL, conOllama, conRuta, esConsulta, esPrecarga } from "./ea27-prueba-ollama"
 import { TransmilenioDataSchema } from "./transmilenio"
 
 /**
@@ -36,11 +36,11 @@ test("con token, las tres llamadas a Ollama envían Authorization: Bearer y redi
   })
 })
 
-test("se conservan los plazos (60 s, 3 s, 2 s) y el keep_alive de 1 h", async () => {
+test("se conservan los plazos (60 s, 3 s, 4,5 s) y el keep_alive de 24 h", async () => {
   await conOllama({ ...base, OLLAMA_TOKEN: TOKEN }, async (ollama, llamadas) => {
     await ollama.warmUpOllama()
     assert.equal(llamadas[0].plazoMs, 60_000)
-    assert.equal(llamadas[0].cuerpo?.keep_alive, "1h")
+    assert.equal(llamadas[0].cuerpo?.keep_alive, "24h")
 
     llamadas.length = 0
     await ollama.ollamaStatus()
@@ -49,8 +49,22 @@ test("se conservan los plazos (60 s, 3 s, 2 s) y el keep_alive de 1 h", async ()
 
     llamadas.length = 0
     await ollama.parseIntentWithOllama("dónde estoy", data)
-    assert.equal(llamadas[0].plazoMs, 2_000)
-    assert.equal(llamadas[0].cuerpo?.keep_alive, "1h")
+    // Cabe en la espera de los clientes: 6 s en la web, 12 s en la app de iPhone.
+    assert.equal(llamadas[0].plazoMs, 4_500)
+    assert.equal(llamadas[0].cuerpo?.keep_alive, "24h")
+  })
+})
+
+test("solo hay una precarga a la vez", async () => {
+  await conOllama({ ...base, OLLAMA_TOKEN: TOKEN }, async (ollama, llamadas) => {
+    const primera = ollama.warmUpOllama()
+    const segunda = ollama.warmUpOllama()
+    assert.equal(primera, segunda, "la segunda reutiliza la que está en curso")
+    await primera
+    assert.equal(llamadas.filter(esPrecarga).length, 1)
+
+    await ollama.warmUpOllama()
+    assert.equal(llamadas.filter(esPrecarga).length, 2, "terminada la anterior, se puede precargar de nuevo")
   })
 })
 
@@ -123,14 +137,20 @@ for (const direccion of [
 }
 
 test("GET /api/agent no expone el token ni la dirección, y un fallo del modelo no los registra y responde con reglas", async () => {
-  await conRuta({ ...base, OLLAMA_TOKEN: TOKEN }, { chatFalla: true }, async ({ GET, preguntar, registros }) => {
+  await conRuta({ ...base, OLLAMA_TOKEN: TOKEN }, { chatFalla: true }, async ({ GET, preguntar, registros, llamadas, fijarModelo }) => {
     const respuesta = await GET(new Request("http://localhost/api/agent"))
     const texto = await respuesta.text()
     assert.deepEqual(JSON.parse(texto), { engine: "ollama", model: "qwen2.5:3b", reachable: true, hasModel: true })
     assert.ok(!texto.includes(TOKEN) && !texto.includes("tunel-secreto"))
 
-    // `fetch` falla como el real: la dirección viaja en `cause`.
+    // Con el modelo cargado se le consulta, y la consulta falla como la real:
+    // la dirección viaja en `cause`.
+    await fijarModelo(true)
     const post = await preguntar("quiero ir al planeta marte")
+    assert.equal(llamadas.filter(esConsulta).length, 1, "se consultó al modelo")
+    // Sin esto, un modelo sin cargar no se cargaría nunca: cada pregunta agota
+    // la espera y aborta la carga.
+    assert.equal(llamadas.filter(esPrecarga).length, 1, "tras el fallo se precarga el modelo")
     const cuerpo = await post.text()
     assert.equal(post.status, 200)
     assert.equal(JSON.parse(cuerpo).engine, "reglas", "el respaldo de reglas sigue funcionando")

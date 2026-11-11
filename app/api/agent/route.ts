@@ -3,7 +3,7 @@ import { decidirAccesoDeEntorno, respuestaDeDecision } from "@/lib/autenticacion
 import { leerCuerpoLimitado } from "@/lib/cuerpo-peticion"
 import { claveCliente } from "@/lib/identidad-cliente"
 import { parseIntent, plainReply, runIntent, type AgentContext, type Intent } from "@/lib/local-agent"
-import { OLLAMA_MODEL, ollamaConfigured, ollamaStatus, parseIntentWithOllama } from "@/lib/ollama"
+import { OLLAMA_MODEL, modeloListo, ollamaConfigured, ollamaStatus, parseIntentWithOllama, warmUpOllama } from "@/lib/ollama"
 import { createRateLimiter } from "@/lib/rate-limit"
 import { elegirIntent, requiereModelo } from "@/lib/seleccion-interprete"
 import { getTransmilenioData } from "@/lib/transmilenio-data"
@@ -121,20 +121,30 @@ export async function POST(req: Request) {
 
   const data = await getTransmilenioData()
 
-  // Hallazgo 15 (EA-08): las REGLAS interpretan primero. Si reconocen la frase,
-  // se usan y no se consulta el modelo: responde más rápido y un `unknown` del
-  // modelo no puede anular una intención conocida. El modelo solo se consulta
-  // cuando las reglas no entienden, con un presupuesto corto y respaldo
-  // inmediato a la respuesta de desconocimiento de reglas. Siempre una sola
-  // acción validada por pregunta.
+  // EA-27 (#53), decisión de A1 del 10/11/2026: con el modelo cargado, TODA
+  // pregunta se consulta al modelo; solo responden las reglas cuando no hay
+  // modelo cargado. Excepciones (ver `lib/seleccion-interprete.ts`): `metro` y
+  // `trip_missing_destination` los resuelven siempre las reglas, y un `unknown`
+  // del modelo no anula la intención de las reglas (EA-08, hallazgo 15). La
+  // consulta tiene una espera acotada (`TIMEOUT_MS` en `lib/ollama.ts`). Sin
+  // modelo cargado se responde con reglas al instante y se lanza la precarga
+  // aparte, sin esperarla (hay una sola a la vez). Siempre una sola acción
+  // validada por pregunta.
   const intentDeReglas = parseIntent(message, data)
   let intentDelModelo: Intent | null = null
-  if (ollamaConfigured() && requiereModelo(intentDeReglas)) {
-    try {
-      intentDelModelo = await parseIntentWithOllama(message, data)
-    } catch (error) {
-      // Solo el mensaje: el objeto de error de `fetch` trae en `cause` la dirección de Ollama.
-      console.warn("[agente] Ollama no respondió, uso las reglas:", error instanceof Error ? error.message : "error desconocido")
+  if (ollamaConfigured()) {
+    if (!modeloListo()) {
+      void warmUpOllama()
+    } else if (requiereModelo(intentDeReglas)) {
+      try {
+        intentDelModelo = await parseIntentWithOllama(message, data)
+      } catch (error) {
+        // Solo el mensaje: el objeto de error de `fetch` trae en `cause` la dirección de Ollama.
+        console.warn("[agente] Ollama no respondió, uso las reglas:", error instanceof Error ? error.message : "error desconocido")
+        // El modelo quedó sin cargar (agotar la espera aborta la carga): se
+        // precarga aparte, y hasta entonces responden las reglas.
+        void warmUpOllama()
+      }
     }
   }
 
