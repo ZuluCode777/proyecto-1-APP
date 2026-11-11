@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { ExternalLink, Info, TrainFront } from "lucide-react"
+import { ChevronDown, ExternalLink, Info, TrainFront } from "lucide-react"
 import { ScreenHeader } from "@/components/screen-header"
 import { esUltimaLocucion, useSpeech } from "@/hooks/use-speech"
 import {
@@ -10,6 +10,7 @@ import {
   FUENTES_METRO,
   LINEA_2,
   METRO_CORTE_HABLADO,
+  TEXTO_HOMONIMO,
   TEXTO_LIMITES,
   TEXTO_LINEA_1,
   TEXTO_LINEA_2,
@@ -17,6 +18,9 @@ import {
   describirNombre,
   nombreEstacion,
 } from "@/lib/metro"
+
+/** Lo que dice la voz al entrar y lo que muestra la nota de arriba: el mismo texto. */
+const TEXTO_ESTADO = `${TEXTO_LINEA_1} ${TEXTO_LIMITES} Datos al ${METRO_CORTE_HABLADO}.`
 
 type MetroListProps = {
   onBack: () => void
@@ -35,7 +39,7 @@ export function MetroList({ onBack }: MetroListProps) {
   // salir corta SOLO su propia locución: si el padre habló después (p. ej. el
   // anuncio de cambio de modo), esa voz no es suya y no se toca.
   useEffect(() => {
-    const locucion = speak(`${TEXTO_LINEA_1} ${TEXTO_LIMITES}`, { queue: true })
+    const locucion = speak(TEXTO_ESTADO, { queue: true })
     return () => {
       if (esUltimaLocucion(locucion)) cancel()
     }
@@ -52,27 +56,28 @@ export function MetroList({ onBack }: MetroListProps) {
 
       <p className="mb-3 flex items-start gap-2 rounded-2xl border-3 border-border bg-card p-3 text-base" role="note">
         <Info className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
-        <span>
-          {TEXTO_LINEA_1} {TEXTO_LIMITES} Datos al {METRO_CORTE_HABLADO}.
-        </span>
+        <span>{TEXTO_ESTADO}</span>
       </p>
 
       <h3 className="mb-2 text-xl font-extrabold">Estaciones de la Línea 1</h3>
       <ol className="flex flex-col gap-3" aria-label="Estaciones de la Línea 1 del Metro, de E01 a E16">
         {ESTACIONES_METRO_L1.map((estacion) => (
           <li key={estacion.clave}>
-            <details className="rounded-2xl border-3 border-border bg-card p-4">
-              <summary className="flex min-h-12 cursor-pointer flex-col gap-1 text-xl font-bold">
-                <span>
-                  {estacion.idOficial} · {nombreEstacion(estacion)}
+            <details className="group rounded-2xl border-3 border-border bg-card p-4">
+              <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 text-xl font-bold [&::-webkit-details-marker]:hidden">
+                <span className="flex flex-col gap-1">
+                  <span>
+                    {estacion.idOficial} · {nombreEstacion(estacion)}
+                  </span>
+                  <span className="text-base font-semibold text-muted-foreground">{estacion.corredor}</span>
                 </span>
-                <span className="text-base font-semibold text-muted-foreground">{estacion.corredor}</span>
+                <ChevronDown className="size-6 shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
               </summary>
               <div className="mt-3 flex flex-col gap-2 text-base">
                 <p>{describirNombre(estacion)}</p>
                 <p>Nombre técnico de referencia: {estacion.aliasSig} (archivo de 2022).</p>
                 <p>{describirConexion(estacion)}</p>
-                <p>No tengo ubicación exacta ni accesos validados.</p>
+                <p>No tengo ubicación exacta ni accesos validados. {TEXTO_HOMONIMO}</p>
                 <p className="text-muted-foreground">
                   Fuentes: {estacion.fuentes.filter((id, i, ids) => ids.indexOf(id) === i).join(", ")}
                 </p>

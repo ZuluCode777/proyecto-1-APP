@@ -32,6 +32,15 @@ la fija `METRO_CORTE` en `lib/metro.ts`.
 - Si una frase da un número y un nombre de estación que no coinciden («estación E3
   Calle 72 del metro»), o un número que no existe junto a un nombre, el asistente pide
   aclarar con la acción `none`; no elige una de las dos en silencio.
+- Un nombre suelto que coincide con varias estaciones («metro kennedy»: E03 Ciudad
+  Kennedy y E05 Hospital de Kennedy) también pide aclarar con la acción `none`,
+  nombrando los candidatos.
+- Un nombre suelto como «kennedy» pide aclarar aunque la frase traiga otro nombre («metro
+  timiza kennedy») o un número ajeno («metro estación 7 kennedy»); un número que sea de
+  uno de los candidatos («metro e5 kennedy») sí lo resuelve.
+- Las fichas del asistente y del listado aclaran que, si una estación de TransMilenio tiene
+  el mismo nombre, es otra estación (`TEXTO_HOMONIMO`). La voz del listado dice lo mismo que
+  la nota de estado, incluida la fecha de corte.
 - Al salir del listado se corta solo su propia locución; una voz posterior del padre sigue.
 - Las fechas son previsiones: ningún estado cambia al llegar marzo de 2028.
 - Las 8 conexiones directas, E06/E07 por verificar y la discrepancia de E13 (2019 contra
@@ -39,6 +48,21 @@ la fija `METRO_CORTE` en `lib/metro.ts`.
   contraparte de TransMilenio es `null`.
 - Geometría, accesos, tarifas, frecuencias y tiempos permanecen ausentes. El mapa de
   estaciones sigue pendiente del contrato geoespacial (CRS sin confirmar).
+
+## Contrato iOS
+
+Las respuestas de Metro no cambian la forma del contrato HTTP: `action: "none"`,
+`steps: [{ label, detail? }]`, `engine: "reglas"` y `reply`, sin campos nuevos. El
+decodificador `ios/TransMiVoz/Dominio/RespuestaAgente.swift` rechaza un `reply` vacío o
+de más de `maximoCaracteresTexto = 10_000` caracteres y más de `maximoPasos = 50` pasos.
+
+Medido al cerrar #39 (10 de noviembre de 2026) con las frases de Metro de
+`lib/ea13-metro.test.ts` (estaciones por nombre y número, líneas, rechazos de viaje,
+tarifa y horario, aclaraciones), por el mismo camino que `POST /api/agent`
+(`parseIntent` y `runIntent`): el máximo es **1058 caracteres** (ficha de E13 Central) y
+**8 pasos**, muy por debajo de los límites. Son cifras de esa fecha; la fuente de verdad
+es la prueba, que falla si una respuesta de Metro supera cualquiera de los dos límites o
+añade un campo.
 
 ## Límites de la verificación
 

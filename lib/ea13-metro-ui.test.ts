@@ -84,6 +84,7 @@ test("MetroList: 16 estaciones sin mapa, estado visible, fuentes con enlace y la
   assert.ok(visible.includes(metro.TEXTO_LINEA_1), "estado de la Línea 1 visible")
   assert.match(visible, /11 estaciones proyectadas/)
   assert.match(visible, /No tengo ubicación exacta ni accesos validados/)
+  assert.ok(visible.includes(metro.TEXTO_HOMONIMO), "aviso de homónimos en las fichas")
   assert.doesNotMatch(visible, /accesos publicados/)
 
   const enlaces = nodos(arbol, (n) => n.type === "a").map((n) => n.props.href)
@@ -92,7 +93,24 @@ test("MetroList: 16 estaciones sin mapa, estado visible, fuentes con enlace y la
   assert.equal(nodos(arbol, (n) => n.type === "canvas" || n.type === "svg" || n.props?.["data-mapa"] !== undefined).length, 0)
 
   assert.equal(voz.length, 1)
-  assert.ok(voz[0].startsWith(metro.TEXTO_LINEA_1) && visible.includes(metro.TEXTO_LINEA_1), "voz y texto dicen el mismo estado")
+  const [nota] = nodos(arbol, (n) => n.props?.role === "note")
+  assert.equal(voz[0], texto(nota), "la voz dice exactamente lo que muestra la nota de estado")
+  assert.ok(voz[0].startsWith(metro.TEXTO_LINEA_1) && voz[0].includes(`Datos al ${metro.METRO_CORTE_HABLADO}.`), "con estado, límites y fecha de corte")
+})
+
+test("MetroList: cada estación lleva un indicador decorativo que gira al abrirse", () => {
+  const { MetroList } = compilar("components/metro-list.tsx", dobleCiclo().dobles)
+  const estaciones = nodos(MetroList({ onBack() {} }), (n) => n.type === "details").slice(0, 16)
+  assert.equal(estaciones.length, 16)
+  for (const d of estaciones) {
+    assert.match(String(d.props.className), /\bgroup\b/)
+    const [resumen] = nodos(d, (n) => n.type === "summary")
+    const iconos = nodos(resumen, (n) => n.props["aria-hidden"] === "true" && /group-open:rotate-180/.test(String(n.props.className)))
+    assert.equal(iconos.length, 1, texto(resumen))
+    const clases = String(resumen.props.className)
+    assert.match(clases, /\blist-none\b/, "sin ocultar el marcador nativo habría dos indicadores")
+    assert.ok(clases.includes("[&::-webkit-details-marker]:hidden"), "sin ocultar el marcador nativo de WebKit habría dos indicadores")
+  }
 })
 
 test("MetroList: al salir antes de terminar corta su propia locución", () => {
