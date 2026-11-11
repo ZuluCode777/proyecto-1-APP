@@ -10,6 +10,7 @@
     "test": "node --import ./test/register.mjs --test \"lib/**/*.test.ts\"",
     "sync:transmilenio": "node --import ./test/register.mjs scripts/sync-transmilenio.ts",
     "migrar:paradas-sentido": "node --import ./test/register.mjs scripts/migrar-paradas-sentido.ts",
+    "evaluar:ea27": "node --import ./test/register.mjs scripts/evaluar-ea27.ts",
     "verificar": "node scripts/verificar.mjs"
   },
   "dependencies": {
