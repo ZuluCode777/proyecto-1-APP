@@ -122,7 +122,7 @@ token ni la dirección en el resultado y registra de los errores solo el mensaje
 Corrida del 11/11/2026 en el portátil de desarrollo, en este proceso, sin red
 (`docs/expoandes/ea-27-resultados-reglas.json`, con el detalle de cada frase):
 
-**89 de 100 (89 %).** Latencia p50 0,06 ms, p95 0,3 ms, máximo 2,8 ms; sin
+**89 de 100 (89 %).** Latencia p50 0,06 ms, p95 0,23 ms, máximo 2,9 ms; sin
 errores. Son tiempos de CPU de una máquina concreta: sirven para comparar
 órdenes de magnitud con el modelo, no como objetivo.
 
@@ -173,7 +173,7 @@ acción validada contra el catálogo. Aun así no son un rechazo.
 
 | Motor | Aciertos | p50 | p95 | Errores |
 | --- | --- | --- | --- | --- |
-| `reglas` | 89/100 | 0,06 ms | 0,3 ms | 0 |
+| `reglas` | 89/100 | 0,06 ms | 0,23 ms | 0 |
 | `modelo` | _pendiente_ | _pendiente_ | _pendiente_ | _pendiente_ |
 | `app` (modelo primero, reglas de respaldo) | _pendiente_ | _pendiente_ | _pendiente_ | _pendiente_ |
 
