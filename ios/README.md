@@ -10,6 +10,7 @@ Es un corte mínimo para EA-09 (#35) con soporte de CI iOS-CI (#68). No es una a
 | --- | --- | --- |
 | Sesión | Accesorio **real** por Bluetooth: buscar y elegir, iniciar, detener, reconectar, estado, avisos hablados por auriculares. Hoy **bloqueada por diseño** (no se puede verificar la seguridad del enlace). Una hoja explica el permiso de Bluetooth antes del aviso del sistema. Las pruebas de interfaz recorren esta misma pantalla con un transporte sintético rotulado (`-PRUEBAS_UI_ACCESORIO_SINTETICO`, solo depuración) y, aparte, la sesión simulada. | No |
 | Consulta | Texto → `POST /api/agent` del backend Next existente, con cancelar, reintentar y errores claros. | Sí |
+| Lupa | Imagen en vivo de la cámara trasera, ampliada, con los cuatro filtros de la lupa web, aumento dentro del rango del dispositivo y congelado. Solo amplía la imagen: no reconoce ni describe nada, y la imagen no se guarda ni se envía. | No |
 | Servidor | Origen HTTPS y clave opcional (Llavero si la persona lo pide). | No |
 
 Todas las reglas de transporte siguen en el backend (`lib/local-agent.ts`). La app solo envía el texto, valida la respuesta y la muestra. Esta primera versión **no envía ubicación**.
@@ -26,6 +27,10 @@ Todas las reglas de transporte siguen en el backend (`lib/local-agent.ts`). La a
 ### Respuestas de viaje (`action: trip`)
 
 El texto de un viaje puede traer órdenes de abordaje sin parada, sentido ni vigencia verificados en el cliente. Esta versión **no muestra el texto** de un viaje: muestra un aviso y los tramos como información (el conteo de estaciones solo si `conteoVerificado`). No es una guía de abordaje. El resto de respuestas pasa por una guardia de contenido equivalente a la política del backend (`contieneImperativoDeViaje` y `respuestaSinImperativos` en `lib/local-agent.ts`, la misma que usa la web): si el texto o algún paso contiene una orden («Toma la X en Y», «sube en», «bájate en», «cambia a/en»), la app muestra el aviso seguro «no te doy indicaciones de abordaje» en su lugar y omite los pasos. Las abstenciones que solo mencionan subir o bajar sin ordenar nada se muestran. Esa guardia no planifica nada y el servidor sigue siendo la autoridad (`TransMiVoz/Dominio/GuardiaContenido.swift`; casos en `GuardiaContenidoTests`, repetidos de `lib/local-agent.test.ts`).
+
+### Lupa de la cámara (EA-25, software)
+
+La pantalla explica el uso de la cámara **antes** del aviso de permiso de iOS; con el permiso denegado o restringido dice cómo activarlo («Abrir Ajustes») y el resto de la app sigue igual. La cámara solo está abierta con la pestaña a la vista y la escena activa: al salir de la pestaña, pasar a segundo plano o bloquear el iPhone se suelta la sesión y el dispositivo. Si la persona sale antes de contestar al aviso, la respuesta tardía no abre nada. La sesión de captura corre en una cola propia, fuera del hilo principal. Sin cámara (Simulator) la pantalla lo dice. Los filtros usan Core Image con valores traducidos a ojo de los filtros CSS de la web: **sin calibrar con la cámara real**. El aumento sale del dispositivo (mínimo y máximo que él declara, con tope de 10×). **No hay prueba con cámara, iPhone ni VoiceOver reales.**
 
 ### Sesión con el accesorio real (EA-15, software)
 
@@ -47,7 +52,7 @@ Usa el paquete [`ContratoBLE`](ContratoBLE/README.md) con `modo: .simulada` y un
 ios/
   TransMiVoz.xcodeproj/        proyecto + xcshareddata/xcschemes/TransMiVoz.xcscheme
   TransMiVoz/                  app (grupo sincronizado: todo archivo nuevo entra solo)
-    Dominio/ Red/ Estado/ Sesion/ Accesorio/ Vistas/ Simulacion/ Assets.xcassets
+    Dominio/ Red/ Estado/ Sesion/ Accesorio/ Lupa/ Vistas/ Simulacion/ Assets.xcassets
   TransMiVozTests/             XCTest de lógica, HTTP simulado, BLE compartido
   TransMiVozUITests/           recorridos de interfaz + auditoría de accesibilidad
   ContratoBLE/                 paquete local del contrato BLE (otro responsable)
@@ -68,7 +73,7 @@ ios/scripts/comprobar-ios.sh todo         # compila, prueba y compila para iPhon
 
 Cada ejecución local escribe en una carpeta nueva `ios/salida/<fecha UTC>-<pid>/` (logs crudos de `xcodebuild`, `.xcresult`, `herramientas.txt`); el script imprime la ruta al empezar y **no borra ni pisa nada**. Para abrir un resultado: `open ios/salida/<carpeta>/pruebas-simulador.xcresult`. Pasos sueltos: `compilar-simulador`, `pruebas-simulador`, `compilar-dispositivo`; para que varios pasos compartan carpeta, fija `SALIDA=ios/salida/mi-corrida` (ruta que no exista aún: si ya hay un resultado del mismo paso, el script falla y te dice cuál). Limpiar resultados viejos es cosa tuya. Autocomprobación del script (sin Xcode): `ios/scripts/probar-comprobar-ios.sh`. Si tu Xcode o tu Simulator difieren de los de la CI, el script puede fallar al elegir destino a propósito; puedes fijar `SIMULADOR_NOMBRE` e `IOS_MAYOR_ESPERADO` (ver cabecera del script). En Xcode: elige el esquema **TransMiVoz** y un iPhone Simulator, Cmd+U ejecuta todas las pruebas.
 
-Las pruebas de interfaz arrancan la app con `-PRUEBAS_UI_SIMULADAS` (solo en compilaciones de depuración): cliente HTTP simulado, Llavero en memoria, sin red, sesión simulada. Las de la pantalla del accesorio usan `-PRUEBAS_UI_ACCESORIO_SINTETICO` (con `-PRUEBAS_UI_ACCESORIO_PERMISO_CONCEDIDO` o `-PRUEBAS_UI_ACCESORIO_PERMISO_DENEGADO` para las variantes): la misma vista y sesión de producción con un transporte sintético que la pantalla rotula, sin Bluetooth, audio ni red y con el bloqueo por enlace no verificado intacto. Palabras clave de la consulta: `error401`, `error429`, `sinred`, `lento`, `viaje`, `orden`.
+Las pruebas de interfaz arrancan la app con `-PRUEBAS_UI_SIMULADAS` (solo en compilaciones de depuración): cliente HTTP simulado, Llavero en memoria, sin red, sesión simulada. Las de la pantalla del accesorio usan `-PRUEBAS_UI_ACCESORIO_SINTETICO` (con `-PRUEBAS_UI_ACCESORIO_PERMISO_CONCEDIDO` o `-PRUEBAS_UI_ACCESORIO_PERMISO_DENEGADO` para las variantes): la misma vista y sesión de producción con un transporte sintético que la pantalla rotula, sin Bluetooth, audio ni red y con el bloqueo por enlace no verificado intacto. Las de la lupa añaden a `-PRUEBAS_UI_SIMULADAS` una cámara sintética que la pantalla rotula («Modo de pruebas: imagen sintética, sin cámara real»), con permiso por preguntar (el «sistema» concede) o, con `-PRUEBAS_UI_LUPA_PERMISO_CONCEDIDO`, `-PRUEBAS_UI_LUPA_PERMISO_DENEGADO` o `-PRUEBAS_UI_LUPA_SIN_CAMARA`, las demás variantes. Palabras clave de la consulta: `error401`, `error429`, `sinred`, `lento`, `viaje`, `orden`.
 
 ## Firmar, instalar y recuperar (iPhone real)
 
@@ -97,6 +102,6 @@ Recuperación (solo estas):
 
 ## Límites de la evidencia
 
-Esta carpeta, el Simulator y el build sin firma permiten detectar errores de código, de contrato y de interfaz. **No** validan: firma ni instalación en iPhone, enlace BLE o radar reales, emparejamiento, latencia sensor→auricular, dictado, VoiceOver real, audio por auriculares, permisos de micrófono/ubicación (la app no los solicita; el de Bluetooth sí, al buscar o iniciar, sin probar en un iPhone), segundo plano ni autonomía. Un artefacto del Simulator o el build `generic/platform=iOS` sin firma **no se instala en un iPhone**. Esas pruebas siguen abiertas en #35, #48 y los demás issues de producto.
+Esta carpeta, el Simulator y el build sin firma permiten detectar errores de código, de contrato y de interfaz. **No** validan: firma ni instalación en iPhone, enlace BLE o radar reales, emparejamiento, latencia sensor→auricular, dictado, VoiceOver real, audio por auriculares, permisos de micrófono/ubicación (la app no los solicita; el de Bluetooth sí, al buscar o iniciar, y el de cámara, al continuar en la lupa, ambos sin probar en un iPhone), la cámara ni sus filtros y aumento reales, segundo plano ni autonomía. Un artefacto del Simulator o el build `generic/platform=iOS` sin firma **no se instala en un iPhone**. Esas pruebas siguen abiertas en #35, #48 y los demás issues de producto.
 
 Fuera de este corte: mapas, rediseño completo, dictado, unificación de avisos (EA-20), ubicación en la consulta.

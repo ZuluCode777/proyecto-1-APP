@@ -1036,3 +1036,130 @@ final class TransMiVozContrasteNegativoUITests: XCTestCase {
         XCTAssertFalse(fase.libro.diferidos.keys.contains { $0.identificador == id }, "El contraste visible no puede diferirse")
     }
 }
+
+/// La pantalla real de la lupa (`LupaVista`) con la cámara SINTÉTICA de las pruebas de interfaz (`CamaraSintetica`,
+/// rotulada en pantalla): el Simulator no tiene cámara. Demuestran el flujo del permiso, los controles y el ciclo de vida
+/// de la interfaz; no prueban la cámara real, el aumento del dispositivo, los filtros sobre imagen real ni VoiceOver.
+final class TransMiVozLupaUITests: XCTestCase {
+    private var app: XCUIApplication!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    private func lanzar(_ extra: [String] = []) {
+        app = XCUIApplication()
+        app.launchArguments += ["-PRUEBAS_UI_SIMULADAS"] + extra + [
+            "-AppleLanguages", "(es)", "-AppleLocale", "es_CO", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
+        ]
+        app.launch()
+        addTeardownBlock { [app] in app?.terminate() }
+        abrirPestana("Lupa")
+    }
+
+    private func elemento(_ identificador: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identificador).firstMatch
+    }
+
+    private func abrirPestana(_ nombre: String) {
+        let pestana = app.tabBars.buttons[nombre]
+        XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña \(nombre)")
+        pestana.tap()
+        esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña \(nombre)")
+    }
+
+    func testElPermisoSeExplicaAntesYLuegoLaLupaMuestraSusControles() throws {
+        lanzar()
+        XCTAssertTrue(elemento("aviso-camara-sintetica").waitForExistence(timeout: 10), "debe rotular la cámara sintética")
+        XCTAssertTrue(elemento("texto-permiso-camara").waitForExistence(timeout: 10), "la explicación va antes del permiso")
+        XCTAssertFalse(elemento("visor-lupa").exists, "sin permiso no hay imagen")
+        elemento("boton-permiso-camara-continuar").tap()
+
+        let visor = elemento("visor-lupa")
+        XCTAssertTrue(visor.waitForExistence(timeout: 10))
+        esperar(visor, "value == %@", "Imagen en vivo", "La lupa no quedó activa")
+        XCTAssertEqual(visor.label, "Imagen ampliada de la cámara. VoiceOver no describe lo que aparece en ella.")
+
+        // Aumento: el rango lo da el dispositivo (la cámara sintética ofrece de 1 a 8).
+        exponer("control-aumento", en: app)
+        let aumento = elemento("control-aumento")
+        esperar(aumento, "value == %@", "1 aumento", "El aumento no parte de 1")
+        aumento.adjust(toNormalizedSliderPosition: 1)
+        esperar(aumento, "value == %@", "8 aumentos", "El aumento no llegó al máximo del dispositivo")
+
+        // Filtros: uno elegido a la vez, también por marca y no solo por color.
+        exponer("filtro-invertir", en: app)
+        XCTAssertTrue(elemento("filtro-contraste").isSelected, "parte con «Alto contraste»")
+        elemento("filtro-invertir").tap()
+        esperar(elemento("filtro-invertir"), "isSelected == %@", true, "No se eligió «Invertir»")
+        XCTAssertFalse(elemento("filtro-contraste").isSelected)
+
+        // Congelar y reanudar.
+        exponer("boton-congelar", en: app)
+        let congelar = elemento("boton-congelar")
+        XCTAssertEqual(congelar.label, "Congelar imagen")
+        congelar.tap()
+        esperar(congelar, "label == %@", "Reanudar", "No se congeló la imagen")
+        XCTAssertEqual(visor.value as? String, "Imagen congelada")
+        congelar.tap()
+        esperar(congelar, "label == %@", "Congelar imagen", "No se reanudó la imagen")
+        XCTAssertEqual(visor.value as? String, "Imagen en vivo")
+    }
+
+    func testSalirDeLaPestanaDescongelaYAlVolverLaImagenEsEnVivo() throws {
+        lanzar(["-PRUEBAS_UI_LUPA_PERMISO_CONCEDIDO"])
+        XCTAssertFalse(elemento("texto-permiso-camara").exists, "con el permiso ya dado no se vuelve a explicar")
+        exponer("boton-congelar", en: app)
+        elemento("boton-congelar").tap()
+        esperar(elemento("boton-congelar"), "label == %@", "Reanudar", "No se congeló la imagen")
+
+        abrirPestana("Consulta")
+        XCTAssertTrue(elemento("campo-pregunta").waitForExistence(timeout: 10))
+        abrirPestana("Lupa")
+        let visor = elemento("visor-lupa")
+        XCTAssertTrue(visor.waitForExistence(timeout: 10))
+        esperar(visor, "value == %@", "Imagen en vivo", "Al volver, la lupa debe reabrir en vivo y sin congelar")
+        exponer("boton-congelar", en: app)
+        XCTAssertEqual(elemento("boton-congelar").label, "Congelar imagen")
+    }
+
+    func testPermisoDenegadoDaAyudaYElRestoDeLaAppSigueFuncionando() throws {
+        lanzar(["-PRUEBAS_UI_LUPA_PERMISO_DENEGADO"])
+        let continuar = elemento("boton-permiso-camara-continuar")
+        XCTAssertTrue(continuar.waitForExistence(timeout: 10))
+        continuar.tap()
+        XCTAssertTrue(elemento("boton-abrir-ajustes-camara").waitForExistence(timeout: 10), "debe ofrecer cómo activarlo")
+        XCTAssertEqual(elemento("estado-lupa").label, "Sin permiso de cámara. Actívalo en Ajustes, en TransMiVoz.")
+        XCTAssertFalse(elemento("visor-lupa").exists)
+        XCTAssertFalse(continuar.exists)
+        // Denegar nunca bloquea el resto de la app.
+        abrirPestana("Consulta")
+        XCTAssertTrue(elemento("campo-pregunta").waitForExistence(timeout: 10))
+    }
+
+    func testSinCamaraSeDiceYNoSePideNada() throws {
+        lanzar(["-PRUEBAS_UI_LUPA_SIN_CAMARA"])
+        let estado = elemento("estado-lupa")
+        XCTAssertTrue(estado.waitForExistence(timeout: 10))
+        XCTAssertEqual(estado.label, "Este dispositivo no tiene cámara disponible.")
+        XCTAssertFalse(elemento("boton-permiso-camara-continuar").exists)
+        XCTAssertFalse(elemento("visor-lupa").exists)
+    }
+
+    // MARK: Auditoría de accesibilidad de la pantalla real
+
+    func testAuditoriaAccesibilidadExplicacionDelPermisoDeLaCamara() throws {
+        lanzar()
+        XCTAssertTrue(elemento("boton-permiso-camara-continuar").waitForExistence(timeout: 10))
+        try auditar(app, "lupa-explicacion-permiso", testCase: self)
+    }
+
+    func testAuditoriaAccesibilidadPermisoDeLaCamaraDenegado() throws {
+        lanzar(["-PRUEBAS_UI_LUPA_PERMISO_DENEGADO"])
+        let continuar = elemento("boton-permiso-camara-continuar")
+        XCTAssertTrue(continuar.waitForExistence(timeout: 10))
+        continuar.tap()
+        XCTAssertTrue(elemento("boton-abrir-ajustes-camara").waitForExistence(timeout: 10))
+        try auditar(app, "lupa-permiso-denegado", testCase: self)
+    }
+}
