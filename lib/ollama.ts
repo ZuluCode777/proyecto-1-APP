@@ -139,14 +139,25 @@ async function fetchOllama(ruta: string, init: RequestInit & { headers?: Record<
   }
 }
 
-/** Precarga en curso, para no lanzar otra mientras tanto. */
-let precarga: Promise<void> | null = null
+type EstadoOllama = {
+  /** Precarga en curso, para no lanzar otra mientras tanto. */
+  precarga: Promise<void> | null
+  /**
+   * ¿Respondió bien la última precarga o consulta? Empieza en falso. Una
+   * respuesta HTTP correcta y recibida entera lo deja en verdadero, aunque su
+   * contenido no sirva; un error de red, un plazo agotado, un cuerpo que no
+   * llega entero o un estado HTTP de error lo dejan en falso.
+   */
+  cargado: boolean
+}
 /**
- * ¿Respondió bien la última precarga o consulta? Empieza en falso. Una
- * respuesta HTTP correcta lo deja en verdadero, aunque su contenido no sirva;
- * un error de red, un plazo agotado o un estado HTTP de error lo dejan en falso.
+ * El estado vive en `globalThis` y no en variables del módulo: Next compila
+ * una copia de este archivo para `instrumentation.ts` y otra para la ruta, y
+ * con variables del módulo la precarga del arranque no contaba para la primera
+ * pregunta.
  */
-let modeloCargado = false
+const almacen = globalThis as typeof globalThis & { __transmivozOllama?: EstadoOllama }
+const estado = (almacen.__transmivozOllama ??= { precarga: null, cargado: false })
 
 /**
  * ¿Se puede consultar el modelo ahora? Ollama está configurado (con una
@@ -154,7 +165,7 @@ let modeloCargado = false
  * responden las reglas sin esperar.
  */
 export function modeloListo(): boolean {
-  return ollamaConfigured() && modeloCargado
+  return ollamaConfigured() && estado.cargado
 }
 
 /**
@@ -163,24 +174,29 @@ export function modeloListo(): boolean {
  * reglas por tiempo de espera. Solo hay una precarga a la vez.
  */
 export function warmUpOllama(): Promise<void> {
-  precarga ??= fetchOllama("/api/chat", {
+  estado.precarga ??= fetchOllama("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: OLLAMA_MODEL, messages: [], keep_alive: KEEP_ALIVE }),
     signal: AbortSignal.timeout(60_000),
   })
+    .then(async (response) => {
+      // La respuesta solo cuenta si llega entera.
+      await response.arrayBuffer()
+      return response.ok
+    })
     .then(
-      (response) => {
-        modeloCargado = response.ok
+      (ok) => {
+        estado.cargado = ok
       },
       () => {
-        modeloCargado = false
+        estado.cargado = false
       },
     )
     .finally(() => {
-      precarga = null
+      estado.precarga = null
     })
-  return precarga
+  return estado.precarga
 }
 
 /** Comprueba que Ollama responde y que el modelo está descargado, y lo precarga. */
@@ -204,29 +220,34 @@ export async function ollamaStatus(): Promise<{ reachable: boolean; hasModel: bo
  * use las reglas.
  */
 export async function parseIntentWithOllama(text: string, data: TransmilenioData): Promise<Intent | null> {
-  const response = await fetchOllama("/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: OLLAMA_MODEL,
-      stream: false,
-      format: z.toJSONSchema(Extraction),
-      options: { temperature: 0 },
-      keep_alive: KEEP_ALIVE,
-      messages: [
-        { role: "system", content: system(data) },
-        { role: "user", content: text },
-      ],
-    }),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  }).catch((error) => {
-    modeloCargado = false
+  let cuerpo: unknown
+  try {
+    const response = await fetchOllama("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        stream: false,
+        format: z.toJSONSchema(Extraction),
+        options: { temperature: 0 },
+        keep_alive: KEEP_ALIVE,
+        messages: [
+          { role: "system", content: system(data) },
+          { role: "user", content: text },
+        ],
+      }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    })
+    if (!response.ok) throw new Error(`Ollama: HTTP ${response.status}`)
+    cuerpo = await response.json()
+  } catch (error) {
+    // También si el cuerpo no llega entero: el plazo puede vencer mientras se lee.
+    estado.cargado = false
     throw error
-  })
-  modeloCargado = response.ok
-  if (!response.ok) throw new Error(`Ollama: HTTP ${response.status}`)
+  }
+  estado.cargado = true
 
-  const chat = ChatResponseSchema.safeParse(await response.json())
+  const chat = ChatResponseSchema.safeParse(cuerpo)
   if (!chat.success) return null
   let content: unknown
   try {

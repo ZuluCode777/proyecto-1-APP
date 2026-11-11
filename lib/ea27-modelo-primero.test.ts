@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import snapshot from "../data/transmilenio.json" with { type: "json" }
-import { TOKEN, URL_TUNEL, conOllama, conRuta, esConsulta, esPrecarga, type Llamada, type OpcionesFetch } from "./ea27-prueba-ollama"
+import { TOKEN, URL_TUNEL, conOllama, conRuta, copiaDeOllama, esConsulta, esPrecarga, type Llamada, type OpcionesFetch } from "./ea27-prueba-ollama"
 import { parseIntent, runIntent, type Intent } from "./local-agent"
 import { elegirIntent, requiereModelo } from "./seleccion-interprete"
 import { TransmilenioDataSchema } from "./transmilenio"
@@ -22,6 +22,12 @@ const modelo = (intent: string, campos: Record<string, string> = {}) => ({ inten
 type OpcionesCambio = Pick<OpcionesFetch, "contenido" | "estadoChat">
 const consultas = (llamadas: Llamada[]) => llamadas.filter(esConsulta).length
 const precargas = (llamadas: Llamada[]) => llamadas.filter(esPrecarga).length
+/** Una promesa que deja la precarga simulada en curso hasta llamar a `soltar`. */
+function precargaEnCurso() {
+  let soltar = () => {}
+  const espera = new Promise<void>((resolver) => (soltar = resolver))
+  return { espera, soltar }
+}
 
 const FRASE_METRO_VIAJE = "quiero ir en metro a la calle 72"
 const FRASE_METRO_LINEA = "cómo funciona la línea 2 del metro"
@@ -132,7 +138,7 @@ test("modeloListo: una consulta correcta lo activa, aunque su contenido no sirva
   })
 })
 
-test("modeloListo: una consulta que falla (red, plazo o estado HTTP de error) lo desactiva", async () => {
+test("modeloListo: una consulta que falla (error de red o estado HTTP de error) lo desactiva", async () => {
   await conOllama(ENTORNO, async (ollama, _llamadas, opciones) => {
     await ollama.warmUpOllama()
     assert.equal(ollama.modeloListo(), true)
@@ -148,6 +154,44 @@ test("modeloListo: una consulta que falla (red, plazo o estado HTTP de error) lo
     opciones.estadoChat = 500
     await assert.rejects(ollama.parseIntentWithOllama("hola", data), /HTTP 500/)
     assert.equal(ollama.modeloListo(), false, "estado HTTP de error")
+  })
+})
+
+test("modeloListo: una respuesta que no llega entera lo desactiva, en la consulta y en la precarga", async () => {
+  await conOllama(ENTORNO, async (ollama, _llamadas, opciones) => {
+    await ollama.warmUpOllama()
+    assert.equal(ollama.modeloListo(), true)
+
+    opciones.cuerpoFalla = true
+    await assert.rejects(ollama.parseIntentWithOllama("hola", data))
+    assert.equal(ollama.modeloListo(), false, "consulta")
+
+    opciones.cuerpoFalla = false
+    await ollama.warmUpOllama()
+    assert.equal(ollama.modeloListo(), true)
+
+    opciones.cuerpoFalla = true
+    await ollama.warmUpOllama()
+    assert.equal(ollama.modeloListo(), false, "precarga")
+  })
+})
+
+test("modeloListo: lo comparten las copias del módulo, como la del arranque y la de la ruta en el servidor compilado", async () => {
+  await conOllama(ENTORNO, async (arranque, llamadas, opciones) => {
+    const ruta = await copiaDeOllama()
+    assert.equal(ruta.modeloListo(), false)
+    await arranque.warmUpOllama()
+    assert.equal(ruta.modeloListo(), true, "la precarga del arranque cuenta para la ruta")
+
+    // Una precarga en curso en una copia también lo está para la otra.
+    const { espera, soltar } = precargaEnCurso()
+    opciones.precargaEspera = espera
+    llamadas.length = 0
+    const enCurso = arranque.warmUpOllama()
+    const repetida = ruta.warmUpOllama()
+    soltar()
+    await Promise.all([enCurso, repetida])
+    assert.equal(precargas(llamadas), 1)
   })
 })
 
@@ -239,7 +283,7 @@ test("modelo listo: metro y trip_missing_destination no consultan al modelo, aun
   })
 })
 
-test("modelo no cargado: no se consulta, responden las reglas al instante y se lanza una precarga", async () => {
+test("modelo no cargado: no se consulta, responden las reglas y se lanza una precarga", async () => {
   await conRuta(ENTORNO, {}, async ({ preguntar, llamadas, fijarModelo, ollama }) => {
     await fijarModelo(false)
     assert.equal(ollama.modeloListo(), false)
@@ -253,6 +297,37 @@ test("modelo no cargado: no se consulta, responden las reglas al instante y se l
       // Deja terminar la precarga fallida antes de la frase siguiente.
       await new Promise((resolver) => setImmediate(resolver))
     }
+  })
+})
+
+test("modelo no cargado: la respuesta no espera a la precarga, y mientras dura no se lanza otra", async () => {
+  await conRuta(ENTORNO, {}, async ({ preguntar, llamadas, fijarModelo, ollama, opciones }) => {
+    await fijarModelo(false)
+    opciones.precargaFalla = false
+    const { espera, soltar } = precargaEnCurso()
+    opciones.precargaEspera = espera
+    try {
+      // Si la ruta esperara la precarga, estas preguntas no terminarían.
+      for (const frase of ["información de la B23", "cuándo llega el bus"]) {
+        const respuesta = await Promise.race([
+          preguntar(frase),
+          new Promise<never>((_resolver, rechazar) => setTimeout(() => rechazar(new Error(`«${frase}» esperó a la precarga`)), 1_000).unref()),
+        ])
+        const json = await respuesta.json()
+        assert.equal(json.engine, "reglas", frase)
+      }
+      assert.equal(consultas(llamadas), 0)
+      assert.equal(precargas(llamadas), 1, "una sola precarga para las dos preguntas")
+      assert.equal(ollama.modeloListo(), false, "sin cargar mientras la precarga no termina")
+    } finally {
+      soltar()
+      opciones.precargaEspera = undefined
+    }
+
+    await ollama.warmUpOllama()
+    assert.equal(ollama.modeloListo(), true)
+    const json = await (await preguntar("información de la B23")).json()
+    assert.equal(json.engine, "ollama", "con la precarga terminada, responde el modelo")
   })
 })
 

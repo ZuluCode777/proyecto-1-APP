@@ -6,10 +6,11 @@ import { pathToFileURL } from "node:url"
  * carga una copia FRESCA del módulo (query distinta, como en
  * `ea08-reglas-cancelacion.test.ts`). El `POST`/`GET` de la ruta importa
  * `@/lib/ollama` SIN query, y ese módulo se queda en caché para todo el
- * proceso (con su estado de «modelo cargado»): por eso cada entorno distinto
- * de los casos de ruta vive en su propio archivo de prueba (`node --test` corre
- * cada archivo en un proceso aparte), y cada caso fija ese estado a propósito
- * con `fijarModelo`.
+ * proceso, con el entorno que leyó: por eso cada entorno distinto de los casos
+ * de ruta vive en su propio archivo de prueba (`node --test` corre cada archivo
+ * en un proceso aparte). El estado de «modelo cargado» vive en `globalThis` y
+ * lo comparten las copias que se cargan mientras exista: cada caso lo borra al
+ * empezar, y los de ruta lo fijan a propósito con `fijarModelo`.
  */
 const raiz = pathToFileURL(process.cwd() + "/")
 export const TOKEN = "token-de-prueba-0123456789"
@@ -92,6 +93,10 @@ export type OpcionesFetch = {
   chatFalla?: boolean
   /** Las precargas (chat sin mensajes) fallan como un error de red. */
   precargaFalla?: boolean
+  /** Las precargas no responden hasta que esta promesa se resuelva. */
+  precargaEspera?: Promise<void>
+  /** Las respuestas de chat, consultas y precargas, llegan con un cuerpo que se corta al leerlo. */
+  cuerpoFalla?: boolean
   /** Estado HTTP de las respuestas de chat, consultas y precargas (200 por defecto). */
   estadoChat?: number
   /** Cuerpo completo de la respuesta de chat, sin el envoltorio `message.content` (p. ej. uno sin `message`). */
@@ -127,11 +132,16 @@ function simularOllama(llamadas: Llamada[], plazos: WeakMap<AbortSignal, number>
       cuerpo,
       plazoMs: init?.signal ? plazos.get(init.signal) : undefined,
     })
+    if (precarga) await opciones.precargaEspera
     if (esChat && (precarga ? opciones.precargaFalla : opciones.chatFalla)) {
       // Como el real: la dirección viaja en `cause`.
       throw new TypeError("fetch failed", { cause: new Error("getaddrinfo ENOTFOUND tunel-secreto.example") })
     }
     if (esTags) return new Response(JSON.stringify({ models: [{ name: "qwen2.5:3b" }] }))
+    if (opciones.cuerpoFalla) {
+      const cortado = new ReadableStream({ start: (control) => control.error(new TypeError("terminated")) })
+      return new Response(cortado, { status: opciones.estadoChat ?? 200 })
+    }
     if (opciones.cuerpo !== undefined) return new Response(JSON.stringify(opciones.cuerpo), { status: opciones.estadoChat ?? 200 })
     const contenido = opciones.contenido ?? CONTENIDO_GPS
     const texto = typeof contenido === "string" ? contenido : JSON.stringify(contenido)
@@ -146,6 +156,8 @@ async function conSimulacion<T>(entorno: EntornoPrueba, opciones: OpcionesFetch,
   const deshacerPlazos = registrarPlazos(plazos)
   const llamadas: Llamada[] = []
   globalThis.fetch = simularOllama(llamadas, plazos, opciones)
+  // Cada caso parte sin el estado compartido de `lib/ollama.ts`.
+  delete (globalThis as { __transmivozOllama?: unknown }).__transmivozOllama
   try {
     return await prueba(llamadas)
   } finally {
@@ -153,6 +165,11 @@ async function conSimulacion<T>(entorno: EntornoPrueba, opciones: OpcionesFetch,
     deshacerPlazos()
     restaurar()
   }
+}
+
+/** Carga una copia nueva de `lib/ollama.ts`, que lee el entorno de ese momento. */
+export function copiaDeOllama(): Promise<typeof import("./ollama")> {
+  return import(new URL(`lib/ollama.ts?ea27=${contadorCaso++}`, raiz).href)
 }
 
 /**
@@ -165,8 +182,7 @@ export function conOllama(
   opciones: OpcionesFetch = {},
 ) {
   return conSimulacion(entorno, opciones, async (llamadas) => {
-    const ollama = await import(new URL(`lib/ollama.ts?ea27=${contadorCaso++}`, raiz).href)
-    await prueba(ollama, llamadas, opciones)
+    await prueba(await copiaDeOllama(), llamadas, opciones)
   })
 }
 

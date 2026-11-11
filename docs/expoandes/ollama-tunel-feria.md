@@ -31,7 +31,7 @@ desde Render. Lo que se ejecutó y lo que no está en
   solo en el entorno del proceso de Caddy y en el panel de Render.
 - **No hagas capturas de pantalla del panel de Render con el valor a la
   vista.** Mientras editas una variable, Render la muestra en claro. Una
-  captura con el token es un token filtrado (paso 8.7).
+  captura con el token es un token filtrado (paso 8.8).
 - Carpeta de trabajo en `D:`, fuera del repositorio: `D:\transmivoz-tunel`.
 - Para detener algo, usa el PID del proceso que tú lanzaste. No detengas
   procesos por nombre.
@@ -266,9 +266,11 @@ dirección es estable mientras la tailnet no cambie.
    `https://<máquina>.<tailnet>.ts.net:8443`, con el puerto y sin barra final.
    Compruébala desde fuera de la tailnet (un celular con datos móviles), como
    dice `SELF-HOSTING.md`: desde un equipo de la tailnet el nombre no pasa por
-   Funnel. Desde un equipo de la tailnet se puede forzar la dirección pública
-   con `curl --resolve <máquina>.<tailnet>.ts.net:8443:<IP pública>`, donde la
-   IP sale de `dig +short @1.1.1.1 <máquina>.<tailnet>.ts.net`.
+   Funnel. Desde un equipo de la tailnet con Linux o macOS se puede forzar la
+   dirección pública con `curl --resolve <máquina>.<tailnet>.ts.net:8443:<IP pública>`,
+   donde la IP sale de `dig +short @1.1.1.1 <máquina>.<tailnet>.ts.net`. Esos
+   dos comandos son de Bash: en PowerShell, `curl` es otro comando y no hay
+   `dig`.
 
 Según la documentación de Tailscale, Funnel solo escucha en los puertos 443,
 8443 y 10000, requiere MagicDNS y HTTPS activados en la tailnet y el atributo
@@ -442,12 +444,15 @@ recibe 403 y responde con reglas. Un token nunca se reutiliza.
   que los 6 s que espera la web. Si el equipo está apagado, el túnel caído o el
   modelo tarda más, responden las reglas, el modelo se da por no cargado y se
   lanza su precarga.
-- Cargar el modelo en memoria tarda más que esa espera. Mientras no está
-  cargado (primer uso tras encender el equipo, o tras 24 h sin uso), las reglas
-  responden al instante y cada pregunta lanza la precarga (solo una a la vez);
-  cuando termina, las siguientes ya van al modelo. Para evitarlo, abre
-  `/diagnostico` antes de abrir el puesto: `GET /api/agent` también lo precarga,
-  igual que el arranque del servidor.
+- Cargar el modelo en memoria tarda más que esa espera. Mientras el servidor
+  lo da por no cargado (al arrancar, hasta que termina la precarga, o tras un
+  fallo), las reglas responden al instante y cada pregunta lanza la precarga
+  (solo una a la vez); cuando termina, las siguientes ya van al modelo.
+- El servidor no sabe que Ollama sacó el modelo de la memoria (tras 24 h sin
+  uso, o al reiniciar Ollama o el equipo) hasta la consulta siguiente. Esa
+  pregunta puede esperar los 4,5 s antes de la respuesta de reglas. Para
+  evitarlo, abre `/diagnostico` antes de abrir el puesto: `GET /api/agent`
+  también precarga el modelo, igual que el arranque del servidor.
 - Mientras está cargado, el modelo ocupa unos 2 GB de memoria de la tarjeta
   gráfica (lectura de `ollama ps` en «Comprobado»), hasta 24 h después de la
   última pregunta.
@@ -481,19 +486,25 @@ v2.11.9) y contra el servicio de Render:
   la espera aborta la carga. Por eso un fallo del modelo lanza ahora la
   precarga.
 - `ollama ps` mostró 2,01 GB para qwen2.5:3b con contexto 4096 el 10/11/2026.
+- Con Caddy parado, la dirección del 8443 respondió 502 en centésimas de
+  segundo (medido desde un equipo de la tailnet el 11/11/2026). El caso del
+  equipo apagado sigue sin medir.
 - Con Caddy en marcha, `%AppData%\Caddy\autosave.json` no existe.
 - *Save, rebuild, and deploy* desplegó el último commit de `main`.
 - Render muestra el valor de una variable en claro mientras se edita (visto en
   el panel el 10/11/2026).
 - Comparación fuera de línea, el 10/11/2026, de las reglas con el modelo real
-  en 36 frases: 21 respuestas idénticas. La inferencia del modelo tarda
+  en 36 frases, con la política de «el modelo primero». El modelo responde 25:
+  en 21 da lo mismo que las reglas y en 4 algo distinto. Otras 7 son consultas
+  del Metro que las reglas reconocen y no se consultan. En las 4 restantes el
+  modelo no entiende y responden las reglas. De las 4 respuestas distintas, 2
+  son peores («cómo llego desde Narnia a Ricaurte» cambia el origen desconocido
+  por Nariño; «¿hay algo que me deje en las aguas?» da gps en vez de un viaje a
+  Las Aguas) y 2 mejores («llévame al portal de Suba» da Portal Suba; «cuándo
+  llega el bus» da tiempo real). Sin la excepción del Metro, 2 de esas 7
+  consultas se habrían respondido mal. La inferencia del modelo tarda
   0,15–0,2 s en la red local; los 0,8–2,5 s vistos desde Render son sobre todo
-  red. Con la política de «el modelo primero», el modelo responde peor que las
-  reglas en 2 frases («cómo llego desde Narnia a Ricaurte» cambia el origen
-  desconocido por Nariño; «¿hay algo que me deje en las aguas?» da gps en vez de
-  un viaje a Las Aguas) y mejor en 2 («llévame al portal de Suba» da Portal
-  Suba; «cuándo llega el bus» da tiempo real). De 9 frases del Metro, 2 se
-  habrían respondido mal sin la excepción del Metro.
+  red.
 
 Sin comprobar:
 
