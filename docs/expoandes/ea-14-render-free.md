@@ -51,7 +51,7 @@ Qué quedó fijado el 2026-11-06:
 
 | Archivo | Para qué |
 | --- | --- |
-| `render.yaml` | Un web Node `free`, despliegue manual, Node 24.22.1, `pnpm install --frozen-lockfile`, `next build`, `next start -H 0.0.0.0 -p "$PORT"`, `OLLAMA_MODEL` vacío, `APP_PASSWORD` con `sync: false`. Sin disco, base de datos, worker, cron, Docker ni ruta de salud HTTP (comprobación TCP por omisión). |
+| `render.yaml` | Un web Node `free`, despliegue manual, Node 24.22.1, `pnpm install --frozen-lockfile`, `next build`, `next start -H 0.0.0.0 -p "$PORT"`, `OLLAMA_MODEL` vacío, `APP_PASSWORD`, `OLLAMA_BASE_URL` y `OLLAMA_TOKEN` con `sync: false` (las dos últimas, de EA-27, solo cuentan si se activa el modelo). Sin disco, base de datos, worker, cron, Docker ni ruta de salud HTTP (comprobación TCP por omisión). |
 | `docs/RENDER.md` | Cómo activar, adoptar o crear el servicio sin duplicarlo, desplegar, comprobar y revertir. |
 | `scripts/medir-render.mjs` | Mediciones en vivo por HTTPS: credenciales (`/`, `/api/agent` GET y POST, `/api/transmilenio`), latencia, primera petición tras reposo, 429. La clave solo sale del entorno. |
 | `next.config.mjs` | `Strict-Transport-Security: max-age=15552000` en todas las rutas. |
@@ -97,7 +97,11 @@ Histórico de la preparación, no de la validación en vivo. Consultadas el 2026
 
 `render.yaml` se validó contra el esquema JSON oficial de Render
 (`https://render.com/schema/render.yaml.json`, obtenido el 2026-11-06) con un
-validador JSON Schema 2020-12: 0 errores. Controles negativos: `plan: gratis` y un
+validador JSON Schema 2020-12: 0 errores. El 2026-11-10 se volvió a validar con
+el esquema descargado ese día, después de añadir `OLLAMA_BASE_URL` y `OLLAMA_TOKEN`
+(EA-27): 0 errores, y `plan: gratis` sigue fallando. Se usó el `ajv` 8.20 que ya
+está en `node_modules` como dependencia transitiva, sin añadir ninguna dependencia
+al proyecto; ignora el formato `uri` del esquema. Controles negativos: `plan: gratis` y un
 `autoDeployTrigger` inválido fallan. Esto valida la forma, no que Render acepte el
 despliegue: eso solo lo confirma la pantalla de creación del Blueprint o un
 despliegue real.

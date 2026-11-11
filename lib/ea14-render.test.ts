@@ -8,7 +8,7 @@ import nextConfig from "../next.config.mjs"
  * Render: el esquema oficial valida la sintaxis (ver docs/expoandes/ea-14-render-free.md)
  * y solo un despliegue real prueba el comportamiento. Aquí se evita que un
  * cambio accidental del archivo reintroduzca algo que EA-14 excluye (costo,
- * despliegue automático, Ollama, secretos versionados).
+ * despliegue automático, Ollama activo por defecto, secretos versionados).
  *
  * `render.yaml` se lee como texto sin comentarios: el proyecto no incluye un
  * analizador de YAML y no se añade una dependencia solo para esta prueba.
@@ -54,12 +54,17 @@ test("Node queda fijado a una versión exacta del mismo major que la integració
   assert.equal(exacta, ci)
 })
 
-test("Ollama queda desactivado y la clave nunca se versiona", () => {
+test("Ollama queda desactivado por defecto y los secretos nunca se versionan", () => {
   assert.match(variable("OLLAMA_MODEL") ?? "", /value: ""/)
   const clave = variable("APP_PASSWORD") ?? ""
   assert.match(clave, /sync: false/)
   assert.ok(!/value:/.test(clave), "APP_PASSWORD no lleva valor")
-  assert.ok(!yaml.includes("OLLAMA_BASE_URL"), "sin modelo, la dirección de Ollama no hace falta")
+  // EA-27 (#53): la dirección y el token del proxy se declaran, pero solo como secretos del panel.
+  for (const secreto of ["OLLAMA_BASE_URL", "OLLAMA_TOKEN"]) {
+    const declarada = variable(secreto) ?? ""
+    assert.match(declarada, /sync: false/, `${secreto} se escribe en el panel`)
+    assert.ok(!/value:/.test(declarada), `${secreto} no lleva valor versionado`)
+  }
 })
 
 test("HSTS: cabecera en todas las rutas, solo para el propio host", async () => {

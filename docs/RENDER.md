@@ -1,8 +1,9 @@
 # Cómo publicar TransMiVoz en Render Free
 
 Guía para el titular de la cuenta de Render. Publica el backend existente
-(Next.js, reglas del asistente, sin Ollama) como demostración HTTPS que no
-depende de la máquina con Windows. La configuración está en
+(Next.js, reglas del asistente por defecto) como demostración HTTPS que no
+depende de la máquina con Windows. El modelo de Ollama es opcional: ver
+[Activar el modelo](#activar-el-modelo-opcional). La configuración está en
 [`render.yaml`](../render.yaml); el estado de las mediciones está en
 [`docs/expoandes/ea-14-render-free.md`](expoandes/ea-14-render-free.md) y el
 informe del 6 de noviembre de 2026, con sus ajustes reales, en
@@ -64,7 +65,8 @@ anota los valores que haya en ese momento: pueden haber cambiado desde esa fecha
 | `OLLAMA_MODEL` | vacío; si el panel no admite un valor vacío, elimina la variable (es equivalente) |
 | `APP_PASSWORD` | la clave nueva |
 
-Quita también `OLLAMA_BASE_URL` si existe. Después del cambio, guarda y haz
+Quita también `OLLAMA_BASE_URL` y `OLLAMA_TOKEN` si existen, salvo que vayas a
+activar el modelo (ver más abajo). Después del cambio, guarda y haz
 *Manual Deploy > Deploy latest commit*.
 
 **Camino B. Servicio nuevo con el Blueprint.** El nombre `transmivoz-expoandes`
@@ -116,6 +118,62 @@ archivo no borra el servicio: se borra a mano en el panel.
    arranque en frío si el servicio llevaba más de 15 minutos sin tráfico; si
    estaba despierto es una medición en caliente y no se anota como frío. `limite` gasta el cupo compartido de 20
    peticiones por minuto: hazlo aparte y sin público.
+
+## Activar el modelo (opcional)
+
+Por defecto el asistente usa solo las reglas (`OLLAMA_MODEL` vacío). Para que
+Render use `qwen2.5:3b` del equipo con Windows (EA-27, #53), el equipo publica
+un proxy con token por un túnel saliente; ver
+[`docs/expoandes/ollama-tunel-feria.md`](expoandes/ollama-tunel-feria.md). En el
+panel de Render, en *Environment* del servicio:
+
+| Variable | Valor |
+| --- | --- |
+| `OLLAMA_MODEL` | `qwen2.5:3b` |
+| `OLLAMA_BASE_URL` | `https://<máquina>.<tailnet>.ts.net:8443`: con el puerto si no es el 443, sin barra final ni ruta |
+| `OLLAMA_TOKEN` | el token del proxy, como secreto |
+
+Guarda y despliega (*Manual Deploy > Deploy latest commit*, o reinicia el
+servicio). Render puede mostrar los valores de las variables a quien tenga
+acceso al servicio (no verificado): da ese acceso solo al equipo.
+
+Reglas del código (`lib/ollama.ts`):
+
+- El token solo existe en el servidor. Ninguna respuesta lo incluye, ni la
+  dirección, y los errores de conexión se registran sin ellos.
+- Con token, la dirección debe ser `https:` (`http:` solo vale para `127.0.0.1`,
+  `::1` y `localhost`). Si no, la app trata Ollama como no configurado: responde
+  con reglas y no envía ninguna petición. Una dirección que no se puede
+  interpretar cuenta igual.
+- Sin token no se envía `Authorization`, como en desarrollo local.
+
+Comprobación, desde el portátil, con la clave en el entorno y sin escribirla en
+un argumento (la lee `curl` por la entrada estándar; el usuario es indiferente):
+
+```bash
+read -rs APP_PASSWORD && export APP_PASSWORD
+printf 'user = "u:%s"\n' "$APP_PASSWORD" | curl -sS --config - https://transmivoz.onrender.com/api/agent
+```
+
+Con el modelo activo, `node scripts/medir-render.mjs credenciales` debe FALLAR
+en su comprobación de motor, porque exige `reglas`. No es un error de la app:
+vuelve a correrlo después de volver a las reglas.
+
+Con el modelo activo y sano responde `{"engine":"ollama","model":"qwen2.5:3b","reachable":true,"hasModel":true}`.
+`"engine":"reglas"` significa que `OLLAMA_MODEL` está vacío o que la dirección no
+cumple la regla de `https:`. Con `"reachable":false` o `"hasModel":false` el
+servicio está configurado, pero el túnel, el proxy o el modelo no responden;
+mientras tanto, el asistente responde con reglas. El túnel de prueba cambia de
+dirección al reiniciarse: si cambia, actualiza `OLLAMA_BASE_URL`.
+
+Si el panel de Render no admite dejar vacío `OLLAMA_BASE_URL` u `OLLAMA_TOKEN`
+al crear el servicio desde el Blueprint (`sync: false` las pide), no lo hemos
+comprobado: escribe un valor cualquiera, que no se usa mientras `OLLAMA_MODEL`
+siga vacío.
+
+Para volver a las reglas: deja `OLLAMA_MODEL` vacío (o elimina la variable),
+borra `OLLAMA_TOKEN` y `OLLAMA_BASE_URL` y despliega de nuevo. Después de la
+feria, apaga el túnel y el proxy y descarta el token; ver la guía del equipo.
 
 ## Revertir
 

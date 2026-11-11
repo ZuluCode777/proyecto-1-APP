@@ -1,8 +1,10 @@
 # Blueprint de Render para la demostración de ExpoAndes (EA-14, #40).
 #
-# Un solo servicio web Node gratuito con las reglas del asistente: sin Ollama,
-# sin disco, base de datos, worker ni cron. Guía de uso, adopción del servicio
-# manual existente y reversión: docs/RENDER.md. Estado y mediciones:
+# Un solo servicio web Node gratuito con las reglas del asistente por defecto:
+# `OLLAMA_MODEL` vacío, sin Ollama. Sin disco, base de datos, worker ni cron.
+# El modelo es opcional (EA-27, #53): se activa a mano en el panel, ver
+# docs/RENDER.md. Guía de uso, adopción del servicio manual existente y
+# reversión: docs/RENDER.md. Estado y mediciones:
 # docs/expoandes/ea-14-render-free.md.
 #
 # `repo` y `branch` se omiten a propósito: Render usa el repositorio que contiene
@@ -30,9 +32,17 @@ services:
       # la fecha de creación del servicio.
       - key: NODE_VERSION
         value: "24.22.1"
-      # Vacío: el asistente usa solo las reglas y no contacta a Ollama.
+      # Vacío: el asistente usa solo las reglas y no contacta a Ollama. Para
+      # activar el modelo, ver docs/RENDER.md.
       - key: OLLAMA_MODEL
         value: ""
+      # Solo cuentan con `OLLAMA_MODEL` no vacío. Se escriben en el panel de
+      # Render: la dirección https del túnel y el token del proxy. Nunca se
+      # versionan. Con token, la dirección debe ser https o la app no usa Ollama.
+      - key: OLLAMA_BASE_URL
+        sync: false
+      - key: OLLAMA_TOKEN
+        sync: false
       # La clave de acceso (HTTP Basic) la escribe el dueño en el panel de Render.
       # Nunca se versiona. Sin clave utilizable, la app responde 503.
       - key: APP_PASSWORD

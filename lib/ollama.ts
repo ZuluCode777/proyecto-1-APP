@@ -12,6 +12,15 @@ import { findPlaces, findRouteByCode, shortName, type TransmilenioData } from "@
  */
 export const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434"
 export const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? ""
+/**
+ * Token secreto (EA-27, #53) para un Ollama detrás de un proxy con
+ * autenticación, p. ej. el del equipo publicado por un túnel. Solo del servidor:
+ * no se exporta, no se registra y no se devuelve en ninguna respuesta. Vacío o
+ * ausente, no se envía `Authorization` y el uso local no cambia.
+ */
+const OLLAMA_TOKEN = (process.env.OLLAMA_TOKEN ?? "").trim()
+/** Direcciones de este mismo equipo, donde `http` no expone el token a la red. */
+const HOSTS_LOCALES = new Set(["127.0.0.1", "[::1]", "localhost"])
 
 /**
  * Tiempo máximo de espera por el modelo. Ya cargado, qwen2.5:3b responde en
@@ -83,9 +92,44 @@ ${MODEL_INTENTS.map((name) => `- ${name}: ${MODEL_INTENT_HELP[name]}`).join("\n"
 Estaciones: ${[...new Set(data.stations.map((s) => shortName(s.name)))].join(", ")}.
 Códigos de ruta: ${data.routes.map((r) => r.code).join(", ")}.`
 
+/**
+ * Frontera de confianza: con token, la dirección debe ser `https:` o de este
+ * mismo equipo, para que el token nunca viaje en claro por una red. Una
+ * dirección que no se puede interpretar tampoco es segura.
+ */
+function destinoSeguro(): boolean {
+  if (!OLLAMA_TOKEN) return true
+  try {
+    const { protocol, hostname, username, password } = new URL(OLLAMA_BASE_URL)
+    // Una dirección con usuario o clave (`https://u:c@host`) llevaría esa clave en cada mensaje de error.
+    if (username || password) return false
+    return protocol === "https:" || (protocol === "http:" && HOSTS_LOCALES.has(hostname))
+  } catch {
+    return false
+  }
+}
+
 /** Configuración visible en `/diagnostico`. */
 export function ollamaConfigured(): boolean {
-  return OLLAMA_MODEL.length > 0
+  return OLLAMA_MODEL.length > 0 && destinoSeguro()
+}
+
+/**
+ * Único punto por el que este módulo habla con Ollama: añade el token cuando
+ * hay uno y no envía nada si el destino no es seguro. `redirect: "error"`
+ * porque ni Ollama ni el proxy redirigen nunca. Los errores de `fetch` y de
+ * `Headers` pueden traer el token, la dirección o su clave en el mensaje o en
+ * `cause`, y quien llama los registra: aquí se reemplazan por uno que solo
+ * lleva el nombre del error.
+ */
+async function fetchOllama(ruta: string, init: RequestInit & { headers?: Record<string, string> }): Promise<Response> {
+  if (!destinoSeguro()) throw new Error("Ollama: la dirección no es segura para enviar el token")
+  try {
+    const headers = OLLAMA_TOKEN ? { ...init.headers, Authorization: `Bearer ${OLLAMA_TOKEN}` } : init.headers
+    return await fetch(`${OLLAMA_BASE_URL}${ruta}`, { ...init, headers, redirect: "error" })
+  } catch (e) {
+    throw new Error(`Ollama: ${e instanceof Error ? e.name : "fallo"}`)
+  }
 }
 
 /**
@@ -94,7 +138,7 @@ export function ollamaConfigured(): boolean {
  * reglas por tiempo de espera.
  */
 export function warmUpOllama(): Promise<void> {
-  return fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+  return fetchOllama("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: OLLAMA_MODEL, messages: [], keep_alive: KEEP_ALIVE }),
@@ -108,7 +152,7 @@ export function warmUpOllama(): Promise<void> {
 /** Comprueba que Ollama responde y que el modelo está descargado, y lo precarga. */
 export async function ollamaStatus(): Promise<{ reachable: boolean; hasModel: boolean }> {
   try {
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, { signal: AbortSignal.timeout(3_000) })
+    const response = await fetchOllama("/api/tags", { signal: AbortSignal.timeout(3_000) })
     if (!response.ok) return { reachable: false, hasModel: false }
     const tags = TagsSchema.safeParse(await response.json())
     const names = tags.success ? tags.data.models.map((m) => m.name) : []
@@ -126,7 +170,7 @@ export async function ollamaStatus(): Promise<{ reachable: boolean; hasModel: bo
  * use las reglas.
  */
 export async function parseIntentWithOllama(text: string, data: TransmilenioData): Promise<Intent | null> {
-  const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+  const response = await fetchOllama("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
