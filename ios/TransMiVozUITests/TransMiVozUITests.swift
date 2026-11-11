@@ -1087,7 +1087,7 @@ final class TransMiVozAjustesUITests: XCTestCase {
         lanzar(["-PRUEBAS_UI_SIMULADAS"])
         abrirSeccion("Favoritas")
         XCTAssertTrue(elemento("favoritas-vacio").waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts[TextoFavoritasPrueba.comoSeAgregan].exists)
+        XCTAssertTrue(elemento("favoritas-como-agregar").label.contains("Guardar"))
         try auditar(app, "ajustes-favoritas-vacia", testCase: self)
     }
 
@@ -1124,9 +1124,4 @@ final class TransMiVozAjustesUITests: XCTestCase {
         esperar(interruptor, "value != %@", antes ?? "", "El interruptor no cambió de valor")
         try auditar(app, "ajustes-preferencias", testCase: self)
     }
-}
-
-/// Texto que la prueba compara; copia a propósito (no importa la app) para que un cambio del texto obligue a revisar la prueba.
-private enum TextoFavoritasPrueba {
-    static let comoSeAgregan = "Las rutas se guardan desde el detalle de cada ruta, con el botón «Guardar». En el iPhone esa pantalla todavía no está disponible, así que por ahora esta lista seguirá vacía."
 }

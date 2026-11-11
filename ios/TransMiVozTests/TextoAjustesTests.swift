@@ -30,7 +30,7 @@ final class TextoAjustesTests: XCTestCase {
     func testAyudaRepiteElAvisoDeSeguridadDelAccesorioSinPrometerCaminoLibre() {
         let accesorio = textoDeAyuda("Accesorio de proximidad")
         for parrafo in TextoAccesorio.parrafosAvisoEnlace { XCTAssertTrue(accesorio.contains(parrafo)) }
-        XCTAssertTrue(accesorio.contains("no significa camino libre"))
+        XCTAssertTrue(accesorio.contains("ni significa camino libre"))
     }
 
     func testAyudaNoTieneSeccionesNiParrafosVacios() {
