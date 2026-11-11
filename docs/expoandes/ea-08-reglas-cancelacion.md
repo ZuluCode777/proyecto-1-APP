@@ -85,9 +85,10 @@ de la ronda 1 que adjuntaba la coordenada en caché para `unknown`.)
 El estado del motor en `/diagnostico` se reporta según la SALUD de
 `GET /api/agent` (`reachable` + `hasModel`), no según el `engine` de una
 respuesta `POST`. Con reglas-primero (la política de EA-08; ver la actualización
-de EA-27 arriba), una frase conocida no llega al modelo, y un modelo sano que clasifica `unknown` una frase fuera de tema daría
-`engine: reglas`; inferir de ahí el estado del modelo producía avisos falsos
-(«no respondió», «no interpretó a tiempo»). Ahora: modelo alcanzable y con su
+de EA-27 arriba), una frase conocida no llega al modelo, y un modelo sano que
+clasifica `unknown` una frase fuera de tema daría `engine: reglas`; inferir de
+ahí el estado del modelo producía avisos falsos («no respondió», «no interpretó
+a tiempo»). Ahora: modelo alcanzable y con su
 modelo → «alcanzable y con el modelo listo»; caído o sin modelo → aviso real. La
 lógica es pura (`lib/estado-motor.ts`, `mensajeMotor`) y no cambia el JSON de
 `POST /api/agent`.

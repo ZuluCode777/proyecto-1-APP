@@ -9,8 +9,8 @@ import { pathToFileURL } from "node:url"
  * proceso, con el entorno que leyó: por eso cada entorno distinto de los casos
  * de ruta vive en su propio archivo de prueba (`node --test` corre cada archivo
  * en un proceso aparte). El estado de «modelo cargado» vive en `globalThis` y
- * lo comparten las copias que se cargan mientras exista: cada caso lo borra al
- * empezar, y los de ruta lo fijan a propósito con `fijarModelo`.
+ * lo comparten todas las copias: cada caso lo deja sin cargar al empezar, y los
+ * de ruta lo fijan a propósito con `fijarModelo`.
  */
 const raiz = pathToFileURL(process.cwd() + "/")
 export const TOKEN = "token-de-prueba-0123456789"
@@ -155,9 +155,14 @@ async function conSimulacion<T>(entorno: EntornoPrueba, opciones: OpcionesFetch,
   const plazos = new WeakMap<AbortSignal, number>()
   const deshacerPlazos = registrarPlazos(plazos)
   const llamadas: Llamada[] = []
+  // Cada caso parte sin modelo cargado. Se cambia el mismo objeto, sin borrarlo:
+  // la copia de `lib/ollama.ts` que la ruta dejó en caché lo sigue usando.
+  const estado = (globalThis as { __transmivozOllama?: { precarga: Promise<void> | null; cargado: boolean } }).__transmivozOllama
+  if (estado) {
+    await estado.precarga
+    estado.cargado = false
+  }
   globalThis.fetch = simularOllama(llamadas, plazos, opciones)
-  // Cada caso parte sin el estado compartido de `lib/ollama.ts`.
-  delete (globalThis as { __transmivozOllama?: unknown }).__transmivozOllama
   try {
     return await prueba(llamadas)
   } finally {
