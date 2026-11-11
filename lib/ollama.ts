@@ -9,6 +9,11 @@ import { findPlaces, findRouteByCode, shortName, type TransmilenioData } from "@
  * clasifica la frase y extrae nombres; la respuesta la arma `runIntent` con
  * los datos reales. Cualquier salida del modelo se valida contra los datos:
  * una estación o una ruta que no existe se descarta y se vuelve a las reglas.
+ *
+ * EA-27 (#53), decisión de A1 del 10/11/2026: con el modelo cargado, responde
+ * primero (salvo las dos intenciones que solo las reglas expresan; ver
+ * `lib/seleccion-interprete.ts`). Sin el modelo cargado responden las reglas al
+ * instante y se lanza su precarga. Si está cargado lo dice `modeloListo`.
  */
 export const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434"
 export const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? ""
@@ -23,16 +28,15 @@ const OLLAMA_TOKEN = (process.env.OLLAMA_TOKEN ?? "").trim()
 const HOSTS_LOCALES = new Set(["127.0.0.1", "[::1]", "localhost"])
 
 /**
- * Tiempo máximo de espera por el modelo. El modelo solo se consulta cuando las
- * reglas no entienden la frase (ver `lib/seleccion-interprete.ts`), así que
- * agotar esta espera devuelve la respuesta de desconocimiento de reglas.
+ * Tiempo máximo de espera por el modelo ya cargado; al agotarse, responden las
+ * reglas (ver `lib/seleccion-interprete.ts`).
  *
  * EA-27 (#53), decisión de A1 del 10/11/2026: con el modelo en marcha, ninguna
- * pregunta debe caer en las reglas por esta espera. Medido desde Render contra
- * el Ollama del equipo por el túnel: el modelo ya cargado tarda entre 0,5 y
- * algo más de 2 s, y con el presupuesto anterior de 2 s (EA-08) una de cada
- * ocho consultas caía en las reglas. Cabe en la espera de los clientes: 6 s en
- * la web (`ESPERA_MAXIMA_CLIENTE_MS`) y 12 s en la app de iPhone.
+ * pregunta debe caer en las reglas por esta espera. De 8 consultas medidas
+ * desde Render contra el Ollama del equipo por el túnel, una agotó los 2 s del
+ * presupuesto anterior (EA-08); las otras tardaron entre 0,8 y 2,5 s en total.
+ * Los 4,5 s dejan 1,5 s de margen bajo la espera de la web (6 s,
+ * `ESPERA_MAXIMA_CLIENTE_MS`) y caben en los 12 s de la app de iPhone.
  */
 const TIMEOUT_MS = 4_500
 /**
@@ -137,6 +141,21 @@ async function fetchOllama(ruta: string, init: RequestInit & { headers?: Record<
 
 /** Precarga en curso, para no lanzar otra mientras tanto. */
 let precarga: Promise<void> | null = null
+/**
+ * ¿Respondió bien la última precarga o consulta? Empieza en falso. Una
+ * respuesta HTTP correcta lo deja en verdadero, aunque su contenido no sirva;
+ * un error de red, un plazo agotado o un estado HTTP de error lo dejan en falso.
+ */
+let modeloCargado = false
+
+/**
+ * ¿Se puede consultar el modelo ahora? Ollama está configurado (con una
+ * dirección segura) y la última precarga o consulta respondió bien. Si no,
+ * responden las reglas sin esperar.
+ */
+export function modeloListo(): boolean {
+  return ollamaConfigured() && modeloCargado
+}
 
 /**
  * Carga el modelo en memoria sin generar nada. La primera carga tarda varios
@@ -151,8 +170,12 @@ export function warmUpOllama(): Promise<void> {
     signal: AbortSignal.timeout(60_000),
   })
     .then(
-      () => undefined,
-      () => undefined,
+      (response) => {
+        modeloCargado = response.ok
+      },
+      () => {
+        modeloCargado = false
+      },
     )
     .finally(() => {
       precarga = null
@@ -196,7 +219,11 @@ export async function parseIntentWithOllama(text: string, data: TransmilenioData
       ],
     }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
+  }).catch((error) => {
+    modeloCargado = false
+    throw error
   })
+  modeloCargado = response.ok
   if (!response.ok) throw new Error(`Ollama: HTTP ${response.status}`)
 
   const chat = ChatResponseSchema.safeParse(await response.json())

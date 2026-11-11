@@ -98,19 +98,18 @@ no con un plan prescriptivo. Ejecutadas una por una el 2026-11-04:
 | "cómo llego de Ricaurte a Calle 72" | Abstención: «Todavía no tengo confirmado dónde para cada servicio entre Ricaurte y Calle 72…»; ofrece el recorrido de las rutas que conectan |
 | "cómo llego de Portal Norte a Portal Usme" | Abstención análoga; sin un plan de abordaje mientras falten paradas verificadas |
 
-Las reglas interpretan PRIMERO; todas estas frases las resuelven las reglas, así
-que en la lista de pasos sale "Motor: reglas". Eso es lo normal y no significa
-que Ollama fallara: el modelo solo se consulta cuando las reglas no reconocen la
-frase.
-
-**Ninguna frase de esta demo pasa por el modelo** (todas las entienden las
-reglas). Una frase que las reglas NO entienden, p. ej. «explícame la teoría de la
-relatividad por favor», hoy da «No te entendí…» con las reglas; con Ollama activo
-iría al modelo, pero **ese resultado con un Ollama real no se ha medido** en esta
-tarea. "Motor: Ollama" en la lista de pasos solo aparece en ese caso. Para
-confirmar que Ollama está sano, usa `/diagnostico`: la prueba del asistente
-comprueba su salud (alcanzable y con el modelo) con `GET /api/agent`, no
-clasificando una frase, así que no da falsos fallos.
+Esta tabla se midió solo con las reglas. **Actualización (EA-27, #53):** con
+Ollama configurado y el modelo cargado, toda pregunta se consulta al modelo y en
+la lista de pasos sale "Motor: Ollama"; sale "Motor: reglas" cuando el modelo no
+está cargado, cuando contestó «no entiendo» o algo que no cuadra con los datos,
+y siempre en las consultas del Metro y en los viajes sin destino. Las respuestas
+de esta tabla con el modelo cargado no se han medido una por una; la comparación
+de 36 frases está en `docs/expoandes/ollama-tunel-feria.md`. Una frase que las
+reglas NO entienden, p. ej. «explícame la teoría de la relatividad por favor»,
+da «No te entendí…» con las reglas. Para confirmar que Ollama está sano, usa
+`/diagnostico`: la prueba del asistente comprueba su salud (alcanzable y con el
+modelo) con `GET /api/agent`, no clasificando una frase, así que no da falsos
+fallos.
 
 Una estación sola ("quiero ir a Ricaurte") sin ubicación lista las rutas que
 pasan por ahí y pide el origen. Con la ubicación activada, usa la estación más

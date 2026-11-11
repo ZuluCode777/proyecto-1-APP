@@ -1,14 +1,24 @@
 import type { Intent } from "@/lib/local-agent"
 
 /**
- * Política de selección de intérprete para el issue #34 (EA-08), hallazgo 15 de
- * la auditoría: las REGLAS resuelven primero; el modelo solo interviene cuando
- * las reglas no entienden la frase.
+ * Política de selección de intérprete. Es pura (sin red ni efectos) para poder
+ * probarla con un modelo simulado.
  *
- * Antes, el endpoint corría el modelo primero y ejecutaba directamente lo que
- * devolviera, de modo que un `unknown` del modelo anulaba una intención que las
- * reglas sí reconocían (p. ej. «información de la B23»). Esta función centraliza
- * la decisión, sin red ni efectos, para poder probarla con un modelo simulado.
+ * Actualización (EA-27, #53), decisión de A1 del 10/11/2026: con el modelo
+ * cargado, TODA pregunta se consulta al modelo; solo responden las reglas
+ * cuando no hay modelo cargado (ver `modeloListo` en `lib/ollama.ts`). Esto
+ * reemplaza la política de EA-08 (hallazgo 15), «las reglas primero», con dos
+ * excepciones de seguridad:
+ *
+ * - `metro` y `trip_missing_destination` los resuelven siempre las reglas y
+ *   no se consulta al modelo: las intenciones del modelo (`MODEL_INTENTS`) no
+ *   pueden expresarlas. Una consulta del Metro nunca debe ser viaje, GPS ni
+ *   abordaje (invariante de EA-13); medido contra el modelo real, «quiero ir
+ *   en metro a la calle 72» salía como viaje y «cómo funciona la línea 2 del
+ *   metro» como la ruta «2 M».
+ * - Se mantiene la protección de EA-08: un `unknown` del modelo (o una salida
+ *   que no valida contra los datos) no anula la intención de las reglas, p. ej.
+ *   «información de la B23».
  *
  * Invariantes que conserva:
  * - Una sola acción por pregunta: devuelve UNA `Intent` y quién la interpretó.
@@ -23,12 +33,19 @@ export function intencionConocida(intent: Intent | null | undefined): intent is 
 }
 
 /**
- * ¿Hace falta consultar el modelo para esta frase? Solo cuando las reglas no la
- * entendieron. Si las reglas ya resolvieron un comando conocido, no se llama al
- * modelo: responde más rápido y no puede desviar la intención.
+ * ¿Esta intención de reglas es de las que el modelo no puede expresar? Se
+ * responden siempre con reglas y no se consulta al modelo.
+ */
+function soloReglas(intentDeReglas: Intent): boolean {
+  return intentDeReglas.type === "metro" || intentDeReglas.type === "trip_missing_destination"
+}
+
+/**
+ * ¿Hay que consultar al modelo para esta frase (cuando está cargado)? Siempre,
+ * salvo que las reglas hayan reconocido una intención que solo ellas expresan.
  */
 export function requiereModelo(intentDeReglas: Intent): boolean {
-  return !intencionConocida(intentDeReglas)
+  return !soloReglas(intentDeReglas)
 }
 
 export type SeleccionInterprete = {
@@ -39,14 +56,15 @@ export type SeleccionInterprete = {
 
 /**
  * Decide la intención final a partir de la de reglas (siempre disponible) y la
- * del modelo (opcional; `null` si no respondió, falló o no validó).
+ * del modelo (opcional; `null` si no se consultó, no respondió, falló o no
+ * validó).
  *
- * - Reglas conocen la frase: se usan reglas, aunque el modelo hubiera corrido.
- * - Reglas no la conocen pero el modelo sí: se usa el modelo.
- * - Ninguno la conoce: se usa la intención de reglas (respuesta de desconocido).
+ * - Las reglas reconocen `metro` o `trip_missing_destination`: reglas.
+ * - El modelo reconoce la frase (no es `null` ni `unknown`): modelo.
+ * - Si no: la intención de reglas, aunque sea `unknown`.
  */
 export function elegirIntent(intentDeReglas: Intent, intentDelModelo: Intent | null): SeleccionInterprete {
-  if (intencionConocida(intentDeReglas)) return { intent: intentDeReglas, engine: "reglas" }
+  if (soloReglas(intentDeReglas)) return { intent: intentDeReglas, engine: "reglas" }
   if (intencionConocida(intentDelModelo)) return { intent: intentDelModelo, engine: "ollama" }
   return { intent: intentDeReglas, engine: "reglas" }
 }

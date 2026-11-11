@@ -21,21 +21,30 @@ async function cargarEndpointFresco(): Promise<{ POST: (req: Request) => Promise
 }
 
 /**
- * Regresión del issue #34 (EA-08): reglas primero, espera máxima de cliente y
- * ubicación opcional. Ejercita el ENDPOINT REAL (`POST /api/agent`) con Ollama
- * simulado por `fetch`, y la lógica pura de `consultarAgente`/`elegirIntent`.
- * La cancelación de la interfaz se prueba en `ea08-cancelacion-ui.test.ts`.
+ * Regresión del issue #34 (EA-08): espera máxima de cliente, ubicación opcional
+ * y que un `unknown` del modelo no anule una regla. Ejercita el ENDPOINT REAL
+ * (`POST /api/agent`) con Ollama simulado por `fetch`, y la lógica pura de
+ * `consultarAgente`/`elegirIntent`. La cancelación de la interfaz se prueba en
+ * `ea08-cancelacion-ui.test.ts`.
+ *
+ * Actualización (EA-27, #53): la política «las reglas primero» de EA-08 (hallazgo
+ * 15) se reemplazó por «el modelo primero cuando está cargado». Los casos de
+ * este archivo ponen el modelo como cargado a propósito; la política completa
+ * (modelo no cargado, excepciones del Metro) se prueba en
+ * `ea27-modelo-primero.test.ts`.
  */
 
 const data = TransmilenioDataSchema.parse(snapshot)
 
-// ── AC1: endpoint real — reglas primero, un unknown del modelo no anula regla ──
+// ── AC1: endpoint real — con el modelo cargado se le consulta, y su unknown no anula una regla ──
 
 /**
  * Importa el `POST` real del endpoint con `OLLAMA_MODEL` configurado y un
  * `fetch` que simula el `/api/chat` de Ollama. Devuelve un contador de llamadas
  * al modelo y la función para preguntar. Cualquier otra red (ArcGIS) cae, de
  * modo que el endpoint usa la copia guardada. Restaura `fetch`/env al terminar.
+ * Deja el modelo como cargado con una precarga correcta: `lib/ollama.ts`
+ * (importado sin query por el endpoint) guarda ese estado para todo el proceso.
  */
 async function conEndpoint(modoModelo: "unknown" | "colgado" | "gps" | "trip-destino") {
   const fetchOriginal = globalThis.fetch
@@ -73,6 +82,9 @@ async function conEndpoint(modoModelo: "unknown" | "colgado" | "gps" | "trip-des
   // simulaba identidades que el servidor no debe creer. Ahora cada caso carga una
   // instancia fresca del endpoint (contador propio), sin inventar cabeceras.
   const { POST } = await cargarEndpointFresco()
+  const ollama = await import("./ollama")
+  for (let intento = 0; intento < 3 && !ollama.modeloListo(); intento++) await ollama.warmUpOllama()
+  assert.equal(ollama.modeloListo(), true, "el caso parte con el modelo cargado")
   const preguntar = async (message: string, position?: { lat: number; lng: number }) => {
     const res = await POST(
       new Request("http://localhost/api/agent", {
@@ -90,11 +102,11 @@ async function conEndpoint(modoModelo: "unknown" | "colgado" | "gps" | "trip-des
   return { preguntar, llamadas: () => llamadasChat, restaurar }
 }
 
-test("AC1 (endpoint real): un comando conocido NO llama al modelo y responde con reglas", async () => {
+test("AC1 (endpoint real): con el modelo cargado se le consulta también un comando conocido, y su unknown no lo anula", async () => {
   const e = await conEndpoint("unknown")
   try {
     const json = await e.preguntar("información de la B23")
-    assert.equal(e.llamadas(), 0, "reglas primero: el modelo no se consulta para un comando conocido")
+    assert.equal(e.llamadas(), 1, "EA-27: con el modelo cargado, toda pregunta se consulta")
     assert.equal(json.action, "route")
     assert.equal(json.engine, "reglas")
   } finally {
@@ -103,12 +115,12 @@ test("AC1 (endpoint real): un comando conocido NO llama al modelo y responde con
 })
 
 test("AC1 (endpoint real): un unknown del modelo no anula una regla conocida", async () => {
-  // La frase la entienden las reglas; aunque el modelo respondería unknown, no
-  // se le consulta. Con el código de HEAD (modelo primero) esto fallaría.
+  // La frase la entienden las reglas; el modelo se consulta (EA-27) y responde
+  // unknown, y esa respuesta no puede anular la intención de las reglas.
   const e = await conEndpoint("unknown")
   try {
     const json = await e.preguntar("cómo llego de Terminal a Guatoque - Veraguas")
-    assert.equal(e.llamadas(), 0)
+    assert.equal(e.llamadas(), 1)
     assert.ok(json.action === "trip" || json.action === "search")
     assert.equal(json.engine, "reglas")
   } finally {
@@ -135,10 +147,11 @@ test("AC2 (endpoint real): frase desconocida con modelo colgado responde con reg
 
 // ── AC1: política de selección pura ──
 
-test("AC1: un comando conocido por reglas NO requiere consultar el modelo", () => {
+test("AC1: un comando conocido por reglas SÍ se consulta al modelo (EA-27); solo el Metro y el viaje sin destino no", () => {
   const intent = parseIntent("información de la B23", data)
   assert.equal(intent.type, "route_info")
-  assert.equal(requiereModelo(intent), false)
+  assert.equal(requiereModelo(intent), true)
+  assert.equal(requiereModelo(parseIntent("estación E3 del metro", data)), false)
 })
 
 test("AC1: una frase que las reglas no entienden sí requiere el modelo", () => {

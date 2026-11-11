@@ -13,7 +13,8 @@ test("una dirección con espacio al final no se registra ni se devuelve, y la ap
   await conRuta(
     { OLLAMA_MODEL: "qwen2.5:3b", OLLAMA_BASE_URL: "https://tunel-secreto.example ", OLLAMA_TOKEN: TOKEN },
     { real: true },
-    async ({ GET, preguntar, registros }) => {
+    async ({ GET, preguntar, registros, fijarModelo }) => {
+      await fijarModelo(true)
       const get = await (await GET(new Request("http://localhost/api/agent"))).text()
       const post = await preguntar("quiero ir al planeta marte")
       const cuerpo = await post.text()

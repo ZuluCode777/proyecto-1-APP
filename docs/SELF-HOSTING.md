@@ -89,15 +89,20 @@ la tarea programada de la sección [Que siga corriendo](#que-siga-corriendo).
 `/diagnostico` muestra "Motor: Ollama (qwen2.5:3b), alcanzable y con el modelo
 listo" cuando el servidor puede contactar Ollama y tiene el modelo descargado
 (lo comprueba con `GET /api/agent`, no clasificando una frase). Si Ollama está
-configurado pero no responde o le falta el modelo, lo dice. Como las reglas
-interpretan primero, "Motor: reglas" en la lista de pasos de una respuesta es lo
-normal para las frases conocidas; no significa que el modelo fallara.
+configurado pero no responde o le falta el modelo, lo dice. Con el modelo
+cargado, toda pregunta se consulta al modelo, así que "Motor: Ollama" en la
+lista de pasos de una respuesta es lo normal. "Motor: reglas" aparece cuando el
+modelo no está cargado, cuando respondió «no entiendo» o algo que no cuadra con
+los datos, y siempre en las consultas del Metro y en los viajes sin destino, que
+solo resuelven las reglas.
 
 Cargar el modelo en la GPU tarda unos segundos. El servidor lo precarga al
 arrancar y al abrir `/diagnostico`, y Ollama lo mantiene un día en memoria.
-El modelo solo se consulta cuando las reglas no entienden la frase; si entonces
-tarda más de 4,5 s, o se cae, el asistente responde con las reglas y lanza la
-precarga para la siguiente pregunta; la persona nunca se queda esperando.
+Mientras el modelo no está cargado, el asistente responde con las reglas al
+instante y lanza la precarga (solo una a la vez). Con el modelo cargado, si
+tarda más de 4,5 s o se cae, responde con las reglas, lo da por no cargado y
+lanza la precarga; la persona nunca se queda esperando. La espera de 4,5 s deja
+1,5 s de margen bajo los 6 s que espera la web.
 
 Las dos instancias escuchan solo en `127.0.0.1`. Como la app corre en la misma
 máquina, no hace falta abrir esos puertos a la red.

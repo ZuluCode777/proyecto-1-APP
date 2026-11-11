@@ -376,27 +376,33 @@ tarea **TransMiVoz Caddy**. Si da 502, Caddy no llega a Ollama (paso 1).
    `status` ya no debe listar el 8443 y debe seguir mostrando la 443 hacia el
    3000. No ejecutado todavía. Con el túnel rápido, detén `cloudflared` con
    Ctrl+C en su ventana: muere con el proceso.
-3. Quita la tarea, para que Caddy no vuelva a arrancar, y detén el proceso. El
-   que escucha en el 11436 es el que lanzó la tarea: toma su PID de ahí,
-   comprueba que es `caddy` y detén solo ese proceso:
+3. Quita la tarea, para que Caddy no vuelva a arrancar. Esto no detiene el
+   proceso que ya corre:
 
    ```powershell
    Unregister-ScheduledTask -TaskName 'TransMiVoz Caddy' -Confirm:$false
+   ```
+
+4. Detén el proceso de Caddy. El que escucha en el 11436 es el que lanzó la
+   tarea: toma su PID de ahí, comprueba que es `caddy` y detén solo ese
+   proceso:
+
+   ```powershell
    $pidCaddy = (Get-NetTCPConnection -LocalPort 11436 -State Listen -ErrorAction Stop | Select-Object -First 1).OwningProcess
    if ((Get-Process -Id $pidCaddy).ProcessName -ne 'caddy') { throw 'El puerto 11436 no es de Caddy; no detengo nada.' }
    Stop-Process -Id $pidCaddy
    ```
 
    No detengas `ollama` ni la tarea **TransMiVoz Ollama**: la app local la usa.
-   No ejecutado todavía.
-4. Borra el token cifrado. Sin ese archivo, el token ya no se puede recuperar
+   Los puntos 3 y 4 no se han ejecutado todavía.
+5. Borra el token cifrado. Sin ese archivo, el token ya no se puede recuperar
    en el equipo:
 
    ```powershell
    Remove-Item -LiteralPath 'D:\transmivoz-tunel\token.dpapi'
    ```
 
-5. Borra la copia de la configuración que Caddy pudo guardar con el token
+6. Borra la copia de la configuración que Caddy pudo guardar con el token
    dentro, si existe:
 
    ```powershell
@@ -406,32 +412,45 @@ tarea **TransMiVoz Caddy**. Si da 502, Caddy no llega a Ollama (paso 1).
 
    Con `persist_config off` no debería existir. Si existe, el token ya estuvo en
    disco: no lo reutilices.
-6. Limpia el portapapeles: Win+V, *Borrar todo*, y confirma que *Sincronizar
+7. Limpia el portapapeles: Win+V, *Borrar todo*, y confirma que *Sincronizar
    entre dispositivos* sigue desactivado.
-7. Si el token pudo verse en un chat, un registro o una captura, trátalo como
+8. Si el token pudo verse en un chat, un registro o una captura, trátalo como
    filtrado y cámbialo.
 
-**Cambiar el token sin apagar nada:** borra `token.dpapi` (punto 4), repite el
-paso 2, reinicia Caddy (detén su proceso como en el punto 3, sin quitar la
-tarea, y `Start-ScheduledTask -TaskName 'TransMiVoz Caddy'`), copia el token
-nuevo a Render (paso 3) y despliega. Hasta desplegar, Render recibe 403 y
-responde con reglas. Un token nunca se reutiliza.
+**Cambiar el token sin apagar nada:** borra `token.dpapi` (punto 5) y repite el
+paso 2. Reinicia Caddy sin quitar la tarea: detén su proceso como en el punto 4
+(solo ese bloque), espera a que el puerto 11436 quede libre y arranca la tarea:
+
+```powershell
+for ($intento = 0; $intento -lt 30 -and (Get-NetTCPConnection -LocalPort 11436 -State Listen -ErrorAction SilentlyContinue); $intento++) { Start-Sleep -Seconds 1 }
+Start-ScheduledTask -TaskName 'TransMiVoz Caddy'
+```
+
+Copia el token nuevo a Render (paso 3) y despliega. Hasta desplegar, Render
+recibe 403 y responde con reglas. Un token nunca se reutiliza.
 
 ## Límites
 
 - El equipo debe estar encendido **y con la sesión de Windows iniciada**
   durante toda la feria: **TransMiVoz Ollama** y **TransMiVoz Caddy** arrancan
   al iniciar sesión, y el token solo se descifra con ese usuario.
-- El modelo solo se consulta cuando las reglas no entienden la frase. Espera
-  hasta 4,5 s (`TIMEOUT_MS` en `lib/ollama.ts`); si el equipo está apagado, el
-  túnel caído o el modelo tarda más, el asistente responde con reglas.
-- Cargar el modelo en memoria tarda más que esa espera. Si no está cargado
-  (primer uso tras encender el equipo, o tras 24 h sin uso), la primera
-  pregunta cae en reglas y lanza la precarga; las siguientes ya lo encuentran
-  cargado. Para evitarlo, abre `/diagnostico` antes de abrir el puesto:
-  `GET /api/agent` también lo precarga, igual que el arranque del servidor.
+- Con el modelo cargado, toda pregunta se consulta al modelo (decisión de A1 del
+  10/11/2026); solo responden las reglas cuando no hay modelo cargado. Las
+  consultas del Metro y los viajes sin destino las resuelven siempre las
+  reglas, y un «no entiendo» del modelo no anula lo que las reglas entienden.
+  La consulta espera hasta 4,5 s (`TIMEOUT_MS` en `lib/ollama.ts`), 1,5 s menos
+  que los 6 s que espera la web. Si el equipo está apagado, el túnel caído o el
+  modelo tarda más, responden las reglas, el modelo se da por no cargado y se
+  lanza su precarga.
+- Cargar el modelo en memoria tarda más que esa espera. Mientras no está
+  cargado (primer uso tras encender el equipo, o tras 24 h sin uso), las reglas
+  responden al instante y cada pregunta lanza la precarga (solo una a la vez);
+  cuando termina, las siguientes ya van al modelo. Para evitarlo, abre
+  `/diagnostico` antes de abrir el puesto: `GET /api/agent` también lo precarga,
+  igual que el arranque del servidor.
 - Mientras está cargado, el modelo ocupa unos 2 GB de memoria de la tarjeta
-  gráfica, hasta 24 h después de la última pregunta.
+  gráfica (lectura de `ollama ps` en «Comprobado»), hasta 24 h después de la
+  última pregunta.
 - El token da acceso a `POST /api/chat` con **cualquier modelo** de ese Ollama,
   incluidos los de la nube de ollama.com si la cuenta los tiene: Caddy filtra
   rutas, no modelos.
@@ -453,20 +472,39 @@ v2.11.9) y contra el servicio de Render:
   token. La ruta 443 de la app siguió igual.
 - Desde Render: `GET /api/agent` devolvió `engine: "ollama"`,
   `reachable: true`, `hasModel: true`.
-- Veinte preguntas a `POST /api/agent` de Render: las reglas resolvieron doce y
-  el modelo se consultó en ocho. Con el modelo cargado, esas respuestas
-  tardaron entre 0,8 y 2,5 s en total. Una agotó la espera de 2 s que había
-  entonces y cayó en reglas: por eso la espera es ahora de 4,5 s.
-- Con el modelo descargado a propósito, tres preguntas seguidas cayeron en
-  reglas y el modelo siguió sin cargarse: agotar la espera aborta la carga. Por
-  eso un fallo del modelo lanza ahora la precarga.
+- Veinte preguntas a `POST /api/agent` de Render, cuando las reglas iban
+  primero: las reglas resolvieron doce y el modelo se consultó en ocho. De 8
+  consultas medidas desde Render, una agotó los 2 s; las otras tardaron entre
+  0,8 y 2,5 s en total. Por eso la espera es ahora de 4,5 s.
+- Con el modelo sacado de la memoria a propósito (`keep_alive: 0`), tres
+  preguntas seguidas cayeron en reglas y el modelo siguió sin cargarse: agotar
+  la espera aborta la carga. Por eso un fallo del modelo lanza ahora la
+  precarga.
+- `ollama ps` mostró 2,01 GB para qwen2.5:3b con contexto 4096 el 10/11/2026.
+- Con Caddy en marcha, `%AppData%\Caddy\autosave.json` no existe.
+- *Save, rebuild, and deploy* desplegó el último commit de `main`.
+- Render muestra el valor de una variable en claro mientras se edita (visto en
+  el panel el 10/11/2026).
+- Comparación fuera de línea, el 10/11/2026, de las reglas con el modelo real
+  en 36 frases: 21 respuestas idénticas. La inferencia del modelo tarda
+  0,15–0,2 s en la red local; los 0,8–2,5 s vistos desde Render son sobre todo
+  red. Con la política de «el modelo primero», el modelo responde peor que las
+  reglas en 2 frases («cómo llego desde Narnia a Ricaurte» cambia el origen
+  desconocido por Nariño; «¿hay algo que me deje en las aguas?» da gps en vez de
+  un viaje a Las Aguas) y mejor en 2 («llévame al portal de Suba» da Portal
+  Suba; «cuándo llega el bus» da tiempo real). De 9 frases del Metro, 2 se
+  habrían respondido mal sin la excepción del Metro.
 
 Sin comprobar:
 
+- La política de «el modelo primero» en Render: hay que desplegar este cambio y
+  repetir las mediciones.
 - La espera de 4,5 s y la precarga tras un fallo, en Render: hay que desplegar
   este cambio y repetir las dos mediciones.
 - Qué tarda en fallar la consulta con el equipo apagado. Si el túnel no
-  responde enseguida, cada pregunta que las reglas no entienden esperaría los
-  4,5 s antes de la respuesta de reglas.
+  responde enseguida, la primera pregunta tras el apagado esperaría los 4,5 s
+  antes de la respuesta de reglas; después el modelo se da por no cargado y las
+  reglas responden al instante, mientras cada precarga espera hasta 60 s en
+  segundo plano.
 - El apagado (paso 8) y el cambio de token.
 - `cloudflared`: contrastado con su documentación, no ejecutado.
