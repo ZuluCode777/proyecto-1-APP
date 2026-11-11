@@ -172,6 +172,6 @@ Antes: cableado revisado por una persona, pines elegidos en `configuracion_local
 - **Placa y radar:** todo lo del guion. Hasta entonces, nada de esto se declara probado.
 - **B2:** si el GPIO2 cambia antes que la trama. El firmware no lo usa; cuando B2 lo decida, se añade solo con `latido_vigente()` y sin tomar la edad del pin.
 - **Pines y cableado:** los fija quien reciba la placa en `configuracion_local.h`.
-- **Core Bluetooth y qué evidencia afirma `cifradoAutenticado` en iOS:** EA-15.
+- **Core Bluetooth y qué evidencia afirma `cifradoAutenticado` en iOS:** EA-15 concluye (diseño, sin banco) que la app no puede obtener ninguna que rechace a un impostor sin protección con el mismo nombre y UUID; ver [Seguridad del enlace](ea-15-ios-ble-audio.md#seguridad-del-enlace). Propuesta pendiente de revisión por H3.
 - **Ganchos de NimBLE en banco:** OOB con la ventana cerrada, `NOTIFY_INDICATE_ENC/AUTHEN`, `sec_state.bonded` y restauración de la suscripción (pasos 3 y 4).
 - **Configuración activa del radar:** el firmware no lee la configuración que tiene el sensor; un radar que se reinicia y sigue emitiendo con otra configuración no se detecta hasta que calle. B1 decide si hace falta una consulta.
