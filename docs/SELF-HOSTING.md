@@ -94,10 +94,10 @@ interpretan primero, "Motor: reglas" en la lista de pasos de una respuesta es lo
 normal para las frases conocidas; no significa que el modelo fallara.
 
 Cargar el modelo en la GPU tarda unos segundos. El servidor lo precarga al
-arrancar y al abrir `/diagnostico`, y Ollama lo mantiene una hora en memoria.
+arrancar y al abrir `/diagnostico`, y Ollama lo mantiene un día en memoria.
 El modelo solo se consulta cuando las reglas no entienden la frase; si entonces
-tarda más de 2 s, o se cae, el asistente responde con las reglas; la persona
-nunca se queda esperando.
+tarda más de 4,5 s, o se cae, el asistente responde con las reglas y lanza la
+precarga para la siguiente pregunta; la persona nunca se queda esperando.
 
 Las dos instancias escuchan solo en `127.0.0.1`. Como la app corre en la misma
 máquina, no hace falta abrir esos puertos a la red.

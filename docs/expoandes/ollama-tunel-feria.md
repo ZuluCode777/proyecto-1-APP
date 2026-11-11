@@ -9,21 +9,29 @@ Decisión de A1 del 10/11/2026 (comentario del issue #53): Ollama sigue
 escuchando solo en `127.0.0.1`; delante va un proxy local que exige un token y
 solo deja pasar `POST /api/chat` y `GET /api/tags`; el acceso público llega por
 un túnel saliente, sin abrir puertos en el router; el token vive solo en las
-variables de entorno de Render y del equipo.
+variables de entorno de Render y, cifrado, en el equipo.
 
 ```
 Render ──https──> túnel ──> Caddy 127.0.0.1:11436 ──> TransMiVoz Ollama 127.0.0.1:11435
                             (token + 2 rutas)
 ```
 
+**Estado (10/11/2026):** montado así en el equipo y comprobado desde internet y
+desde Render. Lo que se ejecutó y lo que no está en
+[Comprobado y sin comprobar](#comprobado-y-sin-comprobar).
+
 ## Reglas
 
 - El Ollama de esta app es la tarea **TransMiVoz Ollama**, en `127.0.0.1:11435`
   (ver `scripts/ollama-transmivoz.ps1`). **Nunca** uses ni publiques el puerto
   `11434`, el Ollama de uso personal.
-- El token no se escribe en el repositorio, en un archivo de configuración, en
-  un chat ni como argumento de un comando (los argumentos se ven en la lista de
-  procesos). Vive en una variable de entorno de la sesión de PowerShell.
+- El token no se escribe en el repositorio, en un archivo en claro, en un chat
+  ni como argumento de un comando (los argumentos se ven en la lista de
+  procesos). Vive cifrado en `D:\transmivoz-tunel\token.dpapi` y, en claro,
+  solo en el entorno del proceso de Caddy y en el panel de Render.
+- **No hagas capturas de pantalla del panel de Render con el valor a la
+  vista.** Mientras editas una variable, Render la muestra en claro. Una
+  captura con el token es un token filtrado (paso 8.7).
 - Carpeta de trabajo en `D:`, fuera del repositorio: `D:\transmivoz-tunel`.
 - Para detener algo, usa el PID del proceso que tú lanzaste. No detengas
   procesos por nombre.
@@ -37,49 +45,70 @@ Render ──https──> túnel ──> Caddy 127.0.0.1:11436 ──> TransMiVo
 curl.exe -sS http://127.0.0.1:11435/api/tags
 ```
 
-Debe listar `qwen2.5:3b`. Si no responde, reinicia las tareas con
+Debe listar `qwen2.5:3b`. Si no responde, arranca la tarea con
+`Start-ScheduledTask -TaskName 'TransMiVoz Ollama'` o reinstala las tareas con
 `scripts\instalar-servicios-transmivoz.ps1` (ver `AGENTS.md`). No sigas hasta
 que responda.
 
-## 2. Generar el token
+## 2. Generar el token y guardarlo cifrado
 
 Un token aleatorio de 256 bits en hexadecimal (64 caracteres). Funciona en
-Windows PowerShell 5.1 y en PowerShell 7. No se imprime: queda en la variable de
-entorno de esta sesión y en el portapapeles.
+Windows PowerShell 5.1. No se imprime ni pasa por el portapapeles: se guarda
+cifrado con DPAPI, de modo que solo este usuario de Windows, en este equipo,
+puede descifrarlo. Así sobrevive a un reinicio sin estar en claro en el disco.
 
 ```powershell
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Security
+$dirTunel = 'D:\transmivoz-tunel'
+$archivoToken = Join-Path $dirTunel 'token.dpapi'
+New-Item -ItemType Directory -Path $dirTunel -Force | Out-Null
+if (Test-Path -LiteralPath $archivoToken) { throw 'token.dpapi ya existe; para cambiarlo, sigue el paso 8.' }
 $bytesToken = New-Object byte[] 32
 $generador = [System.Security.Cryptography.RandomNumberGenerator]::Create()
 $generador.GetBytes($bytesToken)
 $generador.Dispose()
-$env:TRANSMIVOZ_OLLAMA_TOKEN = -join ($bytesToken | ForEach-Object { $_.ToString('x2') })
-Remove-Variable bytesToken, generador
-Set-Clipboard -Value $env:TRANSMIVOZ_OLLAMA_TOKEN
+$textoToken = -join ($bytesToken | ForEach-Object { $_.ToString('x2') })
+$cifrado = [System.Security.Cryptography.ProtectedData]::Protect([System.Text.Encoding]::ASCII.GetBytes($textoToken), $null, 'CurrentUser')
+[System.IO.File]::WriteAllBytes($archivoToken, $cifrado)
+Remove-Variable bytesToken, generador, textoToken, cifrado
+# Solo este usuario puede leer el archivo.
+icacls $archivoToken /inheritance:r /grant:r "$($env:USERNAME):(F)" | Out-Null
 ```
-
-La variable `TRANSMIVOZ_OLLAMA_TOKEN` solo existe en esta ventana. Abre Caddy
-desde esta misma ventana (paso 4), o repite este paso con otro token en cada
-sesión nueva y actualiza Render.
-
-**El portapapeles guarda copias.** Windows puede conservar el token en el
-historial del portapapeles y sincronizarlo con otros equipos. Después de pegarlo
-en Render (paso 3):
-
-1. Abre el historial con Win+V y pulsa *Borrar todo*.
-2. En *Configuración > Sistema > Portapapeles*, comprueba que *Sincronizar entre
-   dispositivos* está desactivado. Si estaba activado, el token pudo salir de
-   este equipo: genera uno nuevo y actualiza Render.
 
 ## 3. Ponerlo en Render sin imprimirlo
 
-1. En el panel de Render, servicio *transmivoz*, pestaña *Environment*, añade
-   (o edita) `OLLAMA_TOKEN` y pega el portapapeles (Ctrl+V). No lo escribas a
-   mano ni lo pegues en un chat.
-2. Vacía el portapapeles con `Set-Clipboard -Value ' '` y borra su historial
-   (Win+V, *Borrar todo*); ver el aviso del paso 2.
-3. No guardes aún: falta `OLLAMA_BASE_URL` (paso 6) y `OLLAMA_MODEL`. El panel
-   de Render puede mostrar los valores de las variables a quien tenga acceso al
-   servicio (no verificado); dalo solo al equipo.
+Crea `D:\transmivoz-tunel\copiar-token.ps1`. Descifra el token y lo deja en el
+portapapeles, sin mostrarlo:
+
+```powershell
+# Copia el token de Caddy (EA-27, #53) al portapapeles para pegarlo en Render
+# (OLLAMA_TOKEN). No lo imprime. Después de pegarlo: Win+V, "Borrar todo".
+Add-Type -AssemblyName System.Security
+$cifrado = [System.IO.File]::ReadAllBytes('D:\transmivoz-tunel\token.dpapi')
+$bytesToken = [System.Security.Cryptography.ProtectedData]::Unprotect($cifrado, $null, 'CurrentUser')
+Set-Clipboard -Value ([System.Text.Encoding]::ASCII.GetString($bytesToken))
+Remove-Variable cifrado, bytesToken
+'Token copiado. Pégalo en Render y luego borra el historial con Win+V.'
+```
+
+1. Ejecútalo:
+   `powershell -NoProfile -ExecutionPolicy Bypass -File D:\transmivoz-tunel\copiar-token.ps1`
+2. En el panel de Render, servicio *transmivoz*, pestaña *Environment*, sección
+   *Environment Variables*, añade (o edita) `OLLAMA_TOKEN` y pega el
+   portapapeles (Ctrl+V). No lo escribas a mano ni lo pegues en un chat.
+3. Vacía el portapapeles con `Set-Clipboard -Value ' '` y borra su historial
+   (Win+V, *Borrar todo*).
+4. No guardes aún: faltan `OLLAMA_BASE_URL` y `OLLAMA_MODEL` (paso 6).
+
+**El portapapeles guarda copias.** Windows puede conservar el token en el
+historial del portapapeles y sincronizarlo con otros equipos. En
+*Configuración > Sistema > Portapapeles*, comprueba que *Sincronizar entre
+dispositivos* está desactivado. Si estaba activado, el token pudo salir de este
+equipo: cámbialo (paso 8) y actualiza Render.
+
+El panel de Render muestra el valor en claro mientras se edita, a cualquiera
+con acceso al servicio: da ese acceso solo al equipo.
 
 ## 4. Caddy como proxy con token
 
@@ -91,11 +120,12 @@ para que Ollama reciba el `Host` que espera (el ejemplo oficial de nginx de las
 preguntas frecuentes de Ollama hace lo mismo con
 `proxy_set_header Host localhost:11434;`).
 
-Descarga el binario de Windows de 64 bits (el nombre exacto del archivo no está
-verificado) desde la página de versiones de Caddy
-(<https://github.com/caddyserver/caddy/releases>) y deja `caddy.exe` en
+Descarga `caddy_<versión>_windows_amd64.zip` y `caddy_<versión>_checksums.txt`
+desde la página de versiones de Caddy
+(<https://github.com/caddyserver/caddy/releases>), comprueba que el SHA-512 del
+zip (`Get-FileHash -Algorithm SHA512`) es el de la lista y deja `caddy.exe` en
 `D:\transmivoz-tunel`. Es la vía manual de la documentación oficial de
-instalación (<https://caddyserver.com/docs/install>).
+instalación (<https://caddyserver.com/docs/install>). Probado con la v2.11.9.
 
 Crea `D:\transmivoz-tunel\Caddyfile`. No contiene el token: lo lee de la
 variable de entorno al arrancar.
@@ -149,32 +179,58 @@ No añadas la directiva `log`: no hace falta y evita dejar cabeceras en disco.
 
 `persist_config off` es una opción global documentada de Caddy («By default, the
 config is persisted»). La carpeta de configuración de Caddy en Windows es
-`%AppData%\Caddy`; que el archivo se llame `autosave.json` no aparece en la
-documentación consultada. Ni `persist_config off` ni el borrado de ese archivo
-(paso 8) se ejecutaron en Windows: no verificado.
+`%AppData%\Caddy`. Con esta configuración en marcha, `%AppData%\Caddy\autosave.json`
+no existe (comprobado el 10/11/2026).
 
-Valida y arranca, en la ventana donde está la variable del paso 2. La
-comprobación impide arrancar con el token vacío, que dejaría una regla
-`Bearer ` sin secreto.
+Crea `D:\transmivoz-tunel\iniciar-caddy.ps1`. Descifra el token, lo pone en el
+entorno de este proceso y arranca Caddy, que lo hereda. La comprobación impide
+arrancar con el token vacío, que dejaría una regla `Bearer ` sin secreto.
 
 ```powershell
-Set-Location D:\transmivoz-tunel
-if (-not $env:TRANSMIVOZ_OLLAMA_TOKEN) { throw 'Falta TRANSMIVOZ_OLLAMA_TOKEN (paso 2).' }
-.\caddy.exe validate --config .\Caddyfile --adapter caddyfile
-.\caddy.exe run --config .\Caddyfile --adapter caddyfile
+# Arranca Caddy para EA-27 (#53): proxy con token delante de TransMiVoz Ollama.
+# Lo lanza la tarea programada "TransMiVoz Caddy" al iniciar sesión.
+# El token está cifrado con DPAPI en token.dpapi: solo este usuario, en este
+# equipo, puede descifrarlo. Vive en claro solo en el entorno de este proceso
+# y de Caddy; no se imprime ni se pasa como argumento.
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Security
+
+$dirTunel = 'D:\transmivoz-tunel'
+$cifrado = [System.IO.File]::ReadAllBytes((Join-Path $dirTunel 'token.dpapi'))
+$bytesToken = [System.Security.Cryptography.ProtectedData]::Unprotect($cifrado, $null, 'CurrentUser')
+$env:TRANSMIVOZ_OLLAMA_TOKEN = [System.Text.Encoding]::ASCII.GetString($bytesToken)
+Remove-Variable cifrado, bytesToken
+# Un token vacío dejaría la regla `Bearer ` sin secreto.
+if ($env:TRANSMIVOZ_OLLAMA_TOKEN -cnotmatch '^[0-9a-f]{64}$') { throw 'Token ausente o mal formado.' }
+
+Set-Location $dirTunel
+& (Join-Path $dirTunel 'caddy.exe') run --config (Join-Path $dirTunel 'Caddyfile') --adapter caddyfile
 ```
 
-Déjala abierta; Ctrl+C la detiene.
-
-Comprobación local, en otra ventana de PowerShell (con la variable del paso 2
-cargada en esa ventana; si no, repite el paso 2 y actualiza Render). `curl.exe`,
-no `curl`: en PowerShell `curl` es otro comando.
+Regístralo como tarea programada, con los mismos ajustes que **TransMiVoz
+Ollama** (arranca al iniciar sesión, sin límite de tiempo), y arráncala:
 
 ```powershell
+$usuarioActual = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$accionCaddy = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "D:\transmivoz-tunel\iniciar-caddy.ps1"'
+$disparador = New-ScheduledTaskTrigger -AtLogOn -User $usuarioActual
+$ajustes = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+$principal = New-ScheduledTaskPrincipal -UserId $usuarioActual -LogonType Interactive -RunLevel Limited
+Register-ScheduledTask -TaskName 'TransMiVoz Caddy' -Action $accionCaddy -Trigger $disparador -Settings $ajustes -Principal $principal -Description 'EA-27 (#53): proxy con token delante de TransMiVoz Ollama (127.0.0.1:11436 -> 11435).' | Out-Null
+Start-ScheduledTask -TaskName 'TransMiVoz Caddy'
+```
+
+Comprobación local. `curl.exe`, no `curl`: en PowerShell `curl` es otro
+comando. El token pasa por la entrada estándar, no por argumentos.
+
+```powershell
+Add-Type -AssemblyName System.Security
+$textoToken = [System.Text.Encoding]::ASCII.GetString([System.Security.Cryptography.ProtectedData]::Unprotect([System.IO.File]::ReadAllBytes('D:\transmivoz-tunel\token.dpapi'), $null, 'CurrentUser'))
 # Sin token: 403
 curl.exe -sS -o NUL -w "%{http_code}`n" http://127.0.0.1:11436/api/tags
-# Con token: 200. El token pasa por la entrada estándar, no por argumentos.
-"header = `"Authorization: Bearer $env:TRANSMIVOZ_OLLAMA_TOKEN`"" | curl.exe -sS --config - -o NUL -w "%{http_code}`n" http://127.0.0.1:11436/api/tags
+# Con token: 200
+"header = `"Authorization: Bearer $textoToken`"" | curl.exe -sS --config - -o NUL -w "%{http_code}`n" http://127.0.0.1:11436/api/tags
+Remove-Variable textoToken
 ```
 
 ## 5. Túnel
@@ -210,7 +266,9 @@ dirección es estable mientras la tailnet no cambie.
    `https://<máquina>.<tailnet>.ts.net:8443`, con el puerto y sin barra final.
    Compruébala desde fuera de la tailnet (un celular con datos móviles), como
    dice `SELF-HOSTING.md`: desde un equipo de la tailnet el nombre no pasa por
-   Funnel.
+   Funnel. Desde un equipo de la tailnet se puede forzar la dirección pública
+   con `curl --resolve <máquina>.<tailnet>.ts.net:8443:<IP pública>`, donde la
+   IP sale de `dig +short @1.1.1.1 <máquina>.<tailnet>.ts.net`.
 
 Según la documentación de Tailscale, Funnel solo escucha en los puertos 443,
 8443 y 10000, requiere MagicDNS y HTTPS activados en la tailnet y el atributo
@@ -218,11 +276,11 @@ Según la documentación de Tailscale, Funnel solo escucha en los puertos 443,
 ancho de banda que no se puede configurar. Sintaxis de la documentación:
 `tailscale funnel [flags] <target>`, con `--bg` (queda activo tras reiniciar
 hasta que se apague), `--https=<puerto>` y un número de puerto como destino.
-Para apagar una sola ruta se repite el comando con `off` al final. Que estos
-comandos funcionen en Windows con la ruta 443 existente intacta, y el comando
-exacto de apagado del 8443 (`tailscale funnel --https=8443 off`, deducido de
-la documentación), **no está verificado**. Comprueba el resultado con
-`tailscale funnel status` cada vez.
+
+En Windows, el comando del punto 2 añadió la ruta 8443 y dejó intacta la 443
+(comprobado el 10/11/2026). Al publicarla, Tailscale indica cómo apagarla:
+`tailscale funnel --https=8443 off`. Ese apagado **no se ha ejecutado**.
+Comprueba el resultado con `tailscale funnel status` cada vez.
 
 **Nunca uses `tailscale funnel reset` ni `tailscale serve reset`**: borran toda
 la configuración de Funnel y Serve, incluida la ruta 443 de la app.
@@ -253,7 +311,8 @@ Límites, según la documentación de Cloudflare:
 
 ## 6. Configurar Render
 
-En el panel de Render, *Environment* del servicio:
+En el panel de Render, *Environment* del servicio, sección *Environment
+Variables*:
 
 | Variable | Valor |
 | --- | --- |
@@ -261,8 +320,9 @@ En el panel de Render, *Environment* del servicio:
 | `OLLAMA_BASE_URL` | `https://<máquina>.<tailnet>.ts.net:8443` (o la del túnel rápido; paso 5) |
 | `OLLAMA_TOKEN` | ya puesto en el paso 3 |
 
-Guarda y despliega. La app solo usa el token si la dirección es `https`; con
-una dirección `http` que no sea de este equipo ignora Ollama y responde con
+Guarda con *Save, rebuild, and deploy*: el 10/11/2026 esa opción desplegó el
+último commit de `main`. La app solo usa el token si la dirección es `https`;
+con una dirección `http` que no sea de este equipo ignora Ollama y responde con
 reglas. Cómo comprobarlo desde Render: sección «Activar el modelo» de
 `docs/RENDER.md` (`GET /api/agent` debe mostrar `engine: "ollama"`,
 `reachable: true`, `hasModel: true`).
@@ -290,18 +350,16 @@ printf 'header = "Authorization: Bearer %s"\n' "$TOKEN" | curl -sS --config - "$
 unset TOKEN
 ```
 
-Desde PowerShell, el mismo patrón que en el paso 4: carga la variable de
-entorno, usa `curl.exe` y pasa
-`"header = `"Authorization: Bearer $env:TRANSMIVOZ_OLLAMA_TOKEN`""` por la
-tubería a `curl.exe --config -`.
+Desde PowerShell, el mismo patrón que en el paso 4: descifra el token en una
+variable propia, usa `curl.exe`, pasa
+`"header = `"Authorization: Bearer $textoToken`""` por la tubería a
+`curl.exe --config -` y borra la variable al terminar.
 
 Resultado esperado: 403, 403 y 200 con `qwen2.5:3b` en la lista. Si el punto 3
-da 403, el token no coincide con el del Caddyfile (la variable se leyó al
-arrancar Caddy). Si da 502, Caddy no llega a Ollama (paso 1). Si da 403 de
-Ollama por el `Host`, no verificado: Ollama debería aceptar `127.0.0.1`; si no,
-prueba `header_up Host localhost:11435` en el snippet `ollama`.
+da 403, el token no coincide con el que leyó Caddy al arrancar: reinicia la
+tarea **TransMiVoz Caddy**. Si da 502, Caddy no llega a Ollama (paso 1).
 
-## 8. Después de la feria: apagar y rotar
+## 8. Después de la feria: apagar y cambiar el token
 
 1. En Render, deja `OLLAMA_MODEL` vacío y borra `OLLAMA_TOKEN` y
    `OLLAMA_BASE_URL`; despliega. El asistente vuelve a las reglas.
@@ -316,21 +374,30 @@ prueba `header_up Host localhost:11435` en el snippet `ollama`.
    originales: `tailscale funnel --bg --https=8443 11436 off`.
 
    `status` ya no debe listar el 8443 y debe seguir mostrando la 443 hacia el
-   3000. No verificado en Windows. Con el túnel rápido, detén `cloudflared` con
+   3000. No ejecutado todavía. Con el túnel rápido, detén `cloudflared` con
    Ctrl+C en su ventana: muere con el proceso.
-3. Detén Caddy con Ctrl+C en su ventana. Si la ventana se cerró y el proceso
-   quedó vivo, el que escucha en el 11436 es el que lanzaste tú: toma su PID de
-   ahí, comprueba que es `caddy` y detén solo ese proceso:
+3. Quita la tarea, para que Caddy no vuelva a arrancar, y detén el proceso. El
+   que escucha en el 11436 es el que lanzó la tarea: toma su PID de ahí,
+   comprueba que es `caddy` y detén solo ese proceso:
 
    ```powershell
+   Unregister-ScheduledTask -TaskName 'TransMiVoz Caddy' -Confirm:$false
    $pidCaddy = (Get-NetTCPConnection -LocalPort 11436 -State Listen -ErrorAction Stop | Select-Object -First 1).OwningProcess
    if ((Get-Process -Id $pidCaddy).ProcessName -ne 'caddy') { throw 'El puerto 11436 no es de Caddy; no detengo nada.' }
    Stop-Process -Id $pidCaddy
    ```
 
    No detengas `ollama` ni la tarea **TransMiVoz Ollama**: la app local la usa.
-4. Borra la copia de la configuración que Caddy pudo guardar con el token
-   dentro, si existe (no verificado en Windows):
+   No ejecutado todavía.
+4. Borra el token cifrado. Sin ese archivo, el token ya no se puede recuperar
+   en el equipo:
+
+   ```powershell
+   Remove-Item -LiteralPath 'D:\transmivoz-tunel\token.dpapi'
+   ```
+
+5. Borra la copia de la configuración que Caddy pudo guardar con el token
+   dentro, si existe:
 
    ```powershell
    $copiaCaddy = Join-Path $env:APPDATA 'Caddy\autosave.json'
@@ -339,26 +406,67 @@ prueba `header_up Host localhost:11435` en el snippet `ollama`.
 
    Con `persist_config off` no debería existir. Si existe, el token ya estuvo en
    disco: no lo reutilices.
-5. Revoca el token: `Remove-Item Env:TRANSMIVOZ_OLLAMA_TOKEN`. Para usar la
-   guía otra vez se genera uno nuevo (paso 2); nunca se reutiliza.
 6. Limpia el portapapeles: Win+V, *Borrar todo*, y confirma que *Sincronizar
    entre dispositivos* sigue desactivado.
 7. Si el token pudo verse en un chat, un registro o una captura, trátalo como
-   filtrado: aplica los pasos 1 a 6 de inmediato.
+   filtrado y cámbialo.
+
+**Cambiar el token sin apagar nada:** borra `token.dpapi` (punto 4), repite el
+paso 2, reinicia Caddy (detén su proceso como en el punto 3, sin quitar la
+tarea, y `Start-ScheduledTask -TaskName 'TransMiVoz Caddy'`), copia el token
+nuevo a Render (paso 3) y despliega. Hasta desplegar, Render recibe 403 y
+responde con reglas. Un token nunca se reutiliza.
 
 ## Límites
 
-- El equipo debe estar encendido, con **TransMiVoz Ollama**, Caddy y el túnel
-  en marcha, durante toda la feria.
-- Si el equipo está apagado, el túnel caído o el modelo tarda más de 2 s en
-  responder, el asistente de Render responde con reglas, como hoy. La
-  precarga y el tiempo de espera están en `lib/ollama.ts`.
-- La primera petición tras cargar el modelo puede tardar más de 2 s y caer en
-  reglas; `GET /api/agent` lo precarga.
+- El equipo debe estar encendido **y con la sesión de Windows iniciada**
+  durante toda la feria: **TransMiVoz Ollama** y **TransMiVoz Caddy** arrancan
+  al iniciar sesión, y el token solo se descifra con ese usuario.
+- El modelo solo se consulta cuando las reglas no entienden la frase. Espera
+  hasta 4,5 s (`TIMEOUT_MS` en `lib/ollama.ts`); si el equipo está apagado, el
+  túnel caído o el modelo tarda más, el asistente responde con reglas.
+- Cargar el modelo en memoria tarda más que esa espera. Si no está cargado
+  (primer uso tras encender el equipo, o tras 24 h sin uso), la primera
+  pregunta cae en reglas y lanza la precarga; las siguientes ya lo encuentran
+  cargado. Para evitarlo, abre `/diagnostico` antes de abrir el puesto:
+  `GET /api/agent` también lo precarga, igual que el arranque del servidor.
+- Mientras está cargado, el modelo ocupa unos 2 GB de memoria de la tarjeta
+  gráfica, hasta 24 h después de la última pregunta.
+- El token da acceso a `POST /api/chat` con **cualquier modelo** de ese Ollama,
+  incluidos los de la nube de ollama.com si la cuenta los tiene: Caddy filtra
+  rutas, no modelos.
 - Con Funnel en el 8443 la dirección no cambia; una de túnel rápido nueva
   obliga a editar `OLLAMA_BASE_URL` y redesplegar Render a mano.
 - Caddy compara la cabecera con el token como texto; no es una comparación de
   tiempo constante. Con un token de 256 bits no es un riesgo práctico.
-- Sin verificar en una ejecución real de este proyecto: los comandos de Caddy,
-  `cloudflared` y Tailscale de esta guía se contrastaron con su documentación
-  oficial, pero no se ejecutaron en el equipo con Windows.
+
+## Comprobado y sin comprobar
+
+Ejecutado el 10/11/2026 en el equipo con Windows (Windows PowerShell 5.1, Caddy
+v2.11.9) y contra el servicio de Render:
+
+- Pasos 1, 2, 4, 5 y 6 de esta guía. Del paso 3 no se ejecutó
+  `copiar-token.ps1`: el token llegó al panel de Render por otra vía, sin
+  imprimirse.
+- Desde internet, por la dirección del 8443: 403 sin token, 403 en
+  `POST /api/pull` con token, 200 en `GET /api/tags` y en `POST /api/chat` con
+  token. La ruta 443 de la app siguió igual.
+- Desde Render: `GET /api/agent` devolvió `engine: "ollama"`,
+  `reachable: true`, `hasModel: true`.
+- Veinte preguntas a `POST /api/agent` de Render: las reglas resolvieron doce y
+  el modelo se consultó en ocho. Con el modelo cargado, esas respuestas
+  tardaron entre 0,8 y 2,5 s en total. Una agotó la espera de 2 s que había
+  entonces y cayó en reglas: por eso la espera es ahora de 4,5 s.
+- Con el modelo descargado a propósito, tres preguntas seguidas cayeron en
+  reglas y el modelo siguió sin cargarse: agotar la espera aborta la carga. Por
+  eso un fallo del modelo lanza ahora la precarga.
+
+Sin comprobar:
+
+- La espera de 4,5 s y la precarga tras un fallo, en Render: hay que desplegar
+  este cambio y repetir las dos mediciones.
+- Qué tarda en fallar la consulta con el equipo apagado. Si el túnel no
+  responde enseguida, cada pregunta que las reglas no entienden esperaría los
+  4,5 s antes de la respuesta de reglas.
+- El apagado (paso 8) y el cambio de token.
+- `cloudflared`: contrastado con su documentación, no ejecutado.
