@@ -5,26 +5,45 @@ import Foundation
 final class EntornoApp {
     let ajustes: AjustesServidorModelo
     let consulta: ConsultaModelo
+    /// Sesión SIMULADA: solo se muestra en las pruebas de interfaz (`modoPruebas`).
     let sesion: SesionLocalModelo
+    /// Sesión con el accesorio real por Bluetooth. `nil` solo en las pruebas de interfaz de la sesión simulada;
+    /// las del accesorio usan la misma sesión con un transporte sintético rotulado.
+    let accesorio: SesionAccesorioModelo?
+    /// Mantiene vivos los avisos de ruta e interrupción de audio.
+    private let monitorAudio: MonitorAudioSistema?
     /// `true` solo en las pruebas de interfaz (compilación de depuración).
     let modoPruebas: Bool
 
-    init(ajustes: AjustesServidorModelo, consulta: ConsultaModelo, sesion: SesionLocalModelo, modoPruebas: Bool) {
+    init(
+        ajustes: AjustesServidorModelo, consulta: ConsultaModelo, sesion: SesionLocalModelo,
+        accesorio: SesionAccesorioModelo? = nil, monitorAudio: MonitorAudioSistema? = nil, modoPruebas: Bool
+    ) {
         self.ajustes = ajustes
         self.consulta = consulta
         self.sesion = sesion
+        self.accesorio = accesorio
+        self.monitorAudio = monitorAudio
         self.modoPruebas = modoPruebas
     }
 
     static func crear() -> EntornoApp {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-PRUEBAS_UI_SIMULADAS") {
+        let argumentos = ProcessInfo.processInfo.arguments
+        if argumentos.contains("-PRUEBAS_UI_SIMULADAS") {
             return crearParaPruebasUI()
+        }
+        if argumentos.contains("-PRUEBAS_UI_ACCESORIO_SINTETICO") {
+            return crearParaPruebasUIAccesorio(argumentos: argumentos)
         }
         #endif
         let ajustes = AjustesServidorModelo(almacen: AlmacenClaveLlavero())
         let cliente = ClienteAgenteHTTP { await ajustes.configuracion }
-        return EntornoApp(ajustes: ajustes, consulta: ConsultaModelo(cliente: cliente), sesion: SesionLocalModelo(), modoPruebas: false)
+        let voz = ControlVoz(salida: SintetizadorSistema(), consultarRuta: SintetizadorSistema.rutaActual)
+        return EntornoApp(
+            ajustes: ajustes, consulta: ConsultaModelo(cliente: cliente), sesion: SesionLocalModelo(),
+            accesorio: SesionAccesorioModelo(transporte: TransporteCoreBluetooth(), voz: voz, avisos: .sistema),
+            monitorAudio: MonitorAudioSistema(control: voz), modoPruebas: false)
     }
 
     #if DEBUG
@@ -37,6 +56,25 @@ final class EntornoApp {
         return EntornoApp(
             ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado()),
             sesion: SesionLocalModelo(), modoPruebas: true)
+    }
+
+    /// Pantalla de producción del accesorio (`SesionAccesorioVista`) con un transporte sintético rotulado:
+    /// sin Bluetooth, audio ni red, y con el bloqueo por enlace no verificado intacto. Variantes:
+    /// `-PRUEBAS_UI_ACCESORIO_PERMISO_CONCEDIDO` (sin hoja previa) y `-PRUEBAS_UI_ACCESORIO_PERMISO_DENEGADO`.
+    private static func crearParaPruebasUIAccesorio(argumentos: [String]) -> EntornoApp {
+        let permiso: TransporteSintetico.Permiso =
+            argumentos.contains("-PRUEBAS_UI_ACCESORIO_PERMISO_CONCEDIDO") ? .concedido
+            : argumentos.contains("-PRUEBAS_UI_ACCESORIO_PERMISO_DENEGADO") ? .porPreguntarYDenegar : .porPreguntar
+        let nombre = "pruebas-ui.transmivoz"
+        let preferencias = UserDefaults(suiteName: nombre) ?? .standard
+        preferencias.removePersistentDomain(forName: nombre)
+        let ajustes = AjustesServidorModelo(almacen: AlmacenClaveEnMemoria(), preferencias: preferencias)
+        let voz = ControlVoz(salida: SalidaVozSintetica(), consultarRuta: { .noPrivada })
+        return EntornoApp(
+            ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado()),
+            sesion: SesionLocalModelo(),
+            accesorio: SesionAccesorioModelo(transporte: TransporteSintetico(permiso: permiso), voz: voz),
+            modoPruebas: true)
     }
     #endif
 }

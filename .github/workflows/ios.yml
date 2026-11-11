@@ -27,7 +27,8 @@ jobs:
   compilar-y-probar:
     name: Compilar y probar (Simulator + iPhone sin firma)
     runs-on: macos-26
-    timeout-minutes: 60
+    # La ejecución agotó 60 min antes de terminar la compilación de iPhone.
+    timeout-minutes: 90
     env:
       # Selección explícita y registrada: ver «Herramientas» en docs/expoandes/ios-ci.md.
       # Verificado en #69: macos-26 trae Xcode 26.6, build 17F113.

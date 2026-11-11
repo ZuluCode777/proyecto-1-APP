@@ -127,6 +127,15 @@ public enum ResultadoEvento: Equatable {
 /// del fondo (`reanudar`). Llamar `evaluar` periódicamente (al menos cada 100 ms
 /// con ejecución nativa activa).
 ///
+/// Aclaración de plataforma (iOS, EA-15; contrato §5.1 y §10): en Core Bluetooth la respuesta de una
+/// lectura y cada notificación llegan por el mismo callback, sin marca que las distinga. El transporte
+/// de la app apaga y confirma las notificaciones, pide la lectura fresca y solo entonces las enciende,
+/// o sea, la lectura de referencia va ANTES de la suscripción (el paso 7 antes que el 6). Esta
+/// estructura no cambia: recibe las mismas llamadas (`registrarInformacion`, `registrarReferencia`,
+/// `recibirNotificacion`) con los mismos bytes, la misma política y la misma frescura. Es una
+/// aclaración propuesta que el responsable del contrato no ha revisado ni aprobado, y su comportamiento
+/// en un iPhone con la placa sigue sin probarse (paso de banco en ea-12-ble.md).
+///
 /// Una trama que viola el contrato rechaza la sesión (terminal): la v1.0 no
 /// negocia ni interpreta lo desconocido.
 public struct SesionProximidad {
