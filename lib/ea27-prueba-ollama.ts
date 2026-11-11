@@ -160,7 +160,7 @@ async function conSimulacion<T>(entorno: EntornoPrueba, opciones: OpcionesFetch,
   const llamadas: Llamada[] = []
   // Cada caso parte sin modelo cargado. Se cambia el mismo objeto, sin borrarlo:
   // la copia de `lib/ollama.ts` que la ruta dejó en caché lo sigue usando.
-  const estado = (globalThis as { __transmivozOllama?: { precarga: Promise<void> | null; cargado: boolean } }).__transmivozOllama
+  const estado = estadoDeOllama()
   if (estado) {
     await estado.precarga
     estado.cargado = false
@@ -173,6 +173,16 @@ async function conSimulacion<T>(entorno: EntornoPrueba, opciones: OpcionesFetch,
     deshacerPlazos()
     restaurar()
   }
+}
+
+/** El estado que `lib/ollama.ts` comparte en `globalThis`, si alguna copia lo creó ya. */
+function estadoDeOllama() {
+  return (globalThis as { __transmivozOllama?: { precarga: Promise<void> | null; cargado: boolean } }).__transmivozOllama
+}
+
+/** Espera la precarga que esté en curso, sin lanzar otra. */
+export async function esperarPrecarga(): Promise<void> {
+  await estadoDeOllama()?.precarga
 }
 
 /** Carga una copia nueva de `lib/ollama.ts`, que lee el entorno de ese momento. */

@@ -1,7 +1,18 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import snapshot from "../data/transmilenio.json" with { type: "json" }
-import { TOKEN, URL_TUNEL, conOllama, conRuta, copiaDeOllama, esConsulta, esPrecarga, type Llamada, type OpcionesFetch } from "./ea27-prueba-ollama"
+import {
+  TOKEN,
+  URL_TUNEL,
+  conOllama,
+  conRuta,
+  copiaDeOllama,
+  esConsulta,
+  esPrecarga,
+  esperarPrecarga,
+  type Llamada,
+  type OpcionesFetch,
+} from "./ea27-prueba-ollama"
 import { parseIntent, runIntent, type Intent } from "./local-agent"
 import { elegirIntent, requiereModelo } from "./seleccion-interprete"
 import { TransmilenioDataSchema } from "./transmilenio"
@@ -349,16 +360,23 @@ test("modelo no cargado: la respuesta no espera a la precarga, y mientras dura n
 
 test("un 200 que no es de Ollama: tras la primera consulta responden las reglas sin volver a consultar", async () => {
   await conRuta(ENTORNO, {}, async ({ preguntar, llamadas, fijarModelo, ollama, opciones }) => {
-    await fijarModelo(true)
-    opciones.cuerpoCrudo = "<html><body>Entrar</body></html>"
-    for (let pregunta = 1; pregunta <= 3; pregunta++) {
-      const json = await (await preguntar("información de la B23")).json()
-      assert.equal(json.engine, "reglas", `pregunta ${pregunta}`)
-      // Deja terminar la precarga que lanzó la pregunta.
-      await ollama.warmUpOllama()
+    const ajenos: [string, Pick<OpcionesFetch, "cuerpo" | "cuerpoCrudo">][] = [
+      ["la página de un proxy", { cuerpoCrudo: "<html><body>Entrar</body></html>" }],
+      ["JSON sin message", { cuerpo: { sin: "mensaje" } }],
+    ]
+    for (const [nombre, ajeno] of ajenos) {
+      Object.assign(opciones, { cuerpo: undefined, cuerpoCrudo: undefined })
+      await fijarModelo(true)
+      Object.assign(opciones, ajeno)
+      for (let pregunta = 1; pregunta <= 3; pregunta++) {
+        const json = await (await preguntar("información de la B23")).json()
+        assert.equal(json.engine, "reglas", `${nombre}, pregunta ${pregunta}`)
+        // Solo la precarga que lanzó la pregunta: la prueba no lanza ninguna.
+        await esperarPrecarga()
+      }
+      assert.equal(consultas(llamadas), 1, `${nombre}: solo la primera pregunta consulta al modelo`)
+      assert.equal(ollama.modeloListo(), false, nombre)
     }
-    assert.equal(consultas(llamadas), 1, "solo la primera pregunta consulta al modelo")
-    assert.equal(ollama.modeloListo(), false)
   })
 })
 
