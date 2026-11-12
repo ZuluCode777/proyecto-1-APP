@@ -20,6 +20,7 @@ import {
   type TripPlan,
 } from "@/lib/routes"
 import { interpretarMetro, responderMetro, type ConsultaMetro } from "@/lib/metro"
+import { RESPUESTA_SEGURIDAD_FISICA, esPreguntaSeguridadFisica } from "@/lib/seguridad-fisica"
 import { normalize } from "@/lib/text"
 import { procedenciaCatalogo } from "@/lib/transmilenio"
 
@@ -48,6 +49,8 @@ export type Intent =
   | { type: "unsupported"; topic: "tarifas" | "tiempo_real" }
   /** Consulta informativa del Metro futuro (EA-13): nunca viaje, GPS ni abordaje. */
   | { type: "metro"; consulta: ConsultaMetro }
+  /** Pregunta de permiso físico («¿ya puedo cruzar?»): solo explica el límite, sin acción. */
+  | { type: "seguridad_fisica" }
   | { type: "unknown" }
 
 const AgentStepSchema = z.object({
@@ -246,6 +249,9 @@ export function parseIntent(text: string, data: TransmilenioData): Intent {
   const t = normalize(text)
   if (!t) return { type: "unknown" }
 
+  // Alerta física (EA-27, #53): va primero, antes que el Metro, los viajes y el
+  // GPS. El modelo nunca decide si es seguro cruzar ni abordar.
+  if (esPreguntaSeguridadFisica(text)) return { type: "seguridad_fisica" }
   if (hasPhrase(t, CANCEL)) return { type: "cancel" }
   // El Metro se decide ANTES que la ayuda, tarifas, rutas, lugares y GPS: con
   // contexto explícito de Metro, una petición de viaje, tarifa u horario no puede
@@ -538,6 +544,10 @@ function resolverIntent(
       steps.push(...metro.steps)
       return say(metro.reply)
     }
+
+    case "seguridad_fisica":
+      // Sin acción ni pasos: no abre pantallas, no dice sí ni no.
+      return say(RESPUESTA_SEGURIDAD_FISICA)
 
     case "frequent":
       steps.push({ label: "Abrí tus rutas frecuentes" })

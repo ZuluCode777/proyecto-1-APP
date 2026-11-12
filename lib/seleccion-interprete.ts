@@ -16,6 +16,11 @@ import type { Intent } from "@/lib/local-agent"
  *   abordaje (invariante de EA-13); medido contra el modelo real, «quiero ir
  *   en metro a la calle 72» salía como viaje y «cómo funciona la línea 2 del
  *   metro» como la ruta «2 M».
+ * - `seguridad_fisica` («¿ya puedo cruzar?», «¿está libre el andén?») también la
+ *   resuelven siempre las reglas: la regla del equipo es que el modelo nunca
+ *   decide si es seguro cruzar ni abordar. Medido contra el modelo real, esas
+ *   dos frases salían como `gps` y la respuesta («te guío a la estación») sonaba
+ *   a luz verde para una persona ciega.
  * - Se mantiene la protección de EA-08: un `unknown` del modelo (o una salida
  *   que no valida contra los datos) no anula la intención de las reglas, p. ej.
  *   «información de la B23».
@@ -37,7 +42,11 @@ export function intencionConocida(intent: Intent | null | undefined): intent is 
  * responden siempre con reglas y no se consulta al modelo.
  */
 function soloReglas(intentDeReglas: Intent): boolean {
-  return intentDeReglas.type === "metro" || intentDeReglas.type === "trip_missing_destination"
+  return (
+    intentDeReglas.type === "metro" ||
+    intentDeReglas.type === "trip_missing_destination" ||
+    intentDeReglas.type === "seguridad_fisica"
+  )
 }
 
 /**
@@ -59,7 +68,7 @@ export type SeleccionInterprete = {
  * del modelo (opcional; `null` si no se consultó, no respondió, falló o no
  * validó).
  *
- * - Las reglas reconocen `metro` o `trip_missing_destination`: reglas.
+ * - Las reglas reconocen `metro`, `trip_missing_destination` o `seguridad_fisica`: reglas.
  * - El modelo reconoce la frase (no es `null` ni `unknown`): modelo.
  * - Si no: la intención de reglas, aunque sea `unknown`.
  */

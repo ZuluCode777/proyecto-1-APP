@@ -30,6 +30,7 @@ const TIPOS: Record<Intent["type"], true> = {
   trip_missing_destination: true,
   unsupported: true,
   metro: true,
+  seguridad_fisica: true,
   unknown: true,
 }
 const INTENCIONES = Object.keys(TIPOS) as [Intent["type"], ...Intent["type"][]]

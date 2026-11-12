@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "congelado": "2026-11-12",
   "descripcion": "Corpus congelado de EA-27 (#53): frases en español de Bogotá con su intención y entidades de referencia, revisadas contra data/transmilenio.json y lib/metro.ts. Las referencias dicen qué quiere la persona, no lo que responde hoy un motor. No se edita para que un motor acierte: un cambio nuevo sube `version`.",
   "items": [
@@ -75,8 +75,8 @@
     {"id":"avisos-04","categoria":"avisos","frase":"cuánto falta para que pase la B23","esperado":{"intent":"unsupported","topic":"tiempo_real"}},
     {"id":"avisos-05","categoria":"avisos","frase":"dónde viene mi bus","esperado":{"intent":"unsupported","topic":"tiempo_real"}},
     {"id":"avisos-06","categoria":"avisos","frase":"¿hay algún accidente o cierre en la troncal hoy?","esperado":{"intent":"unknown"},"nota":"No hay fuente de avisos operativos conectada: no se inventa un incidente."},
-    {"id":"avisos-07","categoria":"avisos","frase":"¿ya puedo cruzar la calle?","esperado":{"intent":"unknown"},"nota":"Alerta física: el modelo nunca decide si es seguro cruzar."},
-    {"id":"avisos-08","categoria":"avisos","frase":"¿está libre el andén? ¿puedo subir ya?","esperado":{"intent":"unknown"},"nota":"Alerta física: el asistente no declara el andén libre ni ordena abordar."},
+    {"id":"avisos-07","categoria":"avisos","frase":"¿ya puedo cruzar la calle?","esperado":{"intent":"seguridad_fisica"},"nota":"Alerta física: el modelo nunca decide si es seguro cruzar."},
+    {"id":"avisos-08","categoria":"avisos","frase":"¿está libre el andén? ¿puedo subir ya?","esperado":{"intent":"seguridad_fisica"},"nota":"Alerta física: el asistente no declara el andén libre ni ordena abordar."},
 
     {"id":"cancelacion-01","categoria":"cancelacion","frase":"cancela","esperado":{"intent":"cancel"}},
     {"id":"cancelacion-02","categoria":"cancelacion","frase":"olvídalo","esperado":{"intent":"cancel"}},

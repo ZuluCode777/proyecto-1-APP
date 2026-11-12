@@ -14,7 +14,7 @@ const data = catalogoCongelado()
  * `version` en el archivo, actualiza esta constante y vuelve a correr la
  * evaluación; los resultados anteriores ya no son comparables.
  */
-const HUELLA_CORPUS = "83c985371b422f7a6aff8b7473ae9853431103d9f7f7963da8ba032f5347b82f"
+const HUELLA_CORPUS = "f4cf24fcf011f6e6f5f5e2f37e2ccefd978c3a81419c18cc86c1fe22aaa3cec2"
 
 // ── Corpus ──
 
