@@ -560,6 +560,61 @@ final class TransMiVozUITests: XCTestCase {
         preguntar("viaje")
         XCTAssertTrue(elemento("aviso-viaje").waitForExistence(timeout: 10))
         XCTAssertFalse(app.staticTexts["[SIMULADO] Texto de viaje que la app no debe mostrar."].exists)
+        // El texto del viaje no se muestra, pero su fecha y procedencia sí.
+        XCTAssertEqual(elemento("procedencia-catalogo").label, "[SIMULADO] Datos consultados hoy.")
+    }
+
+    // MARK: Consulta de transporte y Metro (EA-17), con respuestas simuladas
+
+    func testMetroSePresentaComoEscenarioFuturo() throws {
+        abrirPestana("Consulta")
+        let escenario = elemento("boton-escenario")
+        XCTAssertTrue(escenario.waitForExistence(timeout: 10))
+        XCTAssertEqual(escenario.label, "Metro (futuro)")
+        XCTAssertEqual(escenario.value as? String, "desactivado")
+        XCTAssertGreaterThanOrEqual(escenario.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(escenario.frame.height, 44)
+        escenario.tap()
+        esperar(escenario, "value == %@", "activado", "No se cambió al escenario del Metro")
+        XCTAssertEqual(escenario.label, "Metro (futuro)", "el texto del selector no cambia: el estado va en su valor")
+        XCTAssertTrue(
+            elemento("introduccion-consulta").label.hasPrefix("Escenario Metro educativo: infraestructura futura, sin servicio comercial."),
+            "la pantalla debe decir que el Metro es educativo y futuro antes de preguntar")
+        try auditar(app, "consulta-escenario-metro", testCase: self)
+
+        preguntar("estaciones")
+        esperarTexto("Escenario Metro: infraestructura futura")
+        XCTAssertTrue(elemento("aviso-metro-futuro").exists, "el resultado debe decir que el Metro no presta servicio")
+        XCTAssertTrue(app.staticTexts["[SIMULADO] Metro de Bogotá, estación de prueba: infraestructura futura y sin servicio comercial."].exists)
+    }
+
+    /// Servidor arrancando SIMULADO (no es Render): el plazo vence, la pregunta se conserva y el reintento responde.
+    func testPlazoVencidoConservaLaPreguntaYReintentarResponde() throws {
+        preguntar("frio")
+        esperarTexto("El servidor no respondió a tiempo.")
+        XCTAssertEqual(elemento("campo-pregunta").value as? String, "frio", "la pregunta debe conservarse")
+        elemento("boton-reintentar").tap()
+        esperarTexto("[SIMULADO] Respuesta tras reintentar.")
+        XCTAssertFalse(elemento("boton-reintentar").exists)
+    }
+
+    func testDatosAntiguosSeAvisanYSePuedeVolverAConsultar() throws {
+        preguntar("antiguo")
+        XCTAssertTrue(elemento("aviso-catalogo-antiguo").waitForExistence(timeout: 10), "los datos antiguos deben avisarse")
+        XCTAssertTrue(elemento("limite-accion").exists, "una ruta no tiene pantalla propia: debe decirse")
+        elemento("boton-volver-a-consultar").tap()
+        esperarTexto("[SIMULADO] La ruta Z99 es de prueba. [SIMULADO] Datos consultados hoy.")
+        XCTAssertFalse(elemento("aviso-catalogo-antiguo").exists, "con datos recientes el aviso desaparece")
+    }
+
+    func testAccionSinPantallaInformaElLimiteYNoNavega() throws {
+        preguntar("gps")
+        esperarTexto("[SIMULADO] Voy a abrir el GPS auditivo.")
+        let limite = elemento("limite-accion")
+        XCTAssertTrue(limite.exists, "falta el límite de la acción")
+        XCTAssertTrue(limite.label.contains("no usa tu ubicación"))
+        XCTAssertTrue(limite.label.contains("desde qué estación sales"), "sin ubicación, el origen se escribe")
+        XCTAssertTrue(app.tabBars.buttons["Consulta"].isSelected, "la app no navega a ninguna pantalla")
     }
 
     // MARK: Servidor
@@ -618,20 +673,69 @@ final class TransMiVozTextoGrandeUITests: XCTestCase {
             esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña \(nombre)")
             if nombre == "Consulta" {
                 // La introducción mide ~500 pt: se audita entera y a la vista, y luego el campo con sus botones.
+                // Bajo la fila fija del selector, el vecino del objetivo queda recortado por el borde de arriba del área
+                // desplazable y el sistema mide el contraste de ese trozo: se difiere y se mide entero al cerrar la fase
+                // (`FaseAuditada`). Lo que está entero a la vista sigue fallando en el acto.
+                let consulta = FaseAuditada("consulta-texto-muy-grande", app: app, caso: self, velocidad: .slow)
                 for (id, contexto) in [("introduccion-consulta", "introduccion"), ("boton-enviar", "campo")] {
                     exponer(id, en: app)
                     if id == "boton-enviar" {
                         let contador = app.staticTexts["contador-caracteres"]
                         XCTAssertTrue(contador.isHittable, "El contador debe estar visible para auditarlo")
-                        XCTAssertGreaterThanOrEqual(contador.frame.minY, app.navigationBars.firstMatch.frame.maxY)
+                        XCTAssertGreaterThanOrEqual(contador.frame.minY, max(app.navigationBars.firstMatch.frame.maxY, app.scrollViews.firstMatch.frame.minY))
                         XCTAssertLessThanOrEqual(contador.frame.maxY, app.scrollViews.firstMatch.frame.maxY)
                     }
-                    try auditar(app, "texto-muy-grande-Consulta-\(contexto)", testCase: self)
+                    try consulta.auditar("texto-muy-grande-Consulta-\(contexto)")
                 }
+                try consulta.cerrar()
             } else {
                 try auditar(app, "texto-muy-grande-\(nombre)", testCase: self)
             }
         }
+    }
+
+    /// El escenario Metro con el texto más grande (EA-17): el selector queda tocable y no menor de 44 pt, y la
+    /// pantalla en Metro (introducción y campo) pasa la misma auditoría que la de transporte. Prueba aparte para no
+    /// alargar la de arriba, que ya es larga en un runner lento.
+    func testMetroConTextoMuyGrande() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-PRUEBAS_UI_SIMULADAS", "-AppleLanguages", "(es)", "-AppleLocale", "es_CO",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL",
+        ]
+        app.launch()
+        addTeardownBlock { app.terminate() }
+        let pestana = app.tabBars.buttons["Consulta"]
+        XCTAssertTrue(pestana.waitForExistence(timeout: 10))
+        pestana.tap()
+        esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña Consulta")
+
+        let escenario = app.descendants(matching: .any).matching(identifier: "boton-escenario").firstMatch
+        XCTAssertTrue(escenario.waitForExistence(timeout: 10), "El selector del escenario Metro no existe")
+        XCTAssertTrue(escenario.isHittable, "El selector del escenario Metro no es tocable con el texto más grande")
+        XCTAssertGreaterThanOrEqual(escenario.frame.width, 44, "El selector mide menos de 44 pt de ancho")
+        XCTAssertGreaterThanOrEqual(escenario.frame.height, 44, "El selector mide menos de 44 pt de alto")
+        escenario.tap()
+        esperar(escenario, "value == %@", "activado", "No se cambió al escenario del Metro")
+
+        // Misma fase diferida que la prueba de arriba: ver el comentario allí.
+        let metro = FaseAuditada("consulta-metro-texto-muy-grande", app: app, caso: self, velocidad: .slow)
+        for (id, contexto) in [("introduccion-consulta", "introduccion"), ("boton-enviar", "campo")] {
+            exponer(id, en: app)
+            if id == "introduccion-consulta" {
+                XCTAssertTrue(
+                    app.staticTexts[id].label.hasPrefix("Escenario Metro educativo"),
+                    "La introducción debe decir que el Metro es un escenario educativo")
+            } else {
+                let contador = app.staticTexts["contador-caracteres"]
+                XCTAssertTrue(contador.isHittable, "El contador debe estar visible para auditarlo")
+                XCTAssertGreaterThanOrEqual(contador.frame.minY, max(app.navigationBars.firstMatch.frame.maxY, app.scrollViews.firstMatch.frame.minY))
+                XCTAssertLessThanOrEqual(contador.frame.maxY, app.scrollViews.firstMatch.frame.maxY)
+            }
+            try metro.auditar("texto-muy-grande-Consulta-metro-\(contexto)")
+        }
+        try metro.cerrar()
     }
 }
 
@@ -901,6 +1005,19 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         exponer("aviso-transporte-sintetico", en: app)
         comprobarEnteros(["aviso-accesorio-real"], en: app, comienzo: true)
         try reposo.auditar("texto-muy-grande-Accesorio-avisos-iniciales")
+        // El aviso del sensor real son tres frases (entero medía 987 pt, más que el área visible de 659 pt) y cada una tiene su
+        // posición, como el aviso de seguridad: expuesta por su identificador y su texto exacto, con la auditoría completa.
+        let frasesAvisoReal = [
+            "Sensor real por Bluetooth.", "Los avisos hablados solo salen por auriculares.",
+            "Con la pantalla bloqueada o la app en segundo plano la sesión se detiene; al volver se sincroniza de nuevo.",
+        ]
+        var frasesSinMedir: [String] = []
+        for (posicion, frase) in frasesAvisoReal.enumerated() {
+            let id = posicion == 0 ? "aviso-accesorio-real" : "aviso-accesorio-real-\(posicion)"
+            try reposo.exponerPorEscalas(id, etiqueta: frase)
+            try reposo.auditar("texto-muy-grande-Accesorio-sensor-real-\(posicion + 1)")
+            if !reposo.libro.limpios.contains(ClaveNodo(identificador: id, etiqueta: frase)) { frasesSinMedir.append(id) }
+        }
         // El aviso de seguridad son dos párrafos y cada uno tiene su posición: entero y tocable (`completo`), expuesto por su
         // identificador y su texto exacto y con la auditoría completa. Ninguno se deja a la remedición de otra posición.
         var avisoSinMedir: [String] = []
@@ -915,6 +1032,7 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         exponer("boton-buscar", en: app)
         try reposo.auditar("texto-muy-grande-Accesorio-busqueda")
         try reposo.cerrar()
+        XCTAssertEqual(frasesSinMedir, [], "Cada frase del aviso del sensor real debe quedar medida entera a la vista, con su texto exacto, en su propia posición")
         XCTAssertEqual(avisoSinMedir, [], "Cada párrafo del aviso de seguridad debe quedar medido entero a la vista, con su texto exacto, en su propia posición")
 
         // Buscar cambia el estado (aparece la lista): fase nueva. El cierre de la fase pudo mover el desplazamiento: se
@@ -1034,6 +1152,162 @@ final class TransMiVozContrasteNegativoUITests: XCTestCase {
         XCTAssertTrue(fase.libro.fallos.contains { $0.contains("«\(id)»") && $0.contains("entero a la vista") },
             "El libro no rechazó el contraste visible. Fallos: \(fase.libro.fallos)")
         XCTAssertFalse(fase.libro.diferidos.keys.contains { $0.identificador == id }, "El contraste visible no puede diferirse")
+    }
+}
+
+/// La pantalla real de la lupa (`LupaVista`) con la cámara SINTÉTICA de las pruebas de interfaz (`CamaraSintetica`,
+/// rotulada en pantalla): el Simulator no tiene cámara. Demuestran el flujo del permiso, los controles y el ciclo de vida
+/// de la interfaz; no prueban la cámara real, el aumento del dispositivo, los filtros sobre imagen real ni VoiceOver.
+final class TransMiVozLupaUITests: XCTestCase {
+    private var app: XCUIApplication!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    private func lanzar(_ extra: [String] = []) {
+        app = XCUIApplication()
+        app.launchArguments += ["-PRUEBAS_UI_SIMULADAS"] + extra + [
+            "-AppleLanguages", "(es)", "-AppleLocale", "es_CO", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
+        ]
+        app.launch()
+        addTeardownBlock { [app] in app?.terminate() }
+        // Sin esperar el rasgo «seleccionado»: con el permiso por pedir, la hoja de la explicación tapa la barra de pestañas
+        // nada más abrir la lupa. Cada prueba espera lo que le toca.
+        let pestana = app.tabBars.buttons["Lupa"]
+        XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña Lupa")
+        pestana.tap()
+    }
+
+    private func elemento(_ identificador: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identificador).firstMatch
+    }
+
+    private func abrirPestana(_ nombre: String) {
+        let pestana = app.tabBars.buttons[nombre]
+        XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña \(nombre)")
+        pestana.tap()
+        esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña \(nombre)")
+    }
+
+    func testElPermisoSeExplicaAntesYLuegoLaLupaMuestraSusControles() throws {
+        lanzar()
+        XCTAssertTrue(elemento("texto-permiso-camara").waitForExistence(timeout: 10), "la explicación va antes del permiso")
+        XCTAssertFalse(elemento("visor-lupa").exists, "sin permiso no hay imagen")
+        let continuar = elemento("boton-permiso-camara-continuar")
+        continuar.tap()
+        XCTAssertTrue(continuar.waitForNonExistence(timeout: 10), "La hoja del permiso no se cerró")
+
+        let visor = elemento("visor-lupa")
+        XCTAssertTrue(visor.waitForExistence(timeout: 10))
+        esperar(visor, "value == %@", "Imagen en vivo", "La lupa no quedó activa")
+        XCTAssertTrue(elemento("aviso-camara-sintetica").exists, "debe rotular la cámara sintética")
+        XCTAssertEqual(visor.label, "Imagen ampliada de la cámara. VoiceOver no describe lo que aparece en ella.")
+
+        // Aumento: el rango lo da el dispositivo (la cámara sintética ofrece de 1 a 8).
+        exponer("control-aumento", en: app)
+        let aumento = elemento("control-aumento")
+        esperar(aumento, "value == %@", "1 aumento", "El aumento no parte de 1")
+        aumento.adjust(toNormalizedSliderPosition: 1)
+        esperar(aumento, "value == %@", "8 aumentos", "El aumento no llegó al máximo del dispositivo")
+
+        // Filtros: uno elegido a la vez, también por marca y no solo por color.
+        exponer("filtro-invertir", en: app)
+        XCTAssertTrue(elemento("filtro-contraste").isSelected, "parte con «Alto contraste»")
+        elemento("filtro-invertir").tap()
+        esperar(elemento("filtro-invertir"), "isSelected == %@", true, "No se eligió «Invertir»")
+        XCTAssertFalse(elemento("filtro-contraste").isSelected)
+
+        // Congelar y reanudar.
+        exponer("boton-congelar", en: app)
+        let congelar = elemento("boton-congelar")
+        XCTAssertEqual(congelar.label, "Congelar imagen")
+        congelar.tap()
+        esperar(congelar, "label == %@", "Reanudar", "No se congeló la imagen")
+        XCTAssertEqual(visor.value as? String, "Imagen congelada")
+        congelar.tap()
+        esperar(congelar, "label == %@", "Congelar imagen", "No se reanudó la imagen")
+        XCTAssertEqual(visor.value as? String, "Imagen en vivo")
+    }
+
+    func testSalirDeLaPestanaDescongelaYAlVolverLaImagenEsEnVivo() throws {
+        lanzar(["-PRUEBAS_UI_LUPA_PERMISO_CONCEDIDO"])
+        XCTAssertFalse(elemento("texto-permiso-camara").exists, "con el permiso ya dado no se vuelve a explicar")
+        exponer("boton-congelar", en: app)
+        elemento("boton-congelar").tap()
+        esperar(elemento("boton-congelar"), "label == %@", "Reanudar", "No se congeló la imagen")
+
+        abrirPestana("Consulta")
+        XCTAssertTrue(elemento("campo-pregunta").waitForExistence(timeout: 10))
+        abrirPestana("Lupa")
+        let visor = elemento("visor-lupa")
+        XCTAssertTrue(visor.waitForExistence(timeout: 10))
+        esperar(visor, "value == %@", "Imagen en vivo", "Al volver, la lupa debe reabrir en vivo y sin congelar")
+        exponer("boton-congelar", en: app)
+        XCTAssertEqual(elemento("boton-congelar").label, "Congelar imagen")
+    }
+
+    func testAhoraNoNoPideNadaAlSistemaYSePuedeActivarDespues() throws {
+        lanzar()
+        let ahoraNo = elemento("boton-permiso-camara-ahora-no")
+        XCTAssertTrue(ahoraNo.waitForExistence(timeout: 10), "la hoja ofrece una salida sin permiso")
+        ahoraNo.tap()
+        XCTAssertTrue(ahoraNo.waitForNonExistence(timeout: 10), "La hoja del permiso no se cerró")
+        let activar = elemento("boton-activar-lupa")
+        XCTAssertTrue(activar.waitForExistence(timeout: 10), "debe poder activarse después")
+        XCTAssertEqual(
+            elemento("estado-lupa").label, "La lupa no está disponible sin la cámara. Toca «Activar la lupa» cuando quieras usarla.")
+        XCTAssertFalse(elemento("visor-lupa").exists, "no se pidió nada al sistema")
+        // Rechazar nunca bloquea el resto de la app.
+        abrirPestana("Consulta")
+        XCTAssertTrue(elemento("campo-pregunta").waitForExistence(timeout: 10))
+        abrirPestana("Lupa")
+        // «Activar la lupa» vuelve a explicar el permiso.
+        let activarOtraVez = elemento("boton-activar-lupa")
+        XCTAssertTrue(activarOtraVez.waitForExistence(timeout: 10), "al volver sigue sin explicar solo")
+        activarOtraVez.tap()
+        XCTAssertTrue(elemento("boton-permiso-camara-continuar").waitForExistence(timeout: 10), "debe volver a explicarlo")
+    }
+
+    func testPermisoDenegadoDaAyudaYElRestoDeLaAppSigueFuncionando() throws {
+        lanzar(["-PRUEBAS_UI_LUPA_PERMISO_DENEGADO"])
+        let continuar = elemento("boton-permiso-camara-continuar")
+        XCTAssertTrue(continuar.waitForExistence(timeout: 10))
+        continuar.tap()
+        XCTAssertTrue(continuar.waitForNonExistence(timeout: 10), "La hoja del permiso no se cerró")
+        XCTAssertTrue(elemento("boton-abrir-ajustes-camara").waitForExistence(timeout: 10), "debe ofrecer cómo activarlo")
+        XCTAssertEqual(elemento("estado-lupa").label, "Sin permiso de cámara. Actívalo en Ajustes, en TransMiVoz.")
+        XCTAssertFalse(elemento("visor-lupa").exists)
+        // Denegar nunca bloquea el resto de la app.
+        abrirPestana("Consulta")
+        XCTAssertTrue(elemento("campo-pregunta").waitForExistence(timeout: 10))
+    }
+
+    func testSinCamaraSeDiceYNoSePideNada() throws {
+        lanzar(["-PRUEBAS_UI_LUPA_SIN_CAMARA"])
+        let estado = elemento("estado-lupa")
+        XCTAssertTrue(estado.waitForExistence(timeout: 10))
+        XCTAssertEqual(estado.label, "Este dispositivo no tiene cámara disponible.")
+        XCTAssertFalse(elemento("boton-permiso-camara-continuar").exists)
+        XCTAssertFalse(elemento("visor-lupa").exists)
+    }
+
+    // MARK: Auditoría de accesibilidad de la pantalla real
+
+    func testAuditoriaAccesibilidadExplicacionDelPermisoDeLaCamara() throws {
+        lanzar()
+        XCTAssertTrue(elemento("boton-permiso-camara-continuar").waitForExistence(timeout: 10))
+        try auditar(app, "lupa-explicacion-permiso", testCase: self)
+    }
+
+    func testAuditoriaAccesibilidadPermisoDeLaCamaraDenegado() throws {
+        lanzar(["-PRUEBAS_UI_LUPA_PERMISO_DENEGADO"])
+        let continuar = elemento("boton-permiso-camara-continuar")
+        XCTAssertTrue(continuar.waitForExistence(timeout: 10))
+        continuar.tap()
+        XCTAssertTrue(continuar.waitForNonExistence(timeout: 10), "La hoja del permiso no se cerró")
+        XCTAssertTrue(elemento("boton-abrir-ajustes-camara").waitForExistence(timeout: 10))
+        try auditar(app, "lupa-permiso-denegado", testCase: self)
     }
 }
 

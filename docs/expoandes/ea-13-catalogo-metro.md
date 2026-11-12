@@ -66,6 +66,13 @@ tarifa y horario, aclaraciones), por el mismo camino que `POST /api/agent`
 es la prueba, que falla si una respuesta de Metro supera cualquiera de los dos límites o
 añade un campo.
 
+EA-17 (#43) añadió a `AgentReplySchema` el campo opcional `catalogo` (`{ procedencia, antiguo }`),
+solo en respuestas con datos del catálogo de TransMilenio (ruta, estación, viaje). Las de
+Metro no lo llevan, y `lib/ea17-procedencia.test.ts` lo comprueba. El cliente iPhone tiene un
+escenario «Metro (futuro)» que antepone «Metro: » a la pregunta para que `interpretarMetro`
+la trate como Metro; la prueba también verifica que ese prefijo, tal como está escrito en
+`EscenarioConsulta.swift`, hace que `parseIntent` devuelva `metro` y que la respuesta sea `none`.
+
 ## Límites de la verificación
 
 `pnpm verificar` usa Chrome sin pantalla con micrófono y voz simulados: comprueba que
