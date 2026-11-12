@@ -18,6 +18,7 @@ final class SintetizadorSistema: NSObject, SalidaVoz, AVSpeechSynthesizerDelegat
     private var turno = TurnoLocucion<AVSpeechUtterance>()
 
     var hablando: Bool { turno.hablando }
+    private(set) var cortadaPorElSistema = false
 
     override init() {
         super.init()
@@ -44,6 +45,7 @@ final class SintetizadorSistema: NSObject, SalidaVoz, AVSpeechSynthesizerDelegat
         let locucion = AVSpeechUtterance(string: texto)
         locucion.voice = Self.vozEnEspanol()
         locucion.prefersAssistiveTechnologySettings = true
+        cortadaPorElSistema = false
         turno.empezar(locucion)
         sintetizador.speak(locucion)
         return .iniciada
@@ -62,7 +64,12 @@ final class SintetizadorSistema: NSObject, SalidaVoz, AVSpeechSynthesizerDelegat
     }
 
     nonisolated func speechSynthesizer(_ sintetizador: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-        Task { @MainActor in self.terminar(utterance) }
+        Task { @MainActor in
+            // Si la cortó la app, `detener` ya vació el turno y `actual` es otra o ninguna; si sigue siendo la vigente,
+            // la canceló el sistema (Siri, una alarma) sin que la app lo pidiera.
+            if self.turno.actual == utterance { self.cortadaPorElSistema = true }
+            self.terminar(utterance)
+        }
     }
 
     private func terminar(_ locucion: AVSpeechUtterance) {

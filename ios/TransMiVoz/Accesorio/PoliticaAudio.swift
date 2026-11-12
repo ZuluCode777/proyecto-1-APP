@@ -44,6 +44,13 @@ protocol SalidaVoz: AnyObject {
     func hablar(_ texto: String) -> ResultadoHabla
     /// Corta lo que suene y descarta lo pendiente.
     func detener()
+    /// El sistema cortó la última locución sin que la app lo pidiera (Siri, una alarma: `didCancel` sin `detener`).
+    var cortadaPorElSistema: Bool { get }
+}
+
+extension SalidaVoz {
+    /// Las salidas que no pueden saberlo (la sintética) no la cortan nunca.
+    var cortadaPorElSistema: Bool { false }
 }
 
 enum MotivoSilencio: Equatable {
@@ -116,12 +123,18 @@ final class ControlVoz {
     private(set) var interrumpido = false
     /// El sistema rechazó la última activación de la sesión de audio.
     private(set) var audioNoDisponible = false
-    /// La última locución empezada se cortó antes de terminar (la siguiente, un cambio de ruta, una interrupción o un
-    /// descarte). La sesión lo usa para saber si una frase que debe oírse entera, como la reserva de un enlace sin
-    /// autenticar, se oyó de verdad. Se limpia al empezar otra locución.
-    @ObservationIgnored private(set) var ultimaCortada = false
+    /// La app cortó la última locución empezada antes de terminar (la siguiente, un cambio de ruta, una interrupción o
+    /// un descarte). Se limpia al empezar otra locución. Los cortes del sistema que la app no pidió constan en
+    /// `salida.cortadaPorElSistema`.
+    @ObservationIgnored private(set) var ultimaLocucionCortada = false
     /// Hay una locución sonando o por sonar: si llega otra, la corta.
     var hablando: Bool { salida.hablando }
+    /// La última locución empezada sonó entera: nadie la cortó (ni la app ni el sistema) y ya no suena. La sesión lo usa
+    /// para saber si una frase que debe oírse entera, como la reserva de un enlace sin autenticar, se oyó de verdad. Se
+    /// pregunta ANTES de empezar otra locución, que la cortaría. Ventana conocida: `SintetizadorSistema` anota el fin
+    /// (`didFinish`) de forma asíncrona, así que una locución que acaba de terminar puede seguir contando como «sonando» y
+    /// la reserva se repite una vez de más; la sesión limita las repeticiones (`maximoReservas`) y no es peor que callar.
+    var ultimaSeOyoEntera: Bool { !ultimaLocucionCortada && !salida.hablando && !salida.cortadaPorElSistema }
     /// Se llama cuando vuelve a ser posible hablar (auriculares de nuevo, fin de la interrupción, o un
     /// corte con la ruta privada intacta que dejó una locución a medias).
     @ObservationIgnored var alRecuperarse: (@MainActor () -> Void)?
@@ -141,7 +154,7 @@ final class ControlVoz {
 
     /// Corta lo que suene y anota si algo quedó a medias.
     private func cortar() {
-        if salida.hablando { ultimaCortada = true }
+        if salida.hablando { ultimaLocucionCortada = true }
         salida.detener()
     }
 
@@ -155,7 +168,7 @@ final class ControlVoz {
         switch salida.hablar(texto) {
         case .iniciada:
             audioNoDisponible = false
-            ultimaCortada = false
+            ultimaLocucionCortada = false
             return .hablado
         case .sesionNoDisponible:
             audioNoDisponible = true

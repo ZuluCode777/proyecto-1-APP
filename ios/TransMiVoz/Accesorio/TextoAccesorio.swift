@@ -216,17 +216,40 @@ enum TextoAccesorio {
     /// con ese accesorio no puede tener éxito hasta reiniciar el Bluetooth o la app (límite sin probar con hardware).
     static let recuperacionRepetida = "Si vuelve a fallar, apaga y enciende el Bluetooth del iPhone o cierra y abre la app."
 
-    /// La reserva hablada del enlace sin autenticar (contrato §6). La sesión la antepone a las locuciones de
-    /// `requiereReserva` hasta que se oye entera, y a cada vez que se repite el estado de ahora.
+    /// La reserva hablada del enlace sin autenticar (contrato §6). La sesión la añade a las locuciones del accesorio ya
+    /// aceptado (`lugarDeReserva`) hasta que se oye entera, con un tope de repeticiones por conexión.
     static let reservaEnlace = "Enlace sin autenticar."
 
-    static func conReserva(_ texto: String) -> String { "\(reservaEnlace) \(texto)" }
+    /// Dónde va la reserva en la locución de un estado: antes del texto o después.
+    enum LugarReserva: Equatable {
+        case antes
+        case despues
+    }
 
-    /// Los estados en los que el accesorio ya está aceptado y sus avisos se dicen: son los que llevan la reserva.
-    static func requiereReserva(_ e: EstadoAccesorio) -> Bool {
+    /// `nil`: el estado no lleva reserva (el accesorio aún no está aceptado o no hay avisos del sensor).
+    /// - Después de la medida (`objetivo`, `presencia`, `sinDatos`, `radarNoDisponible`): un aviso de seguridad nunca
+    ///   retrasa la medida; «Objeto a 2 metros. Enlace sin autenticar.» llega a la distancia en el mismo tiempo que sin
+    ///   reserva.
+    /// - Antes (`calibrando`, `sinDeteccion`): no hay medida ni obstáculo que retrasar, y son los estados con los que
+    ///   empieza cada conexión; al final de una locución que la siguiente corta casi de inmediato, la reserva no se
+    ///   oiría nunca. `sinDeteccion` no es una alerta de obstáculo y el aviso fijo lo declara sin camino libre.
+    /// Sin `default`: un estado nuevo obliga a decidir aquí si lleva reserva.
+    static func lugarDeReserva(_ e: EstadoAccesorio) -> LugarReserva? {
         switch e {
-        case .calibrando, .sinDeteccion, .presencia, .objetivo, .sinDatos, .radarNoDisponible: return true
-        default: return false
+        case .calibrando, .sinDeteccion: return .antes
+        case .presencia, .objetivo, .sinDatos, .radarNoDisponible: return .despues
+        case .sinAccesorio, .detenido, .bluetoothNoDisponible, .conectando, .comprobandoEnlace, .conectado,
+             .enlaceNoVerificado, .rechazado, .falla, .desconectado:
+            return nil
+        }
+    }
+
+    /// El texto de la locución de `e` con la reserva en su lugar (sin ella si el estado no la lleva).
+    static func conReserva(_ texto: String, para e: EstadoAccesorio) -> String {
+        switch lugarDeReserva(e) {
+        case .antes?: return "\(reservaEnlace) \(texto)"
+        case .despues?: return "\(texto) \(reservaEnlace)"
+        case nil: return texto
         }
     }
 

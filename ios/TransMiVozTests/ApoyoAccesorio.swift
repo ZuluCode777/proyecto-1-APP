@@ -49,6 +49,8 @@ final class SalidaVozFalsa: SalidaVoz {
     private(set) var cortadas: [String] = []
     private(set) var completas: [String] = []
     private var sonando: String?
+    /// El «sistema» canceló la última locución sin que la app lo pidiera (Siri, una alarma).
+    private(set) var cortadaPorElSistema = false
     /// Lo que responde el «sistema» al intentar hablar (por ejemplo, la sesión de audio rechazada).
     var resultado: ResultadoHabla = .iniciada
     var dicho: [String] { llamadas.compactMap { $0.hasPrefix("hablar:") ? String($0.dropFirst(7)) : nil } }
@@ -58,6 +60,7 @@ final class SalidaVozFalsa: SalidaVoz {
         llamadas.append("hablar:\(texto)")
         sonando = texto
         hablando = true
+        cortadaPorElSistema = false
         return .iniciada
     }
     /// Corta lo que suene: la locución a medias consta como cortada (no se oyó entera).
@@ -72,6 +75,21 @@ final class SalidaVozFalsa: SalidaVoz {
         if let texto = sonando { completas.append(texto) }
         sonando = nil
         hablando = false
+    }
+    /// La locución acabó de sonar, pero el aviso de fin (`didFinish`) llega después: hasta `llegaElFin` sigue
+    /// constando como «sonando» (`hablando`), igual que con `SintetizadorSistema`.
+    func terminarSolaConRetraso() {
+        if let texto = sonando { completas.append(texto) }
+        sonando = nil
+    }
+    /// Llega el aviso de fin que `terminarSolaConRetraso` dejó pendiente.
+    func llegaElFin() { hablando = false }
+    /// El sistema cancela la locución sin que la app lo pida: ya no suena y consta como cortada por el sistema.
+    func sistemaCancela() {
+        if let texto = sonando { cortadas.append(texto) }
+        sonando = nil
+        hablando = false
+        cortadaPorElSistema = true
     }
 }
 

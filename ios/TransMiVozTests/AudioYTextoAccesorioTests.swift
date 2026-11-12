@@ -15,19 +15,45 @@ final class ControlVozTests: XCTestCase {
         XCTAssertFalse(control.hablando)
         control.anunciar("a")
         XCTAssertTrue(control.hablando)
-        XCTAssertFalse(control.ultimaCortada)
+        XCTAssertFalse(control.ultimaLocucionCortada)
+        XCTAssertFalse(control.ultimaSeOyoEntera, "todavía suena")
         salida.terminarSola()
         XCTAssertFalse(control.hablando)
+        XCTAssertTrue(control.ultimaSeOyoEntera, "terminó sola")
         control.descartarTodo()
-        XCTAssertFalse(control.ultimaCortada, "no había nada sonando que cortar")
+        XCTAssertFalse(control.ultimaLocucionCortada, "no había nada sonando que cortar")
+        XCTAssertTrue(control.ultimaSeOyoEntera)
 
         control.anunciar("b")
         control.descartarTodo()
-        XCTAssertTrue(control.ultimaCortada, "b sonaba y se descartó")
+        XCTAssertTrue(control.ultimaLocucionCortada, "b sonaba y se descartó")
+        XCTAssertFalse(control.ultimaSeOyoEntera)
         control.anunciar("c")
-        XCTAssertFalse(control.ultimaCortada, "una locución nueva limpia la marca")
+        XCTAssertFalse(control.ultimaLocucionCortada, "una locución nueva limpia la marca")
         control.rutaCambio()
-        XCTAssertTrue(control.ultimaCortada, "un cambio de ruta también corta lo que suene")
+        XCTAssertTrue(control.ultimaLocucionCortada, "un cambio de ruta también corta lo que suene")
+    }
+
+    func testUnaCancelacionDelSistemaQueLaAppNoPidioNoSeOyoEntera() {
+        let (control, salida, _) = crear(.privada)
+        control.anunciar("a")
+        salida.sistemaCancela()
+        XCTAssertFalse(control.ultimaLocucionCortada, "la app no la cortó")
+        XCTAssertFalse(control.ultimaSeOyoEntera, "pero el sistema sí")
+        control.anunciar("b")
+        XCTAssertFalse(control.ultimaSeOyoEntera, "b suena")
+        salida.terminarSola()
+        XCTAssertTrue(control.ultimaSeOyoEntera, "la marca del sistema se limpia al empezar otra locución")
+    }
+
+    func testElFinAsincronoDeLaSalidaDejaLaLocucionComoSonandoHastaQueLlega() {
+        let (control, salida, _) = crear(.privada)
+        control.anunciar("a")
+        salida.terminarSolaConRetraso()
+        XCTAssertTrue(control.hablando, "el aviso de fin aún no llegó")
+        XCTAssertFalse(control.ultimaSeOyoEntera, "ventana conocida: por prudencia no se da por oída")
+        salida.llegaElFin()
+        XCTAssertTrue(control.ultimaSeOyoEntera)
     }
 
     func testClasificaLaRutaDeAudio() {
@@ -350,20 +376,37 @@ final class TextoAccesorioTests: XCTestCase {
     /// La reserva hablada va delante de las locuciones del accesorio ya aceptado (la sesión la antepone mientras el enlace
     /// no conste autenticado); VoiceOver la anuncia una vez al conectar. Por defecto se asume sin autenticar: nunca se
     /// presenta como autenticado lo que no consta.
-    func testLaReservaDelEnlaceSinAutenticarVaSoloEnLosEstadosDelAccesorioAceptado() {
+    func testLaReservaDelEnlaceSinAutenticarVaDespuesDeLaMedidaYAntesDeLosEstadosSinMedida() {
         XCTAssertEqual(TextoAccesorio.reservaEnlace, "Enlace sin autenticar.")
-        XCTAssertEqual(TextoAccesorio.conReserva("Sin detección en este momento."), "Enlace sin autenticar. Sin detección en este momento.")
         XCTAssertEqual(TextoAccesorio.locucion(.calibrando)?.texto, "Accesorio conectado. Calibrando. Aún sin avisos.")
-        let conReserva: [EstadoAccesorio] = [
-            .calibrando, .sinDeteccion, .presencia, .objetivo(distanciaMm: 1000, azimutCentesimas: nil),
-            .sinDatos(.vencido), .radarNoDisponible(.iniciando),
+        let antes: [EstadoAccesorio] = [.calibrando, .sinDeteccion]
+        let despues: [EstadoAccesorio] = [
+            .presencia, .objetivo(distanciaMm: 2000, azimutCentesimas: nil), .sinDatos(.vencido), .radarNoDisponible(.iniciando),
         ]
-        for estado in conReserva { XCTAssertTrue(TextoAccesorio.requiereReserva(estado), "\(estado)") }
+        for estado in antes { XCTAssertEqual(TextoAccesorio.lugarDeReserva(estado), .antes, "\(estado)") }
+        for estado in despues { XCTAssertEqual(TextoAccesorio.lugarDeReserva(estado), .despues, "\(estado)") }
+        XCTAssertEqual(TextoAccesorio.conReserva("Sin detección en este momento.", para: .sinDeteccion),
+                       "Enlace sin autenticar. Sin detección en este momento.")
+        XCTAssertEqual(TextoAccesorio.conReserva("Objeto a 2 metros.", para: .objetivo(distanciaMm: 2000, azimutCentesimas: nil)),
+                       "Objeto a 2 metros. Enlace sin autenticar.", "la medida llega a la distancia en el mismo tiempo que sin reserva")
+        for estado in despues {
+            let texto = TextoAccesorio.locucion(estado)?.texto ?? ""
+            XCTAssertTrue(TextoAccesorio.conReserva(texto, para: estado).hasPrefix(texto), "la reserva nunca va delante de la medida: \(estado)")
+        }
+    }
+
+    func testLosEstadosSinAvisosDelSensorNoLlevanReserva() {
         let sinReserva: [EstadoAccesorio] = [
             .sinAccesorio, .detenido, .conectando, .comprobandoEnlace, .conectado, .enlaceNoVerificado,
             .rechazado(.enlaceNoAutenticado), .falla(.tiempoAgotado), .desconectado, .bluetoothNoDisponible(.apagado),
         ]
-        for estado in sinReserva { XCTAssertFalse(TextoAccesorio.requiereReserva(estado), "\(estado)") }
+        for estado in sinReserva {
+            XCTAssertNil(TextoAccesorio.lugarDeReserva(estado), "\(estado)")
+            XCTAssertEqual(TextoAccesorio.conReserva("texto", para: estado), "texto", "\(estado)")
+        }
+    }
+
+    func testVoiceOverDeclaraElEnlaceSinAutenticarSoloAlCalibrar() {
         XCTAssertTrue(TextoAccesorio.anuncioAccesible(.calibrando, enlaceAutenticado: false)?.contains("sin autenticar") == true)
         XCTAssertNil(TextoAccesorio.anuncioAccesible(.calibrando, enlaceAutenticado: true))
     }

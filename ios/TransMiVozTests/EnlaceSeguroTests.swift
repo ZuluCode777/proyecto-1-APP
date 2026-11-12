@@ -537,7 +537,7 @@ final class ComprobacionEnlaceSesionTests: XCTestCase {
         let banco = BancoAccesorio(nivel: .cifradoSinAutenticar)
         defer { banco.cerrar() }
         let escenario = try EscenarioBLE.cargar("objetivo-distancia-y-azimut")
-        let esperado = "\(TextoAccesorio.reservaEnlace) Objeto a 1 metro, a la izquierda."
+        let esperado = "Objeto a 1 metro, a la izquierda. \(TextoAccesorio.reservaEnlace)"
         banco.iniciar()
         banco.sincronizar(escenario)
         banco.salida.terminarSola()
@@ -549,6 +549,129 @@ final class ComprobacionEnlaceSesionTests: XCTestCase {
         banco.salida.terminarSola()
         banco.modelo.fijarVozPropia(true)
         XCTAssertEqual(banco.salida.dicho.last, esperado, "aunque ya se hubiera oído entera, cada repetición la lleva")
+    }
+
+    // MARK: La reserva nunca retrasa la medida y tiene tope
+
+    private func texto(_ estado: EstadoAccesorio) -> String { TextoAccesorio.locucion(estado)?.texto ?? "" }
+
+    func testCincoCambiosDeEstadoSinOirNingunaDiganComoMuchoTresReservasYLaMedidaVaPrimero() throws {
+        let banco = BancoAccesorio(nivel: .cifradoSinAutenticar)
+        defer { banco.cerrar() }
+        let escenario = try EscenarioBLE.cargar("objetivo-distancia-y-azimut")
+        let reserva = TextoAccesorio.reservaEnlace
+        banco.iniciar()
+        banco.sincronizar(escenario)  // calibrando, sin detección
+        banco.entregar(escenario.entregas[0])  // objetivo
+        banco.entregar(escenario.entregas[1])  // otro objetivo
+        banco.entregar(escenario.entregas[2])  // presencia: cinco cambios seguidos, ninguna locución terminó
+
+        let primerObjetivo = texto(.objetivo(distanciaMm: 1200, azimutCentesimas: -3000))
+        let segundoObjetivo = texto(.objetivo(distanciaMm: 1500, azimutCentesimas: nil))
+        XCTAssertEqual(Array(banco.salida.dicho.suffix(3)), ["\(primerObjetivo) \(reserva)", segundoObjetivo, texto(.presencia)],
+                       "tercera reserva tras la medida; después ya no se dice")
+        XCTAssertEqual(banco.salida.dicho.filter { $0.contains(reserva) }.count, 3, "tope: tres reservas por conexión")
+        XCTAssertEqual(banco.salida.dicho.filter { $0.hasPrefix(reserva) },
+                       [TextoAccesorio.conReserva(texto(.calibrando), para: .calibrando), TextoAccesorio.conReserva(texto(.sinDeteccion), para: .sinDeteccion)],
+                       "solo calibrando y sin detección llevan la reserva delante")
+        XCTAssertFalse(banco.salida.dicho.contains { $0.hasPrefix(reserva) && ($0.contains("Objeto") || $0.contains("Presencia")) },
+                       "ninguna medida queda detrás de la reserva")
+        XCTAssertEqual(banco.modelo.estado, .presencia)
+        XCTAssertFalse(banco.modelo.enlaceVerificable, "el aviso fijo sigue en pantalla")
+    }
+
+    func testElTopeDeReservasSeRenuevaAlRepetirElEstadoDeAhoraYAlReconectar() throws {
+        let banco = BancoAccesorio(nivel: .cifradoSinAutenticar)
+        defer { banco.cerrar() }
+        let escenario = try EscenarioBLE.cargar("objetivo-distancia-y-azimut")
+        let reserva = TextoAccesorio.reservaEnlace
+        banco.iniciar()
+        banco.sincronizar(escenario)
+        banco.entregar(escenario.entregas[0])
+        banco.entregar(escenario.entregas[1])
+        banco.entregar(escenario.entregas[2])  // tope alcanzado
+        XCTAssertEqual(banco.salida.dicho.filter { $0.contains(reserva) }.count, 3)
+
+        banco.modelo.fijarVozPropia(true)  // `reanunciar`
+        XCTAssertEqual(banco.salida.dicho.last, "\(texto(.presencia)) \(reserva)", "otra sincronización, otro tope")
+
+        banco.modelo.reconectar()
+        banco.transporte.emitir(.conectado(id: banco.accesorio.id))
+        banco.transporte.emitir(.informacion(escenario.informaciones[0]))
+        XCTAssertEqual(banco.salida.dicho.last, TextoAccesorio.conReserva(texto(.calibrando), para: .calibrando), "conexión nueva, reserva nueva")
+    }
+
+    // MARK: Cuándo una reserva cuenta como oída (`ControlVoz.ultimaSeOyoEntera`)
+
+    func testConLaVozApagadaLaReservaNoSeGastaYSeDiceAlEncenderla() throws {
+        let banco = BancoAccesorio(nivel: .cifradoSinAutenticar)
+        defer { banco.cerrar() }
+        let escenario = try EscenarioBLE.cargar("objetivo-distancia-y-azimut")
+        banco.modelo.fijarVozPropia(false)
+        banco.iniciar()
+        banco.sincronizar(escenario)
+        banco.entregar(escenario.entregas[0])
+        XCTAssertTrue(banco.salida.dicho.isEmpty, "voz apagada: nada se dice y nada cuenta como reserva dicha")
+
+        banco.modelo.fijarVozPropia(true)
+        XCTAssertEqual(banco.salida.dicho, ["\(texto(.objetivo(distanciaMm: 1200, azimutCentesimas: -3000))) \(TextoAccesorio.reservaEnlace)"])
+    }
+
+    func testConLaRutaNoPrivadaLaReservaNoSeGastaYSeDiceAlVolverLosAuriculares() throws {
+        let banco = BancoAccesorio(nivel: .cifradoSinAutenticar, ruta: .noPrivada)
+        defer { banco.cerrar() }
+        let escenario = try EscenarioBLE.cargar("objetivo-distancia-y-azimut")
+        banco.iniciar()
+        banco.sincronizar(escenario)
+        banco.entregar(escenario.entregas[0])
+        XCTAssertTrue(banco.salida.dicho.isEmpty, "sin salida privada no se habla")
+
+        banco.ruta.valor = .privada
+        banco.modelo.voz.rutaCambio()
+        XCTAssertEqual(banco.salida.dicho.last, "\(texto(.objetivo(distanciaMm: 1200, azimutCentesimas: -3000))) \(TextoAccesorio.reservaEnlace)")
+    }
+
+    func testSiElSistemaCancelaLaReservaSinQueLaAppLoPidaSeRepite() throws {
+        let banco = BancoAccesorio(nivel: .cifradoSinAutenticar)
+        defer { banco.cerrar() }
+        let escenario = try EscenarioBLE.cargar("objetivo-distancia-y-azimut")
+        let referencia = escenario.referencias[0]
+        let reserva = TextoAccesorio.reservaEnlace
+        banco.iniciar()
+        banco.transporte.emitir(.conectado(id: banco.accesorio.id))
+        banco.transporte.emitir(.informacion(escenario.informaciones[0]))
+        banco.salida.sistemaCancela()  // Siri, una alarma: ya no suena cuando llega el siguiente estado
+
+        banco.reloj.fijar(referencia.inicio)
+        banco.transporte.emitir(.notificacionesFijadas(false))
+        banco.reloj.fijar(referencia.fin)
+        banco.transporte.emitir(.respuestaMedicion(referencia.datos))
+        banco.transporte.emitir(.notificacionesFijadas(true))
+        XCTAssertEqual(banco.salida.dicho.last, "\(reserva) \(texto(.sinDeteccion))", "no se oyó: se repite")
+    }
+
+    func testElFinAsincronoDeLaSalidaCuestaComoMuchoUnaRepeticionDeLaReserva() throws {
+        let banco = BancoAccesorio(nivel: .cifradoSinAutenticar)
+        defer { banco.cerrar() }
+        let escenario = try EscenarioBLE.cargar("objetivo-distancia-y-azimut")
+        let referencia = escenario.referencias[0]
+        let reserva = TextoAccesorio.reservaEnlace
+        banco.iniciar()
+        banco.transporte.emitir(.conectado(id: banco.accesorio.id))
+        banco.transporte.emitir(.informacion(escenario.informaciones[0]))
+        banco.salida.terminarSolaConRetraso()  // acabó de sonar, pero `hablando` sigue hasta que llegue el fin
+
+        banco.reloj.fijar(referencia.inicio)
+        banco.transporte.emitir(.notificacionesFijadas(false))
+        banco.reloj.fijar(referencia.fin)
+        banco.transporte.emitir(.respuestaMedicion(referencia.datos))
+        banco.transporte.emitir(.notificacionesFijadas(true))
+        XCTAssertEqual(banco.salida.dicho.last, "\(reserva) \(texto(.sinDeteccion))", "ventana conocida: una repetición de más")
+        banco.salida.terminarSola()
+
+        banco.entregar(escenario.entregas[0])
+        XCTAssertEqual(banco.salida.dicho.last, texto(.objetivo(distanciaMm: 1200, azimutCentesimas: -3000)), "ya se oyó entera: no hay más")
+        XCTAssertEqual(banco.salida.dicho.filter { $0.contains(reserva) }.count, 2)
     }
 
     func testConEnlaceAutenticadoNuncaSeAntepoleLaReserva() throws {
@@ -584,6 +707,19 @@ final class ComprobacionEnlaceSesionTests: XCTestCase {
         XCTAssertEqual(banco.avisos.deEstado, [aviso], "una vez, y la medida no pasa por VoiceOver")
         XCTAssertTrue(aviso.contains("sin autenticar"), aviso)
         XCTAssertTrue(banco.salida.dicho.isEmpty, "con VoiceOver la voz propia empieza apagada")
+    }
+
+    func testElLimiteDelEnlaceVaTambienPorVoiceOverAunqueLaVozDeLaAppHayaHablado() throws {
+        let banco = BancoAccesorio(nivel: .cifradoSinAutenticar, voiceOver: true)
+        defer { banco.cerrar() }
+        let escenario = try EscenarioBLE.cargar("objetivo-distancia-y-azimut")
+        banco.modelo.fijarVozPropia(true)  // la persona la enciende pese a VoiceOver
+        banco.iniciar()
+        banco.sincronizar(escenario)
+
+        XCTAssertTrue(banco.salida.dicho.contains(TextoAccesorio.conReserva(texto(.calibrando), para: .calibrando)))
+        let aviso = try XCTUnwrap(TextoAccesorio.anuncioAccesible(.calibrando, enlaceAutenticado: false))
+        XCTAssertEqual(banco.avisos.deEstado, [aviso], "«calibrando» se corta enseguida: el límite no depende de que se oiga la voz")
     }
 
     func testUnaMedidaAntesDeLaComprobacionSeDescartaAunqueElNivelSeaAceptable() throws {

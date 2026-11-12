@@ -20,8 +20,9 @@ enum FaseConexion: Equatable {
 /// - Política de autenticación fija: `.permitirAsociacionSinMITM`, la política de demostración del contrato §6,
 ///   aprobada por A1 el 12/11/2026 solo para la feria (H3 informado). No hay ajuste, bandera ni preferencia que la
 ///   cambie. Condiciones del contrato: la sesión queda marcada NO autenticada (`enlaceAutenticado == false`), la
-///   interfaz no la presenta como autenticada y declara el límite (aviso fijo, línea «Enlace autenticado» y aviso
-///   hablado, con la reserva «Enlace sin autenticar.» delante hasta que se oye entera). Se acepta `.cifradoSinAutenticar` o `.cifradoAutenticado`; `.sinCifrar` y `.desconocido`
+///   interfaz no la presenta como autenticada y declara el límite (aviso fijo, línea «Enlace autenticado» y reserva
+///   hablada «Enlace sin autenticar.», que va después de la medida y se repite hasta oírse entera, con tope). Se acepta
+///   `.cifradoSinAutenticar` o `.cifradoAutenticado`; `.sinCifrar` y `.desconocido`
 ///   se rechazan y no se lee ni se suscribe nada. Riesgo aceptado: Core Bluetooth no expone el nivel del enlace, así
 ///   que un impostor sin protección con los mismos UUID supera la lectura de comprobación y se acepta igual.
 ///   Ninguna medida cuenta antes de esa comprobación.
@@ -121,10 +122,19 @@ final class SesionAccesorioModelo {
     @ObservationIgnored private var escaneando = false
     @ObservationIgnored private var ultimoAvisoEstado: String?
     @ObservationIgnored private var avisadoAudioNoDisponible = false
-    /// La reserva hablada del enlace sin autenticar ya se oyó entera en esta conexión.
-    @ObservationIgnored private var reservaOida = false
-    /// La última locución dicha llevaba la reserva (se sabrá si se oyó entera al llegar la siguiente).
-    @ObservationIgnored private var ultimaLlevabaReserva = false
+    /// Dónde va la reserva hablada del enlace sin autenticar: `pendiente` (la lleva la próxima locución que la admita),
+    /// `enCurso` (la última locución la llevaba y se sabrá si se oyó entera al llegar la siguiente) u `oida`.
+    private enum Reserva: Equatable {
+        case pendiente
+        case enCurso
+        case oida
+    }
+    @ObservationIgnored private var reserva: Reserva = .pendiente
+    /// Cuántas veces se dijo la reserva desde la última sincronización (conexión nueva, `reanunciar` o vuelta a primer plano).
+    @ObservationIgnored private var reservasDichas = 0
+    /// Tope de reservas habladas por sincronización: pasado, la reserva ya no retrasa nada y quedan el aviso fijo, la línea
+    /// «Enlace autenticado: no verificado» y el anuncio de VoiceOver.
+    static let maximoReservas = 3
 
     init(
         transporte: TransporteAccesorio,
@@ -270,7 +280,7 @@ final class SesionAccesorioModelo {
         ultimaLocucion = nil
         ultimoAvisoEstado = nil
         avisadoAudioNoDisponible = false
-        olvidarReservaOida()
+        olvidarReserva()
     }
 
     func reconectar() {
@@ -305,7 +315,7 @@ final class SesionAccesorioModelo {
             suspendida = false
             // iOS puede no entregar el fin de una interrupción: se vuelve a mirar el audio de cero.
             voz.escenaVolvio()
-            olvidarReservaOida()  // se resincroniza: la reserva vuelve a decirse
+            olvidarReserva()  // se resincroniza: la reserva vuelve a decirse
             sincronizarEscaneo()
             guard activa else { return }
             if paso == .suscrito {
@@ -500,7 +510,7 @@ final class SesionAccesorioModelo {
         tramasPerdidas = 0
         enlaceAutenticado = false
         nivelAfirmado = .desconocido
-        olvidarReservaOida()
+        olvidarReserva()
         intentosReferencia = 0
         fase = nueva
         paso = disponibilidad == .disponible ? .conectando : .ninguno
@@ -581,30 +591,28 @@ final class SesionAccesorioModelo {
     }
 
     /// Verdadero si la voz propia dijo algo ahora. Con un enlace sin autenticar, las locuciones del accesorio ya aceptado
-    /// llevan delante «Enlace sin autenticar.» hasta que esa frase se oye entera: cada locución corta la anterior, así que
-    /// no se confía en que una sola (como «calibrando», que dura un instante) se oiga completa.
+    /// llevan «Enlace sin autenticar.» (después de la medida, `TextoAccesorio.lugarDeReserva`) hasta que esa frase se oye
+    /// entera, como mucho `maximoReservas` veces por sincronización: cada locución corta la anterior, así que no se
+    /// confía en que una sola (como «calibrando», que dura un instante) se oiga completa.
     @discardableResult
     private func anunciar() -> Bool {
         guard activa, !suspendida, let locucion = TextoAccesorio.locucion(estado),
               locucion != ultimaLocucion else { return false }
         ultimaLocucion = locucion
-        comprobarReservaAnterior()
-        let conReserva = !enlaceAutenticado && !reservaOida && TextoAccesorio.requiereReserva(estado)
-        let hablado = voz.anunciar(conReserva ? TextoAccesorio.conReserva(locucion.texto) : locucion.texto) == .hablado
-        ultimaLlevabaReserva = conReserva && hablado
+        if reserva == .enCurso { reserva = voz.ultimaSeOyoEntera ? .oida : .pendiente }
+        let conReserva = !enlaceAutenticado && reserva == .pendiente && reservasDichas < Self.maximoReservas
+            && TextoAccesorio.lugarDeReserva(estado) != nil
+        let hablado = voz.anunciar(conReserva ? TextoAccesorio.conReserva(locucion.texto, para: estado) : locucion.texto) == .hablado
+        if conReserva && hablado {
+            reserva = .enCurso
+            reservasDichas += 1
+        }
         return hablado
     }
 
-    /// La locución anterior llevaba la reserva: se oyó entera si nada la cortó ni sigue sonando (la que llega la cortaría).
-    private func comprobarReservaAnterior() {
-        guard ultimaLlevabaReserva else { return }
-        ultimaLlevabaReserva = false
-        if !voz.ultimaCortada && !voz.hablando { reservaOida = true }
-    }
-
-    private func olvidarReservaOida() {
-        reservaOida = false
-        ultimaLlevabaReserva = false
+    private func olvidarReserva() {
+        reserva = .pendiente
+        reservasDichas = 0
     }
 
     /// Vuelve el audio (auriculares de nuevo, fin de una llamada, corte que dejó una locución a medias):
@@ -616,7 +624,7 @@ final class SesionAccesorioModelo {
         sesion?.evaluar(ahoraMs: reloj())
         sincronizarDesdeSesion()
         ultimaLocucion = nil
-        olvidarReservaOida()  // cada vez que se repite el estado de ahora, también la reserva
+        olvidarReserva()  // cada vez que se repite el estado de ahora, también la reserva
         avisarEnPantalla(vozHablo: anunciar())
     }
 
@@ -632,13 +640,16 @@ final class SesionAccesorioModelo {
     /// Anuncios de estado que NO son medidas: bloqueo, fallo, desconexión, Bluetooth, audio no disponible.
     /// Ninguna medida ni alerta del sensor sale por aquí: por VoiceOver el sonido puede ir al altavoz
     /// y esas alertas solo se dicen por la ruta privada de la voz propia (ver `TextoAccesorio.anuncioAccesible`).
-    /// Si la voz propia acaba de decir ese estado no se repite por VoiceOver (no hablan dos veces).
+    /// Si la voz propia acaba de decir ese estado no se repite por VoiceOver (no hablan dos veces), salvo la declaración
+    /// del enlace sin autenticar: «calibrando» dura un instante y la siguiente locución puede cortarla, así que ese límite
+    /// se declara también por VoiceOver aunque la voz propia haya hablado.
     private func avisarEnPantalla(vozHablo: Bool) {
         guard activa, !suspendida else { return }
         let texto = TextoAccesorio.anuncioAccesible(estado, enlaceAutenticado: enlaceAutenticado)
         if texto != ultimoAvisoEstado {
             ultimoAvisoEstado = texto
-            if let texto, !vozHablo { avisos.anunciar(texto, .urgente) }
+            let declaraElLimite = estado == .calibrando && !enlaceAutenticado
+            if let texto, !vozHablo || declaraElLimite { avisos.anunciar(texto, .urgente) }
         }
         // Con el audio no disponible la voz no puede avisar: el aviso va siempre por accesibilidad.
         if voz.audioNoDisponible != avisadoAudioNoDisponible {
