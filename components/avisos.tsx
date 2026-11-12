@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { X } from "lucide-react"
 import { Modal } from "@/components/modal"
 import { useSpeech } from "@/hooks/use-speech"
-import { AnunciosRespuestaSchema, ETIQUETA_EFECTO, fechaLegible, type AnunciosRespuesta } from "@/lib/anuncios"
+import { AnunciosRespuestaSchema, ETIQUETA_EFECTO, ETIQUETA_ESTADO, fechaLegible, textoHablado, type AnunciosRespuesta } from "@/lib/anuncios"
 import { procedenciaCatalogo, type TransmilenioData } from "@/lib/transmilenio"
 
 /** Espera máxima por `/api/anuncios` (la fuente tiene la suya, menor). */
@@ -30,7 +30,7 @@ type AvisosProps = {
 
 /** Marca de origen, siempre en texto (no solo color) para que la lea el lector de pantalla. */
 function Origen({ children }: { children: string }) {
-  return <span className="inline-block rounded-lg border-3 border-border bg-bar px-2 py-0.5 text-sm font-bold">{children}</span>
+  return <span className="inline-block rounded-lg border-3 border-border bg-bar px-2 py-0.5 text-base font-bold">{children}</span>
 }
 
 /**
@@ -57,7 +57,7 @@ export function Avisos({ open, onClose, catalogo, errorCatalogo }: AvisosProps) 
         const datos = AnunciosRespuestaSchema.parse(await res.json())
         if (!vigente) return
         setConsulta({ tipo: "ok", datos })
-        speak(datos.fuente.mensaje)
+        speak(textoHablado(datos))
       } catch {
         if (!vigente) return // se cerró el panel: nadie espera este resultado
         setConsulta({ tipo: "error" })
@@ -96,22 +96,19 @@ export function Avisos({ open, onClose, catalogo, errorCatalogo }: AvisosProps) 
           <h3 id="avisos-operador" className="text-xl font-bold">
             Anuncios del operador
           </h3>
-          <div role="status" className="rounded-2xl border-3 border-border bg-card p-4 text-base">
+          {/* Sin `role="status"`: la voz de la app ya lo dice, y un lector de pantalla lo diría dos veces. */}
+          <div className="rounded-2xl border-3 border-border bg-card p-4 text-base">
             {consulta.tipo === "consultando" && <p>{TEXTO_CONSULTANDO}</p>}
             {consulta.tipo === "error" && <p>{TEXTO_NO_CONSULTADO}</p>}
             {consulta.tipo === "ok" && (
               <>
-                <p className="font-bold">
-                  {consulta.datos.fuente.estado === "activa"
-                    ? "Fuente conectada"
-                    : consulta.datos.fuente.estado === "degradada"
-                      ? "Fuente con problemas · confianza baja"
-                      : "Sin fuente conectada"}
-                </p>
+                <p className="font-bold">{ETIQUETA_ESTADO[consulta.datos.fuente.estado]}</p>
                 <p className="mt-1">{consulta.datos.fuente.mensaje}</p>
                 {consulta.datos.fuente.consultadoEn && (
-                  <p className="mt-1 text-sm">
-                    Última consulta exitosa: {fechaLegible(consulta.datos.fuente.consultadoEn)}. Fuente: {consulta.datos.fuente.entidad}.
+                  <p className="mt-1 text-base">
+                    Fuente: {consulta.datos.fuente.entidad}.
+                    {consulta.datos.fuente.publicadoEn && ` Publicado por la fuente: ${fechaLegible(consulta.datos.fuente.publicadoEn)}.`}{" "}
+                    Última consulta exitosa: {fechaLegible(consulta.datos.fuente.consultadoEn)}.
                   </p>
                 )}
               </>
@@ -122,15 +119,15 @@ export function Avisos({ open, onClose, catalogo, errorCatalogo }: AvisosProps) 
               {consulta.datos.anuncios.map((a) => (
                 <li key={a.identificador} className="flex flex-col gap-1 rounded-2xl border-3 border-border bg-card p-4">
                   <Origen>{`Anuncio oficial · ${a.entidad}`}</Origen>
-                  <p className="text-lg font-bold">{a.titulo}</p>
+                  <h4 className="text-lg font-bold">{a.titulo}</h4>
                   {a.descripcion && a.descripcion !== a.titulo && <p className="text-base">{a.descripcion}</p>}
                   <p className="text-base">
                     Afectación: {ETIQUETA_EFECTO[a.afectacion.efecto]}
                     {a.afectacion.rutas.length > 0 && `. Servicios (identificador de la fuente): ${a.afectacion.rutas.join(", ")}`}
                   </p>
-                  <p className="text-sm">
-                    Vigente desde {fechaLegible(a.fecha)}
-                    {a.vigenciaHasta ? ` hasta ${fechaLegible(a.vigenciaHasta)}` : " sin fecha de fin"}. Identificador {a.identificador}.
+                  <p className="text-base">
+                    {a.fecha ? `Vigente desde ${fechaLegible(a.fecha)}` : "La fuente no publica el inicio"}
+                    {a.vigenciaHasta ? ` hasta ${fechaLegible(a.vigenciaHasta)}` : " y sin fecha de fin"}. Identificador {a.identificador}.
                   </p>
                 </li>
               ))}

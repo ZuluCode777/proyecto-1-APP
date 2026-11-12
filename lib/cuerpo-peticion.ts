@@ -52,18 +52,20 @@ function liberarLector(lector: ReadableStreamDefaultReader<Uint8Array>): void {
 }
 
 /**
- * Lee `cuerpo` acumulando como máximo `maximoBytes` bytes. Si `cuerpo` es `null`
- * (petición sin cuerpo) devuelve texto vacío. Nunca lanza: los fallos se
- * devuelven como `{ kind: "error" }` tras disparar la liberación del stream.
+ * Lee `cuerpo` acumulando como máximo `maximoBytes` bytes y devuelve los BYTES
+ * (sin decodificar: sirve también para cuerpos binarios, como el protobuf de las
+ * alertas de EA-26). Si `cuerpo` es `null` devuelve un cuerpo vacío. Nunca
+ * lanza: los fallos se devuelven como `{ kind: "error" }` tras disparar la
+ * liberación del stream.
  */
-export async function leerCuerpoLimitado({
+export async function leerBytesLimitado({
   cuerpo,
   maximoBytes,
 }: {
   cuerpo: ReadableStream<Uint8Array> | null
   maximoBytes: number
-}): Promise<LecturaCuerpo> {
-  if (!cuerpo) return { kind: "ok", texto: "" }
+}): Promise<{ kind: "ok"; bytes: Uint8Array } | { kind: "excedido" } | { kind: "error" }> {
+  if (!cuerpo) return { kind: "ok", bytes: new Uint8Array() }
 
   const lector = cuerpo.getReader()
   const trozos: Uint8Array[] = []
@@ -90,16 +92,33 @@ export async function leerCuerpoLimitado({
     return { kind: "error" }
   }
 
-  // Decodifica UTF-8 sobre los bytes completos: un carácter multibyte partido
-  // entre trozos se arma correctamente al concatenar antes de decodificar.
   const total = new Uint8Array(bytes)
   let desplazamiento = 0
   for (const trozo of trozos) {
     total.set(trozo, desplazamiento)
     desplazamiento += trozo.byteLength
   }
+  return { kind: "ok", bytes: total }
+}
+
+/**
+ * Lee `cuerpo` como texto UTF-8 con la cota de `leerBytesLimitado`. Si `cuerpo`
+ * es `null` (petición sin cuerpo) devuelve texto vacío. Nunca lanza.
+ */
+export async function leerCuerpoLimitado({
+  cuerpo,
+  maximoBytes,
+}: {
+  cuerpo: ReadableStream<Uint8Array> | null
+  maximoBytes: number
+}): Promise<LecturaCuerpo> {
+  const lectura = await leerBytesLimitado({ cuerpo, maximoBytes })
+  if (lectura.kind !== "ok") return lectura
+
+  // Decodifica UTF-8 sobre los bytes completos: un carácter multibyte partido
+  // entre trozos se arma correctamente al concatenar antes de decodificar.
   try {
-    const texto = new TextDecoder("utf-8", { fatal: false }).decode(total)
+    const texto = new TextDecoder("utf-8", { fatal: false }).decode(lectura.bytes)
     return { kind: "ok", texto }
   } catch {
     return { kind: "error" }

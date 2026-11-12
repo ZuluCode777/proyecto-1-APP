@@ -6,6 +6,7 @@ import {
   type EfectoAnuncio,
   type FuenteAnuncios,
 } from "@/lib/anuncios"
+import { leerBytesLimitado } from "@/lib/cuerpo-peticion"
 import { normalize } from "@/lib/text"
 
 /**
@@ -26,8 +27,17 @@ const NOMBRE_FUENTE = "Alertas GTFS-realtime de TransMilenio"
 
 /** Espera máxima por la fuente. */
 const TIMEOUT_MS = 8_000
-/** Tamaño máximo aceptado de la respuesta (la real ronda los 70 KB). */
-const MAX_BYTES = 2_000_000
+/**
+ * Tamaño máximo aceptado de la respuesta, en bytes REALES leídos (ya
+ * descomprimidos). La real pesaba ~70 KB y llegó a ~128 KB en un día. Si se
+ * supera, la consulta cuenta como FALLO (el estado pasa a `degradada` o, sin
+ * ninguna consulta buena, a `sin-fuente`): nunca se trunca ni se usa a medias.
+ */
+export const MAX_BYTES = 2_000_000
+/** La marca de la fuente no puede ser anterior a esto (2020-01-01, en segundos)... */
+const MARCA_MINIMA_S = 1_577_836_800
+/** ...ni adelantarse al reloj del servidor más de esto (una marca en milisegundos queda muy fuera). */
+const MARGEN_FUTURO_MS = 60 * 60 * 1000
 /** Cuánto se reutiliza una consulta, con éxito o con fallo, antes de volver a la fuente (publica cada ~26 s). */
 const TTL_MS = 30_000
 /** Si la marca de la fuente es más vieja que esto, la fuente está atrasada: confianza baja. */
@@ -101,13 +111,17 @@ export type AlertaCruda = {
   descripcion: string
 }
 export type AlertasDecodificadas = {
-  /** Marca de la propia fuente, en segundos desde la época, o `null` si no la trae. */
-  marca: number | null
+  /** Marca de la propia fuente, en segundos desde la época. Siempre válida: sin ella el mensaje se rechaza. */
+  marca: number
   alertas: AlertaCruda[]
 }
 
-/** Decodifica un `FeedMessage` de GTFS-realtime. Lanza si no es un mensaje válido. */
-export function decodificarAlertas(bytes: Uint8Array): AlertasDecodificadas {
+/**
+ * Decodifica un `FeedMessage` de GTFS-realtime. Lanza si no es un mensaje válido:
+ * truncado, sin cabecera, sin marca de tiempo o con una marca fuera de rango. Un
+ * cuerpo vacío (p. ej. una página de mantenimiento con 200) NO es un feed.
+ */
+export function decodificarAlertas(bytes: Uint8Array, ahoraMs = Date.now()): AlertasDecodificadas {
   let marca: number | null = null
   const alertas: AlertaCruda[] = []
   for (const f of campos(bytes)) {
@@ -138,6 +152,8 @@ export function decodificarAlertas(bytes: Uint8Array): AlertasDecodificadas {
       alertas.push(a)
     }
   }
+  if (marca === null) throw new Error("mensaje sin cabecera o sin marca de tiempo")
+  if (marca < MARCA_MINIMA_S || marca * 1000 > ahoraMs + MARGEN_FUTURO_MS) throw new Error("marca de tiempo fuera de rango")
   return { marca, alertas }
 }
 
@@ -183,7 +199,9 @@ function iso(segundos: number): string | null {
  * Anuncios VIGENTES de la fuente en `ahoraMs`: descarta los eliminados, los
  * vencidos, los que aún no empiezan, los vacíos y los repetidos (mismo
  * identificador, o mismo texto y vigencia bajo otro identificador). Los más
- * recientes primero.
+ * recientes primero. Una alerta sin `active_period` rige mientras esté en el
+ * feed (GTFS-realtime), con `fecha` y `vigenciaHasta` nulas: nunca se inventa
+ * una fecha que la fuente no publica.
  */
 export function aAnuncios(feed: AlertasDecodificadas, ahoraMs: number): Anuncio[] {
   const ahora = ahoraMs / 1000
@@ -193,16 +211,18 @@ export function aAnuncios(feed: AlertasDecodificadas, ahoraMs: number): Anuncio[
   for (const a of feed.alertas) {
     const id = a.id.trim()
     if (!id || a.eliminada || vistosId.has(id)) continue
-    const vigente = a.periodos.find((p) => (p.desde ?? -Infinity) <= ahora && ahora <= (p.hasta ?? Infinity))
+    const vigente =
+      a.periodos.length === 0
+        ? { desde: null, hasta: null }
+        : a.periodos.find((p) => (p.desde ?? -Infinity) <= ahora && ahora <= (p.hasta ?? Infinity))
     if (!vigente) continue
     const descripcion = limpiarTexto(a.descripcion, MAX_DESCRIPCION)
     const titulo = limpiarTexto(a.titulo, MAX_TITULO) || descripcion
     if (!titulo) continue
-    const desde = vigente.desde ?? feed.marca ?? ahora
-    const fecha = iso(desde)
+    const fecha = vigente.desde === null ? null : iso(vigente.desde)
     const vigenciaHasta = vigente.hasta === null ? null : iso(vigente.hasta)
-    if (!fecha || (vigente.hasta !== null && !vigenciaHasta)) continue
-    const clave = `${normalize(titulo)}|${normalize(descripcion)}|${desde}|${vigente.hasta ?? ""}`
+    if ((vigente.desde !== null && !fecha) || (vigente.hasta !== null && !vigenciaHasta)) continue
+    const clave = `${normalize(titulo)}|${normalize(descripcion)}|${vigente.desde ?? ""}|${vigente.hasta ?? ""}`
     vistosId.add(id)
     if (vistosContenido.has(clave)) continue
     vistosContenido.add(clave)
@@ -217,7 +237,7 @@ export function aAnuncios(feed: AlertasDecodificadas, ahoraMs: number): Anuncio[
       afectacion: { efecto: EFECTOS[a.efecto] ?? "desconocido", rutas: [...new Set(a.rutas)].slice(0, MAX_RUTAS) },
     })
   }
-  return anuncios.sort((x, y) => y.fecha.localeCompare(x.fecha))
+  return anuncios.sort((x, y) => (y.fecha ?? "").localeCompare(x.fecha ?? ""))
 }
 
 // ── Servicio con caché y degradación ──
@@ -225,10 +245,27 @@ export function aAnuncios(feed: AlertasDecodificadas, ahoraMs: number): Anuncio[
 async function obtenerAlertasOficiales(): Promise<Uint8Array> {
   const res = await fetch(URL_ALERTAS, { signal: AbortSignal.timeout(TIMEOUT_MS) })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  if (Number(res.headers.get("content-length") ?? 0) > MAX_BYTES) throw new Error("respuesta demasiado grande")
-  const bytes = new Uint8Array(await res.arrayBuffer())
-  if (bytes.length > MAX_BYTES) throw new Error("respuesta demasiado grande")
-  return bytes
+  // Por stream y sin confiar en `Content-Length` (ausente, mentiroso o de un cuerpo comprimido), como EA-10.
+  const lectura = await leerBytesLimitado({ cuerpo: res.body, maximoBytes: MAX_BYTES })
+  if (lectura.kind === "excedido") throw new Error("respuesta demasiado grande")
+  if (lectura.kind === "error") throw new Error("no se pudo leer la respuesta")
+  return lectura.bytes
+}
+
+function sinFuente(): AnunciosRespuesta {
+  return {
+    fuente: {
+      entidad: ENTIDAD,
+      nombre: NOMBRE_FUENTE,
+      url: URL_ALERTAS,
+      estado: "sin-fuente",
+      confianza: "ninguna",
+      consultadoEn: null,
+      publicadoEn: null,
+      mensaje: "No hay una fuente oficial de anuncios conectada en este momento. Esto no significa que no haya novedades en el servicio.",
+    },
+    anuncios: [],
+  }
 }
 
 type Opciones = {
@@ -253,7 +290,7 @@ export function crearServicioAnuncios({ obtener = obtenerAlertasOficiales, ahora
     pendiente ??= Promise.resolve()
       .then(obtener)
       .then((bytes) => {
-        ultimo = { feed: decodificarAlertas(bytes), consultadoEn: ahora() }
+        ultimo = { feed: decodificarAlertas(bytes, ahora()), consultadoEn: ahora() }
         fallo = false
       })
       .catch((error) => {
@@ -270,22 +307,12 @@ export function crearServicioAnuncios({ obtener = obtenerAlertasOficiales, ahora
 
   function respuesta(): AnunciosRespuesta {
     const base = { entidad: ENTIDAD, nombre: NOMBRE_FUENTE, url: URL_ALERTAS }
-    if (!ultimo) {
-      const fuente: FuenteAnuncios = {
-        ...base,
-        estado: "sin-fuente",
-        confianza: "ninguna",
-        consultadoEn: null,
-        publicadoEn: null,
-        mensaje: "No hay una fuente oficial de anuncios conectada en este momento. Esto no significa que no haya novedades en el servicio.",
-      }
-      return { fuente, anuncios: [] }
-    }
+    if (!ultimo) return sinFuente()
     const ahoraMs = ahora()
     const anuncios = aAnuncios(ultimo.feed, ahoraMs)
     const consultadoEn = new Date(ultimo.consultadoEn).toISOString()
-    const publicadoEn = ultimo.feed.marca === null ? null : new Date(ultimo.feed.marca * 1000).toISOString()
-    const atrasada = ahoraMs - (ultimo.feed.marca === null ? ultimo.consultadoEn : ultimo.feed.marca * 1000) > EDAD_MAXIMA_FUENTE_MS
+    const publicadoEn = new Date(ultimo.feed.marca * 1000).toISOString() // válida: `decodificarAlertas` la comprueba
+    const atrasada = ahoraMs - ultimo.feed.marca * 1000 > EDAD_MAXIMA_FUENTE_MS
     if (fallo || atrasada) {
       const motivo = fallo ? "No pude actualizar los anuncios de TransMilenio." : "La fuente de anuncios de TransMilenio está atrasada."
       const fuente: FuenteAnuncios = {
@@ -294,7 +321,7 @@ export function crearServicioAnuncios({ obtener = obtenerAlertasOficiales, ahora
         confianza: "baja",
         consultadoEn,
         publicadoEn,
-        mensaje: `${motivo} Muestro lo de la última consulta exitosa, del ${fechaLegible(consultadoEn)}; puede estar desactualizado. Esto no significa que no haya novedades en el servicio.`,
+        mensaje: `${motivo} Muestro lo que la fuente publicó el ${fechaLegible(publicadoEn)}; puede estar desactualizado. Esto no significa que no haya novedades en el servicio.`,
       }
       return { fuente, anuncios }
     }
@@ -307,7 +334,13 @@ export function crearServicioAnuncios({ obtener = obtenerAlertasOficiales, ahora
 
   return async function consultar(): Promise<AnunciosRespuesta> {
     if (pendiente || ahora() - intentoEn >= TTL_MS) await renovar()
-    return AnunciosRespuestaSchema.parse(respuesta())
+    try {
+      return AnunciosRespuestaSchema.parse(respuesta())
+    } catch (error) {
+      // Defensa: un fallo imprevisto armando la respuesta no debe dar 500 en la ruta.
+      console.warn("[anuncios] no pude armar la respuesta:", error instanceof Error ? error.message : "error desconocido")
+      return sinFuente()
+    }
   }
 }
 

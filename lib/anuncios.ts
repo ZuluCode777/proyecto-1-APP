@@ -56,8 +56,8 @@ export const AnuncioSchema = z.object({
   identificador: z.string(),
   titulo: z.string(),
   descripcion: z.string(),
-  /** Inicio de la vigencia (ISO 8601): la única fecha que publica la fuente. */
-  fecha: z.string(),
+  /** Inicio de la vigencia (ISO 8601), o `null` si la fuente no lo publica: nunca se inventa. */
+  fecha: z.string().nullable(),
   /** Fin de la vigencia (ISO 8601), o `null` si la fuente no la acota. */
   vigenciaHasta: z.string().nullable(),
   afectacion: z.object({
@@ -89,6 +89,30 @@ export const AnunciosRespuestaSchema = z.object({
   anuncios: z.array(AnuncioSchema),
 })
 export type AnunciosRespuesta = z.infer<typeof AnunciosRespuestaSchema>
+
+export const ETIQUETA_ESTADO: Record<FuenteAnuncios["estado"], string> = {
+  activa: "Fuente conectada",
+  degradada: "Fuente con problemas · confianza baja",
+  "sin-fuente": "Sin fuente conectada",
+}
+
+/** Cuántos anuncios se leen en voz alta; el resto queda en la lista de la pantalla. */
+const MAX_HABLADOS = 5
+
+/**
+ * Lo que dice la voz al abrir el panel: el estado de la fuente y un resumen por
+ * anuncio (título, afectación y hasta cuándo rige). En modo solo voz es la única
+ * vía a su contenido, así que no se reduce al recuento.
+ */
+export function textoHablado({ fuente, anuncios }: AnunciosRespuesta): string {
+  const partes = [fuente.mensaje]
+  for (const a of anuncios.slice(0, MAX_HABLADOS)) {
+    const hasta = a.vigenciaHasta ? `Rige hasta ${fechaLegible(a.vigenciaHasta)}` : "Sin fecha de fin"
+    partes.push(`${a.titulo}. ${ETIQUETA_EFECTO[a.afectacion.efecto]}. ${hasta}.`)
+  }
+  if (anuncios.length > MAX_HABLADOS) partes.push(`Los otros ${anuncios.length - MAX_HABLADOS} están en la lista de la pantalla.`)
+  return partes.join(" ")
+}
 
 /** Fecha legible en la hora de Bogotá, para textos que se muestran o se leen. */
 export function fechaLegible(iso: string): string {
