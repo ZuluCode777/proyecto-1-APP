@@ -62,6 +62,14 @@
 :root {
   color-scheme: light;
   /*
+   * PENDIENTE: cambiar esta paleta por los colores de TransMilenio, tomados
+   * de su manual de marca oficial. Al hacerlo:
+   * - que el rojo de TransMilenio no se confunda con el de Emergencia (--sos);
+   * - mantener los contrastes que se indican abajo;
+   * - cambiar también themeColor en app/layout.tsx y los colores de respaldo
+   *   de components/transit-map.tsx.
+   */
+  /*
    * Esquema "cabecera lima" (issue #11): pantalla blanca, cabecera, banda de
    * título y tarjetas lima, un neón distinto por botón del menú, letra negra
    * (al menos 7,9:1 sobre cada neón; 17,9:1 sobre el lima) y contornos
