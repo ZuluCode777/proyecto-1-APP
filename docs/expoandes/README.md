@@ -12,13 +12,13 @@ Comenzar por [plan de ejecución](plan-ejecucion.md), que identifica prioridades
 | [Render e IA](investigacion-render-ia.md) | Capacidad/costo/operación de Render, asistente determinista, modelos, avisos, privacidad y Kiro. |
 | [Hardware e iOS](investigacion-hardware-ios.md) | ESP32, radar externo, Bluetooth/audio, alternativas iPhone, alimentación y propuesta BLE. |
 | [Compra en Bogotá](compras-bogota.md) | Candidatos comerciales, precios observados y comprobaciones previas; ninguna reserva o compra. |
-| [Arquitectura y experimentos](arquitectura-y-experimentos.md) | Comparación SwiftUI/Capacitor y núcleo local propuesto, propiedad, contratos y experimentos aún pendientes. |
+| [Arquitectura y experimentos](arquitectura-y-experimentos.md) | Comparación SwiftUI/Capacitor y núcleo local (aceptado el 11/11), propiedad, contratos y experimentos aún pendientes. |
 | [Plan de firmware](plan-firmware.md) | Hardware comprado el 6/11 (ESP32-S3-N16R8 y SEN0395), qué mide el radar, diseño del firmware, ensayos de banco y calendario. |
 | [Puertas de hardware](puertas-hardware.md) | Criterios propuestos para estáticos, móviles e interior; medidas de audio/enlace y ruta crítica. |
 | [Enunciado, rúbrica y correcciones](lectura-rubrica.md) | Doce criterios, enunciado ExpoAndes y reconciliación del 3/11: trabajo reutilizable, comentarios de evaluación, afiche/stand, CANVAS y pendientes. |
 | [Corroboración](corroboracion.md) | Pruebas observadas, fuentes contrastadas, datos confirmados y lo que permanece pendiente. |
 | [Prototipo iPhone accesible: EA-02](prototipos/ea-02/README.md) | Prototipo desechable con dos variantes, especificación de accesibilidad, evaluación provisional y guion de sesiones de #28. A2 eligió la variante B. |
 
-Las fuentes primarias y sus fechas están junto a las afirmaciones en los informes. Las recomendaciones posteriores de arquitectura ajustan las propuestas iniciales al calendario: SwiftUI **mínimo** condicionado a prueba, conservando backend Next y web; paridad completa permanece como trabajo posterior. Las cifras de ensayo son metas propuestas, no desempeño medido.
+Las fuentes primarias y sus fechas están junto a las afirmaciones en los informes. Las recomendaciones posteriores de arquitectura ajustan las propuestas iniciales al calendario: SwiftUI **mínimo** (aceptado el 11/11), conservando backend Next y web; paridad completa permanece como trabajo posterior. Las cifras de ensayo son metas propuestas, no desempeño medido.
 
 Actualización del 3/11: el equipo aportó enunciado ExpoAndes, entrega previa y evaluaciones de documento/MVP. Se leyeron y reconciliaron en la lectura académica; fecha y formato del informe siguen sin especificarse en esos PDF. No se publican originales, calificaciones, formularios ni datos identificables de participantes.
