@@ -34,7 +34,7 @@ final class EntornoApp {
         #if DEBUG
         let argumentos = ProcessInfo.processInfo.arguments
         if argumentos.contains("-PRUEBAS_UI_SIMULADAS") {
-            return crearParaPruebasUI()
+            return crearParaPruebasUI(argumentos: argumentos)
         }
         if argumentos.contains("-PRUEBAS_UI_ACCESORIO_SINTETICO") {
             return crearParaPruebasUIAccesorio(argumentos: argumentos)
@@ -52,14 +52,14 @@ final class EntornoApp {
 
     #if DEBUG
     /// Sin red, sin Llavero y sin preferencias persistentes: cada ejecución parte limpia.
-    private static func crearParaPruebasUI() -> EntornoApp {
+    private static func crearParaPruebasUI(argumentos: [String]) -> EntornoApp {
         let nombre = "pruebas-ui.transmivoz"
         let preferencias = UserDefaults(suiteName: nombre) ?? .standard
         preferencias.removePersistentDomain(forName: nombre)
         let ajustes = AjustesServidorModelo(almacen: AlmacenClaveEnMemoria(), preferencias: preferencias)
         return EntornoApp(
             ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado()),
-            favoritas: favoritasDePruebas(preferencias, argumentos: ProcessInfo.processInfo.arguments),
+            favoritas: favoritasDePruebas(preferencias, argumentos: argumentos),
             sesion: SesionLocalModelo(), modoPruebas: true)
     }
 

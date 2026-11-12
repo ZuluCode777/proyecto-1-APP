@@ -9,8 +9,11 @@ struct LlamadaAyuda: Equatable, Sendable {
     init(nombre: String, numero: String) {
         self.nombre = nombre
         self.numero = numero
-        // Los números son constantes del código, solo dígitos: `tel:` siempre forma una URL válida.
-        url = URL(string: "tel:\(numero)")!
+        // Los números son constantes del código; si alguien añade uno que no son dígitos, falla al abrir la Ayuda y no se oculta.
+        guard numero.allSatisfy(\.isNumber), let url = URL(string: "tel:\(numero)") else {
+            preconditionFailure("Número de llamada no válido: \(numero)")
+        }
+        self.url = url
     }
 }
 
@@ -31,7 +34,7 @@ enum TextoAyuda {
             "Sesión: es para el accesorio de proximidad por Bluetooth. Puedes buscarlo, elegirlo e iniciar la sesión, pero hoy esta versión bloquea las medidas y los avisos del sensor porque no puede verificar el enlace con el accesorio (más abajo, «Accesorio de proximidad»).",
         ]),
         SeccionAyuda(titulo: "Límites de la Consulta", parrafos: [
-            "Las respuestas son orientación, no una guía para abordar: la app no te dice en qué parada subir ni bajar. Confirma la ruta, la parada y el sentido en la señalización y con el personal de TransMilenio.",
+            "Las respuestas son orientación, no una guía para abordar: la app no da órdenes de abordaje y no verifica paradas ni sentido. Confirma la ruta, la parada y el sentido en la señalización y con el personal de TransMilenio.",
             "Los datos vienen del servidor y pueden estar desactualizados.",
         ]),
         SeccionAyuda(titulo: "Metro de Bogotá", parrafos: [

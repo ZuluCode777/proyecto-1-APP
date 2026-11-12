@@ -5,10 +5,9 @@ import SwiftUI
 struct FavoritasVista: View {
     let modelo: FavoritasModelo
 
-    private enum Foco: Hashable { case encabezado }
     /// Tras quitar una ruta desaparece la fila que tenía el foco: va al encabezado de la lista, o al del estado vacío
-    /// si era la última (EA-02 §1: el foco nunca queda en la nada).
-    @AccessibilityFocusState private var foco: Foco?
+    /// si era la última (EA-02 §1: el foco nunca queda en la nada). Solo uno de los dos encabezados existe a la vez.
+    @AccessibilityFocusState private var focoEnEncabezado: Bool
 
     var body: some View {
         ScrollView {
@@ -29,6 +28,10 @@ struct FavoritasVista: View {
         .navigationTitle("Favoritas")
         .navigationBarTitleDisplayMode(.inline)
         .bordeInferiorLegible()
+        // Con la lista ya repintada (tras la última, el encabezado vacío existe recién entonces), no al pulsar «Quitar».
+        .onChange(of: modelo.codigos.count) { anterior, nuevo in
+            if nuevo < anterior { focoEnEncabezado = true }
+        }
     }
 
     private var vacio: some View {
@@ -36,7 +39,7 @@ struct FavoritasVista: View {
             Text(TextoFavoritas.vacio)
                 .font(.headline)
                 .accessibilityAddTraits(.isHeader)
-                .accessibilityFocused($foco, equals: .encabezado)
+                .accessibilityFocused($focoEnEncabezado)
                 .accessibilityIdentifier("favoritas-vacio")
             Text(TextoFavoritas.comoSeAgregan)
                 .fixedSize(horizontal: false, vertical: true)
@@ -49,18 +52,18 @@ struct FavoritasVista: View {
             Text(TextoFavoritas.resumen(modelo.codigos.count))
                 .font(.headline)
                 .accessibilityAddTraits(.isHeader)
-                .accessibilityFocused($foco, equals: .encabezado)
+                .accessibilityFocused($focoEnEncabezado)
                 .accessibilityIdentifier("favoritas-resumen")
             // Siempre en vertical: con texto grande el código y el botón no caben en una fila.
             ForEach(modelo.codigos, id: \.self) { codigo in
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Ruta \(codigo)")
+                    Text(TextoFavoritas.ruta(codigo))
                         .font(.title3.bold())
                         .accessibilityIdentifier("favorita-\(codigo)")
                     Button(role: .destructive) {
                         quitar(codigo)
                     } label: {
-                        Text("Quitar").foregroundStyle(Color(uiColor: .systemBackground))
+                        Text(TextoFavoritas.quitar).foregroundStyle(Color(uiColor: .systemBackground))
                     }
                     .font(.body)
                     .buttonStyle(.borderedProminent)
@@ -78,7 +81,5 @@ struct FavoritasVista: View {
         guard modelo.quitar(codigo) else { return }
         AccessibilityNotification.Announcement(
             TextoFavoritas.quitada(codigo, quedan: modelo.codigos.count)).post()
-        // En la siguiente vuelta, con la lista ya repintada: tras la última, el encabezado vacío aún no existe en esta.
-        Task { @MainActor in foco = .encabezado }
     }
 }

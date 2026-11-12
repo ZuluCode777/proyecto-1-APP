@@ -1037,51 +1037,55 @@ final class TransMiVozContrasteNegativoUITests: XCTestCase {
     }
 }
 
-/// Abre la pestaña Ajustes (esperando a que quede seleccionada, como `abrirPestana`) y, desde el menú «Más ajustes»,
-/// la sección pedida. La comparten las clases de Ajustes.
-private func abrirSeccionDeAjustes(_ nombre: String, en app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-    let pestana = app.tabBars.buttons["Ajustes"]
-    XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña Ajustes", file: file, line: line)
-    pestana.tap()
-    esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña Ajustes", file: file, line: line)
-    let menu = app.descendants(matching: .any).matching(identifier: "menu-mas-ajustes").firstMatch
-    XCTAssertTrue(menu.waitForExistence(timeout: 10), "No existe el menú Más ajustes", file: file, line: line)
-    menu.tap()
-    let opcion = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", nombre)).firstMatch
-    XCTAssertTrue(opcion.waitForExistence(timeout: 10), "El menú no ofrece «\(nombre)»", file: file, line: line)
-    opcion.tap()
-}
-
-/// Preferencias, Favoritas y Ayuda de la pestaña Ajustes, en el Simulator y sin red. Se abren desde el menú «Más ajustes».
-/// Solo las pantallas cortas (Favoritas vacía, Preferencias) pasan la auditoría completa: la Ayuda y la lista de favoritas
-/// ocupan más que el área visible con texto grande y se comprueban por contenido. Nada de esto prueba VoiceOver real.
-final class TransMiVozAjustesUITests: XCTestCase {
-    private var app: XCUIApplication!
+/// Base de las pruebas de Ajustes: lanza la app con una categoría de texto, busca por identificador y abre una sección
+/// desde el menú «Más ajustes» (esperando a que la pestaña quede seleccionada, como `abrirPestana`).
+class AjustesUITestCase: XCTestCase {
+    var app: XCUIApplication!
 
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
 
-    private func lanzar(_ argumentos: [String]) {
+    func lanzar(_ argumentos: [String], categoria: String = "UICTContentSizeCategoryL") {
         app = XCUIApplication()
         app.launchArguments += argumentos + [
-            "-AppleLanguages", "(es)", "-AppleLocale", "es_CO", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
+            "-AppleLanguages", "(es)", "-AppleLocale", "es_CO", "-UIPreferredContentSizeCategoryName", categoria,
         ]
         app.launch()
         addTeardownBlock { [app] in app?.terminate() }
     }
 
-    private func elemento(_ identificador: String) -> XCUIElement {
+    func elemento(_ identificador: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: identificador).firstMatch
     }
 
-    private func abrirSeccion(_ nombre: String) { abrirSeccionDeAjustes(nombre, en: app) }
+    /// Abre la pestaña Ajustes y espera a que quede seleccionada.
+    func abrirPestanaAjustes(file: StaticString = #filePath, line: UInt = #line) {
+        let pestana = app.tabBars.buttons["Ajustes"]
+        XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña Ajustes", file: file, line: line)
+        pestana.tap()
+        esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña Ajustes", file: file, line: line)
+    }
 
+    /// Desde el menú «Más ajustes» abre la sección pedida (las opciones se buscan por su etiqueta).
+    func abrirSeccion(_ nombre: String, file: StaticString = #filePath, line: UInt = #line) {
+        abrirPestanaAjustes(file: file, line: line)
+        let menu = elemento("menu-mas-ajustes")
+        XCTAssertTrue(menu.waitForExistence(timeout: 10), "No existe el menú Más ajustes", file: file, line: line)
+        menu.tap()
+        let opcion = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", nombre)).firstMatch
+        XCTAssertTrue(opcion.waitForExistence(timeout: 10), "El menú no ofrece «\(nombre)»", file: file, line: line)
+        opcion.tap()
+    }
+}
+
+/// Preferencias, Favoritas y Ayuda de la pestaña Ajustes, en el Simulator y sin red. Se abren desde el menú «Más ajustes».
+/// Solo las pantallas cortas (Favoritas vacía, Preferencias) pasan la auditoría completa: la Ayuda y la lista de favoritas
+/// ocupan más que el área visible con texto grande y se comprueban por contenido. Nada de esto prueba VoiceOver real.
+final class TransMiVozAjustesUITests: AjustesUITestCase {
     func testElServidorSigueEnLaPrimeraPantallaDeAjustes() throws {
         lanzar(["-PRUEBAS_UI_SIMULADAS"])
-        let pestana = app.tabBars.buttons["Ajustes"]
-        XCTAssertTrue(pestana.waitForExistence(timeout: 10))
-        pestana.tap()
+        abrirPestanaAjustes()
         for id in ["campo-origen", "campo-clave", "interruptor-recordar", "boton-aplicar", "boton-olvidar", "resumen-ajustes"] {
             XCTAssertTrue(elemento(id).waitForExistence(timeout: 10), "Falta «\(id)» en Ajustes")
         }
@@ -1145,37 +1149,18 @@ final class TransMiVozAjustesUITests: XCTestCase {
         esperar(sesion, "value != %@", cambiado, "El interruptor de Sesión no cambió de valor")
         let deSesion = try XCTUnwrap(sesion.value as? String)
 
-        app.tabBars.buttons["Ajustes"].tap()
-        if !preferencias.waitForExistence(timeout: 3) { abrirSeccion("Preferencias") }
-        XCTAssertTrue(preferencias.waitForExistence(timeout: 10))
+        abrirPestanaAjustes()
+        XCTAssertTrue(preferencias.waitForExistence(timeout: 10), "Ajustes debe conservar Preferencias abierta")
         XCTAssertEqual(preferencias.value as? String, deSesion)
     }
 }
 
 /// Preferencias, Favoritas y Ayuda con el texto más grande de Dynamic Type: no auditan (la Ayuda mide varias pantallas);
 /// comprueban que lo último de cada una se alcanza entero y tocable al desplazar, sin recortes ni controles inalcanzables.
-final class TransMiVozAjustesTextoGrandeUITests: XCTestCase {
-    private var app: XCUIApplication!
-
-    override func setUpWithError() throws {
-        continueAfterFailure = false
+final class TransMiVozAjustesTextoGrandeUITests: AjustesUITestCase {
+    override func lanzar(_ argumentos: [String], categoria: String = "UICTContentSizeCategoryAccessibilityXXXL") {
+        super.lanzar(argumentos, categoria: categoria)
     }
-
-    private func lanzar(_ argumentos: [String]) {
-        app = XCUIApplication()
-        app.launchArguments += argumentos + [
-            "-AppleLanguages", "(es)", "-AppleLocale", "es_CO",
-            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL",
-        ]
-        app.launch()
-        addTeardownBlock { [app] in app?.terminate() }
-    }
-
-    private func elemento(_ identificador: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: identificador).firstMatch
-    }
-
-    private func abrirSeccion(_ nombre: String) { abrirSeccionDeAjustes(nombre, en: app) }
 
     func testAyudaLlegaHastaElUltimoEnlaceDeEmergencia() throws {
         lanzar(["-PRUEBAS_UI_SIMULADAS"])

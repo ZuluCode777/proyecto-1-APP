@@ -3,6 +3,7 @@ import Foundation
 /// Textos de la pantalla Preferencias. Dicen lo que la app hace HOY.
 enum TextoPreferencias {
     static let tituloVoz = "Voz de la app"
+    static let etiquetaVoz = "Avisos hablados por la app"
     static let notaVoz = "Es el mismo interruptor de la pestaña Sesión. Controla si la app dice en voz alta el estado del accesorio, y solo por una salida de audio privada (auriculares con cable o Bluetooth). Hoy el accesorio está bloqueado porque no se puede verificar el enlace, así que no hay avisos del sensor. Con VoiceOver activo empieza apagada para no hablar dos veces. Vuelve a su valor inicial al cerrar la app."
     static let sinAccesorio = "La voz de la app no está disponible en este modo."
     static let tituloSistema = "Texto, contraste y VoiceOver"

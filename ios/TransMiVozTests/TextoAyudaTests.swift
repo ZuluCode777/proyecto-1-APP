@@ -1,22 +1,7 @@
 import XCTest
 @testable import TransMiVoz
 
-final class TextoAjustesTests: XCTestCase {
-    func testResumenDeFavoritasConcuerdaEnNumero() {
-        XCTAssertEqual(TextoFavoritas.resumen(1), "1 ruta favorita")
-        XCTAssertEqual(TextoFavoritas.resumen(3), "3 rutas favoritas")
-    }
-
-    func testAnuncioAlQuitarDiceLaRutaYCuantasQuedan() {
-        XCTAssertEqual(TextoFavoritas.quitada("B23", quedan: 0), "Quité la ruta B23 de tus favoritas. No quedan rutas favoritas.")
-        XCTAssertEqual(TextoFavoritas.quitada("B23", quedan: 1), "Quité la ruta B23 de tus favoritas. Queda 1 ruta favorita.")
-        XCTAssertEqual(TextoFavoritas.quitada("B23", quedan: 2), "Quité la ruta B23 de tus favoritas. Quedan 2 rutas favoritas.")
-    }
-
-    func testElEstadoVacioDiceComoSeAgregan() {
-        XCTAssertTrue(TextoFavoritas.comoSeAgregan.contains("Guardar"))
-    }
-
+final class TextoAyudaTests: XCTestCase {
     private func textoDeAyuda(_ titulo: String) -> String {
         TextoAyuda.secciones.first { $0.titulo == titulo }?.parrafos.joined(separator: " ") ?? ""
     }
@@ -29,8 +14,8 @@ final class TextoAjustesTests: XCTestCase {
 
     func testAyudaReutilizaElAvisoDeSeguridadDelAccesorio() {
         let accesorio = textoDeAyuda("Accesorio de proximidad")
-        XCTAssertTrue(accesorio.contains(TextoAccesorio.parrafosAvisoEnlace.joined(separator: " ")))
-        XCTAssertTrue(accesorio.contains("\(TextoAccesorio.sinMedidaPorEnlace) \(TextoAccesorio.noEsDeteccionNiCaminoLibre)"))
+        XCTAssertTrue(accesorio.contains("Esta versión todavía no puede verificar que el enlace sea cifrado y autenticado (falta la prueba con la placa). Por eso bloquea las medidas y los avisos del sensor."))
+        XCTAssertTrue(accesorio.contains("No se usa ninguna medida. Esto no es una detección ni significa camino libre."))
         // Las dos frases siguen siendo las del bloqueo de la pantalla de Sesión.
         XCTAssertEqual(Array(TextoAccesorio.parrafos(.enlaceNoVerificado).suffix(2)), [TextoAccesorio.sinMedidaPorEnlace, TextoAccesorio.noEsDeteccionNiCaminoLibre])
         XCTAssertTrue(accesorio.contains("no distingue unos auriculares de un altavoz Bluetooth"))

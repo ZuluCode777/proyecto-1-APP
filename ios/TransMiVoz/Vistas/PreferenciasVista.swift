@@ -38,7 +38,7 @@ struct PreferenciasVista: View {
                 Toggle(isOn: Binding(
                     get: { vozPropiaActiva(accesorio) },
                     set: { accesorio.fijarVozPropia($0) })) {
-                        Text("Avisos hablados por la app")
+                        Text(TextoPreferencias.etiquetaVoz)
                             .accessibilityIdentifier("etiqueta-interruptor-voz-preferencias")
                     }
                     .frame(minHeight: 44)

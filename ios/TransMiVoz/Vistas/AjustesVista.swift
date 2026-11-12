@@ -17,11 +17,8 @@ struct AjustesVista: View {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
                             Button { seccion = .preferencias } label: { Label("Preferencias", systemImage: "slider.horizontal.3") }
-                                .accessibilityIdentifier("ajustes-preferencias")
                             Button { seccion = .favoritas } label: { Label("Favoritas", systemImage: "heart") }
-                                .accessibilityIdentifier("ajustes-favoritas")
                             Button { seccion = .ayuda } label: { Label("Ayuda", systemImage: "questionmark.circle") }
-                                .accessibilityIdentifier("ajustes-ayuda")
                         } label: {
                             Label("Más ajustes", systemImage: "ellipsis.circle")
                         }

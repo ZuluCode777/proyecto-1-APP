@@ -10,6 +10,10 @@ enum TextoFavoritas {
         cantidad == 1 ? "1 ruta favorita" : "\(cantidad) rutas favoritas"
     }
 
+    static let quitar = "Quitar"
+
+    static func ruta(_ codigo: String) -> String { "Ruta \(codigo)" }
+
     static func etiquetaQuitar(_ codigo: String) -> String { "Quitar la ruta \(codigo) de favoritas" }
 
     /// Anuncio de accesibilidad tras quitar una ruta (el foco se pierde con la fila).
