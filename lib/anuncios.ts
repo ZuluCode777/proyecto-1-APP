@@ -3,7 +3,8 @@ import { z } from "zod"
 /**
  * Contrato de `GET /api/anuncios` (EA-26, #52), compartido por el servidor, la
  * web y, más adelante, un cliente nativo. Solo describe la forma; la consulta a
- * la fuente vive en `lib/anuncios-servidor.ts`.
+ * la fuente vive en `lib/anuncios-servidor.ts` y los textos para mostrar o leer,
+ * en `lib/anuncios-texto.ts`.
  *
  * Reglas del contrato:
  *
@@ -33,20 +34,6 @@ export const EfectoAnuncioSchema = z.enum([
   "accesibilidad",
 ])
 export type EfectoAnuncio = z.infer<typeof EfectoAnuncioSchema>
-
-export const ETIQUETA_EFECTO: Record<EfectoAnuncio, string> = {
-  "sin-servicio": "Sin servicio",
-  "servicio-reducido": "Servicio reducido",
-  demoras: "Demoras",
-  desvio: "Desvío",
-  "servicio-adicional": "Servicio adicional",
-  "servicio-modificado": "Servicio modificado",
-  otro: "Otro efecto",
-  desconocido: "Efecto no informado",
-  "parada-movida": "Parada trasladada",
-  "sin-efecto": "Sin efecto en el servicio",
-  accesibilidad: "Problema de accesibilidad",
-}
 
 export const AnuncioSchema = z.object({
   origen: z.literal("oficial"),
@@ -89,34 +76,3 @@ export const AnunciosRespuestaSchema = z.object({
   anuncios: z.array(AnuncioSchema),
 })
 export type AnunciosRespuesta = z.infer<typeof AnunciosRespuestaSchema>
-
-export const ETIQUETA_ESTADO: Record<FuenteAnuncios["estado"], string> = {
-  activa: "Fuente conectada",
-  degradada: "Fuente con problemas · confianza baja",
-  "sin-fuente": "Sin fuente conectada",
-}
-
-/** Cuántos anuncios se leen en voz alta; el resto queda en la lista de la pantalla. */
-const MAX_HABLADOS = 5
-
-/**
- * Lo que dice la voz al abrir el panel: el estado de la fuente y un resumen por
- * anuncio (título, afectación y hasta cuándo rige). En modo solo voz es la única
- * vía a su contenido, así que no se reduce al recuento.
- */
-export function textoHablado({ fuente, anuncios }: AnunciosRespuesta): string {
-  const partes = [fuente.mensaje]
-  for (const a of anuncios.slice(0, MAX_HABLADOS)) {
-    const hasta = a.vigenciaHasta ? `Rige hasta ${fechaLegible(a.vigenciaHasta)}` : "Sin fecha de fin"
-    partes.push(`${a.titulo}. ${ETIQUETA_EFECTO[a.afectacion.efecto]}. ${hasta}.`)
-  }
-  if (anuncios.length > MAX_HABLADOS) partes.push(`Los otros ${anuncios.length - MAX_HABLADOS} están en la lista de la pantalla.`)
-  return partes.join(" ")
-}
-
-/** Fecha legible en la hora de Bogotá, para textos que se muestran o se leen. */
-export function fechaLegible(iso: string): string {
-  const fecha = new Date(iso)
-  if (Number.isNaN(fecha.getTime())) return "fecha desconocida"
-  return fecha.toLocaleString("es-CO", { timeZone: "America/Bogota", dateStyle: "medium", timeStyle: "short" })
-}

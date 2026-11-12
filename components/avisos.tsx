@@ -3,15 +3,15 @@
 import { useEffect, useState } from "react"
 import { X } from "lucide-react"
 import { Modal } from "@/components/modal"
-import { useSpeech } from "@/hooks/use-speech"
-import { AnunciosRespuestaSchema, ETIQUETA_EFECTO, ETIQUETA_ESTADO, fechaLegible, textoHablado, type AnunciosRespuesta } from "@/lib/anuncios"
+import { esUltimaLocucion, useSpeech } from "@/hooks/use-speech"
+import { AnunciosRespuestaSchema, type AnunciosRespuesta } from "@/lib/anuncios"
+import { AVISO_SIN_GARANTIA, ETIQUETA_EFECTO, ETIQUETA_ESTADO, lineaFuente, textoHablado, vigenciaTexto } from "@/lib/anuncios-texto"
 import { procedenciaCatalogo, type TransmilenioData } from "@/lib/transmilenio"
 
 /** Espera máxima por `/api/anuncios` (la fuente tiene la suya, menor). */
 const CONSULTA_TIMEOUT_MS = 12_000
 
-const TEXTO_NO_CONSULTADO =
-  "No pude consultar los anuncios de TransMilenio. Esto no significa que no haya novedades en el servicio."
+const TEXTO_NO_CONSULTADO = `No pude consultar los anuncios de TransMilenio. ${AVISO_SIN_GARANTIA}`
 const TEXTO_CONSULTANDO = "Consultando los anuncios de TransMilenio."
 /** Escenario fijo de la app: el Metro no tiene servicio comercial y no genera anuncios. */
 const TEXTO_ESCENARIO_METRO =
@@ -40,7 +40,9 @@ function Origen({ children }: { children: string }) {
  * con la consulta caída no dice que no haya incidentes: dice que no puede saberlo.
  */
 export function Avisos({ open, onClose, catalogo, errorCatalogo }: AvisosProps) {
-  const { speak } = useSpeech()
+  const { speak, cancel } = useSpeech()
+  // Sin voz del navegador la app no habla: el resultado se anuncia como región viva (un solo canal a la vez).
+  const sinVoz = typeof window !== "undefined" && !("speechSynthesis" in window)
   const [consulta, setConsulta] = useState<Consulta>({ tipo: "consultando" })
 
   useEffect(() => {
@@ -49,7 +51,7 @@ export function Avisos({ open, onClose, catalogo, errorCatalogo }: AvisosProps) 
     let vigente = true
     const controlador = new AbortController()
     const limite = setTimeout(() => controlador.abort(), CONSULTA_TIMEOUT_MS)
-    speak(TEXTO_CONSULTANDO)
+    let ultima = speak(TEXTO_CONSULTANDO)
     void (async () => {
       try {
         const res = await fetch("/api/anuncios", { signal: controlador.signal })
@@ -57,19 +59,21 @@ export function Avisos({ open, onClose, catalogo, errorCatalogo }: AvisosProps) 
         const datos = AnunciosRespuestaSchema.parse(await res.json())
         if (!vigente) return
         setConsulta({ tipo: "ok", datos })
-        speak(textoHablado(datos))
+        ultima = speak(textoHablado(datos))
       } catch {
         if (!vigente) return // se cerró el panel: nadie espera este resultado
         setConsulta({ tipo: "error" })
-        speak(TEXTO_NO_CONSULTADO)
+        ultima = speak(TEXTO_NO_CONSULTADO)
       }
     })()
     return () => {
       vigente = false
       clearTimeout(limite)
       controlador.abort()
+      // Al cerrar el panel (o desmontarlo) calla SOLO su propia locución: no sigue leyendo cinco anuncios fuera de la pantalla.
+      if (esUltimaLocucion(ultima)) cancel()
     }
-  }, [open, speak])
+  }, [open, speak, cancel])
 
   const avisoCatalogo = errorCatalogo
     ? "No pude actualizar las rutas de TransMilenio. Sigues viendo los últimos datos cargados."
@@ -96,21 +100,15 @@ export function Avisos({ open, onClose, catalogo, errorCatalogo }: AvisosProps) 
           <h3 id="avisos-operador" className="text-xl font-bold">
             Anuncios del operador
           </h3>
-          {/* Sin `role="status"`: la voz de la app ya lo dice, y un lector de pantalla lo diría dos veces. */}
-          <div className="rounded-2xl border-3 border-border bg-card p-4 text-base">
+          {/* Región viva solo si no hay voz del navegador; con voz, la de la app ya lo dice y un lector de pantalla lo repetiría. */}
+          <div className="rounded-2xl border-3 border-border bg-card p-4 text-base" aria-live={sinVoz ? "polite" : undefined}>
             {consulta.tipo === "consultando" && <p>{TEXTO_CONSULTANDO}</p>}
             {consulta.tipo === "error" && <p>{TEXTO_NO_CONSULTADO}</p>}
             {consulta.tipo === "ok" && (
               <>
                 <p className="font-bold">{ETIQUETA_ESTADO[consulta.datos.fuente.estado]}</p>
                 <p className="mt-1">{consulta.datos.fuente.mensaje}</p>
-                {consulta.datos.fuente.consultadoEn && (
-                  <p className="mt-1 text-base">
-                    Fuente: {consulta.datos.fuente.entidad}.
-                    {consulta.datos.fuente.publicadoEn && ` Publicado por la fuente: ${fechaLegible(consulta.datos.fuente.publicadoEn)}.`}{" "}
-                    Última consulta exitosa: {fechaLegible(consulta.datos.fuente.consultadoEn)}.
-                  </p>
-                )}
+                {lineaFuente(consulta.datos.fuente) && <p className="mt-1 text-base">{lineaFuente(consulta.datos.fuente)}</p>}
               </>
             )}
           </div>
@@ -125,10 +123,7 @@ export function Avisos({ open, onClose, catalogo, errorCatalogo }: AvisosProps) 
                     Afectación: {ETIQUETA_EFECTO[a.afectacion.efecto]}
                     {a.afectacion.rutas.length > 0 && `. Servicios (identificador de la fuente): ${a.afectacion.rutas.join(", ")}`}
                   </p>
-                  <p className="text-base">
-                    {a.fecha ? `Vigente desde ${fechaLegible(a.fecha)}` : "La fuente no publica el inicio"}
-                    {a.vigenciaHasta ? ` hasta ${fechaLegible(a.vigenciaHasta)}` : " y sin fecha de fin"}. Identificador {a.identificador}.
-                  </p>
+                  <p className="text-base">{vigenciaTexto(a)}. Identificador {a.identificador}.</p>
                 </li>
               ))}
             </ul>

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict"
 import test, { mock } from "node:test"
 import { pathToFileURL } from "node:url"
-import { AnunciosRespuestaSchema, ETIQUETA_ESTADO, textoHablado } from "./anuncios"
-import { aAnuncios, crearServicioAnuncios, decodificarAlertas, EDAD_MAXIMA_FUENTE_MS, MAX_BYTES } from "./anuncios-servidor"
+import { AnunciosRespuestaSchema } from "./anuncios"
+import { AVISO_SIN_GARANTIA, ETIQUETA_ESTADO, fechaLegible, lineaFuente, textoHablado, vigenciaTexto } from "./anuncios-texto"
+import { aAnuncios, crearServicioAnuncios, decodificarAlertas, EDAD_MAXIMA_FUENTE_MS, MAX_BYTES, MAX_SIN_CONSULTA_MS } from "./anuncios-servidor"
 
 /**
  * EA-26 (#52): anuncios operativos. Las alertas se arman con un codificador
@@ -139,7 +140,7 @@ test("con la fuente al día y sin anuncios vigentes, el mensaje no garantiza aus
   const r = await crearServicioAnuncios({ obtener: async () => mensaje(s(AHORA), []), ahora: () => AHORA })()
   assert.equal(r.fuente.estado, "activa")
   assert.deepEqual(r.anuncios, [])
-  assert.match(r.fuente.mensaje, /no garantiza que no haya novedades/)
+  assert.ok(r.fuente.mensaje.endsWith(AVISO_SIN_GARANTIA))
 })
 
 test("vencidos, futuros, eliminados y vacíos se descartan", () => {
@@ -405,24 +406,153 @@ test("el mensaje de fuente degradada cita cuándo PUBLICÓ la fuente, no cuándo
   assert.match(r.fuente.mensaje, /la fuente publicó el/)
 })
 
-test("lo que se dice en voz alta incluye cada anuncio (título, afectación, vigencia), con tope y aviso del resto", () => {
-  const feed = decodificar(mensaje(s(AHORA), Array.from({ length: 7 }, (_, i) => vigente(`v${i}`, { titulo: `Cierre ${i}`, desc: `d${i}`, ...(i === 0 ? { hasta: undefined } : {}) }))))
+test("lo que se dice en voz alta: fuente y su hora, y de cada anuncio entidad, título, descripción recortada, afectación y vigencia; con tope y aviso del resto", () => {
+  const feed = decodificar(
+    mensaje(s(AHORA), Array.from({ length: 7 }, (_, i) => vigente(`v${i}`, { titulo: i === 2 ? "Cierre 2." : `Cierre ${i}`, desc: i === 1 ? "D".repeat(300) : `descripción ${i}`, ...(i === 0 ? { hasta: undefined } : {}) }))),
+  )
   const anuncios = aAnuncios(feed, AHORA)
-  const fuente = { estado: "activa", confianza: "media", entidad: "TransMilenio S.A.", nombre: "n", url: "u", consultadoEn: null, publicadoEn: null, mensaje: "Hay 7 anuncios vigentes." } as const
+  const publicado = new Date(AHORA).toISOString()
+  const fuente = { estado: "activa", confianza: "media", entidad: "TransMilenio S.A.", nombre: "n", url: "u", consultadoEn: publicado, publicadoEn: publicado, mensaje: "Hay 7 anuncios vigentes." } as const
   const dicho = textoHablado({ fuente, anuncios })
   assert.ok(dicho.startsWith("Hay 7 anuncios vigentes."))
+  assert.ok(dicho.includes(`publicado por la fuente el ${fechaLegible(publicado)}`), "la hora de la fuente se dice")
   for (const a of anuncios.slice(0, 5)) {
-    assert.ok(dicho.includes(a.titulo), a.titulo)
+    assert.ok(dicho.includes(`Anuncio oficial de TransMilenio S.A.: ${a.titulo.replace(/\.$/, "")}.`), a.titulo)
+    assert.ok(dicho.includes(a.descripcion.slice(0, 20)), "la descripción se dice")
   }
   assert.ok(!dicho.includes(anuncios[5].titulo))
+  assert.ok(!dicho.includes("D".repeat(101)), "la descripción se recorta a ~100 caracteres")
+  assert.ok(dicho.includes("D".repeat(99) + "…"))
+  assert.ok(!dicho.includes("10173"), "los identificadores de ruta de la fuente no se leen")
   assert.match(dicho, /Desvío\./)
-  assert.match(dicho, /Sin fecha de fin\./)
-  assert.match(dicho, /Rige hasta/)
+  assert.match(dicho, /sin fecha de fin\./)
+  assert.match(dicho, /Vigente desde .*, hasta /)
   assert.match(dicho, /Los otros 2 están en la lista de la pantalla\./)
-  assert.equal(textoHablado({ fuente: { ...fuente, estado: "sin-fuente", mensaje: "Sin fuente." }, anuncios: [] }), "Sin fuente.")
+  assert.doesNotMatch(dicho, /\.\.(?!\.)/, "ninguna frase termina en punto doble («p. m..»)")
+  assert.equal(textoHablado({ fuente: { ...fuente, estado: "sin-fuente", consultadoEn: null, publicadoEn: null, mensaje: "Sin fuente." }, anuncios: [] }), "Sin fuente.")
+})
+
+test("la vigencia nunca inventa un extremo y la fecha no lleva «p. m.»", () => {
+  const desde = new Date(AHORA).toISOString()
+  const hasta = new Date(AHORA + 3600_000).toISOString()
+  assert.match(vigenciaTexto({ fecha: desde, vigenciaHasta: hasta }), /^Vigente desde .+, hasta .+$/)
+  assert.match(vigenciaTexto({ fecha: desde, vigenciaHasta: null }), /, sin fecha de fin$/)
+  assert.match(vigenciaTexto({ fecha: null, vigenciaHasta: hasta }), /^La fuente no publica el inicio; rige hasta /)
+  assert.equal(vigenciaTexto({ fecha: null, vigenciaHasta: null }), "La fuente no publica ni el inicio ni el fin")
+  assert.doesNotMatch(fechaLegible(new Date(Date.UTC(2026, 10, 11, 22, 5)).toISOString()), /p\. ?m|a\. ?m/i)
+  assert.match(fechaLegible(new Date(Date.UTC(2026, 10, 11, 22, 5)).toISOString()), /17:05/)
+})
+
+test("la línea de la fuente dice quién, cuándo publicó y la última consulta; sin consulta buena no hay línea", () => {
+  const iso = new Date(AHORA).toISOString()
+  const base = { estado: "activa", confianza: "media", entidad: "TransMilenio S.A.", nombre: "n", url: "u", mensaje: "m" } as const
+  const l = lineaFuente({ ...base, consultadoEn: iso, publicadoEn: iso })
+  assert.match(l ?? "", /^Fuente: TransMilenio S\.A\., publicado por la fuente el .+; última consulta exitosa: .+\.$/)
+  assert.doesNotMatch(lineaFuente({ ...base, consultadoEn: iso, publicadoEn: null }) ?? "", /publicado por la fuente/i)
+  assert.equal(lineaFuente({ ...base, consultadoEn: null, publicadoEn: null }), null)
 })
 
 test("cada estado de la fuente tiene su rótulo, y «sin-fuente» no suena a «sin incidentes»", () => {
   assert.deepEqual(Object.keys(ETIQUETA_ESTADO).sort(), ["activa", "degradada", "sin-fuente"])
   for (const t of Object.values(ETIQUETA_ESTADO)) assert.doesNotMatch(t, /sin incidentes|sin novedades|todo normal/i)
+})
+
+test("todos los mensajes sin garantía usan la MISMA frase de seguridad", async () => {
+  const aviso = silencio()
+  try {
+    const sin = await crearServicioAnuncios({ obtener: async () => { throw new Error("x") }, ahora: () => AHORA })()
+    const vacia = await crearServicioAnuncios({ obtener: async () => mensaje(s(AHORA), []), ahora: () => AHORA })()
+    const vieja = await crearServicioAnuncios({ obtener: async () => mensaje(s(AHORA - EDAD_MAXIMA_FUENTE_MS - 60_000), []), ahora: () => AHORA })()
+    for (const r of [sin, vacia, vieja]) assert.ok(r.fuente.mensaje.endsWith(AVISO_SIN_GARANTIA), r.fuente.mensaje)
+  } finally {
+    aviso.mock.restore()
+  }
+})
+
+// ── Revisión de #81, ronda 2: gravedad, caducidad sin consulta, tamaño y textos vacíos ──
+
+test("el orden es por gravedad del efecto y, a igual gravedad, por fecha: sin servicio > reducido/desvío/accesibilidad > demoras > resto", () => {
+  const t = (min: number) => ({ desde: s(AHORA) - min * 60, hasta: s(AHORA) + 3600 })
+  const feed = decodificar(
+    mensaje(s(AHORA), [
+      vigente("otro-nuevo", { efecto: 7, ...t(1), titulo: "otro nuevo" }),
+      vigente("demora-nueva", { efecto: 3, ...t(2), titulo: "demora nueva" }),
+      vigente("desvio-viejo", { efecto: 4, ...t(50), titulo: "desvío viejo" }),
+      vigente("desvio-nuevo", { efecto: 4, ...t(5), titulo: "desvío nuevo" }),
+      vigente("sin-servicio-viejo", { efecto: 1, ...t(300), titulo: "sin servicio viejo" }),
+      vigente("accesibilidad", { efecto: 11, ...t(10), titulo: "accesibilidad" }),
+      vigente("reducido", { efecto: 2, ...t(20), titulo: "reducido" }),
+    ]),
+  )
+  assert.deepEqual(aAnuncios(feed, AHORA).map((a) => a.identificador), [
+    "sin-servicio-viejo",
+    "desvio-nuevo",
+    "accesibilidad",
+    "reducido",
+    "desvio-viejo",
+    "demora-nueva",
+    "otro-nuevo",
+  ])
+})
+
+test("con la fuente caída más de 24 h un anuncio sin fecha de fin deja de mostrarse: vuelve a sin-fuente", async () => {
+  const aviso = silencio()
+  try {
+    const r0 = reloj()
+    let falla = false
+    const servicio = crearServicioAnuncios({
+      obtener: async () => {
+        if (falla) throw new Error("HTTP 500")
+        return mensaje(s(AHORA), [vigente("sin-fin", { hasta: undefined })])
+      },
+      ahora: r0.ahora,
+    })
+    assert.equal((await servicio()).anuncios.length, 1)
+    falla = true
+    r0.t += MAX_SIN_CONSULTA_MS - 60_000
+    const antes = await servicio()
+    assert.equal(antes.fuente.estado, "degradada")
+    assert.equal(antes.anuncios.length, 1)
+    r0.t += 120_000
+    const despues = await servicio()
+    assert.equal(despues.fuente.estado, "sin-fuente")
+    assert.equal(despues.fuente.confianza, "ninguna")
+    assert.deepEqual(despues.anuncios, [])
+  } finally {
+    aviso.mock.restore()
+  }
+})
+
+test("una respuesta de más de la mitad de la cota avisa en el registro, una sola vez", async () => {
+  const aviso = silencio()
+  const relleno = new Uint8Array(MAX_BYTES / 2 + 1000)
+  const grande = new Uint8Array([...mensaje(s(AHORA), [vigente("a1")]), ...ld(99, relleno)]) // campo desconocido: se ignora
+  const r0 = reloj()
+  try {
+    const servicio = crearServicioAnuncios({ obtener: async () => grande, ahora: r0.ahora })
+    assert.equal((await servicio()).fuente.estado, "activa", "por debajo de la cota sigue funcionando")
+    r0.t += 60_000
+    await servicio()
+    const avisos = aviso.mock.calls.filter((c) => String(c.arguments[0]).includes("mitad de la cota"))
+    assert.equal(avisos.length, 1)
+  } finally {
+    aviso.mock.restore()
+  }
+  const sinAviso = silencio()
+  try {
+    await crearServicioAnuncios({ obtener: async () => mensaje(s(AHORA), [vigente("a1")]), ahora: () => AHORA })()
+    assert.equal(sinAviso.mock.calls.length, 0, "una respuesta normal no avisa")
+  } finally {
+    sinAviso.mock.restore()
+  }
+})
+
+test("un texto en español vacío cae a la primera traducción con texto", () => {
+  const feed = decodificar(
+    mensaje(s(AHORA), [
+      vigente("a1", { traducciones: [["", "es"], ["Hello", "en"]], desc: "d1" }),
+      vigente("a2", { traducciones: [["  ", "es-CO"], ["Hola", "es"]], desc: "d2" }),
+    ]),
+  )
+  assert.deepEqual(aAnuncios(feed, AHORA).map((a) => a.titulo).sort(), ["Hello", "Hola"])
 })

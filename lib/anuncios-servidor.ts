@@ -1,11 +1,11 @@
 import {
   AnunciosRespuestaSchema,
-  fechaLegible,
   type Anuncio,
   type AnunciosRespuesta,
   type EfectoAnuncio,
   type FuenteAnuncios,
 } from "@/lib/anuncios"
+import { AVISO_SIN_GARANTIA, fechaLegible } from "@/lib/anuncios-texto"
 import { leerBytesLimitado } from "@/lib/cuerpo-peticion"
 import { normalize } from "@/lib/text"
 
@@ -42,6 +42,11 @@ const MARGEN_FUTURO_MS = 60 * 60 * 1000
 const TTL_MS = 30_000
 /** Si la marca de la fuente es más vieja que esto, la fuente está atrasada: confianza baja. */
 export const EDAD_MAXIMA_FUENTE_MS = 15 * 60 * 1000
+/**
+ * Sin ninguna consulta buena en este tiempo se vuelve a `sin-fuente`: un anuncio
+ * sin fecha de fin no puede quedar en pantalla para siempre con la fuente caída.
+ */
+export const MAX_SIN_CONSULTA_MS = 24 * 60 * 60 * 1000
 const MAX_TITULO = 120
 const MAX_DESCRIPCION = 300
 const MAX_RUTAS = 20
@@ -81,19 +86,41 @@ function* campos(b: Uint8Array): Generator<Campo> {
   }
 }
 
+/** Números de campo de `gtfs-realtime.proto` que se leen; los demás se ignoran. */
+const CAMPO = {
+  mensajeCabecera: 1,
+  mensajeEntidad: 2,
+  cabeceraMarca: 3,
+  entidadId: 1,
+  entidadEliminada: 2,
+  entidadAlerta: 5,
+  alertaPeriodo: 1,
+  alertaAfectado: 5,
+  alertaEfecto: 7,
+  alertaTitulo: 10,
+  alertaDescripcion: 11,
+  periodoInicio: 1,
+  periodoFin: 2,
+  afectadoRuta: 2,
+  traducciones: 1,
+  traduccionTexto: 1,
+  traduccionIdioma: 2,
+} as const
+
 const texto = (b: Uint8Array) => new TextDecoder("utf-8").decode(b)
 
-/** `TranslatedString`: prefiere la traducción en español y si no la primera. */
+/** `TranslatedString`: prefiere la traducción en español CON texto y si no la primera con texto. */
 function textoTraducido(b: Uint8Array): string {
   let primero: string | null = null
   for (const t of campos(b)) {
-    if (t.num !== 1 || t.tipo !== 2) continue
+    if (t.num !== CAMPO.traducciones || t.tipo !== 2) continue
     let cuerpo = ""
     let idioma = ""
     for (const c of campos(t.bytes)) {
-      if (c.num === 1 && c.tipo === 2) cuerpo = texto(c.bytes)
-      if (c.num === 2 && c.tipo === 2) idioma = texto(c.bytes)
+      if (c.num === CAMPO.traduccionTexto && c.tipo === 2) cuerpo = texto(c.bytes)
+      if (c.num === CAMPO.traduccionIdioma && c.tipo === 2) idioma = texto(c.bytes)
     }
+    if (!cuerpo.trim()) continue
     if (idioma.toLowerCase().startsWith("es")) return cuerpo
     primero ??= cuerpo
   }
@@ -125,27 +152,27 @@ export function decodificarAlertas(bytes: Uint8Array, ahoraMs = Date.now()): Ale
   let marca: number | null = null
   const alertas: AlertaCruda[] = []
   for (const f of campos(bytes)) {
-    if (f.num === 1 && f.tipo === 2) {
-      for (const h of campos(f.bytes)) if (h.num === 3 && h.tipo === 0) marca = h.valor
-    } else if (f.num === 2 && f.tipo === 2) {
+    if (f.num === CAMPO.mensajeCabecera && f.tipo === 2) {
+      for (const h of campos(f.bytes)) if (h.num === CAMPO.cabeceraMarca && h.tipo === 0) marca = h.valor
+    } else if (f.num === CAMPO.mensajeEntidad && f.tipo === 2) {
       const a: AlertaCruda = { id: "", eliminada: false, periodos: [], rutas: [], efecto: 0, titulo: "", descripcion: "" }
       for (const e of campos(f.bytes)) {
-        if (e.num === 1 && e.tipo === 2) a.id = texto(e.bytes)
-        else if (e.num === 2 && e.tipo === 0) a.eliminada = e.valor !== 0
-        else if (e.num === 5 && e.tipo === 2) {
+        if (e.num === CAMPO.entidadId && e.tipo === 2) a.id = texto(e.bytes)
+        else if (e.num === CAMPO.entidadEliminada && e.tipo === 0) a.eliminada = e.valor !== 0
+        else if (e.num === CAMPO.entidadAlerta && e.tipo === 2) {
           for (const c of campos(e.bytes)) {
-            if (c.num === 1 && c.tipo === 2) {
+            if (c.num === CAMPO.alertaPeriodo && c.tipo === 2) {
               const p = { desde: null as number | null, hasta: null as number | null }
               for (const r of campos(c.bytes)) {
-                if (r.num === 1 && r.tipo === 0) p.desde = r.valor
-                if (r.num === 2 && r.tipo === 0) p.hasta = r.valor
+                if (r.num === CAMPO.periodoInicio && r.tipo === 0) p.desde = r.valor
+                if (r.num === CAMPO.periodoFin && r.tipo === 0) p.hasta = r.valor
               }
               a.periodos.push(p)
-            } else if (c.num === 5 && c.tipo === 2) {
-              for (const s of campos(c.bytes)) if (s.num === 2 && s.tipo === 2) a.rutas.push(texto(s.bytes))
-            } else if (c.num === 7 && c.tipo === 0) a.efecto = c.valor
-            else if (c.num === 10 && c.tipo === 2) a.titulo = textoTraducido(c.bytes)
-            else if (c.num === 11 && c.tipo === 2) a.descripcion = textoTraducido(c.bytes)
+            } else if (c.num === CAMPO.alertaAfectado && c.tipo === 2) {
+              for (const s of campos(c.bytes)) if (s.num === CAMPO.afectadoRuta && s.tipo === 2) a.rutas.push(texto(s.bytes))
+            } else if (c.num === CAMPO.alertaEfecto && c.tipo === 0) a.efecto = c.valor
+            else if (c.num === CAMPO.alertaTitulo && c.tipo === 2) a.titulo = textoTraducido(c.bytes)
+            else if (c.num === CAMPO.alertaDescripcion && c.tipo === 2) a.descripcion = textoTraducido(c.bytes)
           }
         }
       }
@@ -173,6 +200,20 @@ const EFECTOS: Record<number, EfectoAnuncio> = {
   11: "accesibilidad",
 }
 
+/**
+ * Qué tanto afecta el efecto al viaje, de mayor a menor: sin servicio, luego
+ * servicio reducido, desvío o problema de accesibilidad (la audiencia de la app
+ * lo necesita ya), luego demoras, y el resto. Ordena la lista antes que la fecha.
+ */
+const PRIORIDAD_EFECTO: Partial<Record<EfectoAnuncio, number>> = {
+  "sin-servicio": 0,
+  "servicio-reducido": 1,
+  desvio: 1,
+  accesibilidad: 1,
+  demoras: 2,
+}
+const PRIORIDAD_RESTO = 3
+
 const ENTIDADES_HTML: Record<string, string> = {
   amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", deg: "°",
   aacute: "á", eacute: "é", iacute: "í", oacute: "ó", uacute: "ú", ntilde: "ñ", uuml: "ü",
@@ -198,8 +239,8 @@ function iso(segundos: number): string | null {
 /**
  * Anuncios VIGENTES de la fuente en `ahoraMs`: descarta los eliminados, los
  * vencidos, los que aún no empiezan, los vacíos y los repetidos (mismo
- * identificador, o mismo texto y vigencia bajo otro identificador). Los más
- * recientes primero. Una alerta sin `active_period` rige mientras esté en el
+ * identificador, o mismo texto y vigencia bajo otro identificador). Primero los
+ * de efecto más grave y, a igual gravedad, los más recientes. Una alerta sin `active_period` rige mientras esté en el
  * feed (GTFS-realtime), con `fecha` y `vigenciaHasta` nulas: nunca se inventa
  * una fecha que la fuente no publica.
  */
@@ -237,7 +278,8 @@ export function aAnuncios(feed: AlertasDecodificadas, ahoraMs: number): Anuncio[
       afectacion: { efecto: EFECTOS[a.efecto] ?? "desconocido", rutas: [...new Set(a.rutas)].slice(0, MAX_RUTAS) },
     })
   }
-  return anuncios.sort((x, y) => (y.fecha ?? "").localeCompare(x.fecha ?? ""))
+  const prioridad = (a: Anuncio) => PRIORIDAD_EFECTO[a.afectacion.efecto] ?? PRIORIDAD_RESTO
+  return anuncios.sort((x, y) => prioridad(x) - prioridad(y) || (y.fecha ?? "").localeCompare(x.fecha ?? ""))
 }
 
 // ── Servicio con caché y degradación ──
@@ -262,7 +304,7 @@ function sinFuente(): AnunciosRespuesta {
       confianza: "ninguna",
       consultadoEn: null,
       publicadoEn: null,
-      mensaje: "No hay una fuente oficial de anuncios conectada en este momento. Esto no significa que no haya novedades en el servicio.",
+      mensaje: `No hay una fuente oficial de anuncios conectada en este momento. ${AVISO_SIN_GARANTIA}`,
     },
     anuncios: [],
   }
@@ -285,11 +327,17 @@ export function crearServicioAnuncios({ obtener = obtenerAlertasOficiales, ahora
   let fallo = false
   let intentoEn = -Infinity
   let pendiente: Promise<void> | null = null
+  let avisadoTamano = false
 
   function renovar(): Promise<void> {
     pendiente ??= Promise.resolve()
       .then(obtener)
       .then((bytes) => {
+        if (!avisadoTamano && bytes.length > MAX_BYTES / 2) {
+          // La fuente acumula alertas vencidas y crece: avisar antes de que pase la cota y la fuente quede en `sin-fuente`.
+          avisadoTamano = true
+          console.warn(`[anuncios] la respuesta ocupa ${bytes.length} de ${MAX_BYTES} bytes (más de la mitad de la cota): hay que subirla`)
+        }
         ultimo = { feed: decodificarAlertas(bytes, ahora()), consultadoEn: ahora() }
         fallo = false
       })
@@ -307,8 +355,8 @@ export function crearServicioAnuncios({ obtener = obtenerAlertasOficiales, ahora
 
   function respuesta(): AnunciosRespuesta {
     const base = { entidad: ENTIDAD, nombre: NOMBRE_FUENTE, url: URL_ALERTAS }
-    if (!ultimo) return sinFuente()
     const ahoraMs = ahora()
+    if (!ultimo || ahoraMs - ultimo.consultadoEn > MAX_SIN_CONSULTA_MS) return sinFuente()
     const anuncios = aAnuncios(ultimo.feed, ahoraMs)
     const consultadoEn = new Date(ultimo.consultadoEn).toISOString()
     const publicadoEn = new Date(ultimo.feed.marca * 1000).toISOString() // válida: `decodificarAlertas` la comprueba
@@ -321,14 +369,15 @@ export function crearServicioAnuncios({ obtener = obtenerAlertasOficiales, ahora
         confianza: "baja",
         consultadoEn,
         publicadoEn,
-        mensaje: `${motivo} Muestro lo que la fuente publicó el ${fechaLegible(publicadoEn)}; puede estar desactualizado. Esto no significa que no haya novedades en el servicio.`,
+        mensaje: `${motivo} Muestro lo que la fuente publicó el ${fechaLegible(publicadoEn)}; puede estar desactualizado. ${AVISO_SIN_GARANTIA}`,
       }
       return { fuente, anuncios }
     }
     const mensaje =
       anuncios.length === 0
-        ? "La fuente oficial de TransMilenio no publica anuncios vigentes en este momento. Eso no garantiza que no haya novedades en el servicio."
+        ? `La fuente oficial de TransMilenio no publica anuncios vigentes en este momento. ${AVISO_SIN_GARANTIA}`
         : `Hay ${anuncios.length} ${anuncios.length === 1 ? "anuncio vigente publicado" : "anuncios vigentes publicados"} por TransMilenio. Confírmalo con la entidad antes de decidir.`
+    // Nunca «alta»: ningún anuncio se ha contrastado con la operación real y la licencia del recurso no está declarada.
     return { fuente: { ...base, estado: "activa", confianza: "media", consultadoEn, publicadoEn, mensaje }, anuncios }
   }
 
