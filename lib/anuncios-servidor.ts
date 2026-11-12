@@ -222,8 +222,8 @@ const ENTIDADES_HTML: Record<string, string> = {
 }
 
 /** La fuente publica entidades HTML (`&iacute;`) en el texto plano: se decodifican y se acota el largo. */
-function limpiarTexto(t: string, max: number): string {
-  const plano = t
+function limpiarTexto(texto: string, max: number): string {
+  const plano = texto
     .replace(/&#(\d+);/g, (m, n) => (Number(n) < 0x110000 ? String.fromCodePoint(Number(n)) : m))
     .replace(/&([A-Za-z]+);/g, (m, n) => ENTIDADES_HTML[n] ?? m)
     .replace(/\s+/g, " ")
@@ -259,7 +259,8 @@ export function aAnuncios(feed: AlertasDecodificadas, ahoraMs: number): Anuncio[
         : a.periodos.find((p) => (p.desde ?? -Infinity) <= ahora && ahora <= (p.hasta ?? Infinity))
     if (!vigente) continue
     const descripcion = limpiarTexto(a.descripcion, MAX_DESCRIPCION)
-    const titulo = limpiarTexto(a.titulo, MAX_TITULO) || descripcion
+    // Sin título, la descripción lo hace, pero con el tope del título.
+    const titulo = limpiarTexto(a.titulo, MAX_TITULO) || limpiarTexto(a.descripcion, MAX_TITULO)
     if (!titulo) continue
     const fecha = vigente.desde === null ? null : iso(vigente.desde)
     const vigenciaHasta = vigente.hasta === null ? null : iso(vigente.hasta)

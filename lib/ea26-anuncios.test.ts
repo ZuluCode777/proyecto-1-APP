@@ -14,14 +14,14 @@ import { aAnuncios, crearServicioAnuncios, decodificarAlertas, EDAD_MAXIMA_FUENT
 // Nombres del formato: `llave` = clave de campo (número y tipo de cable), `num` = campo varint,
 // `ld` = campo de longitud variable ("length-delimited"), `str` = texto UTF-8.
 const varint = (n: number): number[] => {
-  const out: number[] = []
+  const bytes: number[] = []
   while (n >= 0x80) {
-    out.push((n % 0x80) | 0x80)
+    bytes.push((n % 0x80) | 0x80)
     n = Math.floor(n / 0x80)
   }
-  return [...out, n]
+  return [...bytes, n]
 }
-const llave = (num: number, tipo: number) => varint(num * 8 + tipo)
+const llave = (campo: number, tipo: number) => varint(campo * 8 + tipo)
 const num = (n: number, v: number) => [...llave(n, 0), ...varint(v)]
 const ld = (n: number, bytes: number[] | Uint8Array) => [...llave(n, 2), ...varint(bytes.length), ...bytes]
 const str = (n: number, cadena: string) => ld(n, new TextEncoder().encode(cadena))
@@ -598,4 +598,28 @@ test("con la marca de la fuente congelada, aunque responda 200 y renueve la cons
   assert.equal(congeladaDias.fuente.estado, "sin-fuente")
   assert.equal(congeladaDias.fuente.confianza, "ninguna")
   assert.deepEqual(congeladaDias.anuncios, [])
+})
+
+test("la voz cierra cada frase bien: tras «!» y «?» no hay punto; un texto solo de puntuación no deja un punto suelto", () => {
+  const base = { origen: "oficial" as const, entidad: "TransMilenio S.A.", identificador: "x", descripcion: "", fecha: null, vigenciaHasta: null, afectacion: { efecto: "desvio" as const, rutas: [] as string[] } }
+  const fuente = { estado: "activa", confianza: "media", entidad: "TransMilenio S.A.", nombre: "n", url: "u", consultadoEn: null, publicadoEn: null, mensaje: "m" } as const
+  const dicho = (titulo: string, descripcion = "") => textoHablado({ fuente, anuncios: [{ ...base, titulo, descripcion }] })
+
+  assert.ok(dicho("¡Cierre total!").includes("S.A.: ¡Cierre total! Desvío."), "tras «!» no se añade punto")
+  assert.ok(dicho("¿Hay cierre?", "¿Hasta cuándo?").includes("S.A.: ¿Hay cierre? ¿Hasta cuándo? Desvío."))
+  assert.ok(dicho("Cierre…", "Detalle...").includes("S.A.: Cierre. Detalle. Desvío."), "los puntos suspensivos finales no se leen")
+  for (const vacio of ["…", "...", " . ", "?"]) {
+    const d = dicho(vacio, vacio)
+    assert.doesNotMatch(d, /: \.|\s\.\s|:\s{2,}/, `«${vacio}» no deja un punto suelto`)
+    assert.ok(d.includes("S.A.: Desvío.") || d.includes("S.A.: ? Desvío."), d)
+  }
+})
+
+test("sin título, la descripción lo sustituye con el tope del título (120), y la pantalla no la repite", () => {
+  const [a] = aAnuncios(decodificar(mensaje(segundos(AHORA), [vigente("a1", { titulo: "  ", desc: `${"palabra ".repeat(60)}fin` })])), AHORA)
+  assert.ok(Array.from(a.titulo).length <= 120 && a.titulo.endsWith("palabra…"), a.titulo)
+  assert.ok(Array.from(a.descripcion).length <= 300)
+  const [corto] = aAnuncios(decodificar(mensaje(segundos(AHORA), [vigente("a2", { titulo: "", desc: "Solo descripción" })])), AHORA)
+  assert.equal(corto.titulo, "Solo descripción")
+  assert.equal(descripcionUtil(corto), null, "si coinciden, no se repite")
 })

@@ -70,22 +70,24 @@ const MAX_DESCRIPCION_HABLADA = 100
  * vuelve al último espacio. Una palabra más larga que `max` se corta en seco.
  * Lo que se quita se marca con «…».
  */
-export function acortar(t: string, max: number): string {
-  const letras = Array.from(t)
-  if (letras.length <= max) return t
-  const corte = letras.slice(0, max - 1)
+export function acortar(texto: string, max: number): string {
+  const puntos = Array.from(texto)
+  if (puntos.length <= max) return texto
+  const corte = puntos.slice(0, max - 1)
   const espacio = corte.lastIndexOf(" ")
-  const aMediaPalabra = !/\s/.test(letras[max - 1])
+  const aMediaPalabra = !/\s/.test(puntos[max - 1])
   return `${(aMediaPalabra && espacio > 0 ? corte.slice(0, espacio) : corte).join("").trimEnd()}…`
 }
 
 /**
- * Cierra una frase con UN punto aunque el texto de la fuente ya termine en punto,
- * en «…» (texto acortado) o en espacios («PADRONES.»). Tras «?» o «!» no añade
- * punto: «¿Hay cierre?.» sonaría mal.
+ * Cierra una frase con UN punto aunque el texto de la fuente ya termine en punto
+ * («PADRONES.»), en «…» (texto acortado) o en espacios. Tras «?» o «!» no añade
+ * punto: «¿Hay cierre?.» sonaría mal. Un texto que es solo puntuación («…», «...»)
+ * no dice nada: devuelve cadena vacía en vez de un punto suelto.
  */
-const cerrar = (t: string) => {
-  const base = t.replace(/[.…\s]+$/, "")
+function cerrar(texto: string): string {
+  const base = texto.replace(/[.…\s]+$/, "")
+  if (!/[\p{L}\p{N}]/u.test(base)) return ""
   return /[?!]$/.test(base) ? base : `${base}.`
 }
 
@@ -106,8 +108,12 @@ export function textoHablado({ fuente, anuncios }: AnunciosRespuesta): string {
   if (origen) partes.push(origen)
   for (const a of anuncios.slice(0, MAX_HABLADOS)) {
     const util = descripcionUtil(a)
-    const descripcion = util ? ` ${cerrar(acortar(util, MAX_DESCRIPCION_HABLADA))}` : ""
-    partes.push(`Anuncio oficial de ${a.entidad}: ${cerrar(a.titulo)}${descripcion} ${ETIQUETA_EFECTO[a.afectacion.efecto]}. ${vigenciaTexto(a)}.`)
+    const descripcion = util ? cerrar(acortar(util, MAX_DESCRIPCION_HABLADA)) : ""
+    partes.push(
+      [`Anuncio oficial de ${a.entidad}:`, cerrar(a.titulo), descripcion, `${ETIQUETA_EFECTO[a.afectacion.efecto]}.`, `${vigenciaTexto(a)}.`]
+        .filter(Boolean)
+        .join(" "),
+    )
   }
   if (anuncios.length > MAX_HABLADOS) partes.push(`Los otros ${anuncios.length - MAX_HABLADOS} están en la lista de la pantalla.`)
   return partes.join(" ")
