@@ -208,7 +208,7 @@ struct SesionAccesorioVista: View {
             Toggle(isOn: Binding(
                 get: { vozPropiaActiva },
                 set: { modelo.fijarVozPropia($0) })) {
-                    Text("Avisos hablados por la app")
+                    Text(TextoPreferencias.etiquetaVoz)
                         .accessibilityIdentifier("etiqueta-interruptor-voz-app")
                 }
                 .frame(minHeight: 44)

@@ -31,7 +31,7 @@ enum TextoAyuda {
         SeccionAyuda(titulo: "Cómo usarla", parrafos: [
             "Ajustes: escribe la dirección del servidor y, si te la dieron, la clave. Sin servidor, la Consulta no responde. En el menú «Más ajustes», arriba a la derecha, están Preferencias, Favoritas y esta Ayuda.",
             "Consulta: escribe tu pregunta, por ejemplo una ruta o una estación, y toca Enviar. Necesita conexión a internet y no envía tu ubicación.",
-            "Sesión: es para el accesorio de proximidad por Bluetooth. Puedes buscarlo, elegirlo e iniciar la sesión, pero hoy esta versión bloquea las medidas y los avisos del sensor porque no puede verificar el enlace con el accesorio (más abajo, «Accesorio de proximidad»).",
+            "Sesión: es para el accesorio de proximidad por Bluetooth. Puedes buscarlo, elegirlo e iniciar la sesión. Las medidas y los avisos del sensor se ven y se dicen con una reserva, porque el enlace con el accesorio no está autenticado (más abajo, «Accesorio de proximidad»).",
         ]),
         SeccionAyuda(titulo: "Límites de la Consulta", parrafos: [
             "Las respuestas son orientación, no una guía para abordar: la app no da órdenes de abordaje y no verifica paradas ni sentido. Confirma la ruta, la parada y el sentido en la señalización y con el personal de TransMilenio.",
@@ -44,8 +44,8 @@ enum TextoAyuda {
         // (en la pantalla de Sesión se parte por el tamaño del texto) para que VoiceOver no se detenga a media frase.
         SeccionAyuda(titulo: "Accesorio de proximidad", parrafos: [
             TextoAccesorio.parrafosAvisoEnlace.joined(separator: " "),
-            "\(TextoAccesorio.sinMedidaPorEnlace) \(TextoAccesorio.noEsDeteccionNiCaminoLibre)",
-            "Cuando los avisos no estén bloqueados, se dicen solo por una salida de audio privada (auriculares con cable o Bluetooth). El iPhone no distingue unos auriculares de un altavoz Bluetooth: comprueba que sean auriculares.",
+            "Si el enlace no se puede comprobar, la app lo bloquea. \(TextoAccesorio.sinMedidaPorEnlace) \(TextoAccesorio.noEsDeteccionNiCaminoLibre)",
+            "Las medidas y los avisos se dicen solo por una salida de audio privada (auriculares con cable o Bluetooth) y, al empezar cada conexión, con la reserva «\(TextoAccesorio.reservaEnlace)» dicha en voz alta. El iPhone no distingue unos auriculares de un altavoz Bluetooth: comprueba que sean auriculares.",
             "Es un prototipo experimental: no reemplaza el bastón ni el perro guía.",
         ]),
         SeccionAyuda(titulo: "Emergencias", parrafos: [

@@ -14,8 +14,10 @@ final class TextoAyudaTests: XCTestCase {
 
     func testAyudaReutilizaElAvisoDeSeguridadDelAccesorio() {
         let accesorio = textoDeAyuda("Accesorio de proximidad")
-        XCTAssertTrue(accesorio.contains("Esta versión todavía no puede verificar que el enlace sea cifrado y autenticado (falta la prueba con la placa). Por eso bloquea las medidas y los avisos del sensor."))
-        XCTAssertTrue(accesorio.contains("No se usa ninguna medida. Esto no es una detección ni significa camino libre."))
+        XCTAssertTrue(accesorio.hasPrefix(TextoAccesorio.parrafosAvisoEnlace.joined(separator: " ")), "la Ayuda abre con el aviso fijo de la pantalla")
+        XCTAssertTrue(accesorio.contains("con la reserva «Enlace sin autenticar.» dicha en voz alta"))
+        XCTAssertFalse(accesorio.contains("bloquea las medidas"), "con la política de demostración la Ayuda no dice que el accesorio bloquea las medidas")
+        XCTAssertTrue(accesorio.contains("Si el enlace no se puede comprobar, la app lo bloquea. No se usa ninguna medida. Esto no es una detección ni significa camino libre."))
         // Las dos frases siguen siendo las del bloqueo de la pantalla de Sesión.
         XCTAssertEqual(Array(TextoAccesorio.parrafos(.enlaceNoVerificado).suffix(2)), [TextoAccesorio.sinMedidaPorEnlace, TextoAccesorio.noEsDeteccionNiCaminoLibre])
         XCTAssertTrue(accesorio.contains("no distingue unos auriculares de un altavoz Bluetooth"))
@@ -25,16 +27,23 @@ final class TextoAyudaTests: XCTestCase {
     func testAyudaSoloDiceCaminoLibreParaNegarlo() {
         var resto = TextoAyuda.secciones.flatMap(\.parrafos).joined(separator: " ")[...]
         while let rango = resto.range(of: "camino libre") {
-            XCTAssertTrue(resto[..<rango.lowerBound].hasSuffix("ni significa "), "«camino libre» sin negación en: \(resto)")
+            XCTAssertTrue(resto[..<rango.lowerBound].hasSuffix("ni significa ") || resto[..<rango.lowerBound].hasSuffix("no significa "), "«camino libre» sin negación en: \(resto)")
             resto = resto[rango.upperBound...]
         }
     }
 
-    func testAyudaAdvierteQueHoyElAccesorioNoDaAvisos() {
+    func testAyudaDiceQueLosAvisosDelSensorVanConLaReservaDelEnlace() {
         let uso = textoDeAyuda("Cómo usarla")
-        XCTAssertTrue(uso.contains("bloquea las medidas y los avisos del sensor"))
-        XCTAssertTrue(uso.contains("no puede verificar el enlace"))
+        XCTAssertTrue(uso.contains("se ven y se dicen con una reserva"))
+        XCTAssertTrue(uso.contains("el enlace con el accesorio no está autenticado"))
+        XCTAssertFalse(uso.contains("bloquea las medidas"))
         XCTAssertFalse(uso.contains("para oír los avisos"))
+    }
+
+    func testPreferenciasDiceLoMismoQueLaAyudaSobreLaReserva() {
+        XCTAssertTrue(TextoPreferencias.notaVoz.contains("«Enlace sin autenticar.»"))
+        XCTAssertTrue(TextoPreferencias.notaVoz.contains("sin detección no significa camino libre"))
+        XCTAssertFalse(TextoPreferencias.notaVoz.contains("bloqueado"), "ya no dice que hoy no hay avisos del sensor")
     }
 
     func testAyudaDiceDondeEstanLasSeccionesDeAjustes() {
