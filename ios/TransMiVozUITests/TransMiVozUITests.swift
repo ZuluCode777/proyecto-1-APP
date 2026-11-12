@@ -689,7 +689,7 @@ final class TransMiVozTextoGrandeUITests: XCTestCase {
         }
     }
 
-    /// El escenario Metro con el texto más grande (EA-17): el selector de la barra queda tocable y no menor de 44 pt, y la
+    /// El escenario Metro con el texto más grande (EA-17): el selector queda tocable y no menor de 44 pt, y la
     /// pantalla en Metro (introducción y campo) pasa la misma auditoría que la de transporte. Prueba aparte para no
     /// alargar la de arriba, que ya es larga en un runner lento.
     func testMetroConTextoMuyGrande() throws {

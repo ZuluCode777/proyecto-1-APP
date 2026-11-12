@@ -17,72 +17,77 @@ struct ConsultaVista: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if avisoModoPruebas { AvisoModoPruebas() }
+            // El selector va en una fila fija sobre el área desplazable, no dentro del contenido ni en la barra de navegación:
+            // dentro del contenido cambia hasta dónde se desplaza la pantalla con el texto más grande (la auditoría deja de ver
+            // lo mismo), y la barra limita el control a 36 pt y no escala con Dynamic Type.
+            VStack(spacing: 0) {
+                BotonEscenario(modelo: modelo)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
 
-                    Text(resumenServidor)
-                        .font(.footnote)
-                        .foregroundStyle(.textoSecundario)
-                        .accessibilityIdentifier("resumen-servidor")
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if avisoModoPruebas { AvisoModoPruebas() }
 
-                    // El resultado va antes del campo: con texto grande queda arriba, a la vista,
-                    // y no se desliza bajo la barra de pestañas (que tapa y desdibuja lo que pasa por debajo).
-                    ResultadoConsultaVista(modelo: modelo, foco: $foco, alReintentar: reintentar)
-
-                    Text(modelo.escenario.introduccion)
-                        .font(.body)
-                        .accessibilityIdentifier("introduccion-consulta")
-
-                    // Solo con tamaños de accesibilidad los controles se crean al desplazarse: con texto muy grande
-                    // quedan bajo la barra de pestañas y la auditoría los evaluaría sin que se vean. Con tamaños normales
-                    // la pila diferida hizo fallar la auditoría de Dynamic Type en el contador y en «Enviar».
-                    // El resultado queda fuera para mantener su destino de foco.
-                    ContenedorControles(diferido: creacionDiferida) {
-                        TextField("Pregunta", text: $modelo.texto, axis: .vertical)
-                            .lineLimit(1...5)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(minHeight: 44)
-                            .focused($campoEnfocado)
-                            .submitLabel(.send)
-                            .onSubmit { enviar() }
-                            .accessibilityLabel(modelo.escenario.etiquetaCampo)
-                            .accessibilityHint(modelo.escenario.pistaCampo)
-                            .accessibilityIdentifier("campo-pregunta")
-
-                        Text("\(modelo.texto.utf16.count) de \(modelo.escenario.maximoCaracteres) caracteres")
+                        Text(resumenServidor)
                             .font(.footnote)
                             .foregroundStyle(.textoSecundario)
-                            .accessibilityIdentifier("contador-caracteres")
+                            .accessibilityIdentifier("resumen-servidor")
 
-                        HStack(spacing: 12) {
-                            Button("Enviar") { enviar() }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.large)
+                        // El resultado va antes del campo: con texto grande queda arriba, a la vista,
+                        // y no se desliza bajo la barra de pestañas (que tapa y desdibuja lo que pasa por debajo).
+                        ResultadoConsultaVista(modelo: modelo, foco: $foco, alReintentar: reintentar)
+
+                        Text(modelo.escenario.introduccion)
+                            .font(.body)
+                            .accessibilityIdentifier("introduccion-consulta")
+
+                        // Solo con tamaños de accesibilidad los controles se crean al desplazarse: con texto muy grande
+                        // quedan bajo la barra de pestañas y la auditoría los evaluaría sin que se vean. Con tamaños normales
+                        // la pila diferida hizo fallar la auditoría de Dynamic Type en el contador y en «Enviar».
+                        // El resultado queda fuera para mantener su destino de foco.
+                        ContenedorControles(diferido: creacionDiferida) {
+                            TextField("Pregunta", text: $modelo.texto, axis: .vertical)
+                                .lineLimit(1...5)
+                                .textFieldStyle(.roundedBorder)
                                 .frame(minHeight: 44)
-                                .disabled(modelo.estaEnviando)
-                                .accessibilityIdentifier("boton-enviar")
-                            if modelo.estaEnviando {
-                                Button("Cancelar") { modelo.cancelar() }
-                                    .buttonStyle(.bordered)
+                                .focused($campoEnfocado)
+                                .submitLabel(.send)
+                                .onSubmit { enviar() }
+                                .accessibilityLabel(modelo.escenario.etiquetaCampo)
+                                .accessibilityHint(modelo.escenario.pistaCampo)
+                                .accessibilityIdentifier("campo-pregunta")
+
+                            Text("\(modelo.texto.utf16.count) de \(modelo.escenario.maximoCaracteres) caracteres")
+                                .font(.footnote)
+                                .foregroundStyle(.textoSecundario)
+                                .accessibilityIdentifier("contador-caracteres")
+
+                            HStack(spacing: 12) {
+                                Button("Enviar") { enviar() }
+                                    .buttonStyle(.borderedProminent)
                                     .controlSize(.large)
                                     .frame(minHeight: 44)
-                                    .accessibilityIdentifier("boton-cancelar")
+                                    .disabled(modelo.estaEnviando)
+                                    .accessibilityIdentifier("boton-enviar")
+                                if modelo.estaEnviando {
+                                    Button("Cancelar") { modelo.cancelar() }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.large)
+                                        .frame(minHeight: 44)
+                                        .accessibilityIdentifier("boton-cancelar")
+                                }
                             }
                         }
                     }
+                    .padding(16)
                 }
-                .padding(16)
+                .scrollDismissesKeyboard(.interactively)
+                .bordeInferiorLegible()
             }
             .navigationTitle("Consulta")
             .navigationBarTitleDisplayMode(.inline)
-            // En la barra y no en el contenido: un botón ancho dentro del contenido cambia la altura desplazable con
-            // los tamaños de texto de accesibilidad y rompe la auditoría de Dynamic Type.
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { BotonEscenario(modelo: modelo) }
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .bordeInferiorLegible()
             .onChange(of: modelo.estado) { _, nuevo in
                 anunciar(nuevo)
             }
@@ -125,6 +130,8 @@ struct ConsultaVista: View {
 /// Selector del escenario Metro, que va aparte del transporte de hoy. Es un interruptor: su texto visible no cambia
 /// («Metro (futuro)», lo dice también en voz) y su estado va en el valor de accesibilidad y en la introducción de la
 /// pantalla. El anuncio sale solo de aquí: un reintento que restablece el escenario no pisa «Consultando al servidor».
+/// El texto escala con Dynamic Type; usa un estilo menor que el cuerpo para que, con el texto más grande, la fila fija
+/// deje al área desplazable alto para la introducción entera.
 private struct BotonEscenario: View {
     let modelo: ConsultaModelo
 
@@ -136,11 +143,11 @@ private struct BotonEscenario: View {
         } label: {
             // El área táctil va dentro de la etiqueta: fuera del botón no ampliaría lo que recibe el toque.
             Text("Metro (futuro)")
+                .font(.subheadline)
                 .frame(minWidth: 44, minHeight: 44)
                 .contentShape(Rectangle())
         }
-        // La barra no crece con el tamaño de texto: al mantener pulsado, el sistema lo muestra en grande.
-        .accessibilityShowsLargeContentViewer()
+        .buttonStyle(.bordered)
         .accessibilityValue(modelo.escenario.valorSelector)
         .accessibilityHint(modelo.escenario.pistaSelector)
         .accessibilityIdentifier("boton-escenario")
