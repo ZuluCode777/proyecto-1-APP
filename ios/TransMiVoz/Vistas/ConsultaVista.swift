@@ -72,16 +72,17 @@ struct ConsultaVista: View {
                                     .accessibilityIdentifier("boton-cancelar")
                             }
                         }
-
-                        // Acción secundaria, después de la principal («Enviar»): sobre la introducción empujaba el campo
-                        // y «Enviar» fuera del área visible con el texto más grande (CI, `TransMiVozTextoGrandeUITests`).
-                        BotonEscenario(modelo: modelo)
                     }
                 }
                 .padding(16)
             }
             .navigationTitle("Consulta")
             .navigationBarTitleDisplayMode(.inline)
+            // En la barra y no en el contenido: con el texto más grande un botón de ~230 pt, antes o después de «Enviar»,
+            // cambia hasta dónde se desplaza la pantalla y la auditoría deja de ver lo mismo que en `main` (CI de EA-17).
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { BotonEscenario(modelo: modelo) }
+            }
             .scrollDismissesKeyboard(.interactively)
             .bordeInferiorLegible()
             .onChange(of: modelo.estado) { _, nuevo in
@@ -138,18 +139,17 @@ struct ConsultaVista: View {
 }
 
 /// Cambia de escenario. El Metro va aparte del transporte de hoy y siempre rotulado como futuro, en pantalla
-/// y para VoiceOver. Es el mismo botón con otro rótulo, así el foco no se pierde al cambiar.
+/// y para VoiceOver. Es el mismo botón con otro rótulo, así el foco no se pierde al cambiar. El texto visible es corto
+/// (cabe en la barra) y está contenido en la etiqueta de accesibilidad, que lo dice completo.
 private struct BotonEscenario: View {
     let modelo: ConsultaModelo
 
     var body: some View {
         let esMetro = modelo.escenario == .metroFuturo
-        Button(esMetro ? "Volver a transporte de hoy" : "Preguntar por el Metro (futuro)") {
+        Button(esMetro ? "Transporte de hoy" : "Metro (futuro)") {
             modelo.escenario = esMetro ? .transporte : .metroFuturo
         }
-        .buttonStyle(.bordered)
-        .controlSize(.large)
-        .frame(minHeight: 44)
+        .accessibilityLabel(esMetro ? "Volver a transporte de hoy" : "Preguntar por el Metro (futuro)")
         .accessibilityValue(esMetro ? "Escenario actual: Metro, futuro y sin servicio" : "Escenario actual: transporte de hoy")
         .accessibilityHint(esMetro ? "" : "El Metro de Bogotá todavía no presta servicio. Cambia la consulta a información del proyecto.")
         .accessibilityIdentifier("boton-escenario")
