@@ -134,12 +134,16 @@ enum TextoAccesorio {
         "Si es la primera vez, mantén pulsado su botón de 3 a 10 segundos: solo acepta emparejar durante 60 segundos.",
     ]
 
-    /// Emparejamiento cancelado, clave incorrecta, ventana de alta cerrada, corte o plazo vencido. No hay medidas.
+    /// Emparejamiento cancelado, clave incorrecta, ventana de alta cerrada, corte o plazo vencido. No se sabe cuál de
+    /// ellos fue (un corte de radio llega igual que una cancelación), así que el texto no afirma ninguno y la
+    /// recuperación va de menos a más: reconectar, abrir la ventana y, solo si sigue, borrar los vínculos.
     private static let frasesEnlaceSeguroFallido = [
         fallo(.enlaceSeguroFallido),
-        "Pudo cancelarse, el código pudo ser incorrecto o el accesorio tenía cerrada su ventana de emparejamiento.",
-        "Mantén pulsado su botón de 3 a 10 segundos, toca Reconectar y escribe el código de 6 dígitos que pida iOS.",
-        "Si sigue fallando, mantén el botón 10 segundos o más para borrar los vínculos del accesorio y empareja de nuevo.",
+        "Pudo cancelarse el emparejamiento, ser incorrecto el código, estar cerrada la ventana del accesorio o cortarse la conexión.",
+        "Toca Reconectar y, si iOS pide un código de 6 dígitos, escríbelo.",
+        "Si falla otra vez, mantén pulsado el botón del accesorio de 3 a 10 segundos y toca Reconectar.",
+        "Si sigue fallando, mantén el botón 10 segundos o más: borra los vínculos del accesorio.",
+        "Luego olvida el accesorio en Ajustes > Bluetooth del iPhone y empareja de nuevo.",
         "No hay medidas.",
     ]
 
@@ -177,10 +181,11 @@ enum TextoAccesorio {
     /// El aviso fijo de la pantalla mientras el enlace no se puede verificar, repartido en párrafos. Con el texto más grande
     /// de accesibilidad el aviso en un solo bloque medía 869 pt, más que el área visible (659 pt), y no había posición que
     /// lo mostrara entero. Se corta donde acaba la afirmación; la aclaración entre paréntesis queda con la frase que le sigue.
-    /// Unidos con un espacio dan exactamente el texto de siempre: las dos frases, en su orden y con su puntuación.
+    /// La causa es que iOS no expone el nivel del enlace y que la política es fija: ninguna prueba con la placa lo levanta.
+    /// Cada párrafo mide como mucho lo que medía el más largo del texto anterior (84 caracteres) más dos: no se agranda.
     static let parrafosAvisoEnlace = [
-        "Esta versión todavía no puede verificar que el enlace sea cifrado y autenticado",
-        "(falta la prueba con la placa). Por eso bloquea las medidas y los avisos del sensor.",
+        "Esta versión no puede verificar que el enlace sea cifrado y autenticado",
+        "(iOS no lo expone y la política es fija). Por eso bloquea medidas y avisos del sensor.",
     ]
 
     /// Estado del audio para la pantalla. El sistema no distingue unos auriculares Bluetooth de un
@@ -245,7 +250,7 @@ enum TextoAccesorio {
         case .errorDeSuscripcion: return "Falló la suscripción a las medidas."
         case .tiempoAgotado: return "El accesorio no respondió a tiempo."
         case .referenciaNoValida: return "No se logró sincronizar con el accesorio."
-        case .enlaceSeguroFallido: return "No se completó el emparejamiento seguro con el accesorio."
+        case .enlaceSeguroFallido: return "No se pudo comprobar el enlace seguro con el accesorio."
         case .vinculoBorradoEnAccesorio: return "El accesorio ya no reconoce el emparejamiento guardado en este iPhone."
         }
     }

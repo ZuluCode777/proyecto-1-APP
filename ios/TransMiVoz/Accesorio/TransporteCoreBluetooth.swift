@@ -19,12 +19,11 @@ import Foundation
 final class TransporteCoreBluetooth: TransporteAccesorio {
     var receptor: (@MainActor (EventoTransporte, Int) -> Void)?
 
-    /// Core Bluetooth NO expone el nivel de seguridad del enlace, y ni un nombre, un UUID ni una propiedad de la
-    /// característica prueban cifrado ni autenticación. La regla está en un solo sitio, `EvidenciaEnlace`:
-    /// `.desconocido` salvo que la lectura protegida de comprobación de la conexión vigente haya terminado sin
-    /// error, y entonces como mucho `.cifradoSinAutenticar` (un impostor sin protección también la supera).
-    /// Nunca `.cifradoAutenticado`. No hay ajuste, bandera ni preferencia que lo cambie.
-    var nivelEnlace: NivelEnlace { evidencia.nivel(vigente: ciclo.token) }
+    /// Core Bluetooth NO expone el nivel de seguridad del enlace, y ni un nombre, un UUID, una lectura que funcione ni
+    /// una propiedad de la característica prueban cifrado ni autenticación (un impostor sin protección supera la
+    /// lectura de comprobación). Siempre `.desconocido`: no hay ajuste, bandera ni preferencia que lo cambie. Qué
+    /// afirmar tras la lectura es una decisión del usuario y de H3 (contrato §6, propuesta pendiente de revisión).
+    var nivelEnlace: NivelEnlace { .desconocido }
 
     /// Leer la autorización no la provoca (a diferencia de crear el gestor).
     var permisoPorPreguntar: Bool { CBManager.authorization == .notDetermined }
@@ -207,11 +206,11 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
     /// `motivoEnlace`: el sistema dijo que falló el enlace seguro (p. ej. el accesorio borró el vínculo). Entonces
     /// es un fallo con su recuperación, no una desconexión que se reintenta sola.
     fileprivate func fallaLaConexion(_ p: CBPeripheral, motivoEnlace: MotivoFalla?) {
-        finalDeConexion(p, evento: .fallo(motivoEnlace ?? .conexionFallida))
+        finalDeConexion(p, evento: EvidenciaEnlace.eventoDeCorte(motivoEnlace: motivoEnlace, fallaAlConectar: true))
     }
 
     fileprivate func desconectado(_ p: CBPeripheral, motivoEnlace: MotivoFalla?) {
-        finalDeConexion(p, evento: motivoEnlace.map { EventoTransporte.fallo($0) } ?? .desconectado)
+        finalDeConexion(p, evento: EvidenciaEnlace.eventoDeCorte(motivoEnlace: motivoEnlace, fallaAlConectar: false))
     }
 
     /// `didDisconnect` / `didFailToConnect`: o es el aviso del cierre que pedimos (se consume y, si había una
@@ -255,11 +254,8 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
         // Solo las características descubiertas en esta conexión (no un objeto viejo con el mismo UUID).
         if c === informacion {
             // La lectura de comprobación va primero y su valor se descarta: la sesión lee la Información después.
-            if let resultado = evidencia.resolver(conError: valor == nil, vigente: ciclo.token) {
-                switch resultado {
-                case .superada: avisar(.lecturaProtegidaSuperada)
-                case .fallida: avisar(.fallo(motivoEnlace ?? .enlaceSeguroFallido))
-                }
+            if let evento = evidencia.eventoDeLectura(valor: valor, motivoEnlace: motivoEnlace, vigente: ciclo.token) {
+                avisar(evento)
                 return
             }
             guard informacionPedida else { return }

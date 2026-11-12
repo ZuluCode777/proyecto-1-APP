@@ -311,16 +311,19 @@ final class TextoAccesorioTests: XCTestCase {
         XCTAssertEqual(TextoAccesorio.locucion(.enlaceNoVerificado)?.texto, "Avisos bloqueados. No se puede verificar la seguridad del enlace.")
     }
 
-    /// Contrato del aviso fijo de la pantalla: dos párrafos que, unidos con un espacio, dan el texto literal de siempre, con
-    /// sus dos frases, su orden y su puntuación, sin añadir ni quitar nada.
-    func testElAvisoDeSeguridadSePintaEnDosParrafosYSuTextoCompletoNoCambia() {
+    /// Contrato del aviso fijo de la pantalla: dos párrafos que, unidos con un espacio, dan el texto completo. Dicen que la
+    /// causa es que iOS no expone el nivel y la política es fija, no que falte una prueba con la placa. Ninguno es más largo
+    /// que el más largo del texto anterior (84 caracteres) más dos: con el texto más grande cada párrafo debe caber a la vista.
+    func testElAvisoDeSeguridadSePintaEnDosParrafosCortos() {
         XCTAssertEqual(TextoAccesorio.parrafosAvisoEnlace, [
-            "Esta versión todavía no puede verificar que el enlace sea cifrado y autenticado",
-            "(falta la prueba con la placa). Por eso bloquea las medidas y los avisos del sensor.",
+            "Esta versión no puede verificar que el enlace sea cifrado y autenticado",
+            "(iOS no lo expone y la política es fija). Por eso bloquea medidas y avisos del sensor.",
         ])
         XCTAssertEqual(
             TextoAccesorio.parrafosAvisoEnlace.joined(separator: " "),
-            "Esta versión todavía no puede verificar que el enlace sea cifrado y autenticado (falta la prueba con la placa). Por eso bloquea las medidas y los avisos del sensor.")
+            "Esta versión no puede verificar que el enlace sea cifrado y autenticado (iOS no lo expone y la política es fija). Por eso bloquea medidas y avisos del sensor.")
+        XCTAssertFalse(TextoAccesorio.parrafosAvisoEnlace.joined().contains("falta la prueba"), "ninguna prueba de banco levanta el bloqueo")
+        for parrafo in TextoAccesorio.parrafosAvisoEnlace { XCTAssertLessThanOrEqual(parrafo.count, 86, parrafo) }
     }
 
     /// Solo se reparten el bloqueo, la comprobación del enlace y los fallos del enlace seguro: los demás estados se pintan
@@ -347,9 +350,18 @@ final class TextoAccesorioTests: XCTestCase {
         XCTAssertTrue(comprobando[3].contains("botón") && comprobando[3].contains("3 a 10 segundos"), comprobando[3])
 
         let fallido = TextoAccesorio.descripcion(.falla(.enlaceSeguroFallido))
-        for pista in ["Reconectar", "3 a 10 segundos", "6 dígitos", "10 segundos o más", "No hay medidas"] {
+        for pista in ["Reconectar", "3 a 10 segundos", "6 dígitos", "10 segundos o más", "Ajustes > Bluetooth", "No hay medidas"] {
             XCTAssertTrue(fallido.contains(pista), "falta «\(pista)» en: \(fallido)")
         }
+        // Un corte de radio llega igual que una cancelación: el texto no afirma cuál fue y no manda borrar vínculos de entrada.
+        XCTAssertTrue(fallido.contains("cortarse la conexión"), fallido)
+        XCTAssertFalse(fallido.contains("No se completó el emparejamiento"), fallido)
+        let recuperacion = TextoAccesorio.parrafos(.falla(.enlaceSeguroFallido))
+        let posicionReconectar = recuperacion.firstIndex { $0.contains("Toca Reconectar") }
+        let posicionBorrar = recuperacion.firstIndex { $0.contains("10 segundos o más") }
+        XCTAssertNotNil(posicionReconectar)
+        XCTAssertNotNil(posicionBorrar)
+        XCTAssertLessThan(posicionReconectar ?? Int.max, posicionBorrar ?? 0, "reconectar va antes que borrar los vínculos")
         let borrado = TextoAccesorio.descripcion(.falla(.vinculoBorradoEnAccesorio))
         for pista in ["Ajustes > Bluetooth", "Olvidar este dispositivo", "Reconectar", "3 a 10 segundos", "No hay medidas"] {
             XCTAssertTrue(borrado.contains(pista), "falta «\(pista)» en: \(borrado)")

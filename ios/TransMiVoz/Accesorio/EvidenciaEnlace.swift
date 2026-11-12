@@ -1,58 +1,52 @@
-import ContratoBLE
 import CoreBluetooth
 import Foundation
 
-/// Qué puede AFIRMAR el transporte de producción sobre la seguridad del enlace, y con qué evidencia. Es el ÚNICO sitio
-/// donde cambia `nivelEnlace`: `TransporteCoreBluetooth` solo devuelve lo que diga esta estructura. No toca Core
-/// Bluetooth (solo tokens de conexión), así que las pruebas la recorren entera.
+/// La lectura protegida de comprobación (Información) y lo que la app puede decir de ella. Traduce los avisos de
+/// Core Bluetooth al evento que ve la sesión. No toca Core Bluetooth (solo tokens, `Data?` y motivos ya calculados),
+/// así que las pruebas la recorren entera.
 ///
-/// La evidencia es una sola: la lectura protegida de comprobación (Información) de ESTA conexión terminó sin error.
-/// El firmware genuino solo atiende esa lectura con el enlace cifrado, autenticado y vinculado; si falta, responde
-/// «autenticación insuficiente» y iOS empareja por su cuenta (pide la clave) antes de repetirla.
+/// Para qué sirve la lectura: el firmware genuino pone a la característica los permisos GATT «cifrado y autenticado»
+/// (`READ_ENC` y `READ_AUTHEN`, con clave de 16 bytes). Si el enlace no los cumple, responde «autenticación
+/// insuficiente» y iOS empareja por su cuenta (pide la clave a la persona) antes de repetirla. Es lo único que la app
+/// puede hacer para provocar el emparejamiento, y sus errores explican la recuperación.
 ///
-/// Qué NO prueba. Core Bluetooth no expone el nivel de seguridad del enlace ni si existe un vínculo, y a la app le
-/// llega lo mismo de un impostor que anuncie el mismo nombre y UUID y sirva la característica sin protección: la
-/// lectura termina bien y iOS nunca empareja. Por eso el techo es `.cifradoSinAutenticar` y NUNCA
-/// `.cifradoAutenticado`: la política fija (`.exigirAutenticado`) sigue rechazando la sesión. Ni siquiera el cifrado
-/// queda probado frente a ese impostor; el nivel solo dice «respondió la lectura protegida, sin autenticar».
-/// Ver ea-15-ios-ble-audio.md («Seguridad del enlace») y contrato-ble.md §6 (propuesta pendiente de H3).
+/// Qué NO prueba, y por eso NO sube ningún nivel. Core Bluetooth no expone el nivel de seguridad del enlace, y a la app
+/// le llega lo mismo de un impostor que anuncie el mismo nombre y UUID y sirva la característica sin protección: la
+/// lectura termina bien y iOS nunca empareja. Ni el cifrado ni la autenticación quedan probados, así que
+/// `TransporteCoreBluetooth.nivelEnlace` es siempre `.desconocido`, con o sin esta lectura. Qué debería afirmar el
+/// transporte tras ella, y con qué política, es una decisión del usuario y de H3 (contrato-ble.md §6, propuesta
+/// pendiente de revisión); aquí no se toma. Ver ea-15-ios-ble-audio.md («Seguridad del enlace»).
 ///
-/// Falla cerrado: sin comprobación, con error, con otra conexión o tras `reiniciar` el nivel es `.desconocido`. La
-/// evidencia va atada al token de la conexión en la que se obtuvo y no se guarda en ningún sitio: no pasa a otra
-/// conexión ni a otro periférico, y no hay ajuste, bandera ni preferencia que la sustituya.
+/// Falla cerrado: la comprobación solo cuenta sin error y en la conexión en la que se pidió. No se guarda nada: el
+/// resultado no pasa a otra conexión ni a otro periférico.
 struct EvidenciaEnlace {
-    enum Resultado: Equatable {
-        case superada
-        case fallida
-    }
-
     private var pedidaEn: Int?
-    private var superadaEn: Int?
 
-    /// Nivel que la evidencia permite afirmar para la conexión `vigente` (nil: no hay conexión viva).
-    func nivel(vigente: Int?) -> NivelEnlace {
-        guard let vigente, superadaEn == vigente else { return .desconocido }
-        return .cifradoSinAutenticar
-    }
-
-    /// Se pide la lectura protegida de comprobación en la conexión `token`. Lo afirmado antes deja de valer.
+    /// Se pide la lectura de comprobación en la conexión `token`.
     mutating func pedir(token: Int) {
-        superadaEn = nil
         pedidaEn = token
     }
 
-    /// Llegó un valor o un error de la característica protegida. Devuelve nil si no había comprobación pedida (el
-    /// valor es de otra lectura). Solo cuenta sin error y en la misma conexión en la que se pidió.
-    mutating func resolver(conError: Bool, vigente: Int?) -> Resultado? {
+    /// Llegó el valor (nil si hubo error) o el error de la característica protegida. Devuelve nil si no había una
+    /// comprobación pedida (el valor es de otra lectura). `.lecturaProtegidaSuperada` solo sin error y en la misma
+    /// conexión en la que se pidió; cualquier otra cosa es un fallo.
+    mutating func eventoDeLectura(valor: Data?, motivoEnlace: MotivoFalla?, vigente: Int?) -> EventoTransporte? {
         guard let pedida = pedidaEn else { return nil }
         pedidaEn = nil
-        guard !conError, pedida == vigente else { return .fallida }
-        superadaEn = pedida
-        return .superada
+        guard valor != nil, pedida == vigente else { return .fallo(motivoEnlace ?? .enlaceSeguroFallido) }
+        return .lecturaProtegidaSuperada
     }
 
     mutating func reiniciar() {
         self = EvidenciaEnlace()
+    }
+
+    /// Evento que ve la sesión cuando termina la conexión vigente. Un error del enlace seguro (p. ej. el accesorio
+    /// borró el vínculo) es un fallo con su recuperación, no un corte que se reintenta solo; sin él, el fallo de
+    /// conexión o el corte de siempre.
+    static func eventoDeCorte(motivoEnlace: MotivoFalla?, fallaAlConectar: Bool) -> EventoTransporte {
+        if let motivoEnlace { return .fallo(motivoEnlace) }
+        return fallaAlConectar ? .fallo(.conexionFallida) : .desconectado
     }
 
     /// Errores de Core Bluetooth que dicen que el enlace seguro no existe o no se completó. Sirven para explicar

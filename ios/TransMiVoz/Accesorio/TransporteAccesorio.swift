@@ -32,8 +32,8 @@ enum MotivoFalla: Equatable {
     case errorDeSuscripcion
     case tiempoAgotado
     case referenciaNoValida
-    /// La lectura protegida de comprobación no terminó bien: emparejamiento fallido o cancelado, alta
-    /// cerrada en el accesorio, corte o tiempo agotado. No se reintenta sola.
+    /// La comprobación del enlace no terminó bien: emparejamiento fallido o cancelado, alta cerrada en el
+    /// accesorio, corte o tiempo agotado. No se reintenta sola (cada intento volvería a pedir la clave).
     case enlaceSeguroFallido
     /// iOS conserva un vínculo que el accesorio ya no tiene (`CBError.peerRemovedPairingInformation`).
     case vinculoBorradoEnAccesorio
@@ -48,7 +48,7 @@ enum EventoTransporte: Equatable {
     /// Enlace establecido y servicio con sus dos características descubiertos.
     case conectado(id: String)
     /// Respuesta a `comprobarEnlace`: la lectura protegida de comprobación de esta conexión terminó sin error.
-    /// Por sí sola no afirma cifrado ni autenticación: el nivel que permite afirmar lo da `nivelEnlace`.
+    /// No afirma cifrado ni autenticación (un impostor sin protección también la supera): el nivel lo da `nivelEnlace`.
     case lecturaProtegidaSuperada
     case informacion(Data)
     case notificacionesFijadas(Bool)
@@ -70,9 +70,8 @@ let tokenSinConexion = 0
 protocol TransporteAccesorio: AnyObject {
     var receptor: (@MainActor (EventoTransporte, Int) -> Void)? { get set }
     /// Nivel de seguridad que el transporte puede AFIRMAR de la conexión vigente. Core Bluetooth no lo expone: el
-    /// transporte de producción devuelve `.desconocido` salvo que la lectura protegida de comprobación de ESA
-    /// conexión haya terminado sin error, y entonces afirma como mucho `.cifradoSinAutenticar`
-    /// (`EvidenciaEnlace`, contrato §6). La sesión lo consulta al recibir `.lecturaProtegidaSuperada`.
+    /// transporte de producción devuelve siempre `.desconocido` (contrato §6, `EvidenciaEnlace`). La sesión lo
+    /// consulta al recibir `.lecturaProtegidaSuperada`; solo los dobles de prueba declaran otro nivel.
     var nivelEnlace: NivelEnlace { get }
     /// El sistema todavía no ha preguntado a la persona por el permiso de Bluetooth. Consultarlo no
     /// lo provoca. La app lo usa para explicar el permiso ANTES de que aparezca el aviso del sistema.
@@ -82,7 +81,7 @@ protocol TransporteAccesorio: AnyObject {
     /// Pide la conexión. Si el cierre de una anterior con el mismo periférico sigue en curso, espera su
     /// aviso (el plazo lo vigila la sesión). Todo evento de esta conexión lleva este `token`.
     func conectar(id: String, token: Int)
-    /// Lectura protegida de comprobación (Información), antes de afirmar ningún nivel. Si el enlace no está
+    /// Lectura protegida de comprobación (Información), antes de consultar `nivelEnlace`. Si el enlace no está
     /// protegido, iOS empareja por su cuenta y puede pedir la clave a la persona. Termina con
     /// `.lecturaProtegidaSuperada` o con `.fallo`; su valor no se entrega.
     func comprobarEnlace(token: Int)
