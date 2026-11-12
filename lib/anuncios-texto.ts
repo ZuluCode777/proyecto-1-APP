@@ -64,10 +64,34 @@ const MAX_HABLADOS = 5
 /** En la fuente real el título es un código de lugar y el sentido está en la descripción, así que se lee un trozo. */
 const MAX_DESCRIPCION_HABLADA = 100
 
-/** Cierra una frase con UN punto aunque el texto de la fuente ya termine en punto o espacios («PADRONES.»). */
-const cerrar = (t: string) => `${t.replace(/[.\s]+$/, "")}.`
+/**
+ * Acorta `t` a `max` caracteres CONTANDO puntos de código (no unidades UTF-16: un
+ * emoji no se parte en dos mitades sueltas) y, si el corte cae a media palabra,
+ * vuelve al último espacio. Una palabra más larga que `max` se corta en seco.
+ * Lo que se quita se marca con «…».
+ */
+export function acortar(t: string, max: number): string {
+  const letras = Array.from(t)
+  if (letras.length <= max) return t
+  const corte = letras.slice(0, max - 1)
+  const espacio = corte.lastIndexOf(" ")
+  const aMediaPalabra = !/\s/.test(letras[max - 1])
+  return `${(aMediaPalabra && espacio > 0 ? corte.slice(0, espacio) : corte).join("").trimEnd()}…`
+}
 
-const recortar = (t: string, max: number) => (t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t)
+/**
+ * Cierra una frase con UN punto aunque el texto de la fuente ya termine en punto,
+ * en «…» (texto acortado) o en espacios («PADRONES.»). Tras «?» o «!» no añade
+ * punto: «¿Hay cierre?.» sonaría mal.
+ */
+const cerrar = (t: string) => {
+  const base = t.replace(/[.…\s]+$/, "")
+  return /[?!]$/.test(base) ? base : `${base}.`
+}
+
+/** La descripción solo vale si dice algo que el título no dice; la pantalla y la voz usan la misma regla. */
+export const descripcionUtil = ({ titulo, descripcion }: Pick<Anuncio, "titulo" | "descripcion">): string | null =>
+  descripcion && descripcion !== titulo ? descripcion : null
 
 /**
  * Lo que dice la voz al abrir el panel: el mensaje de la fuente, quién la publica
@@ -81,7 +105,8 @@ export function textoHablado({ fuente, anuncios }: AnunciosRespuesta): string {
   const origen = lineaFuente(fuente)
   if (origen) partes.push(origen)
   for (const a of anuncios.slice(0, MAX_HABLADOS)) {
-    const descripcion = a.descripcion && a.descripcion !== a.titulo ? ` ${cerrar(recortar(a.descripcion, MAX_DESCRIPCION_HABLADA))}` : ""
+    const util = descripcionUtil(a)
+    const descripcion = util ? ` ${cerrar(acortar(util, MAX_DESCRIPCION_HABLADA))}` : ""
     partes.push(`Anuncio oficial de ${a.entidad}: ${cerrar(a.titulo)}${descripcion} ${ETIQUETA_EFECTO[a.afectacion.efecto]}. ${vigenciaTexto(a)}.`)
   }
   if (anuncios.length > MAX_HABLADOS) partes.push(`Los otros ${anuncios.length - MAX_HABLADOS} están en la lista de la pantalla.`)

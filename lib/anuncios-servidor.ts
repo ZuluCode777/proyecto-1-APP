@@ -5,7 +5,7 @@ import {
   type EfectoAnuncio,
   type FuenteAnuncios,
 } from "@/lib/anuncios"
-import { AVISO_SIN_GARANTIA, fechaLegible } from "@/lib/anuncios-texto"
+import { acortar, AVISO_SIN_GARANTIA, fechaLegible } from "@/lib/anuncios-texto"
 import { leerBytesLimitado } from "@/lib/cuerpo-peticion"
 import { normalize } from "@/lib/text"
 
@@ -43,8 +43,9 @@ const TTL_MS = 30_000
 /** Si la marca de la fuente es más vieja que esto, la fuente está atrasada: confianza baja. */
 export const EDAD_MAXIMA_FUENTE_MS = 15 * 60 * 1000
 /**
- * Sin ninguna consulta buena en este tiempo se vuelve a `sin-fuente`: un anuncio
- * sin fecha de fin no puede quedar en pantalla para siempre con la fuente caída.
+ * Sin una consulta buena —o con la marca de la fuente sin avanzar— en este tiempo
+ * se vuelve a `sin-fuente`: un anuncio sin fecha de fin no puede quedar en
+ * pantalla para siempre con la fuente caída o congelada.
  */
 export const MAX_SIN_CONSULTA_MS = 24 * 60 * 60 * 1000
 const MAX_TITULO = 120
@@ -227,7 +228,7 @@ function limpiarTexto(t: string, max: number): string {
     .replace(/&([A-Za-z]+);/g, (m, n) => ENTIDADES_HTML[n] ?? m)
     .replace(/\s+/g, " ")
     .trim()
-  return plano.length > max ? `${plano.slice(0, max - 1).trimEnd()}…` : plano
+  return acortar(plano, max)
 }
 
 /** Segundos desde la época a ISO 8601, o `null` si no es una fecha representable. */
@@ -356,7 +357,8 @@ export function crearServicioAnuncios({ obtener = obtenerAlertasOficiales, ahora
   function respuesta(): AnunciosRespuesta {
     const base = { entidad: ENTIDAD, nombre: NOMBRE_FUENTE, url: URL_ALERTAS }
     const ahoraMs = ahora()
-    if (!ultimo || ahoraMs - ultimo.consultadoEn > MAX_SIN_CONSULTA_MS) return sinFuente()
+    // Cuenta desde la última consulta buena Y desde la marca de la fuente: si responde 200 con la marca congelada, la consulta se renueva pero los datos no.
+    if (!ultimo || ahoraMs - ultimo.consultadoEn > MAX_SIN_CONSULTA_MS || ahoraMs - ultimo.feed.marca * 1000 > MAX_SIN_CONSULTA_MS) return sinFuente()
     const anuncios = aAnuncios(ultimo.feed, ahoraMs)
     const consultadoEn = new Date(ultimo.consultadoEn).toISOString()
     const publicadoEn = new Date(ultimo.feed.marca * 1000).toISOString() // válida: `decodificarAlertas` la comprueba

@@ -212,7 +212,8 @@ test("Avisos: un solo canal. Con voz no hay región viva; sin voz del navegador,
   try {
     const vivas = nodos(sin.panel.arbol(), (n) => n.props?.["aria-live"] === "polite")
     assert.equal(vivas.length, 1)
-    assert.ok(texto(vivas[0]).includes("Fuente conectada"), "el resultado cae dentro de la región viva")
+    assert.ok(texto(vivas[0]).includes("Fuente conectada"), "el estado cae dentro de la región viva")
+    assert.ok(texto(vivas[0]).includes("TM01 KR.17 CLL.51"), "y también la lista de anuncios")
   } finally {
     sin.restaurar()
   }

@@ -5,7 +5,7 @@ import { X } from "lucide-react"
 import { Modal } from "@/components/modal"
 import { esUltimaLocucion, useSpeech } from "@/hooks/use-speech"
 import { AnunciosRespuestaSchema, type AnunciosRespuesta } from "@/lib/anuncios"
-import { AVISO_SIN_GARANTIA, ETIQUETA_EFECTO, ETIQUETA_ESTADO, lineaFuente, textoHablado, vigenciaTexto } from "@/lib/anuncios-texto"
+import { AVISO_SIN_GARANTIA, descripcionUtil, ETIQUETA_EFECTO, ETIQUETA_ESTADO, lineaFuente, textoHablado, vigenciaTexto } from "@/lib/anuncios-texto"
 import { procedenciaCatalogo, type TransmilenioData } from "@/lib/transmilenio"
 
 /** Espera máxima por `/api/anuncios` (la fuente tiene la suya, menor). */
@@ -75,6 +75,7 @@ export function Avisos({ open, onClose, catalogo, errorCatalogo }: AvisosProps) 
     }
   }, [open, speak, cancel])
 
+  const lineaDeFuente = consulta.tipo === "ok" ? lineaFuente(consulta.datos.fuente) : null
   const avisoCatalogo = errorCatalogo
     ? "No pude actualizar las rutas de TransMilenio. Sigues viendo los últimos datos cargados."
     : catalogo?.source === "snapshot"
@@ -100,34 +101,39 @@ export function Avisos({ open, onClose, catalogo, errorCatalogo }: AvisosProps) 
           <h3 id="avisos-operador" className="text-xl font-bold">
             Anuncios del operador
           </h3>
-          {/* Región viva solo si no hay voz del navegador; con voz, la de la app ya lo dice y un lector de pantalla lo repetiría. */}
-          <div className="rounded-2xl border-3 border-border bg-card p-4 text-base" aria-live={sinVoz ? "polite" : undefined}>
-            {consulta.tipo === "consultando" && <p>{TEXTO_CONSULTANDO}</p>}
-            {consulta.tipo === "error" && <p>{TEXTO_NO_CONSULTADO}</p>}
-            {consulta.tipo === "ok" && (
-              <>
-                <p className="font-bold">{ETIQUETA_ESTADO[consulta.datos.fuente.estado]}</p>
-                <p className="mt-1">{consulta.datos.fuente.mensaje}</p>
-                {lineaFuente(consulta.datos.fuente) && <p className="mt-1 text-base">{lineaFuente(consulta.datos.fuente)}</p>}
-              </>
+          {/* Región viva solo si no hay voz del navegador; con voz, la de la app ya lo dice y un lector de pantalla lo repetiría. Incluye la lista: es lo que más importa oír. */}
+          <div className="flex flex-col gap-3" aria-live={sinVoz ? "polite" : undefined}>
+            <div className="rounded-2xl border-3 border-border bg-card p-4 text-base">
+              {consulta.tipo === "consultando" && <p>{TEXTO_CONSULTANDO}</p>}
+              {consulta.tipo === "error" && <p>{TEXTO_NO_CONSULTADO}</p>}
+              {consulta.tipo === "ok" && (
+                <>
+                  <p className="font-bold">{ETIQUETA_ESTADO[consulta.datos.fuente.estado]}</p>
+                  <p className="mt-1">{consulta.datos.fuente.mensaje}</p>
+                  {lineaDeFuente && <p className="mt-1">{lineaDeFuente}</p>}
+                </>
+              )}
+            </div>
+            {consulta.tipo === "ok" && consulta.datos.anuncios.length > 0 && (
+              <ul className="flex flex-col gap-3">
+                {consulta.datos.anuncios.map((a) => {
+                  const descripcion = descripcionUtil(a)
+                  return (
+                    <li key={a.identificador} className="flex flex-col gap-1 rounded-2xl border-3 border-border bg-card p-4">
+                      <Origen>{`Anuncio oficial · ${a.entidad}`}</Origen>
+                      <h4 className="text-lg font-bold">{a.titulo}</h4>
+                      {descripcion && <p className="text-base">{descripcion}</p>}
+                      <p className="text-base">
+                        Afectación: {ETIQUETA_EFECTO[a.afectacion.efecto]}
+                        {a.afectacion.rutas.length > 0 && `. Servicios (identificador de la fuente): ${a.afectacion.rutas.join(", ")}`}
+                      </p>
+                      <p className="text-base">{vigenciaTexto(a)}. Identificador {a.identificador}.</p>
+                    </li>
+                  )
+                })}
+              </ul>
             )}
           </div>
-          {consulta.tipo === "ok" && consulta.datos.anuncios.length > 0 && (
-            <ul className="flex flex-col gap-3">
-              {consulta.datos.anuncios.map((a) => (
-                <li key={a.identificador} className="flex flex-col gap-1 rounded-2xl border-3 border-border bg-card p-4">
-                  <Origen>{`Anuncio oficial · ${a.entidad}`}</Origen>
-                  <h4 className="text-lg font-bold">{a.titulo}</h4>
-                  {a.descripcion && a.descripcion !== a.titulo && <p className="text-base">{a.descripcion}</p>}
-                  <p className="text-base">
-                    Afectación: {ETIQUETA_EFECTO[a.afectacion.efecto]}
-                    {a.afectacion.rutas.length > 0 && `. Servicios (identificador de la fuente): ${a.afectacion.rutas.join(", ")}`}
-                  </p>
-                  <p className="text-base">{vigenciaTexto(a)}. Identificador {a.identificador}.</p>
-                </li>
-              ))}
-            </ul>
-          )}
         </section>
 
         <section aria-labelledby="avisos-app" className="flex flex-col gap-3">

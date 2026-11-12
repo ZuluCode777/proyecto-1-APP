@@ -35,6 +35,9 @@ export type LecturaCuerpo =
   | { kind: "excedido" }
   | { kind: "error" }
 
+/** Como `LecturaCuerpo`, pero con los bytes sin decodificar (cuerpos binarios, p. ej. el protobuf de EA-26). */
+export type LecturaBytes = { kind: "ok"; bytes: Uint8Array } | { kind: "excedido" } | { kind: "error" }
+
 /**
  * Libera el lector sin BLOQUEAR la respuesta. No se espera `cancel()`: sobre un
  * cuerpo clonado/tee'd (p. ej. `ReadableStream.tee()`), `cancel()` de una rama
@@ -64,7 +67,7 @@ export async function leerBytesLimitado({
 }: {
   cuerpo: ReadableStream<Uint8Array> | null
   maximoBytes: number
-}): Promise<{ kind: "ok"; bytes: Uint8Array } | { kind: "excedido" } | { kind: "error" }> {
+}): Promise<LecturaBytes> {
   if (!cuerpo) return { kind: "ok", bytes: new Uint8Array() }
 
   const lector = cuerpo.getReader()
