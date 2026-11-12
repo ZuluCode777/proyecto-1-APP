@@ -20,6 +20,13 @@ struct SesionAccesorioVista: View {
         return modelo.vozPropiaActiva
     }
 
+    /// Aviso del sensor real, por frases. Unidas con un espacio son el texto de siempre.
+    private static let frasesAvisoReal = [
+        "Sensor real por Bluetooth.",
+        "Los avisos hablados solo salen por auriculares.",
+        "Con la pantalla bloqueada o la app en segundo plano la sesión se detiene; al volver se sincroniza de nuevo.",
+    ]
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -34,10 +41,21 @@ struct SesionAccesorioVista: View {
                             .accessibilityIdentifier("aviso-transporte-sintetico")
                     }
 
-                    Label("Sensor real por Bluetooth. Los avisos hablados solo salen por auriculares. Con la pantalla bloqueada o la app en segundo plano la sesión se detiene; al volver se sincroniza de nuevo.", systemImage: "dot.radiowaves.left.and.right")
-                        .font(.subheadline)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("aviso-accesorio-real")
+                    // Un `Text` por frase, como el aviso de seguridad: entero mide 987 pt con el texto más grande, más que el
+                    // área visible (659 pt), y ninguna posición lo muestra entero. Cada frase tiene su identificador y su
+                    // posición; la primera conserva «aviso-accesorio-real». El icono es decorativo y va aparte.
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Image(systemName: "dot.radiowaves.left.and.right")
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(Self.frasesAvisoReal.enumerated()), id: \.offset) { posicion, frase in
+                                Text(frase)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier(posicion == 0 ? "aviso-accesorio-real" : "aviso-accesorio-real-\(posicion)")
+                            }
+                        }
+                    }
+                    .font(.subheadline)
 
                     if !modelo.enlaceVerificable {
                         // Un `Text` por párrafo, con la misma fuente, para que con el texto más grande cada párrafo quepa entero
