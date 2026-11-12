@@ -2,7 +2,8 @@ import XCTest
 @testable import TransMiVoz
 
 /// Almacén en memoria que cuenta las escrituras, para comprobar qué se guarda y cuándo.
-private final class AlmacenFavoritasFalso: AlmacenFavoritas {
+/// `@unchecked Sendable`: las pruebas lo usan solo desde el actor principal.
+private final class AlmacenFavoritasFalso: AlmacenFavoritas, @unchecked Sendable {
     var guardado: [String]?
     private(set) var escrituras = 0
 

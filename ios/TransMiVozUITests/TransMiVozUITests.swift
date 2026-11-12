@@ -1114,14 +1114,92 @@ final class TransMiVozAjustesUITests: XCTestCase {
         XCTAssertEqual(titulo.label, "Qué hace la app")
     }
 
-    func testPreferenciasMuestraLaVozDelAccesorioYSePuedeCambiar() throws {
+    func testPreferenciasComparteLaVozConElInterruptorDeSesion() throws {
         lanzar(["-PRUEBAS_UI_ACCESORIO_SINTETICO"])
         abrirSeccion("Preferencias")
-        let interruptor = elemento("interruptor-voz-preferencias")
-        XCTAssertTrue(interruptor.waitForExistence(timeout: 10))
-        let antes = interruptor.value as? String
-        interruptor.tap()
-        esperar(interruptor, "value != %@", antes ?? "", "El interruptor no cambió de valor")
+        let preferencias = elemento("interruptor-voz-preferencias")
+        XCTAssertTrue(preferencias.waitForExistence(timeout: 10))
+        let inicial = try XCTUnwrap(preferencias.value as? String)
+        preferencias.tap()
+        esperar(preferencias, "value != %@", inicial, "El interruptor de Preferencias no cambió de valor")
+        let cambiado = try XCTUnwrap(preferencias.value as? String)
         try auditar(app, "ajustes-preferencias", testCase: self)
+
+        // Mismo estado: Sesión muestra lo que se fijó en Preferencias, y al revés.
+        app.tabBars.buttons["Sesión"].tap()
+        exponer("interruptor-voz-app", en: app)
+        let sesion = elemento("interruptor-voz-app")
+        XCTAssertEqual(sesion.value as? String, cambiado)
+        sesion.tap()
+        esperar(sesion, "value != %@", cambiado, "El interruptor de Sesión no cambió de valor")
+        let deSesion = try XCTUnwrap(sesion.value as? String)
+
+        app.tabBars.buttons["Ajustes"].tap()
+        if !preferencias.waitForExistence(timeout: 3) { abrirSeccion("Preferencias") }
+        XCTAssertTrue(preferencias.waitForExistence(timeout: 10))
+        XCTAssertEqual(preferencias.value as? String, deSesion)
+    }
+}
+
+/// Preferencias, Favoritas y Ayuda con el texto más grande de Dynamic Type: no auditan (la Ayuda mide varias pantallas);
+/// comprueban que lo último de cada una se alcanza entero y tocable al desplazar, sin recortes ni controles inalcanzables.
+final class TransMiVozAjustesTextoGrandeUITests: XCTestCase {
+    private var app: XCUIApplication!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    private func lanzar(_ argumentos: [String]) {
+        app = XCUIApplication()
+        app.launchArguments += argumentos + [
+            "-AppleLanguages", "(es)", "-AppleLocale", "es_CO",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL",
+        ]
+        app.launch()
+        addTeardownBlock { [app] in app?.terminate() }
+    }
+
+    private func elemento(_ identificador: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identificador).firstMatch
+    }
+
+    private func abrirSeccion(_ nombre: String) {
+        let pestana = app.tabBars.buttons["Ajustes"]
+        XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña Ajustes")
+        pestana.tap()
+        let menu = elemento("menu-mas-ajustes")
+        XCTAssertTrue(menu.waitForExistence(timeout: 10), "No existe el menú Más ajustes")
+        menu.tap()
+        let opcion = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", nombre)).firstMatch
+        XCTAssertTrue(opcion.waitForExistence(timeout: 10), "El menú no ofrece «\(nombre)»")
+        opcion.tap()
+    }
+
+    func testAyudaLlegaHastaElUltimoEnlaceDeEmergencia() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS"])
+        abrirSeccion("Ayuda")
+        let ultimo = elemento("ayuda-llamar-195")
+        XCTAssertTrue(ultimo.waitForExistence(timeout: 10))
+        // Un gesto lento por vez, un paso de vista cada uno, hasta que el último enlace quede entero entre las barras.
+        for _ in 0..<40 {
+            let contenido = app.scrollViews.firstMatch.frame
+            let arriba = max(app.navigationBars.firstMatch.frame.maxY, contenido.minY)
+            let abajo = min(app.tabBars.firstMatch.frame.minY, contenido.maxY)
+            let marco = ultimo.frame
+            if ultimo.isHittable && marco.minY >= arriba && marco.maxY <= abajo { break }
+            arrastrarContenido(abajo - arriba - 40, en: app, arriba: arriba, abajo: abajo, velocidad: .slow)
+        }
+        comprobarEnteros(["ayuda-llamar-195"], en: app, tocables: true)
+    }
+
+    func testQuitarFavoritaEsAlcanzableConTextoMuyGrande() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS", "-PRUEBAS_UI_FAVORITAS_SEMILLA"])
+        abrirSeccion("Favoritas")
+        XCTAssertTrue(elemento("favorita-Z98").waitForExistence(timeout: 10))
+        exponer("quitar-favorita-Z98", en: app)
+        elemento("quitar-favorita-Z98").tap()
+        XCTAssertTrue(elemento("favorita-Z98").waitForNonExistence(timeout: 5))
+        XCTAssertTrue(elemento("favorita-Z99").exists)
     }
 }

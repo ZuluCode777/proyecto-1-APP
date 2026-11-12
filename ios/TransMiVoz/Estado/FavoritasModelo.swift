@@ -3,7 +3,7 @@ import Observation
 
 /// Dónde se guardan los códigos de las rutas favoritas. En producción es `UserDefaults`;
 /// las pruebas usan un doble en memoria.
-protocol AlmacenFavoritas {
+protocol AlmacenFavoritas: Sendable {
     /// Los códigos guardados, o `nil` si no hay nada o lo guardado no es una lista de textos
     /// (igual que `readSavedFavorites` en la web).
     func leer() -> [String]?

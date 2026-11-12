@@ -14,6 +14,19 @@ struct AyudaVista: View {
                         ForEach(Array(seccion.parrafos.enumerated()), id: \.offset) { _, parrafo in
                             Text(parrafo).fixedSize(horizontal: false, vertical: true)
                         }
+                        ForEach(seccion.llamadas, id: \.numero) { llamada in
+                            if let url = llamada.url {
+                                // Subrayado: el enlace no se distingue solo por el color.
+                                Link(destination: url) {
+                                    Text("Llamar al \(llamada.numero): \(llamada.nombre)")
+                                        .underline()
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .frame(minHeight: 44, alignment: .leading)
+                                .accessibilityIdentifier("ayuda-llamar-\(llamada.numero)")
+                            }
+                        }
                     }
                 }
             }

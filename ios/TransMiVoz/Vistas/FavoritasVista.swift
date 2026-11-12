@@ -5,6 +5,11 @@ import SwiftUI
 struct FavoritasVista: View {
     let modelo: FavoritasModelo
 
+    private enum Foco: Hashable { case encabezado }
+    /// Tras quitar una ruta desaparece la fila que tenía el foco: va al encabezado de la lista, o al del estado vacío
+    /// si era la última (EA-02 §1: el foco nunca queda en la nada).
+    @AccessibilityFocusState private var foco: Foco?
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -31,6 +36,7 @@ struct FavoritasVista: View {
             Text(TextoFavoritas.vacio)
                 .font(.headline)
                 .accessibilityAddTraits(.isHeader)
+                .accessibilityFocused($foco, equals: .encabezado)
                 .accessibilityIdentifier("favoritas-vacio")
             Text(TextoFavoritas.comoSeAgregan)
                 .fixedSize(horizontal: false, vertical: true)
@@ -43,6 +49,7 @@ struct FavoritasVista: View {
             Text(TextoFavoritas.resumen(modelo.codigos.count))
                 .font(.headline)
                 .accessibilityAddTraits(.isHeader)
+                .accessibilityFocused($foco, equals: .encabezado)
                 .accessibilityIdentifier("favoritas-resumen")
             // Siempre en vertical: con texto grande el código y el botón no caben en una fila.
             ForEach(modelo.codigos, id: \.self) { codigo in
@@ -71,5 +78,6 @@ struct FavoritasVista: View {
         guard modelo.quitar(codigo) else { return }
         AccessibilityNotification.Announcement(
             TextoFavoritas.quitada(codigo, quedan: modelo.codigos.count)).post()
+        foco = .encabezado
     }
 }

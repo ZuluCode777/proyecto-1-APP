@@ -18,13 +18,12 @@ final class EntornoApp {
     let modoPruebas: Bool
 
     init(
-        ajustes: AjustesServidorModelo, consulta: ConsultaModelo, sesion: SesionLocalModelo,
-        accesorio: SesionAccesorioModelo? = nil, monitorAudio: MonitorAudioSistema? = nil, modoPruebas: Bool,
-        favoritas: FavoritasModelo? = nil
+        ajustes: AjustesServidorModelo, consulta: ConsultaModelo, favoritas: FavoritasModelo, sesion: SesionLocalModelo,
+        accesorio: SesionAccesorioModelo? = nil, monitorAudio: MonitorAudioSistema? = nil, modoPruebas: Bool
     ) {
         self.ajustes = ajustes
         self.consulta = consulta
-        self.favoritas = favoritas ?? FavoritasModelo(almacen: AlmacenFavoritasUserDefaults())
+        self.favoritas = favoritas
         self.sesion = sesion
         self.accesorio = accesorio
         self.monitorAudio = monitorAudio
@@ -45,7 +44,8 @@ final class EntornoApp {
         let cliente = ClienteAgenteHTTP { await ajustes.configuracion }
         let voz = ControlVoz(salida: SintetizadorSistema(), consultarRuta: SintetizadorSistema.rutaActual)
         return EntornoApp(
-            ajustes: ajustes, consulta: ConsultaModelo(cliente: cliente), sesion: SesionLocalModelo(),
+            ajustes: ajustes, consulta: ConsultaModelo(cliente: cliente),
+            favoritas: FavoritasModelo(almacen: AlmacenFavoritasUserDefaults()), sesion: SesionLocalModelo(),
             accesorio: SesionAccesorioModelo(transporte: TransporteCoreBluetooth(), voz: voz, avisos: .sistema),
             monitorAudio: MonitorAudioSistema(control: voz), modoPruebas: false)
     }
@@ -59,8 +59,8 @@ final class EntornoApp {
         let ajustes = AjustesServidorModelo(almacen: AlmacenClaveEnMemoria(), preferencias: preferencias)
         return EntornoApp(
             ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado()),
-            sesion: SesionLocalModelo(), modoPruebas: true,
-            favoritas: favoritasDePruebas(preferencias, argumentos: ProcessInfo.processInfo.arguments))
+            favoritas: favoritasDePruebas(preferencias, argumentos: ProcessInfo.processInfo.arguments),
+            sesion: SesionLocalModelo(), modoPruebas: true)
     }
 
     /// Pantalla de producción del accesorio (`SesionAccesorioVista`) con un transporte sintético rotulado:
@@ -77,9 +77,9 @@ final class EntornoApp {
         let voz = ControlVoz(salida: SalidaVozSintetica(), consultarRuta: { .noPrivada })
         return EntornoApp(
             ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado()),
-            sesion: SesionLocalModelo(),
+            favoritas: favoritasDePruebas(preferencias, argumentos: argumentos), sesion: SesionLocalModelo(),
             accesorio: SesionAccesorioModelo(transporte: TransporteSintetico(permiso: permiso), voz: voz),
-            modoPruebas: true, favoritas: favoritasDePruebas(preferencias, argumentos: argumentos))
+            modoPruebas: true)
     }
 
     /// Favoritas en la suite limpia de las pruebas. Con `-PRUEBAS_UI_FAVORITAS_SEMILLA` parten con dos rutas inventadas

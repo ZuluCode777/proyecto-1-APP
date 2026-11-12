@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Tres pestañas: sesión local (sin red), consulta de transporte y servidor. La sesión es la del
+/// Tres pestañas: sesión local (sin red), consulta de transporte y ajustes. La sesión es la del
 /// accesorio real; solo las pruebas de interfaz muestran la simulada.
 struct RaizVista: View {
     let entorno: EntornoApp

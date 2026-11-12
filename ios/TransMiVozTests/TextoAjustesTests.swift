@@ -27,10 +27,38 @@ final class TextoAjustesTests: XCTestCase {
         XCTAssertTrue(metro.contains("no presta servicio"))
     }
 
-    func testAyudaRepiteElAvisoDeSeguridadDelAccesorioSinPrometerCaminoLibre() {
+    func testAyudaReutilizaElAvisoDeSeguridadDelAccesorio() throws {
         let accesorio = textoDeAyuda("Accesorio de proximidad")
-        for parrafo in TextoAccesorio.parrafosAvisoEnlace { XCTAssertTrue(accesorio.contains(parrafo)) }
-        XCTAssertTrue(accesorio.contains("ni significa camino libre"))
+        XCTAssertTrue(accesorio.contains(TextoAccesorio.parrafosAvisoEnlace.joined(separator: " ")))
+        let frase = try XCTUnwrap(TextoAccesorio.parrafos(.enlaceNoVerificado).last)
+        XCTAssertTrue(accesorio.contains(frase))
+        XCTAssertTrue(accesorio.contains("no distingue unos auriculares de un altavoz Bluetooth"))
+        XCTAssertTrue(accesorio.contains("no reemplaza el bastón ni el perro guía"))
+    }
+
+    func testAyudaSoloDiceCaminoLibreParaNegarlo() {
+        var resto = TextoAyuda.secciones.flatMap(\.parrafos).joined(separator: " ")[...]
+        while let rango = resto.range(of: "camino libre") {
+            XCTAssertTrue(resto[..<rango.lowerBound].hasSuffix("ni significa "), "«camino libre» sin negación en: \(resto)")
+            resto = resto[rango.upperBound...]
+        }
+    }
+
+    func testAyudaAdviertaQueHoyElAccesorioNoDaAvisos() {
+        let uso = textoDeAyuda("Cómo usarla")
+        XCTAssertTrue(uso.contains("bloquea las medidas y los avisos del sensor"))
+        XCTAssertTrue(uso.contains("no puede verificar el enlace"))
+        XCTAssertFalse(uso.contains("para oír los avisos"))
+    }
+
+    func testAyudaDiceDondeEstanLasSeccionesDeAjustes() {
+        XCTAssertTrue(textoDeAyuda("Cómo usarla").contains("«Más ajustes»"))
+    }
+
+    func testAyudaOfreceLosTresNumerosDeEmergenciaComoEnlaces() {
+        let llamadas = TextoAyuda.secciones.flatMap(\.llamadas)
+        XCTAssertEqual(llamadas.map(\.numero), ["123", "156", "195"])
+        XCTAssertEqual(llamadas.compactMap(\.url?.absoluteString), ["tel:123", "tel:156", "tel:195"])
     }
 
     func testAyudaNoTieneSeccionesNiParrafosVacios() {
