@@ -44,10 +44,11 @@ final class SesionAccesorioModeloTests: XCTestCase {
         ])
     }
 
-    // MARK: Seguridad: producción no puede afirmar el enlace
+    // MARK: Seguridad: producción no puede afirmar un enlace autenticado
 
-    func testSinNivelDeEnlaceAfirmadoLaSesionSeBloqueaYNoSeLeeNiSeSuscribeNada() throws {
-        for nivel in [NivelEnlace.desconocido, .sinCifrar, .cifradoSinAutenticar] {
+    func testSinNivelCifradoAfirmadoLaSesionSeBloqueaYNoSeLeeNiSeSuscribeNada() throws {
+        // `.cifradoSinAutenticar` ya no entra aquí: la política de demostración lo acepta (ver `EnlaceSeguroTests`).
+        for nivel in [NivelEnlace.desconocido, .sinCifrar] {
             let banco = BancoAccesorio(nivel: nivel)
             defer { banco.cerrar() }
             banco.iniciar()
@@ -70,11 +71,11 @@ final class SesionAccesorioModeloTests: XCTestCase {
         }
     }
 
-    func testElTransporteRealAfirmaSiempreDesconocido() {
-        // Core Bluetooth no expone el nivel del enlace y a la app le llega lo mismo de un impostor sin protección: el
-        // transporte REAL afirma `.desconocido` al crearlo y también tras pedir la lectura de comprobación (ver
-        // `ComprobacionEnlace`). Se prueba con el transporte de producción (su creación es perezosa: no crea el gestor ni
-        // pide permiso), no con el doble. Si alguien lo cambia para afirmar otro nivel, esta prueba falla.
+    func testElTransporteRealSoloAfirmaNivelTrasLaComprobacionDeSuConexion() {
+        // Core Bluetooth no expone el nivel del enlace: el transporte REAL afirma `.desconocido` al crearlo y en todo
+        // estado sin una comprobación terminada en la conexión vigente (ver `ComprobacionEnlace`, que prueba el resto de
+        // la regla). Se prueba con el transporte de producción (su creación es perezosa: no crea el gestor ni pide
+        // permiso), no con el doble. Si alguien lo cambia para afirmar un nivel sin comprobación, esta prueba falla.
         let real = TransporteCoreBluetooth()
         XCTAssertEqual(real.nivelEnlace, .desconocido)
         // Sin conexión vigente, pedir la comprobación no hace nada ni afirma nada.

@@ -1,7 +1,9 @@
+import ContratoBLE
 import CoreBluetooth
 import Foundation
 
-/// La lectura protegida de comprobación (Información) y lo que la app puede decir de ella. Traduce los avisos de
+/// La lectura protegida de comprobación (Información) y lo que la app puede decir de ella. Es el ÚNICO sitio donde
+/// cambia `nivelEnlace`: `TransporteCoreBluetooth` solo devuelve lo que diga `nivel(vigente:)`. Traduce los avisos de
 /// Core Bluetooth al evento que ve la sesión. No toca Core Bluetooth (solo tokens, `Data?` y motivos ya calculados),
 /// así que las pruebas la recorren entera.
 ///
@@ -10,20 +12,30 @@ import Foundation
 /// insuficiente» y iOS empareja por su cuenta (pide la clave a la persona) antes de repetirla. Es lo único que la app
 /// puede hacer para provocar el emparejamiento, y sus errores explican la recuperación.
 ///
-/// Qué NO prueba, y por eso NO sube ningún nivel. Core Bluetooth no expone el nivel de seguridad del enlace, y a la app
-/// le llega lo mismo de un impostor que anuncie el mismo nombre y UUID y sirva la característica sin protección: la
-/// lectura termina bien y iOS nunca empareja. Ni el cifrado ni la autenticación quedan probados, así que
-/// `TransporteCoreBluetooth.nivelEnlace` es siempre `.desconocido`, con o sin esta lectura. Qué debería afirmar el
-/// transporte tras ella, y con qué política, es una decisión del usuario y de H3 (contrato-ble.md §6, propuesta
-/// pendiente de revisión); aquí no se toma. Ver ea-15-ios-ble-audio.md («Seguridad del enlace»).
+/// Qué afirma, y qué NO prueba. La lectura terminada sin error, en la conexión vigente, permite afirmar como mucho
+/// `.cifradoSinAutenticar`: NUNCA `.cifradoAutenticado`. Core Bluetooth no expone el nivel de seguridad del enlace, y a
+/// la app le llega lo mismo de un impostor que anuncie el mismo nombre y UUID y sirva la característica sin protección:
+/// la lectura termina bien y iOS nunca empareja. Ni el cifrado ni la autenticación quedan probados frente a ese
+/// impostor. Ese riesgo lo aceptó A1 el 12/11/2026 solo para la feria, junto con la política `permitirAsociacionSinMITM`
+/// (contrato-ble.md §6 y §10): la sesión queda marcada NO autenticada y la interfaz lo dice. Ver
+/// ea-15-ios-ble-audio.md («Seguridad del enlace»).
 ///
-/// Falla cerrado: la comprobación solo cuenta sin error y en la conexión en la que se pidió. No se guarda nada: el
-/// resultado no pasa a otra conexión ni a otro periférico.
+/// Falla cerrado: sin comprobación, con error, con otra conexión, sin conexión o tras `reiniciar` el nivel es
+/// `.desconocido`. El resultado va atado al token de la conexión en la que se obtuvo y no se guarda en ningún sitio:
+/// no pasa a otra conexión ni a otro periférico, y no hay ajuste, bandera ni preferencia que lo sustituya.
 struct ComprobacionEnlace {
     private var pedidaEn: Int?
+    private var superadaEn: Int?
 
-    /// Se pide la lectura de comprobación en la conexión `token`.
+    /// Nivel que la comprobación permite afirmar para la conexión `vigente` (nil: no hay conexión viva).
+    func nivel(vigente: Int?) -> NivelEnlace {
+        guard let vigente, superadaEn == vigente else { return .desconocido }
+        return .cifradoSinAutenticar
+    }
+
+    /// Se pide la lectura de comprobación en la conexión `token`. Lo afirmado antes deja de valer.
     mutating func pedir(token: Int) {
+        superadaEn = nil
         pedidaEn = token
     }
 
@@ -34,6 +46,7 @@ struct ComprobacionEnlace {
         guard let pedida = pedidaEn else { return nil }
         pedidaEn = nil
         guard valor != nil, pedida == vigente else { return .fallo(motivoEnlace ?? .enlaceSeguroFallido) }
+        superadaEn = pedida
         return .lecturaProtegidaSuperada
     }
 

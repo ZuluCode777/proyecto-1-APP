@@ -311,19 +311,31 @@ final class TextoAccesorioTests: XCTestCase {
         XCTAssertEqual(TextoAccesorio.locucion(.enlaceNoVerificado)?.texto, "Avisos bloqueados. No se puede verificar la seguridad del enlace.")
     }
 
-    /// Contrato del aviso fijo de la pantalla: dos párrafos que, unidos con un espacio, dan el texto completo. Dicen que la
-    /// causa es que iOS no expone el nivel y la política es fija, no que falte una prueba con la placa. Ninguno es más largo
-    /// que el más largo del texto anterior (84 caracteres) más dos: con el texto más grande cada párrafo debe caber a la vista.
-    func testElAvisoDeSeguridadSePintaEnDosParrafosCortos() {
+    /// Contrato del aviso fijo de la pantalla con la política de demostración (A1, 12/11/2026): el accesorio ya no está
+    /// siempre bloqueado, los avisos se ven y se dicen, pero el enlace consta SIN autenticar y un aparato ajeno podría
+    /// hacerse pasar por él. Conserva que sin detección no significa camino libre. Dos párrafos cortos (ninguno más largo
+    /// que el más largo del texto anterior más dos): con el texto más grande cada párrafo debe caber a la vista.
+    func testElAvisoDeSeguridadDeclaraElEnlaceSinAutenticarEnDosParrafosCortos() {
         XCTAssertEqual(TextoAccesorio.parrafosAvisoEnlace, [
-            "Esta versión no puede verificar que el enlace sea cifrado y autenticado",
-            "(iOS no lo expone y la política es fija). Por eso bloquea medidas y avisos del sensor.",
+            "Enlace sin autenticar: un aparato ajeno podría hacerse pasar por el accesorio.",
+            "Los avisos se ven y se dicen con esa reserva. Sin detección no significa camino libre.",
         ])
-        XCTAssertEqual(
-            TextoAccesorio.parrafosAvisoEnlace.joined(separator: " "),
-            "Esta versión no puede verificar que el enlace sea cifrado y autenticado (iOS no lo expone y la política es fija). Por eso bloquea medidas y avisos del sensor.")
-        XCTAssertFalse(TextoAccesorio.parrafosAvisoEnlace.joined().contains("falta la prueba"), "ninguna prueba de banco levanta el bloqueo")
+        let completo = TextoAccesorio.parrafosAvisoEnlace.joined(separator: " ")
+        XCTAssertTrue(completo.contains("Sin detección no significa camino libre"))
+        XCTAssertFalse(completo.contains("bloquea"), "con la política de demostración el aviso ya no dice que bloquea")
+        XCTAssertFalse(completo.lowercased().contains("enlace autenticado"), "nunca se presenta como autenticado")
         for parrafo in TextoAccesorio.parrafosAvisoEnlace { XCTAssertLessThanOrEqual(parrafo.count, 86, parrafo) }
+    }
+
+    /// Al conectar con un enlace sin autenticar la voz y VoiceOver declaran el límite una vez; con uno autenticado (solo el
+    /// doble de prueba) el texto de siempre. Por defecto se asume sin autenticar: nunca se presenta como autenticado lo que no consta.
+    func testAlConectarSeDeclaraElEnlaceSinAutenticar() {
+        XCTAssertEqual(TextoAccesorio.locucion(.calibrando, enlaceAutenticado: false)?.texto,
+                       "Accesorio conectado, con enlace sin autenticar. Calibrando. Aún sin avisos.")
+        XCTAssertEqual(TextoAccesorio.locucion(.calibrando)?.texto, TextoAccesorio.locucion(.calibrando, enlaceAutenticado: false)?.texto)
+        XCTAssertEqual(TextoAccesorio.locucion(.calibrando, enlaceAutenticado: true)?.texto, "Accesorio conectado. Calibrando. Aún sin avisos.")
+        XCTAssertTrue(TextoAccesorio.anuncioAccesible(.calibrando, enlaceAutenticado: false)?.contains("sin autenticar") == true)
+        XCTAssertNil(TextoAccesorio.anuncioAccesible(.calibrando, enlaceAutenticado: true))
     }
 
     /// Solo se reparten el bloqueo, la comprobación del enlace y los fallos del enlace seguro: los demás estados se pintan
@@ -415,10 +427,11 @@ final class TextoAccesorioTests: XCTestCase {
         for estado in anunciables { XCTAssertNotNil(TextoAccesorio.anuncioAccesible(estado), "\(estado)") }
         let sensor: [EstadoAccesorio] = [
             .sinDeteccion, .presencia, .objetivo(distanciaMm: 1000, azimutCentesimas: nil), .sinDatos(.vencido),
-            .radarNoDisponible(.iniciando), .conectando, .calibrando, .conectado, .detenido, .sinAccesorio,
+            .radarNoDisponible(.iniciando), .conectando, .conectado, .detenido, .sinAccesorio,
         ]
         for estado in sensor { XCTAssertNil(TextoAccesorio.anuncioAccesible(estado), "\(estado)") }
-        XCTAssertEqual(Set(anunciables.compactMap(TextoAccesorio.anuncioAccesible)).count, anunciables.count, "cada estado anunciable tiene su texto")
+        XCTAssertNil(TextoAccesorio.anuncioAccesible(.calibrando, enlaceAutenticado: true), "con enlace autenticado «calibrando» no se anuncia")
+        XCTAssertEqual(Set(anunciables.compactMap { TextoAccesorio.anuncioAccesible($0) }).count, anunciables.count, "cada estado anunciable tiene su texto")
     }
 
     func testElTextoDeAudioDistingueCadaSituacionYNoLlamaAuricularesATodoLoPrivado() {

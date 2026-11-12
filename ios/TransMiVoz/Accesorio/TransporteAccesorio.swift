@@ -48,7 +48,7 @@ enum EventoTransporte: Equatable {
     /// Enlace establecido y servicio con sus dos características descubiertos.
     case conectado(id: String)
     /// Respuesta a `comprobarEnlace`: la lectura protegida de comprobación de esta conexión terminó sin error.
-    /// No afirma cifrado ni autenticación (un impostor sin protección también la supera): el nivel lo da `nivelEnlace`.
+    /// No prueba cifrado ni autenticación (un impostor sin protección también la supera): el nivel lo da `nivelEnlace`.
     case lecturaProtegidaSuperada
     case informacion(Data)
     case notificacionesFijadas(Bool)
@@ -70,8 +70,10 @@ let tokenSinConexion = 0
 protocol TransporteAccesorio: AnyObject {
     var receptor: (@MainActor (EventoTransporte, Int) -> Void)? { get set }
     /// Nivel de seguridad que el transporte puede AFIRMAR de la conexión vigente. Core Bluetooth no lo expone: el
-    /// transporte de producción devuelve siempre `.desconocido` (contrato §6, `ComprobacionEnlace`). La sesión lo
-    /// consulta al recibir `.lecturaProtegidaSuperada`; solo los dobles de prueba declaran otro nivel.
+    /// transporte de producción devuelve `.desconocido` salvo que la lectura protegida de comprobación de ESA
+    /// conexión haya terminado sin error, y entonces `.cifradoSinAutenticar` (`ComprobacionEnlace`, contrato §6).
+    /// Nunca `.cifradoAutenticado`: solo los dobles de prueba lo declaran. La sesión lo consulta al recibir
+    /// `.lecturaProtegidaSuperada`.
     var nivelEnlace: NivelEnlace { get }
     /// El sistema todavía no ha preguntado a la persona por el permiso de Bluetooth. Consultarlo no
     /// lo provoca. La app lo usa para explicar el permiso ANTES de que aparezca el aviso del sistema.

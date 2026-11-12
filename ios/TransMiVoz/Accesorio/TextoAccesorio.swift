@@ -181,11 +181,14 @@ enum TextoAccesorio {
     /// El aviso fijo de la pantalla mientras el enlace no se puede verificar, repartido en párrafos. Con el texto más grande
     /// de accesibilidad el aviso en un solo bloque medía 869 pt, más que el área visible (659 pt), y no había posición que
     /// lo mostrara entero. Se corta donde acaba la afirmación; la aclaración entre paréntesis queda con la frase que le sigue.
-    /// La causa es que iOS no expone el nivel del enlace y que la política es fija: ninguna prueba con la placa lo levanta.
-    /// Cada párrafo mide como mucho lo que medía el más largo del texto anterior (84 caracteres) más dos: no se agranda.
+    /// Con la política de demostración (contrato §6, A1 12/11/2026) el accesorio ya no está siempre bloqueado: los avisos
+    /// se ven y se dicen, pero el enlace NO está autenticado porque iOS no expone su nivel, y un aparato ajeno con los
+    /// mismos UUID pasaría la comprobación. El aviso lo dice sin presentar el enlace como autenticado y conserva que
+    /// sin detección no es camino libre. Cada párrafo mide como mucho lo que medía el más largo del texto anterior (84
+    /// caracteres) más dos: no se agranda.
     static let parrafosAvisoEnlace = [
-        "Esta versión no puede verificar que el enlace sea cifrado y autenticado",
-        "(iOS no lo expone y la política es fija). Por eso bloquea medidas y avisos del sensor.",
+        "Enlace sin autenticar: un aparato ajeno podría hacerse pasar por el accesorio.",
+        "Los avisos se ven y se dicen con esa reserva. Sin detección no significa camino libre.",
     ]
 
     /// Estado del audio para la pantalla. El sistema no distingue unos auriculares Bluetooth de un
@@ -205,6 +208,9 @@ enum TextoAccesorio {
     /// con ese accesorio no puede tener éxito hasta reiniciar el Bluetooth o la app (límite sin probar con hardware).
     static let recuperacionRepetida = "Si vuelve a fallar, apaga y enciende el Bluetooth del iPhone o cierra y abre la app."
 
+    /// Se anuncia una vez por conexión, en `.calibrando`, mientras el enlace no conste autenticado.
+    private static let textoEnlaceSinAutenticar = "Accesorio conectado con enlace sin autenticar: un aparato ajeno podría hacerse pasar por él. Calibrando."
+
     static let audioNoDisponibleAviso = "Audio no disponible: no se pueden decir avisos en voz alta. El estado queda en pantalla."
     static let audioSinAuriculares = "Se perdió la salida privada de audio. Los avisos no se dicen por el altavoz; el estado queda en pantalla."
 
@@ -212,8 +218,13 @@ enum TextoAccesorio {
     /// fallo, desconexión, rechazo y Bluetooth. Las medidas y las alertas del sensor (objeto, presencia,
     /// sin detección, sin datos, radar) no se anuncian así: por VoiceOver el sonido puede salir por el
     /// altavoz; esas solo se dicen por la ruta privada de la voz propia y quedan en pantalla.
-    static func anuncioAccesible(_ e: EstadoAccesorio) -> String? {
+    ///
+    /// `enlaceAutenticado`: al conectar con un enlace sin autenticar (la política de demostración) se declara el límite
+    /// una vez, también por VoiceOver. Por defecto `false`: nunca se presenta como autenticado lo que no consta.
+    static func anuncioAccesible(_ e: EstadoAccesorio, enlaceAutenticado: Bool = false) -> String? {
         switch e {
+        case .calibrando where !enlaceAutenticado:
+            return textoEnlaceSinAutenticar
         case .enlaceNoVerificado:
             return "Avisos bloqueados: no se puede verificar la seguridad del enlace. Esto no es una detección."
         case .rechazado:
@@ -258,13 +269,19 @@ enum TextoAccesorio {
     /// Texto hablado de cada estado, o nil si no se dice nada. La distancia se redondea
     /// a medio metro y el lado a tres sectores: la exactitud del radar no está
     /// certificada y una cifra más fina sería falsa precisión.
-    static func locucion(_ e: EstadoAccesorio) -> Locucion? {
+    ///
+    /// `enlaceAutenticado`: con un enlace sin autenticar, la primera locución tras conectar lo declara (contrato §6).
+    /// Por defecto `false`: nunca se presenta como autenticado lo que no consta.
+    static func locucion(_ e: EstadoAccesorio, enlaceAutenticado: Bool = false) -> Locucion? {
         switch e {
         case .sinAccesorio, .detenido, .conectado: return nil
         case .bluetoothNoDisponible: return Locucion(texto: "Bluetooth no disponible. Sin avisos.")
         case .conectando: return Locucion(texto: "Conectando con el accesorio.")
         case .comprobandoEnlace: return Locucion(texto: "Comprobando el enlace seguro. Si iOS pide un código de 6 dígitos, escríbelo.")
-        case .calibrando: return Locucion(texto: "Accesorio conectado. Calibrando. Aún sin avisos.")
+        case .calibrando:
+            return Locucion(texto: enlaceAutenticado
+                ? "Accesorio conectado. Calibrando. Aún sin avisos."
+                : "Accesorio conectado, con enlace sin autenticar. Calibrando. Aún sin avisos.")
         case .enlaceNoVerificado: return Locucion(texto: "Avisos bloqueados. No se puede verificar la seguridad del enlace.")
         case .rechazado: return Locucion(texto: "Accesorio rechazado. Sin avisos.")
         case .falla: return Locucion(texto: "Fallo del accesorio. Sin avisos.")

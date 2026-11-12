@@ -57,15 +57,77 @@ final class ComprobacionEnlaceTests: XCTestCase {
         XCTAssertNil(e.eventoDeLectura(valor: valor, motivoEnlace: nil, vigente: 3), "tras reiniciar no hay comprobación pedida")
     }
 
-    func testNingunaTraduccionAfirmaUnNivelDeEnlace() {
-        // El evento no lleva nivel: la comprobación superada no afirma cifrado ni autenticación.
+    // MARK: Nivel que permite afirmar la comprobación (la regla de `TransporteCoreBluetooth.nivelEnlace`)
+
+    func testSinComprobacionElNivelEsDesconocido() {
+        let e = ComprobacionEnlace()
+        XCTAssertEqual(e.nivel(vigente: nil), .desconocido)
+        XCTAssertEqual(e.nivel(vigente: 1), .desconocido)
+    }
+
+    func testPedidaPeroSinTerminarNoAfirmaNada() {
+        var e = ComprobacionEnlace()
+        e.pedir(token: 3)
+        XCTAssertEqual(e.nivel(vigente: 3), .desconocido)
+    }
+
+    func testLecturaTerminadaSinErrorEnLaConexionVigenteAfirmaSoloCifradoSinAutenticar() {
+        var e = ComprobacionEnlace()
+        e.pedir(token: 3)
+        XCTAssertEqual(e.eventoDeLectura(valor: valor, motivoEnlace: nil, vigente: 3), .lecturaProtegidaSuperada)
+        XCTAssertEqual(e.nivel(vigente: 3), .cifradoSinAutenticar)
+        XCTAssertNotEqual(e.nivel(vigente: 3), .cifradoAutenticado, "un impostor sin protección también supera esta lectura")
+    }
+
+    func testCualquierFalloDejaElNivelEnDesconocido() {
+        var sinValor = ComprobacionEnlace()
+        sinValor.pedir(token: 3)
+        _ = sinValor.eventoDeLectura(valor: nil, motivoEnlace: nil, vigente: 3)
+        XCTAssertEqual(sinValor.nivel(vigente: 3), .desconocido, "lectura sin valor o con error")
+
+        var conMotivo = ComprobacionEnlace()
+        conMotivo.pedir(token: 3)
+        _ = conMotivo.eventoDeLectura(valor: nil, motivoEnlace: .vinculoBorradoEnAccesorio, vigente: 3)
+        XCTAssertEqual(conMotivo.nivel(vigente: 3), .desconocido)
+
+        var otraConexion = ComprobacionEnlace()
+        otraConexion.pedir(token: 3)
+        _ = otraConexion.eventoDeLectura(valor: valor, motivoEnlace: nil, vigente: 4)
+        XCTAssertEqual(otraConexion.nivel(vigente: 4), .desconocido)
+        XCTAssertEqual(otraConexion.nivel(vigente: 3), .desconocido)
+
+        var sinConexion = ComprobacionEnlace()
+        sinConexion.pedir(token: 3)
+        _ = sinConexion.eventoDeLectura(valor: valor, motivoEnlace: nil, vigente: nil)
+        XCTAssertEqual(sinConexion.nivel(vigente: nil), .desconocido)
+    }
+
+    func testCambiarDeConexionDesconectarOReiniciarOlvidaElNivel() {
+        var e = ComprobacionEnlace()
+        e.pedir(token: 3)
+        _ = e.eventoDeLectura(valor: valor, motivoEnlace: nil, vigente: 3)
+        XCTAssertEqual(e.nivel(vigente: 4), .desconocido, "otra conexión u otro periférico parte de cero")
+        XCTAssertEqual(e.nivel(vigente: nil), .desconocido, "sin conexión vigente tras desconectar")
+
+        e.pedir(token: 3)
+        XCTAssertEqual(e.nivel(vigente: 3), .desconocido, "mientras se repite la comprobación no se afirma nada")
+
+        _ = e.eventoDeLectura(valor: valor, motivoEnlace: nil, vigente: 3)
+        e.reiniciar()
+        XCTAssertEqual(e.nivel(vigente: 3), .desconocido)
+    }
+
+    func testNingunaCombinacionLlegaACifradoAutenticadoNiASinCifrar() {
         for pedida in [1, 2] {
             for vigente in [nil, 1, 2] as [Int?] {
                 for conValor in [false, true] {
                     var e = ComprobacionEnlace()
                     e.pedir(token: pedida)
-                    let evento = e.eventoDeLectura(valor: conValor ? valor : nil, motivoEnlace: nil, vigente: vigente)
-                    XCTAssertTrue(evento == .lecturaProtegidaSuperada || evento == .fallo(.enlaceSeguroFallido), "\(String(describing: evento))")
+                    _ = e.eventoDeLectura(valor: conValor ? valor : nil, motivoEnlace: nil, vigente: vigente)
+                    for consulta in [nil, 1, 2, 3] as [Int?] {
+                        let nivel = e.nivel(vigente: consulta)
+                        XCTAssertTrue(nivel == .desconocido || nivel == .cifradoSinAutenticar, "\(nivel)")
+                    }
                 }
             }
         }
@@ -122,9 +184,10 @@ final class ComprobacionEnlaceTests: XCTestCase {
     }
 }
 
-/// El paso de comprobación del enlace en la sesión, con el transporte y la voz falsos (simulados). Cada ruta que debe
-/// quedar bloqueada y la única que avanza. Qué hace iOS de verdad con la solicitud de clave, cancelada o no, se mide con
-/// la placa (ea-15-ios-ble-audio.md, «Seguridad del enlace»).
+/// El paso de comprobación del enlace en la sesión, con el transporte y la voz falsos (simulados) y la política de
+/// demostración (A1, 12/11/2026): cada ruta que debe quedar bloqueada y las que avanzan (enlace sin autenticar, que es lo
+/// que afirma el transporte real tras la lectura, y autenticado, que solo declara el doble). Qué hace iOS de verdad con
+/// la solicitud de clave, cancelada o no, se mide con la placa (ea-15-ios-ble-audio.md, «Seguridad del enlace»).
 @MainActor
 final class ComprobacionEnlaceSesionTests: XCTestCase {
     /// Sesión iniciada y conectada, con la lectura protegida de comprobación pedida y SIN responder.
@@ -157,10 +220,24 @@ final class ComprobacionEnlaceSesionTests: XCTestCase {
         XCTAssertEqual(banco.transporte.veces("leerInformacion"), 1)
     }
 
-    func testSuperadaLaComprobacionSinNivelAutenticadoLaPoliticaFijaLaRechaza() {
-        // El transporte real afirma siempre `.desconocido`; estos otros niveles solo los declara el doble. La política fija
-        // acepta únicamente el autenticado.
-        for nivel in [NivelEnlace.desconocido, .sinCifrar, .cifradoSinAutenticar] {
+    func testSuperadaLaComprobacionConEnlaceSinAutenticarLaPoliticaDeDemostracionAcepta() {
+        // Lo que afirma el transporte real tras la lectura: la política de demostración (contrato §6, A1 12/11/2026) la
+        // acepta, y la sesión queda marcada NO autenticada.
+        let banco = bancoEnComprobacion(nivel: .cifradoSinAutenticar)
+        defer { banco.cerrar() }
+        banco.transporte.emitir(.lecturaProtegidaSuperada)
+
+        XCTAssertEqual(banco.modelo.nivelAfirmado, .cifradoSinAutenticar)
+        XCTAssertEqual(banco.modelo.estadoSesion, .esperandoInformacion)
+        XCTAssertFalse(banco.modelo.enlaceAutenticado, "nunca se presenta como autenticada")
+        XCTAssertEqual(banco.modelo.estado, .conectado)
+        XCTAssertEqual(banco.transporte.veces("leerInformacion"), 1)
+    }
+
+    func testSuperadaLaComprobacionSinCifradoLaPoliticaRechaza() {
+        // `.desconocido` y `.sinCifrar` se rechazan con las dos políticas. El transporte real nunca afirma `.sinCifrar`
+        // (no puede saberlo); aquí lo declara el doble.
+        for nivel in [NivelEnlace.desconocido, .sinCifrar] {
             let banco = bancoEnComprobacion(nivel: nivel)
             defer { banco.cerrar() }
             banco.transporte.emitir(.lecturaProtegidaSuperada)
@@ -168,7 +245,7 @@ final class ComprobacionEnlaceSesionTests: XCTestCase {
             XCTAssertEqual(banco.modelo.estado, .enlaceNoVerificado, "\(nivel)")
             XCTAssertEqual(banco.modelo.estadoSesion, .rechazada(.enlaceNoAutenticado), "\(nivel)")
             XCTAssertFalse(banco.modelo.enlaceAutenticado)
-            XCTAssertEqual(banco.transporte.veces("leerInformacion"), 0, "no se lee nada de un enlace sin autenticar")
+            XCTAssertEqual(banco.transporte.veces("leerInformacion"), 0, "no se lee nada de un enlace sin cifrar o sin dato")
             XCTAssertEqual(banco.transporte.veces("notificaciones:true"), 0)
             XCTAssertGreaterThanOrEqual(banco.transporte.veces("desconectar"), 1)
         }
@@ -308,13 +385,18 @@ final class ComprobacionEnlaceSesionTests: XCTestCase {
     }
 
     func testElResultadoDeLaComprobacionConLaEscenaInactivaNoSePierde() {
-        let banco = bancoEnComprobacion(nivel: .cifradoSinAutenticar)
-        defer { banco.cerrar() }
-        banco.modelo.escenaActiva(false)
-        banco.transporte.emitir(.lecturaProtegidaSuperada)
+        let rechazado = bancoEnComprobacion(nivel: .desconocido)
+        defer { rechazado.cerrar() }
+        rechazado.modelo.escenaActiva(false)
+        rechazado.transporte.emitir(.lecturaProtegidaSuperada)
+        XCTAssertEqual(rechazado.modelo.estadoSesion, .rechazada(.enlaceNoAutenticado), "se procesó, no se quedó esperando")
+        XCTAssertEqual(rechazado.transporte.veces("leerInformacion"), 0)
 
-        XCTAssertEqual(banco.modelo.estadoSesion, .rechazada(.enlaceNoAutenticado), "se procesó, no se quedó esperando")
-        XCTAssertEqual(banco.transporte.veces("leerInformacion"), 0)
+        let aceptado = bancoEnComprobacion(nivel: .cifradoSinAutenticar)
+        defer { aceptado.cerrar() }
+        aceptado.modelo.escenaActiva(false)
+        aceptado.transporte.emitir(.lecturaProtegidaSuperada)
+        XCTAssertEqual(aceptado.modelo.estadoSesion, .esperandoInformacion, "se procesó, no se quedó esperando")
     }
 
     func testReconectarTrasUnFalloDelEnlaceSeguroPideLaComprobacionDeNuevo() {
@@ -353,7 +435,7 @@ final class ComprobacionEnlaceSesionTests: XCTestCase {
 
     func testTrasUnRechazoLaVueltaAPrimerPlanoNoReconectaNiVuelveALeer() {
         // Rechazo terminal (contrato §4): sin vínculo, una lectura protegida más podría volver a pedir la clave.
-        let banco = bancoEnComprobacion(nivel: .cifradoSinAutenticar)
+        let banco = bancoEnComprobacion(nivel: .desconocido)
         defer { banco.cerrar() }
         banco.transporte.emitir(.lecturaProtegidaSuperada)
         XCTAssertEqual(banco.modelo.estado, .enlaceNoVerificado)
@@ -387,6 +469,74 @@ final class ComprobacionEnlaceSesionTests: XCTestCase {
         banco.reloj.avanzar(1)
         banco.modelo.evaluar()
         XCTAssertEqual(banco.modelo.estado, .falla(.enlaceSeguroFallido))
+    }
+
+    // MARK: Política de demostración: medidas solo tras la comprobación y siempre declaradas sin autenticar
+
+    func testConEnlaceSinAutenticarLaSesionCompletaAceptaMedidasYNuncaLasDaPorAutenticadas() throws {
+        let banco = BancoAccesorio(nivel: .cifradoSinAutenticar)
+        defer { banco.cerrar() }
+        let escenario = try EscenarioBLE.cargar("objetivo-distancia-y-azimut")
+        banco.iniciar()
+        banco.sincronizar(escenario)
+
+        XCTAssertEqual(Array(banco.transporte.llamadas.prefix(3)), ["conectar:acc-1", "comprobarEnlace", "leerInformacion"])
+        XCTAssertEqual(banco.modelo.nivelAfirmado, .cifradoSinAutenticar)
+        XCTAssertFalse(banco.modelo.enlaceAutenticado, "la sesión consta NO autenticada")
+        XCTAssertFalse(banco.modelo.enlaceVerificable, "el aviso fijo de la pantalla sigue visible")
+        XCTAssertEqual(banco.modelo.estado, .sinDeteccion)
+
+        banco.entregar(escenario.entregas[0])
+        XCTAssertEqual(banco.modelo.estado, .objetivo(distanciaMm: 1200, azimutCentesimas: -3000))
+        XCTAssertFalse(banco.modelo.enlaceAutenticado)
+        XCTAssertEqual(banco.salida.dicho.first(where: { $0.hasPrefix("Accesorio conectado") }),
+                       "Accesorio conectado, con enlace sin autenticar. Calibrando. Aún sin avisos.",
+                       "al conectar se declara el límite en voz alta")
+        XCTAssertFalse(banco.salida.dicho.contains { $0.lowercased().contains("enlace autenticado") }, "nunca se dice autenticado")
+    }
+
+    func testConVoiceOverElLimiteDelEnlaceSeAnunciaUnaVezYLaMedidaNoSale() throws {
+        let banco = BancoAccesorio(nivel: .cifradoSinAutenticar, voiceOver: true)
+        defer { banco.cerrar() }
+        let escenario = try EscenarioBLE.cargar("objetivo-distancia-y-azimut")
+        banco.iniciar()
+        banco.sincronizar(escenario)
+        banco.entregar(escenario.entregas[0])
+        banco.modelo.evaluar()
+
+        let aviso = try XCTUnwrap(TextoAccesorio.anuncioAccesible(.calibrando, enlaceAutenticado: false))
+        XCTAssertEqual(banco.avisos.deEstado, [aviso], "una vez, y la medida no pasa por VoiceOver")
+        XCTAssertTrue(aviso.contains("sin autenticar"), aviso)
+        XCTAssertTrue(banco.salida.dicho.isEmpty, "con VoiceOver la voz propia empieza apagada")
+    }
+
+    func testUnaMedidaAntesDeLaComprobacionSeDescartaAunqueElNivelSeaAceptable() throws {
+        let banco = bancoEnComprobacion(nivel: .cifradoSinAutenticar)
+        defer { banco.cerrar() }
+        let escenario = try EscenarioBLE.cargar("objetivo-distancia-y-azimut")
+        banco.transporte.emitir(.informacion(escenario.informaciones[0]))
+        banco.transporte.emitir(.respuestaMedicion(escenario.referencias[0].datos))
+        banco.transporte.emitir(.notificacionMedicion(escenario.entregas[0].datos))
+
+        XCTAssertEqual(banco.modelo.estado, .comprobandoEnlace)
+        XCTAssertEqual(banco.modelo.estadoSesion, .desconectada)
+        XCTAssertEqual(banco.transporte.veces("leerMedicion"), 0)
+        XCTAssertEqual(banco.transporte.veces("notificaciones:false"), 0)
+        XCTAssertFalse(banco.salida.dicho.contains { $0.hasPrefix("Objeto") || $0.hasPrefix("Presencia") || $0.hasPrefix("Sin detección") })
+    }
+
+    func testUnaMedidaConEnlaceSinCifrarNoSeAceptaNiSeLeeNada() throws {
+        let banco = BancoAccesorio(nivel: .sinCifrar)
+        defer { banco.cerrar() }
+        let escenario = try EscenarioBLE.cargar("objetivo-distancia-y-azimut")
+        banco.iniciar()
+        banco.transporte.emitir(.conectado(id: banco.accesorio.id))
+        banco.transporte.emitir(.informacion(escenario.informaciones[0]))
+        banco.transporte.emitir(.notificacionMedicion(escenario.entregas[0].datos))
+
+        XCTAssertEqual(banco.modelo.estado, .enlaceNoVerificado)
+        XCTAssertEqual(banco.transporte.veces("leerInformacion"), 0)
+        XCTAssertEqual(banco.transporte.veces("notificaciones:true"), 0)
     }
 
     func testElAvisoFijoSigueVisibleSalvoConEnlaceAutenticado() {

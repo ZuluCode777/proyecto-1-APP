@@ -8,7 +8,7 @@ Es un corte mínimo para EA-09 (#35) con soporte de CI iOS-CI (#68). No es una a
 
 | Pestaña | Contenido | Necesita red |
 | --- | --- | --- |
-| Sesión | Accesorio **real** por Bluetooth: buscar y elegir, iniciar, detener, reconectar, estado, avisos hablados por auriculares. Hoy **bloqueada por diseño** (no se puede verificar la seguridad del enlace). Una hoja explica el permiso de Bluetooth antes del aviso del sistema. Las pruebas de interfaz recorren esta misma pantalla con un transporte sintético rotulado (`-PRUEBAS_UI_ACCESORIO_SINTETICO`, solo depuración) y, aparte, la sesión simulada. | No |
+| Sesión | Accesorio **real** por Bluetooth: buscar y elegir, iniciar, detener, reconectar, estado, avisos hablados por auriculares. Con el enlace **sin autenticar** (política de demostración aprobada por A1 el 12/11/2026 para la feria: las medidas se muestran y se dicen, con el aviso fijo y la voz declarando el límite). Una hoja explica el permiso de Bluetooth antes del aviso del sistema. Las pruebas de interfaz recorren esta misma pantalla con un transporte sintético rotulado (`-PRUEBAS_UI_ACCESORIO_SINTETICO`, solo depuración) y, aparte, la sesión simulada. | No |
 | Consulta | Texto → `POST /api/agent` del backend Next existente, con cancelar, reintentar y errores claros. | Sí |
 | Servidor | Origen HTTPS y clave opcional (Llavero si la persona lo pide). | No |
 
@@ -29,7 +29,7 @@ El texto de un viaje puede traer órdenes de abordaje sin parada, sentido ni vig
 
 ### Sesión con el accesorio real (EA-15, software)
 
-Core Bluetooth con los UUID y el contrato v1.0 existentes, sobre `SesionProximidad`. **El transporte afirma siempre enlace `desconocido`: la lectura protegida de comprobación solo provoca el emparejamiento de iOS y explica los fallos, y la app no puede distinguir con ella a un impostor sin protección. La sesión rechaza el accesorio y no hay medidas ni avisos del sensor** (contrato §6; ver «Seguridad del enlace» en ea-15-ios-ble-audio.md). Voz solo por una salida privada (auriculares con cable o Bluetooth; el sistema no distingue un altavoz Bluetooth), cola de uno, corte por cambio de ruta e interrupción, fallo cerrado si el audio no se activa; sin segundo plano. Detalle, pruebas y lista de banco en [ea-15-ios-ble-audio.md](../docs/expoandes/ea-15-ios-ble-audio.md). **No hay prueba con hardware.**
+Core Bluetooth con los UUID y el contrato v1.0 existentes, sobre `SesionProximidad`. **El transporte afirma `desconocido` y, solo tras una lectura protegida de comprobación que termine bien, `cifradoSinAutenticar` (nunca `cifradoAutenticado`: la app no puede distinguir a un impostor sin protección con los mismos UUID, riesgo aceptado por A1 el 12/11/2026 solo para la feria). La política es la de demostración, `permitirAsociacionSinMITM`: la sesión consta NO autenticada y la interfaz lo declara; con `desconocido` o `sinCifrar` rechaza y no hay medidas** (contrato §6; ver «Seguridad del enlace» en ea-15-ios-ble-audio.md). Voz solo por una salida privada (auriculares con cable o Bluetooth; el sistema no distingue un altavoz Bluetooth), cola de uno, corte por cambio de ruta e interrupción, fallo cerrado si el audio no se activa; sin segundo plano. Detalle, pruebas y lista de banco en [ea-15-ios-ble-audio.md](../docs/expoandes/ea-15-ios-ble-audio.md). **No hay prueba con hardware.**
 
 ### Sesión local simulada (solo pruebas de interfaz)
 

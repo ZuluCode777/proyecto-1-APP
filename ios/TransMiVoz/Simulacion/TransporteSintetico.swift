@@ -7,10 +7,10 @@ import Foundation
 /// y la MISMA sesión (`SesionAccesorioModelo`) se recorran de forma determinista en el Simulator: sin
 /// Bluetooth, radio, audio ni red.
 ///
-/// Honestidad: la pantalla lo rotula («Modo de pruebas: transporte sintético») y este transporte afirma
-/// `.desconocido`, igual que el de producción, así que la sesión se bloquea por enlace no verificado. No
-/// ofrece ningún camino que entregue medidas ni lecturas: solo hallazgo de un accesorio de mentira, conexión
-/// y los estados de permiso.
+/// Honestidad: la pantalla lo rotula («Modo de pruebas: transporte sintético») y este transporte afirma SIEMPRE
+/// `.desconocido` (el de producción afirma `.cifradoSinAutenticar` tras la lectura protegida de comprobación), así
+/// que la sesión se bloquea por enlace no verificado. No ofrece ningún camino que entregue medidas ni lecturas: solo
+/// hallazgo de un accesorio de mentira, conexión y los estados de permiso.
 @MainActor
 final class TransporteSintetico: TransporteAccesorio {
     enum Permiso {
@@ -51,7 +51,7 @@ final class TransporteSintetico: TransporteAccesorio {
     }
 
     /// Sin accesorio no hay nada que proteger: la «lectura» termina al instante para que la sesión llegue a su bloqueo
-    /// de siempre. No afirma nada: `nivelEnlace` sigue siendo `.desconocido`.
+    /// de siempre. No afirma nada: `nivelEnlace` sigue siendo `.desconocido`, y la política la rechaza (contrato §6).
     func comprobarEnlace(token: Int) {
         despues { $0.receptor?(.lecturaProtegidaSuperada, token) }
     }

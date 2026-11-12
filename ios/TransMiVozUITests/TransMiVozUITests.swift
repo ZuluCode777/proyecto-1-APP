@@ -407,8 +407,8 @@ private let parrafosBloqueo: [(id: String, frase: String)] = [
 /// verificar: identificador y texto exacto, en orden. Unidos con un espacio son el aviso completo. En un solo bloque medía
 /// 869 pt con el texto más grande, más que el área visible (659 pt): cada párrafo tiene su identificador y su posición.
 private let parrafosAvisoSeguridad: [(id: String, frase: String)] = [
-    ("aviso-seguridad-enlace", "Esta versión no puede verificar que el enlace sea cifrado y autenticado"),
-    ("aviso-seguridad-enlace-1", "(iOS no lo expone y la política es fija). Por eso bloquea medidas y avisos del sensor."),
+    ("aviso-seguridad-enlace", "Enlace sin autenticar: un aparato ajeno podría hacerse pasar por el accesorio."),
+    ("aviso-seguridad-enlace-1", "Los avisos se ven y se dicen con esa reserva. Sin detección no significa camino libre."),
 ]
 
 /// El título del bloqueo es un `Label`: su icono («Advertencia») y su texto llevan el mismo identificador. Lo que mide la

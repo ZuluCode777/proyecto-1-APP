@@ -17,11 +17,14 @@ enum FaseConexion: Equatable {
 /// - la voz (`ControlVoz`) decide si se puede hablar.
 ///
 /// Reglas de esta capa:
-/// - Política de autenticación fija y cerrada (`.exigirAutenticado`). No hay ajuste, bandera ni
-///   preferencia que la cambie. El transporte de producción afirma siempre `.desconocido`
-///   (`ComprobacionEnlace`: la app no puede distinguir a un impostor sin protección), así que la sesión queda
-///   rechazada en cuanto conecta: no lee Información (salvo la lectura de comprobación, con el valor descartado)
-///   ni se suscribe (contrato §6).
+/// - Política de autenticación fija: `.permitirAsociacionSinMITM`, la política de demostración del contrato §6,
+///   aprobada por A1 el 12/11/2026 solo para la feria (H3 informado). No hay ajuste, bandera ni preferencia que la
+///   cambie. Condiciones del contrato: la sesión queda marcada NO autenticada (`enlaceAutenticado == false`), la
+///   interfaz no la presenta como autenticada y declara el límite (aviso fijo, línea «Enlace autenticado» y aviso
+///   hablado al conectar). Se acepta `.cifradoSinAutenticar` o `.cifradoAutenticado`; `.sinCifrar` y `.desconocido`
+///   se rechazan y no se lee ni se suscribe nada. Riesgo aceptado: Core Bluetooth no expone el nivel del enlace, así
+///   que un impostor sin protección con los mismos UUID supera la lectura de comprobación y se acepta igual.
+///   Ninguna medida cuenta antes de esa comprobación.
 /// - Cada conexión lleva un `token` nuevo. Todo evento con otro token se descarta: devoluciones
 ///   tardías de un periférico anterior, de una sesión detenida o de una reconexión.
 /// - Comprobación del enlace: tras `.conectado` y ANTES de abrir la sesión del contrato, una lectura protegida
@@ -62,6 +65,11 @@ final class SesionAccesorioModelo {
     /// software, sin medir (banco).
     static let plazoEmparejamientoMs: Milisegundos = 35_000
     static let intentosMaximosReferencia = 3
+
+    /// Política de demostración del contrato §6 (A1, 12/11/2026, solo para la feria). Fija: no es un ajuste.
+    private static func sesionNueva(para accesorio: String) -> SesionProximidad {
+        SesionProximidad(accesorioElegido: accesorio, politica: .permitirAsociacionSinMITM, modo: .real)
+    }
 
     private enum Paso: Equatable {
         case ninguno
@@ -167,8 +175,9 @@ final class SesionAccesorioModelo {
             case .sinDatos(let motivo): return .sinDatos(motivo)
             case .radarNoDisponible(let salud): return .radarNoDisponible(salud)
             case .sinBlanco, .presencia, .objetivo:
-                // Defensa extra: ninguna medida cuenta sin un enlace afirmado como autenticado.
-                guard enlaceAutenticado, nivelAfirmado == .cifradoAutenticado else { return .enlaceNoVerificado }
+                // Defensa extra: ninguna medida cuenta sin un enlace afirmado al menos cifrado, y la sesión solo
+                // consta autenticada si el nivel lo es.
+                guard enlaceCifradoAfirmado else { return .enlaceNoVerificado }
                 switch estadoSesion {
                 case .presencia: return .presencia
                 case .objetivo(let distanciaMm, let azimut):
@@ -361,7 +370,7 @@ final class SesionAccesorioModelo {
                 // El sistema cortó todas las conexiones: lo que llegue de la anterior ya no vale.
                 conexion += 1
                 paso = .ninguno
-                sesion = sesion.map { SesionProximidad(accesorioElegido: $0.accesorioElegido, politica: .exigirAutenticado, modo: .real) }
+                sesion = sesion.map { Self.sesionNueva(para: $0.accesorioElegido) }
                 estadoSesion = .desconectada
                 voz.descartarTodo()
             }
@@ -480,7 +489,7 @@ final class SesionAccesorioModelo {
     private func arrancarConexion(fase nueva: FaseConexion) {
         guard let elegido else { return }
         conexion += 1
-        sesion = SesionProximidad(accesorioElegido: elegido.id, politica: .exigirAutenticado, modo: .real)
+        sesion = Self.sesionNueva(para: elegido.id)
         estadoSesion = .desconectada
         tramasPerdidas = 0
         enlaceAutenticado = false
@@ -515,6 +524,15 @@ final class SesionAccesorioModelo {
         guard paso != .ninguno else { return }
         voz.descartarTodo()
         arrancarConexion(fase: .perdida)
+    }
+
+    /// El nivel afirmado permite medidas: cifrado, y autenticado solo si la sesión lo dice.
+    private var enlaceCifradoAfirmado: Bool {
+        switch nivelAfirmado {
+        case .cifradoAutenticado: return enlaceAutenticado
+        case .cifradoSinAutenticar: return !enlaceAutenticado
+        case .sinCifrar, .desconocido: return false
+        }
     }
 
     private var comprobandoEnlace: Bool {
@@ -558,7 +576,7 @@ final class SesionAccesorioModelo {
     /// Verdadero si la voz propia dijo algo ahora.
     @discardableResult
     private func anunciar() -> Bool {
-        guard activa, !suspendida, let locucion = TextoAccesorio.locucion(estado),
+        guard activa, !suspendida, let locucion = TextoAccesorio.locucion(estado, enlaceAutenticado: enlaceAutenticado),
               locucion != ultimaLocucion else { return false }
         ultimaLocucion = locucion
         return voz.anunciar(locucion.texto) == .hablado
@@ -591,7 +609,7 @@ final class SesionAccesorioModelo {
     /// Si la voz propia acaba de decir ese estado no se repite por VoiceOver (no hablan dos veces).
     private func avisarEnPantalla(vozHablo: Bool) {
         guard activa, !suspendida else { return }
-        let texto = TextoAccesorio.anuncioAccesible(estado)
+        let texto = TextoAccesorio.anuncioAccesible(estado, enlaceAutenticado: enlaceAutenticado)
         if texto != ultimoAvisoEstado {
             ultimoAvisoEstado = texto
             if let texto, !vozHablo { avisos.anunciar(texto, .urgente) }

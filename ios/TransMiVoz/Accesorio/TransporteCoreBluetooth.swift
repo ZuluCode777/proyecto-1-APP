@@ -19,11 +19,13 @@ import Foundation
 final class TransporteCoreBluetooth: TransporteAccesorio {
     var receptor: (@MainActor (EventoTransporte, Int) -> Void)?
 
-    /// Core Bluetooth NO expone el nivel de seguridad del enlace, y ni un nombre, un UUID, una lectura que funcione ni
-    /// una propiedad de la característica prueban cifrado ni autenticación (un impostor sin protección supera la
-    /// lectura de comprobación). Siempre `.desconocido`: no hay ajuste, bandera ni preferencia que lo cambie. Qué
-    /// afirmar tras la lectura es una decisión del usuario y de H3 (contrato §6, propuesta pendiente de revisión).
-    var nivelEnlace: NivelEnlace { .desconocido }
+    /// Core Bluetooth NO expone el nivel de seguridad del enlace, y ni un nombre, un UUID ni una propiedad de la
+    /// característica prueban cifrado ni autenticación. La regla está en un solo sitio, `ComprobacionEnlace`:
+    /// `.desconocido` salvo que la lectura protegida de comprobación de la conexión vigente haya terminado sin error,
+    /// y entonces `.cifradoSinAutenticar`. Nunca `.cifradoAutenticado`: un impostor sin protección también supera la
+    /// lectura (riesgo aceptado por A1 el 12/11/2026 para la feria, con la política demo). No hay ajuste, bandera ni
+    /// preferencia que lo cambie.
+    var nivelEnlace: NivelEnlace { evidencia.nivel(vigente: ciclo.token) }
 
     /// Leer la autorización no la provoca (a diferencia de crear el gestor).
     var permisoPorPreguntar: Bool { CBManager.authorization == .notDetermined }
