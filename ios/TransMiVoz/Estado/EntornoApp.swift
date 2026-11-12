@@ -14,6 +14,8 @@ final class EntornoApp {
     let accesorio: SesionAccesorioModelo?
     /// Mantiene vivos los avisos de ruta e interrupción de audio.
     private let monitorAudio: MonitorAudioSistema?
+    /// Lupa de la cámara. En las pruebas de interfaz usa una cámara sintética rotulada.
+    let lupa = EntornoApp.crearLupa()
     /// `true` solo en las pruebas de interfaz (compilación de depuración).
     let modoPruebas: Bool
 
@@ -50,6 +52,18 @@ final class EntornoApp {
             monitorAudio: MonitorAudioSistema(control: voz), modoPruebas: false)
     }
 
+    /// Lupa de producción: cámara real y avisos del sistema. En depuración, con los argumentos de las pruebas de interfaz,
+    /// usa la cámara sintética (sin cámara real ni aviso de permiso del sistema).
+    private static func crearLupa() -> LupaModelo {
+        #if DEBUG
+        let argumentos = ProcessInfo.processInfo.arguments
+        if argumentos.contains("-PRUEBAS_UI_SIMULADAS") || argumentos.contains("-PRUEBAS_UI_ACCESORIO_SINTETICO") {
+            return LupaModelo(camara: camaraSinteticaParaPruebasUI(argumentos))
+        }
+        #endif
+        return LupaModelo(camara: CamaraLupaAVFoundation(), avisos: .sistema)
+    }
+
     #if DEBUG
     /// Sin red, sin Llavero y sin preferencias persistentes: cada ejecución parte limpia.
     private static func crearParaPruebasUI(argumentos: [String]) -> EntornoApp {
@@ -61,6 +75,16 @@ final class EntornoApp {
             ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado()),
             favoritas: favoritasDePruebas(preferencias, argumentos: argumentos),
             sesion: SesionLocalModelo(), modoPruebas: true)
+    }
+
+    /// Cámara de la lupa en las pruebas de interfaz: sin cámara real ni aviso de permiso del sistema. Sin más
+    /// argumentos, el permiso está por preguntar y el «sistema» concede. Variantes: `-PRUEBAS_UI_LUPA_PERMISO_CONCEDIDO`
+    /// (sin explicación previa), `-PRUEBAS_UI_LUPA_PERMISO_DENEGADO` y `-PRUEBAS_UI_LUPA_SIN_CAMARA`.
+    private static func camaraSinteticaParaPruebasUI(_ argumentos: [String]) -> CamaraSintetica {
+        let permiso: CamaraSintetica.Permiso =
+            argumentos.contains("-PRUEBAS_UI_LUPA_PERMISO_CONCEDIDO") ? .concedido
+            : argumentos.contains("-PRUEBAS_UI_LUPA_PERMISO_DENEGADO") ? .porPreguntarYDenegar : .porPreguntar
+        return CamaraSintetica(permiso: permiso, hayCamara: !argumentos.contains("-PRUEBAS_UI_LUPA_SIN_CAMARA"))
     }
 
     /// Pantalla de producción del accesorio (`SesionAccesorioVista`) con un transporte sintético rotulado:
