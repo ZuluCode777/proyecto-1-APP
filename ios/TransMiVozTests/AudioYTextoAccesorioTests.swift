@@ -12,13 +12,13 @@ final class ControlVozTests: XCTestCase {
 
     func testSabeSiLaUltimaLocucionSeCorto() {
         let (control, salida, _) = crear(.privada)
-        XCTAssertFalse(control.hablando)
+        XCTAssertFalse(salida.hablando)
         control.anunciar("a")
-        XCTAssertTrue(control.hablando)
+        XCTAssertTrue(salida.hablando)
         XCTAssertFalse(control.ultimaLocucionCortada)
         XCTAssertFalse(control.ultimaSeOyoEntera, "todavía suena")
         salida.terminarSola()
-        XCTAssertFalse(control.hablando)
+        XCTAssertFalse(salida.hablando)
         XCTAssertTrue(control.ultimaSeOyoEntera, "terminó sola")
         control.descartarTodo()
         XCTAssertFalse(control.ultimaLocucionCortada, "no había nada sonando que cortar")
@@ -50,7 +50,7 @@ final class ControlVozTests: XCTestCase {
         let (control, salida, _) = crear(.privada)
         control.anunciar("a")
         salida.terminarSolaConRetraso()
-        XCTAssertTrue(control.hablando, "el aviso de fin aún no llegó")
+        XCTAssertTrue(salida.hablando, "el aviso de fin aún no llegó")
         XCTAssertFalse(control.ultimaSeOyoEntera, "ventana conocida: por prudencia no se da por oída")
         salida.llegaElFin()
         XCTAssertTrue(control.ultimaSeOyoEntera)
@@ -373,8 +373,8 @@ final class TextoAccesorioTests: XCTestCase {
         for parrafo in TextoAccesorio.parrafosAvisoEnlace { XCTAssertLessThanOrEqual(parrafo.count, 86, parrafo) }
     }
 
-    /// La reserva hablada va delante de las locuciones del accesorio ya aceptado (la sesión la antepone mientras el enlace
-    /// no conste autenticado); VoiceOver la anuncia una vez al conectar. Por defecto se asume sin autenticar: nunca se
+    /// La reserva hablada va después de la medida y delante solo de «calibrando» y «sin detección» (la sesión la añade
+    /// mientras el enlace no conste autenticado); VoiceOver la anuncia una vez al conectar. Por defecto se asume sin autenticar: nunca se
     /// presenta como autenticado lo que no consta.
     func testLaReservaDelEnlaceSinAutenticarVaDespuesDeLaMedidaYAntesDeLosEstadosSinMedida() {
         XCTAssertEqual(TextoAccesorio.reservaEnlace, "Enlace sin autenticar.")

@@ -15,7 +15,9 @@ final class TextoAyudaTests: XCTestCase {
     func testAyudaReutilizaElAvisoDeSeguridadDelAccesorio() {
         let accesorio = textoDeAyuda("Accesorio de proximidad")
         XCTAssertTrue(accesorio.hasPrefix(TextoAccesorio.parrafosAvisoEnlace.joined(separator: " ")), "la Ayuda abre con el aviso fijo de la pantalla")
-        XCTAssertTrue(accesorio.contains("con la reserva «Enlace sin autenticar.» dicha en voz alta"))
+        XCTAssertTrue(accesorio.contains("añade «Enlace sin autenticar.» después de cada medida"))
+        XCTAssertTrue(accesorio.contains("y antes de «Calibrando» y «Sin detección»"))
+        XCTAssertFalse(accesorio.contains("al empezar cada conexión"), "la reserva también sigue a las medidas")
         XCTAssertFalse(accesorio.contains("bloquea las medidas"), "con la política de demostración la Ayuda no dice que el accesorio bloquea las medidas")
         XCTAssertTrue(accesorio.contains("Si el enlace no se puede comprobar, la app lo bloquea. No se usa ninguna medida. Esto no es una detección ni significa camino libre."))
         // Las dos frases siguen siendo las del bloqueo de la pantalla de Sesión.
@@ -40,8 +42,16 @@ final class TextoAyudaTests: XCTestCase {
         XCTAssertFalse(uso.contains("para oír los avisos"))
     }
 
+    @MainActor
+    func testAyudaYPreferenciasDicenElTopeRealDeLaReserva() {
+        let tope = "como mucho \(SesionAccesorioModelo.maximoReservas) veces por conexión"
+        XCTAssertTrue(textoDeAyuda("Accesorio de proximidad").contains(tope))
+        XCTAssertTrue(TextoPreferencias.notaVoz.contains(tope))
+    }
+
     func testPreferenciasDiceLoMismoQueLaAyudaSobreLaReserva() {
-        XCTAssertTrue(TextoPreferencias.notaVoz.contains("«Enlace sin autenticar.»"))
+        XCTAssertTrue(TextoPreferencias.notaVoz.contains("«Enlace sin autenticar.» después de cada medida y antes de «Calibrando» y «Sin detección»"))
+        XCTAssertFalse(TextoPreferencias.notaVoz.contains("al empezar cada conexión"))
         XCTAssertTrue(TextoPreferencias.notaVoz.contains("sin detección no significa camino libre"))
         XCTAssertFalse(TextoPreferencias.notaVoz.contains("bloqueado"), "ya no dice que hoy no hay avisos del sensor")
     }

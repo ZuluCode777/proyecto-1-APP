@@ -127,8 +127,6 @@ final class ControlVoz {
     /// un descarte). Se limpia al empezar otra locución. Los cortes del sistema que la app no pidió constan en
     /// `salida.cortadaPorElSistema`.
     @ObservationIgnored private(set) var ultimaLocucionCortada = false
-    /// Hay una locución sonando o por sonar: si llega otra, la corta.
-    var hablando: Bool { salida.hablando }
     /// La última locución empezada sonó entera: nadie la cortó (ni la app ni el sistema) y ya no suena. La sesión lo usa
     /// para saber si una frase que debe oírse entera, como la reserva de un enlace sin autenticar, se oyó de verdad. Se
     /// pregunta ANTES de empezar otra locución, que la cortaría. Ventana conocida: `SintetizadorSistema` anota el fin

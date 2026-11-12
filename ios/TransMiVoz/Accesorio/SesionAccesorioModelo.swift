@@ -600,10 +600,10 @@ final class SesionAccesorioModelo {
               locucion != ultimaLocucion else { return false }
         ultimaLocucion = locucion
         if reserva == .enCurso { reserva = voz.ultimaSeOyoEntera ? .oida : .pendiente }
-        let conReserva = !enlaceAutenticado && reserva == .pendiente && reservasDichas < Self.maximoReservas
+        let llevaReserva = !enlaceAutenticado && reserva == .pendiente && reservasDichas < Self.maximoReservas
             && TextoAccesorio.lugarDeReserva(estado) != nil
-        let hablado = voz.anunciar(conReserva ? TextoAccesorio.conReserva(locucion.texto, para: estado) : locucion.texto) == .hablado
-        if conReserva && hablado {
+        let hablado = voz.anunciar(llevaReserva ? TextoAccesorio.conReserva(locucion.texto, para: estado) : locucion.texto) == .hablado
+        if llevaReserva && hablado {
             reserva = .enCurso
             reservasDichas += 1
         }

@@ -631,6 +631,39 @@ final class ComprobacionEnlaceSesionTests: XCTestCase {
         XCTAssertEqual(banco.salida.dicho.last, "\(texto(.objetivo(distanciaMm: 1200, azimutCentesimas: -3000))) \(TextoAccesorio.reservaEnlace)")
     }
 
+    /// Sin `reanunciar` de por medio (que renueva el cupo): un intento silenciado no es una reserva dicha y no gasta cupo.
+    func testUnIntentoSilenciadoNoGastaElCupoDeLaReservaConLaRutaNoPrivada() throws {
+        let banco = BancoAccesorio(nivel: .cifradoSinAutenticar, ruta: .noPrivada)
+        defer { banco.cerrar() }
+        let escenario = try EscenarioBLE.cargar("objetivo-distancia-y-azimut")
+        banco.iniciar()
+        banco.sincronizar(escenario)  // calibrando y sin detección
+        banco.entregar(escenario.entregas[0])
+        XCTAssertTrue(banco.salida.dicho.isEmpty, "tres intentos con reserva, ninguno se dijo")
+
+        banco.ruta.valor = .privada  // sin `rutaCambio`: la sesión no repite el estado
+        banco.entregar(escenario.entregas[1])
+        XCTAssertEqual(banco.salida.dicho, ["\(texto(.objetivo(distanciaMm: 1500, azimutCentesimas: nil))) \(TextoAccesorio.reservaEnlace)"],
+                       "la reserva sigue disponible: los intentos silenciados no consumieron el cupo")
+    }
+
+    func testUnIntentoSilenciadoNoGastaElCupoDeLaReservaConUnaInterrupcion() throws {
+        let banco = BancoAccesorio(nivel: .cifradoSinAutenticar)
+        defer { banco.cerrar() }
+        let escenario = try EscenarioBLE.cargar("objetivo-distancia-y-azimut")
+        banco.iniciar()
+        banco.modelo.voz.interrupcion(comenzo: true)  // llamada: la voz calla, la sesión sigue
+        let antes = banco.salida.dicho
+        banco.sincronizar(escenario)
+        banco.entregar(escenario.entregas[0])
+        XCTAssertEqual(banco.salida.dicho, antes, "interrumpida: no se dijo nada")
+
+        banco.modelo.voz.escenaVolvio()  // limpia la interrupción sin avisar a la sesión (no hay `reanunciar`)
+        banco.entregar(escenario.entregas[1])
+        XCTAssertEqual(Array(banco.salida.dicho.dropFirst(antes.count)),
+                       ["\(texto(.objetivo(distanciaMm: 1500, azimutCentesimas: nil))) \(TextoAccesorio.reservaEnlace)"])
+    }
+
     func testSiElSistemaCancelaLaReservaSinQueLaAppLoPidaSeRepite() throws {
         let banco = BancoAccesorio(nivel: .cifradoSinAutenticar)
         defer { banco.cerrar() }
@@ -674,7 +707,7 @@ final class ComprobacionEnlaceSesionTests: XCTestCase {
         XCTAssertEqual(banco.salida.dicho.filter { $0.contains(reserva) }.count, 2)
     }
 
-    func testConEnlaceAutenticadoNuncaSeAntepoleLaReserva() throws {
+    func testConEnlaceAutenticadoNuncaLlevaLaReserva() throws {
         let banco = BancoAccesorio(nivel: .cifradoAutenticado)
         defer { banco.cerrar() }
         let escenario = try EscenarioBLE.cargar("objetivo-distancia-y-azimut")

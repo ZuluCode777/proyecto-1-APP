@@ -45,7 +45,8 @@ enum TextoAyuda {
         SeccionAyuda(titulo: "Accesorio de proximidad", parrafos: [
             TextoAccesorio.parrafosAvisoEnlace.joined(separator: " "),
             "Si el enlace no se puede comprobar, la app lo bloquea. \(TextoAccesorio.sinMedidaPorEnlace) \(TextoAccesorio.noEsDeteccionNiCaminoLibre)",
-            "Las medidas y los avisos se dicen solo por una salida de audio privada (auriculares con cable o Bluetooth) y, al empezar cada conexión, con la reserva «\(TextoAccesorio.reservaEnlace)» dicha en voz alta. El iPhone no distingue unos auriculares de un altavoz Bluetooth: comprueba que sean auriculares.",
+            "Las medidas y los avisos se dicen solo por una salida de audio privada (auriculares con cable o Bluetooth). El iPhone no distingue unos auriculares de un altavoz Bluetooth: comprueba que sean auriculares.",
+            "Mientras el enlace no esté autenticado, la voz añade «\(TextoAccesorio.reservaEnlace)» después de cada medida («Objeto a 2 metros. Enlace sin autenticar.») y antes de «Calibrando» y «Sin detección». La repite hasta que se oye entera, como mucho 3 veces por conexión (otras 3 si la app repite el estado de ahora, por ejemplo al volver a primer plano). Después quedan el aviso fijo y VoiceOver.",
             "Es un prototipo experimental: no reemplaza el bastón ni el perro guía.",
         ]),
         SeccionAyuda(titulo: "Emergencias", parrafos: [
