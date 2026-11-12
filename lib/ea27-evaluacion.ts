@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 import { z } from "zod"
 import corpusJson from "../data/ea27-corpus.json" with { type: "json" }
 import snapshot from "../data/transmilenio.json" with { type: "json" }
+import { percentil as percentilDeMedicion } from "../scripts/medir-render.mjs"
 import { aplicarEvidenciaGtfs } from "./evidencia-gtfs"
 import type { Intent } from "./local-agent"
 import { findPlaces, type TransmilenioData } from "./routes"
@@ -140,11 +141,8 @@ export function puntuar(esperado: Esperado, intent: Intent, data: TransmilenioDa
   return { intentOk, entidadesOk: entidades, aclaraOk, pidioAclaracion, cancelo: intent.type === "cancel", ok: entidades && aclaraOk !== false }
 }
 
-/** Percentil por rango más cercano. `valores` no puede estar vacío. */
-export function percentil(valores: number[], p: number): number {
-  const ordenados = [...valores].sort((a, b) => a - b)
-  return ordenados[Math.min(ordenados.length - 1, Math.ceil((p / 100) * ordenados.length) - 1)]
-}
+/** Percentil por rango más cercano, el mismo que usa `scripts/medir-render.mjs`. `valores` no puede estar vacío. */
+export const percentil: (valores: number[], p: number) => number = percentilDeMedicion
 
 export type Medicion = { id: string; categoria: string; esperado: Esperado; puntuacion: Puntuacion | null; ms: number; error?: string }
 

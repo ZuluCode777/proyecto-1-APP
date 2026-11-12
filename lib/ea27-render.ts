@@ -120,10 +120,15 @@ export type MedicionRender = Medicion & { engine?: string; accion?: string; obse
 const esRespuesta = (c: unknown): c is RespuestaAgente =>
   typeof c === "object" && c !== null && typeof (c as RespuestaAgente).reply === "string" && Array.isArray((c as RespuestaAgente).steps)
 
-/** Espera de un `Retry-After` en segundos; si no es un número válido, la de por defecto. */
+/**
+ * Espera de un `Retry-After` en segundos (como mucho 120 s); si no es un número
+ * válido, la de por defecto. Nunca baja del espaciado entre peticiones: un
+ * `Retry-After: 1` no permite reintentar antes de lo que el corredor promete.
+ */
 export function esperaTras429(retryAfter: string | null): number {
   const s = Number(retryAfter)
-  return retryAfter && Number.isFinite(s) && s > 0 ? Math.min(s, 120) * 1000 : ESPERA_429_MS
+  const pedida = retryAfter && Number.isFinite(s) && s > 0 ? Math.min(s, 120) * 1000 : ESPERA_429_MS
+  return Math.max(ESPERA_ENTRE_PETICIONES_MS, pedida)
 }
 
 /**
@@ -154,14 +159,14 @@ export async function recorrerCorpus(opciones: {
       r = await peticion(item.frase)
     }
 
-    const base = { id: item.id, categoria: item.categoria, esperado: item.esperado, ms: r.ms, estado: r.estado, reintentos429 }
+    const comun = { id: item.id, categoria: item.categoria, esperado: item.esperado, ms: r.ms, estado: r.estado, reintentos429 }
     if (r.estado !== 200 || !esRespuesta(r.cuerpo)) {
-      mediciones.push({ ...base, puntuacion: null, error: r.estado === 0 ? "sin respuesta (red o plazo)" : `HTTP ${r.estado}${r.estado === 200 ? ": cuerpo inesperado" : ""}` })
+      mediciones.push({ ...comun, puntuacion: null, error: r.estado === 0 ? "sin respuesta (red o plazo)" : `HTTP ${r.estado}${r.estado === 200 ? ": cuerpo inesperado" : ""}` })
       continue
     }
     const observado = observarRespuesta(r.cuerpo, item.esperado, data)
     mediciones.push({
-      ...base,
+      ...comun,
       engine: r.cuerpo.engine,
       accion: r.cuerpo.action,
       observado,
