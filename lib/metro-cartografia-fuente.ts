@@ -1,5 +1,14 @@
 import { createHash } from "node:crypto"
-import { aMetros, distanciaASegmento, exigir, posicion, validarCartografiaMetro, type CartografiaMetro, type Posicion } from "@/lib/metro-cartografia-validacion"
+import {
+  CartografiaRechazada,
+  aMetros,
+  distanciaASegmento,
+  exigir,
+  posicion,
+  validarCartografiaMetro,
+  type CartografiaMetro,
+  type Posicion,
+} from "@/lib/metro-cartografia-validacion"
 
 /**
  * Importación de la cartografía del Metro desde sus fuentes oficiales (EA-24,
@@ -187,6 +196,84 @@ export function diferenciasConFuente(guardado: ArchivoCartografia, actual: Archi
   const sinFecha = (a: ArchivoCartografia) => JSON.stringify({ ...a, procedencia: { ...a.procedencia, consultado: "" } })
   if (sinFecha(guardado) !== sinFecha(actual)) diferencias.push("la geometría o la procedencia guardadas no son las que salen hoy de la fuente")
   return diferencias
+}
+
+// ---------------------------------------------------------------------------
+// Consulta de la fuente y lo que hace `pnpm sync:metro-cartografia`.
+// ---------------------------------------------------------------------------
+
+/** La fuente no respondió o respondió algo ilegible: no se pudo comprobar nada. */
+export class FuenteInaccesible extends Error {}
+
+/** GET de texto. Un fallo de red o un estado HTTP de error son `FuenteInaccesible`, sin traza. */
+export async function descargarTexto(url: string, pedir: typeof fetch = fetch): Promise<string> {
+  try {
+    const respuesta = await pedir(url)
+    if (!respuesta.ok) throw new Error(`respondió ${respuesta.status}`)
+    return await respuesta.text()
+  } catch (error) {
+    throw new FuenteInaccesible(`${url}: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
+/** Lee JSON de una fuente. Un cuerpo que no es JSON también es `FuenteInaccesible`. */
+export function leerJsonDeFuente(texto: string, url: string): unknown {
+  try {
+    return JSON.parse(texto)
+  } catch {
+    throw new FuenteInaccesible(`${url}: la respuesta no es JSON`)
+  }
+}
+
+/**
+ * Códigos de salida de los scripts: 0, todo coincide; 1, la fuente difiere o ya no
+ * supera la verificación; 2, no se pudo comprobar (argumento desconocido, fuente
+ * inaccesible o archivo guardado ilegible).
+ */
+export type ResultadoSync = { codigo: 0 | 1 | 2; mensaje: string; escribir?: string }
+
+const USO = "Uso: pnpm sync:metro-cartografia [--check]"
+
+/**
+ * Lo que hace `pnpm sync:metro-cartografia`, sin tocar la red ni el disco por su
+ * cuenta: `descargar` trae cada URL, `guardado` lee el archivo actual y el
+ * resultado dice qué escribir. Solo hay `escribir` cuando no se pidió `--check` y
+ * la fuente superó la verificación.
+ */
+export async function sincronizar(
+  argumentos: string[],
+  entorno: { descargar: (url: string) => Promise<string>; guardado: () => string; hoy: string },
+): Promise<ResultadoSync> {
+  // Un argumento mal escrito, como `--chek`, no debe terminar reescribiendo el archivo.
+  const desconocidos = argumentos.filter((a) => a !== "--check")
+  if (desconocidos.length) return { codigo: 2, mensaje: `Argumento desconocido: ${desconocidos.join(" ")}. No se consultó ni se escribió nada. ${USO}` }
+
+  try {
+    const consultar = async (fuente: FuenteCartografia): Promise<Descarga> => ({
+      ficha: leerJsonDeFuente(await entorno.descargar(urlFicha(fuente)), urlFicha(fuente)),
+      cuerpo: await entorno.descargar(urlConsulta(fuente)),
+    })
+    const [trazado, estaciones] = await Promise.all([consultar(FUENTES_CARTOGRAFIA.trazado), consultar(FUENTES_CARTOGRAFIA.estaciones)])
+    leerJsonDeFuente(trazado.cuerpo, urlConsulta(FUENTES_CARTOGRAFIA.trazado))
+    leerJsonDeFuente(estaciones.cuerpo, urlConsulta(FUENTES_CARTOGRAFIA.estaciones))
+    const archivo = construirArchivo(trazado, estaciones, entorno.hoy)
+    const resumen = `trazado de ${archivo.procedencia.trazado.vertices} vértices y ${archivo.procedencia.estaciones.entidades} huellas, dato del ${archivo.procedencia.fechaDato}`
+    if (!argumentos.includes("--check")) return { codigo: 0, mensaje: `Guardados: ${resumen}.`, escribir: serializarArchivo(archivo) }
+
+    let guardado: ArchivoCartografia
+    try {
+      guardado = JSON.parse(entorno.guardado())
+    } catch (error) {
+      return { codigo: 2, mensaje: `No se pudo leer el archivo guardado: ${error instanceof Error ? error.message : String(error)}. No se comprobó nada.` }
+    }
+    const diferencias = diferenciasConFuente(guardado, archivo)
+    if (diferencias.length) return { codigo: 1, mensaje: `El archivo guardado ya no coincide con la fuente:\n- ${diferencias.join("\n- ")}` }
+    return { codigo: 0, mensaje: `El archivo guardado coincide con la fuente: ${resumen}. Consultado el ${guardado.procedencia.consultado}; no se escribió nada.` }
+  } catch (error) {
+    if (error instanceof FuenteInaccesible) return { codigo: 2, mensaje: `No se pudo consultar la fuente: ${error.message}. No se comprobó ni se escribió nada.` }
+    if (error instanceof CartografiaRechazada) return { codigo: 1, mensaje: `La fuente ya no supera la verificación. ${error.message}. No se escribió nada.` }
+    throw error
+  }
 }
 
 // ---------------------------------------------------------------------------

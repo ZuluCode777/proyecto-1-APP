@@ -159,20 +159,28 @@ function leafletFalso() {
   return { dibujos, L: { map: () => mapa, tileLayer: () => grupo, layerGroup: () => grupo, polyline: capa("polyline"), polygon: capa("polygon"), circleMarker: capa("circleMarker") } }
 }
 
-/** Monta el mapa con el Leaflet falso. `redibujar` repite el efecto que corre cuando cambian las propiedades. */
-async function dibujar(props: object) {
+/**
+ * Monta el mapa con el Leaflet falso, o con el `leaflet` que se pase. `redibujar`
+ * repite el efecto que corre cuando cambian las propiedades y `renderizar`
+ * vuelve a pintar con el estado que haya quedado.
+ */
+async function dibujar(props: object, leaflet?: () => unknown) {
   const falso = leafletFalso()
   const efectos: (() => void)[] = []
   let refs = 0
-  const { TransitMap } = compilar(
-    "components/transit-map.tsx",
+  let estado: unknown
+  const react = {
     // La primera referencia es el contenedor: React la llenaría al montar.
-    { "leaflet/dist/leaflet.css": {}, leaflet: falso.L, react: { useRef: (v: unknown) => ({ current: refs++ === 0 ? {} : v }), useEffect: (f: () => void) => void (efectos.push(f), f()) } },
-    { getComputedStyle: () => ({ getPropertyValue: () => "" }) },
-  )
-  const arbol = TransitMap({ label: "Mapa", ...props })
+    useRef: (v: unknown) => ({ current: refs++ === 0 ? {} : v }),
+    useEffect: (f: () => void) => void (efectos.push(f), f()),
+    useState: (inicial: unknown) => [estado ?? inicial, (nuevo: unknown) => void (estado = nuevo)],
+  }
+  const modulos = { "leaflet/dist/leaflet.css": {}, react, get leaflet() { return leaflet ? leaflet() : falso.L } }
+  const { TransitMap } = compilar("components/transit-map.tsx", modulos, { getComputedStyle: () => ({ getPropertyValue: () => "" }) })
+  const renderizar = () => TransitMap({ label: "Mapa", ...props })
+  const arbol = renderizar()
   await new Promise((listo) => setImmediate(listo))
-  return { ...falso, arbol, redibujar: () => efectos[1]() }
+  return { ...falso, arbol, renderizar, redibujar: () => efectos[1]() }
 }
 
 const ruta: [number, number][] = [[4.6, -74.1], [4.62, -74.08]]
@@ -225,15 +233,37 @@ test("TransitMap: al redibujar no apila otro trazo", async () => {
 test("TransitMap: sin capa ilustrativa es el mismo mapa de antes, sin rótulo", async () => {
   const { arbol, dibujos } = await dibujar({ lines: [{ path: ruta }], markers: [{ lat: 4.6, lng: -74.1, label: "Estación", kind: "station" }] })
   assert.deepEqual(dibujos.map((d) => d.tipo), ["polyline", "circleMarker"])
-  assert.ok(esMapa(arbol) && texto(arbol) === "", "la raíz sigue siendo el contenedor del mapa")
+  assert.ok(esMapa(arbol) && texto(arbol) === "", "la raíz sigue siendo el contenedor del mapa, vacío")
   assert.doesNotMatch(String(arbol.props.className), /rounded-t-none/)
+})
+
+test("TransitMap: si Leaflet no carga lo dice a la vista, en vez de dejar un recuadro vacío", async () => {
+  const sinLeaflet = () => {
+    throw new Error("sin red")
+  }
+  for (const props of [{ overlay: capaDePrueba() }, { lines: [{ path: ruta }] }]) {
+    const { arbol, renderizar, dibujos } = await dibujar(props, sinLeaflet)
+    assert.equal(nodos(arbol, (n) => n.props?.role === "status").length, 0, "antes de fallar no hay aviso")
+    const [aviso, ...otros] = nodos(renderizar(), (n) => n.props?.role === "status")
+    assert.equal(otros.length, 0)
+    assert.equal(texto(aviso), "El mapa no cargó; el listado tiene lo mismo.")
+    assert.equal(dibujos.length, 0)
+  }
+})
+
+test("TransitMap: cuando Leaflet carga no hay aviso de fallo", async () => {
+  const { renderizar } = await dibujar({ overlay: capaDePrueba() })
+  assert.equal(nodos(renderizar(), (n) => n.props?.role === "status").length, 0)
 })
 
 test("TransitMap: omitir líneas y marcadores no cambia las dependencias del redibujo entre renders", () => {
   const dependencias: unknown[][] = []
   const { TransitMap } = compilar(
     "components/transit-map.tsx",
-    { "leaflet/dist/leaflet.css": {}, react: { useRef: (v: unknown) => ({ current: v }), useEffect: (_f: unknown, d: unknown[]) => void (d.length && dependencias.push(d)) } },
+    {
+      "leaflet/dist/leaflet.css": {},
+      react: { useRef: (v: unknown) => ({ current: v }), useState: (v: unknown) => [v, () => {}], useEffect: (_f: unknown, d: unknown[]) => void (d.length && dependencias.push(d)) },
+    },
   )
   TransitMap({ label: "Mapa" })
   TransitMap({ label: "Mapa" })

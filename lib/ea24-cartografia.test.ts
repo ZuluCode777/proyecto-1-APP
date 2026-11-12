@@ -20,7 +20,10 @@ import { compilar } from "./metro-prueba-ui"
  *   los dos archivos salen del mismo dato de la EMB, y la conversión a 4326 la
  *   hace el servidor de Catastro, no este código.
  * - El control vial es el único independiente de la EMB y acota la POSICIÓN a
- *   escala de cuadra: decenas de metros, no metros.
+ *   escala de cuadra: unos 30 m transversal al corredor y hasta unos 100 m a lo
+ *   largo. Lo independiente son sus datos, no su cálculo: mide con `giro`,
+ *   `distanciaASegmento` y `aMetros`, las mismas funciones del validador, así
+ *   que un error en ellas pasaría las dos comprobaciones.
  * `pnpm analisis:metro-cartografia` repite el análisis completo contra las fuentes.
  */
 
@@ -262,7 +265,8 @@ test("control vial, el único independiente: cada huella está en el corredor y 
   const peor = (lista: typeof distancias) => lista.reduce((a, b) => (b.m > a.m ? b : a))
   const [corredor, tramo] = [peor(distancias.filter((d) => d.corredor)), peor(distancias.filter((d) => !d.corredor))]
   // Los números que cita el documento: corredor a 30 m o menos, vías del tramo a 107 m o menos.
-  // Acotan la posición a decenas de metros; un error de datum la corre cientos.
+  // Son descriptivos: se pusieron mirando el dato, no salen de una tolerancia de diseño.
+  // Un error de datum corre la geometría cientos de metros y los rompe.
   assert.ok(corredor.m < 31, `${corredor.id} a ${corredor.m.toFixed(1)} m de ${corredor.via}`)
   assert.ok(tramo.m < 108, `${tramo.id} a ${tramo.m.toFixed(1)} m de ${tramo.via}`)
 })

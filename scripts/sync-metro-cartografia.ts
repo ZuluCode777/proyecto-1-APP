@@ -8,47 +8,23 @@
  *
  * Uso: pnpm sync:metro-cartografia            descarga y escribe el archivo
  *      pnpm sync:metro-cartografia --check    compara el archivo guardado con la
- *                                             fuente, sin escribir; sale con 1 si difieren
+ *                                             fuente, sin escribir
+ *
+ * Sale con 0 si todo coincide, con 1 si la fuente difiere o ya no supera la
+ * verificación, y con 2 si no se pudo comprobar: argumento desconocido, fuente
+ * inaccesible o archivo guardado ilegible.
  */
 import { readFileSync, writeFileSync } from "node:fs"
-import {
-  FUENTES_CARTOGRAFIA,
-  construirArchivo,
-  diferenciasConFuente,
-  serializarArchivo,
-  urlConsulta,
-  urlFicha,
-  type ArchivoCartografia,
-  type Descarga,
-  type FuenteCartografia,
-} from "@/lib/metro-cartografia-fuente"
+import { descargarTexto, sincronizar } from "@/lib/metro-cartografia-fuente"
 
 const ARCHIVO = new URL("../data/metro-cartografia.json", import.meta.url)
 
-async function descargar(url: string): Promise<string> {
-  const respuesta = await fetch(url)
-  if (!respuesta.ok) throw new Error(`${url} respondió ${respuesta.status}`)
-  return respuesta.text()
-}
-
-const consultar = async (fuente: FuenteCartografia): Promise<Descarga> => ({
-  ficha: JSON.parse(await descargar(urlFicha(fuente))),
-  cuerpo: await descargar(urlConsulta(fuente)),
+const { codigo, mensaje, escribir } = await sincronizar(process.argv.slice(2), {
+  descargar: descargarTexto,
+  guardado: () => readFileSync(ARCHIVO, "utf8"),
+  hoy: new Date().toLocaleDateString("sv-SE", { timeZone: "America/Bogota" }),
 })
-
-const [trazado, estaciones] = await Promise.all([consultar(FUENTES_CARTOGRAFIA.trazado), consultar(FUENTES_CARTOGRAFIA.estaciones)])
-const archivo = construirArchivo(trazado, estaciones, new Date().toLocaleDateString("sv-SE", { timeZone: "America/Bogota" }))
-const resumen = `trazado de ${archivo.procedencia.trazado.vertices} vértices y ${archivo.procedencia.estaciones.entidades} huellas, dato del ${archivo.procedencia.fechaDato}`
-
-if (process.argv.includes("--check")) {
-  const guardado = JSON.parse(readFileSync(ARCHIVO, "utf8")) as ArchivoCartografia
-  const diferencias = diferenciasConFuente(guardado, archivo)
-  if (diferencias.length) {
-    console.error(`El archivo guardado ya no coincide con la fuente:\n- ${diferencias.join("\n- ")}`)
-    process.exit(1)
-  }
-  console.log(`El archivo guardado coincide con la fuente: ${resumen}. Consultado el ${guardado.procedencia.consultado}; no se escribió nada.`)
-} else {
-  writeFileSync(ARCHIVO, serializarArchivo(archivo))
-  console.log(`Guardados: ${resumen}.`)
-}
+if (escribir) writeFileSync(ARCHIVO, escribir)
+if (codigo) console.error(mensaje)
+else console.log(mensaje)
+process.exit(codigo)

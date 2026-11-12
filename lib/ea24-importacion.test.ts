@@ -4,13 +4,17 @@ import test from "node:test"
 import { CARTOGRAFIA_METRO } from "./metro-cartografia"
 import {
   FUENTES_CARTOGRAFIA,
+  FuenteInaccesible,
   construirArchivo,
+  descargarTexto,
   diferenciasConFuente,
   fechaDeFichaConLicencia,
   importarCartografiaMetro,
   serializarArchivo,
   simplificar,
+  sincronizar,
   urlConsulta,
+  urlFicha,
   type Descarga,
 } from "./metro-cartografia-fuente"
 import type { Posicion } from "./metro-cartografia-validacion"
@@ -166,4 +170,97 @@ test("--check: detecta que la fuente cambió, y que el archivo guardado se retoc
   const otraConsulta = structuredClone(guardado)
   otraConsulta.procedencia.trazado.consulta = otraConsulta.procedencia.trazado.consulta.replace("LINEA%3D%27Primera%27", "1%3D1")
   assert.ok(diferenciasConFuente(otraConsulta, guardado).includes("trazado: la consulta guardada no es la que se hace hoy"))
+})
+
+// --- El script: argumentos y códigos de salida -----------------------------------
+
+/** Una fuente de mentira: responde cada URL con lo descargado, y anota lo que se le pide. */
+function fuenteFalsa(cambios: Record<string, string | Error> = {}) {
+  const [trazado, estaciones] = descargas()
+  const cuerpos: Record<string, string | Error> = {
+    [urlFicha(FUENTES_CARTOGRAFIA.trazado)]: JSON.stringify(trazado.ficha),
+    [urlConsulta(FUENTES_CARTOGRAFIA.trazado)]: trazado.cuerpo,
+    [urlFicha(FUENTES_CARTOGRAFIA.estaciones)]: JSON.stringify(estaciones.ficha),
+    [urlConsulta(FUENTES_CARTOGRAFIA.estaciones)]: estaciones.cuerpo,
+    ...cambios,
+  }
+  const pedidas: string[] = []
+  const descargar = async (url: string) => {
+    pedidas.push(url)
+    const cuerpo = cuerpos[url]
+    if (cuerpo instanceof Error) throw cuerpo
+    return cuerpo
+  }
+  return { descargar, pedidas }
+}
+const correr = (argumentos: string[], fuente = fuenteFalsa(), guardado = () => serializarArchivo(armar("2026-11-11"))) =>
+  sincronizar(argumentos, { descargar: fuente.descargar, guardado, hoy: "2026-11-12" })
+
+test("script: un argumento desconocido no consulta ni escribe, y sale con 2", async () => {
+  for (const argumentos of [["--chek"], ["--check", "--forzar"], ["check"], [""]]) {
+    const fuente = fuenteFalsa()
+    const resultado = await correr(argumentos, fuente)
+    assert.equal(resultado.codigo, 2, argumentos.join(" "))
+    assert.equal(resultado.escribir, undefined, "un `--check` mal escrito no puede reescribir el archivo")
+    assert.deepEqual(fuente.pedidas, [])
+    assert.match(resultado.mensaje, /^Argumento desconocido: .*Uso: pnpm sync:metro-cartografia \[--check\]$/)
+  }
+})
+
+test("script: sin argumentos escribe el archivo; con --check nunca escribe", async () => {
+  const escrito = await correr([])
+  assert.equal(escrito.codigo, 0)
+  assert.equal(escrito.escribir, serializarArchivo(armar("2026-11-12")))
+
+  const igual = await correr(["--check"])
+  assert.deepEqual([igual.codigo, igual.escribir], [0, undefined])
+  assert.match(igual.mensaje, /coincide con la fuente.*Consultado el 2026-11-11; no se escribió nada/)
+
+  const distinto = await correr(["--check"], fuenteFalsa(), () => serializarArchivo(armar()).replace("de 313 a", "de 999 a"))
+  assert.deepEqual([distinto.codigo, distinto.escribir], [1, undefined])
+  assert.match(distinto.mensaje, /^El archivo guardado ya no coincide con la fuente:\n- /)
+})
+
+test("script: si la fuente no responde sale con 2 y un mensaje claro, distinto de «difiere»", async () => {
+  const caida = new FuenteInaccesible("https://ejemplo.invalid: fetch failed")
+  for (const argumentos of [[], ["--check"]]) {
+    const resultado = await correr(argumentos, fuenteFalsa({ [urlConsulta(FUENTES_CARTOGRAFIA.trazado)]: caida }))
+    assert.deepEqual([resultado.codigo, resultado.escribir], [2, undefined])
+    assert.equal(resultado.mensaje, "No se pudo consultar la fuente: https://ejemplo.invalid: fetch failed. No se comprobó ni se escribió nada.")
+  }
+  // Una página de error en lugar de JSON tampoco es «difiere».
+  const html = await correr(["--check"], fuenteFalsa({ [urlFicha(FUENTES_CARTOGRAFIA.estaciones)]: "<html>503</html>" }))
+  assert.equal(html.codigo, 2)
+  assert.match(html.mensaje, /la respuesta no es JSON/)
+  // Ni un archivo guardado ilegible.
+  const roto = await correr(["--check"], fuenteFalsa(), () => "{")
+  assert.equal(roto.codigo, 2)
+  assert.match(roto.mensaje, /^No se pudo leer el archivo guardado: /)
+})
+
+test("script: una fuente que ya no supera la verificación sale con 1 y no escribe", async () => {
+  const sinLicencia = JSON.stringify(ficha(FUENTES_CARTOGRAFIA.trazado.capa, { license_id: "CC-BY-NC-4.0" }))
+  const conLinea2 = JSON.stringify(respuesta([trazadoRest(), trazadoRest("Segunda")]))
+  for (const [url, cuerpo, motivo] of [
+    [urlFicha(FUENTES_CARTOGRAFIA.trazado), sinLicencia, /no CC BY 4.0/],
+    [urlConsulta(FUENTES_CARTOGRAFIA.trazado), conLinea2, /solo la Línea 1/],
+  ] as const) {
+    for (const argumentos of [[], ["--check"]]) {
+      const resultado = await correr(argumentos, fuenteFalsa({ [url]: cuerpo }))
+      assert.deepEqual([resultado.codigo, resultado.escribir], [1, undefined])
+      assert.match(resultado.mensaje, /^La fuente ya no supera la verificación\. /)
+      assert.match(resultado.mensaje, motivo)
+    }
+  }
+})
+
+test("script: un defecto del propio código no se disfraza de fuente caída", async () => {
+  await assert.rejects(correr([], fuenteFalsa({ [urlConsulta(FUENTES_CARTOGRAFIA.trazado)]: new TypeError("defecto") })), /defecto/)
+})
+
+test("descargarTexto: un fallo de red o un estado de error son FuenteInaccesible, con la URL", async () => {
+  const pedir = (respuesta: () => Promise<Response>) => descargarTexto("https://ejemplo.invalid/x", respuesta as typeof fetch)
+  assert.equal(await pedir(async () => new Response("hola")), "hola")
+  await assert.rejects(pedir(async () => new Response("", { status: 503 })), (e) => e instanceof FuenteInaccesible && e.message === "https://ejemplo.invalid/x: respondió 503")
+  await assert.rejects(pedir(async () => Promise.reject(new TypeError("fetch failed"))), (e) => e instanceof FuenteInaccesible && e.message === "https://ejemplo.invalid/x: fetch failed")
 })

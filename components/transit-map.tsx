@@ -1,7 +1,7 @@
 "use client"
 
 import "leaflet/dist/leaflet.css"
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { Map as LeafletMap, LayerGroup } from "leaflet"
 
 export type MapLine = {
@@ -59,22 +59,28 @@ export function TransitMap({ lines = SIN_LINEAS, markers = SIN_MARCADORES, overl
   const mapRef = useRef<LeafletMap | null>(null)
   const layerRef = useRef<LayerGroup | null>(null)
   const leafletRef = useRef<typeof import("leaflet") | null>(null)
+  const [failed, setFailed] = useState(false)
 
   // Crea el mapa una sola vez. Leaflet toca `window`, así que se importa aquí.
   useEffect(() => {
     let cancelled = false
-    import("leaflet").then((L) => {
-      if (cancelled || !containerRef.current || mapRef.current) return
-      leafletRef.current = L
-      const map = L.map(containerRef.current, { zoomControl: true, attributionControl: true }).setView(BOGOTA, 12)
-      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: "© OpenStreetMap",
-      }).addTo(map)
-      mapRef.current = map
-      layerRef.current = L.layerGroup().addTo(map)
-      draw()
-    })
+    import("leaflet")
+      .then((L) => {
+        if (cancelled || !containerRef.current || mapRef.current) return
+        leafletRef.current = L
+        const map = L.map(containerRef.current, { zoomControl: true, attributionControl: true }).setView(BOGOTA, 12)
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+          attribution: "© OpenStreetMap",
+        }).addTo(map)
+        mapRef.current = map
+        layerRef.current = L.layerGroup().addTo(map)
+        draw()
+      })
+      // Sin esto quedaría un recuadro vacío y nadie sabría por qué.
+      .catch(() => {
+        if (!cancelled) setFailed(true)
+      })
     return () => {
       cancelled = true
       mapRef.current?.remove()
@@ -152,7 +158,13 @@ export function TransitMap({ lines = SIN_LINEAS, markers = SIN_MARCADORES, overl
       role="region"
       aria-label={label}
       className={`relative z-0 min-h-64 w-full overflow-hidden rounded-2xl border-3 border-border ${overlay ? "rounded-t-none" : ""} ${className}`}
-    />
+    >
+      {failed && (
+        <p role="status" className="p-4 text-base font-bold">
+          El mapa no cargó; el listado tiene lo mismo.
+        </p>
+      )}
+    </div>
   )
   if (!overlay) return mapa
   // El rótulo va en el marco y no sobre el lienzo: dentro tapaba el trazo o

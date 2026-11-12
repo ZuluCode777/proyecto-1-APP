@@ -14,7 +14,7 @@ Issue [#50](https://github.com/ZuluCode777/proyecto-1-APP/issues/50), parte de #
 «Verificado» junta dos cosas con precisiones distintas.
 
 - La transformación del sistema local a coordenadas geográficas. Contra 363 puntos geodésicos oficiales da una mediana de 3,2 mm, y el peor caso es de 0,44 m en 362 de ellos.
-- La posición de las huellas en la ciudad. El único control independiente de la Empresa Metro de Bogotá la acota a escala de cuadra: decenas de metros.
+- La posición de las huellas en la ciudad. El único control independiente de la Empresa Metro de Bogotá la acota a escala de cuadra: unos 30 m transversal al corredor y hasta unos 100 m a lo largo.
 
 La geometría es el diseño de 2022, no un levantamiento de lo construido.
 
@@ -22,7 +22,7 @@ La geometría es el diseño de 2022, no un levantamiento de lo construido.
 
 Sirve como ilustración a escala de ciudad, en la web y en el mapa de iPhone. El trazado y las 16 huellas están en WGS84, con la transformación comprobada y licencia CC BY 4.0.
 
-No sirve para guiar a nadie hasta una estación. No hay entradas, y la posición solo está acotada a decenas de metros. Esa fue también la conclusión de la revisión del PR #85.
+No sirve para guiar a nadie hasta una estación. No hay entradas, y la posición solo está acotada a unos 30 m transversal al corredor y hasta unos 100 m a lo largo. Esa fue también la conclusión de la revisión del PR #85.
 
 ## Qué muestra la app
 
@@ -53,7 +53,9 @@ Las respuestas crudas no están en el repositorio, porque la del trazado pesa 34
 pnpm sync:metro-cartografia --check
 ```
 
-Descarga, compara los SHA-256 y la geometría con el archivo guardado, no escribe nada y sale con 1 si difieren.
+Descarga, compara los SHA-256 y la geometría con el archivo guardado y no escribe nada. Sale con 0 si coinciden, con 1 si difieren o la fuente ya no supera la verificación, y con 2 si no pudo comprobar: la fuente no respondió o el argumento no es `--check`.
+
+Se ejecuta a mano y requiere red. No está en la integración continua ni en `scripts/verificar.mjs`. Sin red, ninguna prueba detecta que la fuente cambió: las pruebas solo comprueban que el SHA-256 guardado tiene forma de SHA-256 y que el archivo está escrito como lo escribe el script.
 
 La capa 1 se llama «primera línea», pero el 2 de noviembre devolvía también la segunda. Hoy solo trae la primera y la segunda está en la capa 5. La consulta filtra por atributo de todos modos, y la importación rechaza cualquier entidad que no sea `Primera`.
 
@@ -73,12 +75,12 @@ Los GeoJSON descargables de Datos Abiertos no están en WGS84. Usan el sistema l
 
 | Control | Qué prueba | Resultado | Cómo se repite |
 | --- | --- | --- | --- |
-| 363 puntos geodésicos con coordenada local y geográfica. IDECA, Mapa de Referencia, capa 5 | Que la definición del `.prj` es la correcta | Mediana 3,2 mm, percentil 90 de 7,3 mm, peor 0,44 m en 362 de 363. Sin el plano de 2550 m, mediana 4,11 m | `pnpm analisis:metro-cartografia` |
+| 363 puntos geodésicos con coordenada local y geográfica. IDECA, Mapa de Referencia, capa 5 | Que la definición del `.prj` es la correcta | Mediana 3,2 mm, percentil 90 de 7,3 mm, peor 0,44 m en 362 de 363. Los 317 de la Empresa de Acueducto, a 12 mm o menos. Sin el plano de 2550 m, mediana 4,11 m | `pnpm analisis:metro-cartografia` |
 | GeoJSON local transformado contra la respuesta REST en 4326 | Que los dos son la misma geometría | 97 vértices de estaciones y 8.494 del trazado, diferencia máxima 0,1 mm | `pnpm analisis:metro-cartografia` |
 | Muestra de 8 puntos geodésicos, primer vértice local de cada estación y los 2 extremos del trazado | Lo mismo que las dos filas de arriba, sin red | Puntos a 2 cm o menos. Vértices a 15 cm o menos, por el redondeo | `pnpm test` |
 | 47 ejes de la malla vial. IDECA, Mapa de Referencia, capa 13 | La posición de las huellas, con una fuente que no es la EMB | Corredor a 30 m o menos de las 16 huellas. Vías del tramo a 107 m o menos | `pnpm test`, sobre una copia del 11-11-2026 |
 
-`pnpm analisis:metro-cartografia` descarga las entradas, compara su SHA-256 con el que tenían el 11 y el 12 de noviembre, y sale con 1 si una fuente cambió o si un resultado ya no respalda esta tabla.
+`pnpm analisis:metro-cartografia` descarga las entradas y compara su SHA-256 con el que tenían el 11 y el 12 de noviembre. Sale con 1 si una fuente cambió o si un resultado ya no respalda esta tabla, y con 2 si una fuente no respondió. También se ejecuta a mano y requiere red.
 
 De los 363 puntos geodésicos, uno llamado `BVRI` discrepa 1.180 m con cualquier hipótesis. Su registro es incoherente en la fuente y queda fuera de la estadística. La muestra de 8 que guarda la prueba son puntos de la Empresa de Acueducto dentro de la caja del trazado, ordenados por longitud y tomados a intervalos iguales.
 
@@ -86,7 +88,9 @@ De los 363 puntos geodésicos, uno llamado `BVRI` discrepa 1.180 m con cualquier
 
 Las tres primeras filas son en parte circulares. Comparan dos publicaciones del mismo dato de la EMB, y la conversión a 4326 la hace el servidor de Catastro, no el código de este repositorio. Prueban la transformación, no la posición. Si la EMB hubiera dibujado una estación en el lugar equivocado, las tres filas seguirían en verde.
 
-La cuarta fila es el único control independiente, y es de escala de cuadra. Usa la malla vial de Catastro, IDU y Movilidad, y los tramos que el Distrito publicó para cada estación el 20 de octubre de 2020. Detecta un error de datum o de origen, que corre la geometría cientos de metros. No detecta un error de 20 m.
+La cuarta fila es el único control independiente, y es de escala de cuadra. Usa la malla vial de Catastro, IDU y Movilidad, y los tramos que el Distrito publicó para cada estación el 20 de octubre de 2020. Acota la posición a unos 30 m transversal al corredor, que es la distancia al eje de la avenida, y hasta unos 100 m a lo largo, que es la distancia a las vías que delimitan el tramo. Detecta un error de datum o de origen, que corre la geometría cientos de metros. No detecta un error de 20 m.
+
+Los umbrales de la prueba, 31 m y 108 m, son descriptivos. Se pusieron mirando el dato, un poco por encima de lo medido, y no salen de una tolerancia de diseño. Lo independiente de ese control son sus datos, no su cálculo: usa las mismas funciones de distancia que el validador.
 
 La caja de Bogotá que valida la importación mide decenas de kilómetros. Rechaza ejes invertidos y coordenadas en metros, no un error de datum.
 
@@ -109,7 +113,8 @@ El Mapa de Referencia y la capa de puntos geodésicos, usados solo como control,
 
 ## Límites
 
-- El mapa se vio en un navegador el 12 de noviembre, a 390 px de ancho y con la letra al 100 % y al 200 %: rótulo completo, trazado y 16 huellas visibles, nada tapado por los controles. La pestaña de prueba no estaba visible y hubo que sustituir `requestAnimationFrame` por un temporizador para que Leaflet terminara de encuadrar. No se probó en un teléfono ni con un lector de pantalla.
+- El mapa se vio en un navegador el 12 de noviembre, a 390 px de ancho y con la letra al 100 % y al 200 %: rótulo completo, trazado y 16 huellas visibles, nada tapado por los controles. En la sesión de prueba (pestaña oculta) se simuló un temporizador; la app no cambió. No se probó en un teléfono ni con un lector de pantalla.
+- Si Leaflet no carga, el mapa muestra «El mapa no cargó; el listado tiene lo mismo.» en lugar de un recuadro vacío. Eso vale para los cuatro mapas de la app.
 - `pnpm verificar` no se corrió en este trabajo porque usa un puerto de depuración fijo que comparten otros agentes. Lo corre la integración continua.
 - Las pruebas del mapa usan un Leaflet falso que anota lo que se dibuja.
-- Si la EMB publica geometría de lo construido, `pnpm sync:metro-cartografia --check` lo avisa, y los controles de la prueba dirán si la nueva geometría sigue en su tramo.
+- Si la EMB publica geometría de lo construido, nadie se entera solo. Lo muestra `pnpm sync:metro-cartografia --check`, que se ejecuta a mano y requiere red. Después de sincronizar, los controles de la prueba dicen si la nueva geometría sigue en su tramo.

@@ -27,8 +27,11 @@ export type CartografiaMetro = { trazado: Posicion[]; huellas: HuellaEstacionMet
 const BOGOTA = { lonMin: -74.25, lonMax: -73.99, latMin: 4.45, latMax: 4.85 }
 const IDS = Array.from({ length: 16 }, (_, i) => `E${String(i + 1).padStart(2, "0")}`)
 
+/** La geometría o su fuente no superan la verificación. No es un fallo de red. */
+export class CartografiaRechazada extends Error {}
+
 export function exigir(condicion: unknown, mensaje: string): asserts condicion {
-  if (!condicion) throw new Error(`Cartografía del Metro rechazada: ${mensaje}`)
+  if (!condicion) throw new CartografiaRechazada(`Cartografía del Metro rechazada: ${mensaje}`)
 }
 
 /** Devuelve el par si es [longitud, latitud] dentro de Bogotá; si no, lo rechaza. */

@@ -3,16 +3,19 @@
  * #50) contra las fuentes oficiales y muestra los números que cita
  * `docs/expoandes/ea-24-cartografia-metro.md`.
  *
- * Las entradas van fijadas por SHA-256. Si una fuente cambió o un resultado sale
- * de lo que el documento afirma, lo dice y sale con 1. Solo hace consultas GET
- * públicas y no escribe nada.
+ * Las entradas van fijadas por SHA-256. Solo hace consultas GET públicas y no
+ * escribe nada.
+ *
+ * Sale con 0 si las entradas no cambiaron y los resultados respaldan el
+ * documento, con 1 si una fuente cambió o un resultado ya no lo respalda, y con
+ * 2 si no se pudo comprobar porque una fuente no respondió.
  *
  * Uso: pnpm analisis:metro-cartografia
  */
 import { createHash } from "node:crypto"
 import { distanceMeters } from "@/lib/geo"
 import { PROCEDENCIA_MAPA_METRO } from "@/lib/metro-cartografia"
-import { CATALOGO_DATOS_ABIERTOS, localAGeografica } from "@/lib/metro-cartografia-fuente"
+import { CATALOGO_DATOS_ABIERTOS, FuenteInaccesible, descargarTexto, leerJsonDeFuente, localAGeografica } from "@/lib/metro-cartografia-fuente"
 import type { Posicion } from "@/lib/metro-cartografia-validacion"
 
 const MAPA_REFERENCIA = "https://serviciosgis.catastrobogota.gov.co/arcgis/rest/services/Mapa_Referencia/Mapa_Referencia/MapServer"
@@ -43,30 +46,37 @@ const afirmar = (condicion: boolean, mensaje: string) => void (condicion || fall
 const metros = (a: Posicion, b: Posicion) => distanceMeters({ lng: a[0], lat: a[1] }, { lng: b[0], lat: b[1] })
 const mm = (m: number) => `${(m * 1000).toFixed(1)} mm`
 
-async function descargar(nombre: keyof typeof ENTRADAS) {
+// Las cinco entradas son colecciones de entidades, en GeoJSON o en JSON de ArcGIS.
+type Coleccion = { features: { attributes: unknown; properties: unknown; geometry: unknown }[] }
+
+async function descargar(nombre: keyof typeof ENTRADAS): Promise<Coleccion> {
   const { url, sha256 } = ENTRADAS[nombre]
-  const respuesta = await fetch(url)
-  if (!respuesta.ok) throw new Error(`${url} respondió ${respuesta.status}`)
-  const cuerpo = await respuesta.text()
+  const cuerpo = await descargarTexto(url)
   const hash = createHash("sha256").update(cuerpo).digest("hex")
   afirmar(hash === sha256, `${nombre}: la fuente cambió desde el análisis (SHA-256 ${hash}); los números de abajo ya no son los del documento`)
-  return JSON.parse(cuerpo)
+  const json = leerJsonDeFuente(cuerpo, url) as Partial<Coleccion> | null
+  if (!Array.isArray(json?.features)) throw new FuenteInaccesible(`${url}: la respuesta no trae entidades`)
+  return json as Coleccion
 }
 
-const [geodesicos, estacionesLocal, trazadoLocal, estacionesRest, trazadoRest] = await Promise.all(
-  (Object.keys(ENTRADAS) as (keyof typeof ENTRADAS)[]).map(descargar),
-)
+// Sin traza: que una fuente no responda no es un defecto del script.
+const entradas = await Promise.all((Object.keys(ENTRADAS) as (keyof typeof ENTRADAS)[]).map(descargar)).catch((error: unknown) => {
+  if (!(error instanceof FuenteInaccesible)) throw error
+  console.error(`No se pudo consultar la fuente: ${error.message}. No se comprobó nada.`)
+  process.exit(2)
+})
+const [geodesicos, estacionesLocal, trazadoLocal, estacionesRest, trazadoRest] = entradas
 
 // --- 1. Puntos geodésicos: ¿la definición del .prj reproduce la posición oficial? ---
 
-type PuntoGeodesico = { PGECODIGO: string; PGECESTE: number | null; PGECNORTE: number | null; PGELONGITU: number | null; PGELATITUD: number | null }
-const puntos = (geodesicos.features as { attributes: PuntoGeodesico }[])
-  .map((f) => f.attributes)
+type PuntoGeodesico = { PGECODIGO: string; PGEFUENTE: string | null; PGECESTE: number | null; PGECNORTE: number | null; PGELONGITU: number | null; PGELATITUD: number | null }
+const puntos = geodesicos.features
+  .map((f) => f.attributes as PuntoGeodesico)
   .filter((p) => [p.PGECESTE, p.PGECNORTE, p.PGELONGITU, p.PGELATITUD].every((v) => typeof v === "number"))
 
 function errores(semieje?: number) {
   return puntos
-    .map((p) => ({ codigo: p.PGECODIGO, m: metros(localAGeografica(p.PGECESTE!, p.PGECNORTE!, semieje), [p.PGELONGITU!, p.PGELATITUD!]) }))
+    .map((p) => ({ codigo: p.PGECODIGO, fuente: p.PGEFUENTE ?? "", m: metros(localAGeografica(p.PGECESTE!, p.PGECNORTE!, semieje), [p.PGELONGITU!, p.PGELATITUD!]) }))
     .sort((a, b) => a.m - b.m)
 }
 const conPlano = errores()
@@ -74,13 +84,18 @@ const sinPlano = errores(6378137)
 const percentil = (lista: { m: number }[], q: number) => lista[Math.floor((lista.length - 1) * q)].m
 const atipicos = conPlano.filter((e) => e.m > 1)
 const peorSinAtipicos = conPlano[conPlano.length - 1 - atipicos.length]
+// La mayoría son de la Empresa de Acueducto; los demás, del Servicio Geológico, tienen menos decimales.
+const acueducto = conPlano.filter((e) => e.fuente.includes("Acueducto"))
 
 console.log(`Puntos geodésicos con coordenada local y geográfica: ${puntos.length}`)
 console.log(`  Definición del .prj (semieje 6380687): mediana ${mm(percentil(conPlano, 0.5))}, p90 ${mm(percentil(conPlano, 0.9))}, peor ${peorSinAtipicos.m.toFixed(2)} m (${peorSinAtipicos.codigo}) en ${conPlano.length - atipicos.length} de ${conPlano.length}`)
+console.log(`  Puntos de la Empresa de Acueducto: ${acueducto.length}, peor ${mm(acueducto.at(-1)?.m ?? NaN)}`)
 console.log(`  Atípicos a más de 1 m: ${atipicos.map((e) => `${e.codigo} ${e.m.toFixed(0)} m`).join(", ") || "ninguno"}`)
 console.log(`  GRS80 sin el plano de 2550 m: mediana ${percentil(sinPlano, 0.5).toFixed(2)} m, p90 ${percentil(sinPlano, 0.9).toFixed(2)} m`)
 afirmar(puntos.length === 363, `se esperaban 363 puntos geodésicos y hay ${puntos.length}`)
 afirmar(percentil(conPlano, 0.5) < 0.005, "la mediana con la definición del .prj ya no baja de 5 mm")
+afirmar(percentil(conPlano, 0.9) < 0.01, "el percentil 90 con la definición del .prj ya no baja de 1 cm")
+afirmar(acueducto.length === 317 && acueducto.at(-1)!.m < 0.02, "los puntos de la Empresa de Acueducto ya no son 317 a 2 cm o menos")
 afirmar(atipicos.length === 1 && atipicos[0].codigo === "BVRI", "el único atípico ya no es BVRI")
 afirmar(peorSinAtipicos.m < 0.5, "el peor punto sin atípicos ya no baja de 0,5 m")
 afirmar(percentil(sinPlano, 0.5) > 3, "ignorar el plano de 2550 m ya no se distingue")
@@ -106,8 +121,8 @@ comparar(
 )
 comparar(
   "Trazado, GeoJSON local transformado contra REST",
-  (trazadoLocal.features[0].geometry.coordinates as Par[][]).flat(),
-  (trazadoRest.features as EntidadRest[])[0].geometry.paths.flat(),
+  ((trazadoLocal.features[0]?.geometry as { coordinates: Par[][] } | undefined)?.coordinates ?? []).flat(),
+  ((trazadoRest.features as EntidadRest[])[0]?.geometry.paths ?? []).flat(),
   PROCEDENCIA_MAPA_METRO.trazado.verticesFuente,
 )
 
