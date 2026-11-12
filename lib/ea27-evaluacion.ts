@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+import { readFileSync } from "node:fs"
 import { z } from "zod"
 import corpusJson from "../data/ea27-corpus.json" with { type: "json" }
 import snapshot from "../data/transmilenio.json" with { type: "json" }
@@ -14,8 +16,25 @@ import { TransmilenioDataSchema } from "./transmilenio"
  * fluidez: nunca mira el texto de la respuesta.
  */
 
+/** Todas las intenciones posibles; TypeScript obliga a mantener esta lista completa con `Intent`. */
+const TIPOS: Record<Intent["type"], true> = {
+  greeting: true,
+  help: true,
+  cancel: true,
+  gps: true,
+  frequent: true,
+  route_info: true,
+  schedule: true,
+  trip: true,
+  trip_missing_destination: true,
+  unsupported: true,
+  metro: true,
+  unknown: true,
+}
+export const INTENCIONES = Object.keys(TIPOS) as [Intent["type"], ...Intent["type"][]]
+
 const EsperadoSchema = z.object({
-  intent: z.string(),
+  intent: z.enum(INTENCIONES),
   origin: z.string().optional(),
   destination: z.string().optional(),
   routeCode: z.string().optional(),
@@ -57,6 +76,10 @@ export function catalogoCongelado(): TransmilenioData {
   return data
 }
 
+/** Huella sha256 de un archivo de `data/`, para que un resultado diga con qué corpus y catálogo se midió. */
+export const huellaDeArchivo = (nombre: "ea27-corpus.json" | "transmilenio.json") =>
+  createHash("sha256").update(readFileSync(new URL(`../data/${nombre}`, import.meta.url))).digest("hex")
+
 const lugar = (nombre: string | undefined, data: TransmilenioData) => (nombre ? findPlaces(nombre, data)[0]?.name : undefined)
 
 /** ¿Pide el asistente un dato en vez de actuar? (`runIntent` responde con una pregunta.) */
@@ -65,7 +88,15 @@ export function pideAclaracion(intent: Intent, data: TransmilenioData): boolean 
   return intent.type === "trip" && !!intent.origin && !lugar(intent.origin, data) && !!lugar(intent.destination, data)
 }
 
-export type Puntuacion = { intentOk: boolean; entidadesOk: boolean; aclaraOk: boolean | null; ok: boolean; pidioAclaracion: boolean }
+export type Puntuacion = {
+  intentOk: boolean
+  entidadesOk: boolean
+  aclaraOk: boolean | null
+  ok: boolean
+  pidioAclaracion: boolean
+  /** El motor entendió «cancelar»; sirve para contar cancelaciones sobrantes. */
+  cancelo: boolean
+}
 
 function entidadesOk(esperado: Esperado, intent: Intent, data: TransmilenioData): boolean {
   switch (intent.type) {
@@ -103,7 +134,7 @@ export function puntuar(esperado: Esperado, intent: Intent, data: TransmilenioDa
   const entidades = intentOk && entidadesOk(esperado, intent, data)
   const pidioAclaracion = pideAclaracion(intent, data)
   const aclaraOk = esperado.aclara ? pidioAclaracion : null
-  return { intentOk, entidadesOk: entidades, aclaraOk, pidioAclaracion, ok: entidades && aclaraOk !== false }
+  return { intentOk, entidadesOk: entidades, aclaraOk, pidioAclaracion, cancelo: intent.type === "cancel", ok: entidades && aclaraOk !== false }
 }
 
 /** Percentil por rango más cercano. `valores` no puede estar vacío. */
@@ -139,6 +170,12 @@ export function resumir(mediciones: Medicion[]) {
       acertadas: esperadas.filter((m) => m.puntuacion?.aclaraOk).length,
       // Pidió un dato donde la referencia no lo pide.
       sobrantes: mediciones.filter((m) => !m.esperado.aclara && m.puntuacion?.pidioAclaracion).length,
+    },
+    cancelaciones: {
+      esperadas: mediciones.filter((m) => m.esperado.intent === "cancel").length,
+      acertadas: mediciones.filter((m) => m.esperado.intent === "cancel" && m.puntuacion?.ok).length,
+      // Canceló una frase que no pedía cancelar: la persona pierde su consulta.
+      sobrantes: mediciones.filter((m) => m.esperado.intent !== "cancel" && m.puntuacion?.cancelo).length,
     },
     errores: mediciones.filter((m) => m.error).map((m) => ({ id: m.id, error: m.error })),
     latenciaMs: { p50: redondear(percentil(ms, 50)), p95: redondear(percentil(ms, 95)), max: redondear(Math.max(...ms)) },

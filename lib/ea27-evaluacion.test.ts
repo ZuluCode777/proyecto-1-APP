@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { catalogoCongelado, corpus, percentil, puntuar, resumir, type Medicion } from "./ea27-evaluacion"
-import { findPlaces, findRouteByCode } from "./routes"
+import { INTENCIONES, catalogoCongelado, corpus, huellaDeArchivo, percentil, puntuar, resumir, type Esperado, type Medicion } from "./ea27-evaluacion"
+import { shortName } from "./routes"
 import { ESTACIONES_METRO_L1 } from "./metro"
 import type { Intent } from "./local-agent"
 
@@ -9,7 +9,12 @@ import type { Intent } from "./local-agent"
  * EA-27 (#53): el corpus congelado y la puntuación de la evaluación.
  */
 const data = catalogoCongelado()
-const INTENCIONES = ["greeting", "help", "cancel", "gps", "frequent", "route_info", "schedule", "trip", "trip_missing_destination", "unsupported", "metro", "unknown"]
+/**
+ * Huella del corpus congelado. Si esta prueba falla, el corpus cambió: sube
+ * `version` en el archivo, actualiza esta constante y vuelve a correr la
+ * evaluación; los resultados anteriores ya no son comparables.
+ */
+const HUELLA_CORPUS = "87ba59ce337033543bc9e10ef7770dc1bcf12b281a0c8e1dd50e2970e34c40e3"
 
 // ── Corpus ──
 
@@ -23,13 +28,20 @@ test("corpus: de 60 a 100 ítems, ids únicos y turnos 2 que apuntan a un turno 
   }
 })
 
-test("corpus: toda entidad de referencia existe en el catálogo", () => {
+test("corpus: la huella coincide con la congelada", () => {
+  assert.equal(huellaDeArchivo("ea27-corpus.json"), HUELLA_CORPUS)
+})
+
+test("corpus: toda entidad de referencia existe en el catálogo, por nombre y sin pasar por el intérprete", () => {
+  // Nombre corto (lo que dice la gente) o nombre completo de alguna estación.
+  const nombres = new Set(data.stations.flatMap((s) => [s.name, shortName(s.name)]))
+  const codigos = new Set(data.routes.map((r) => r.code))
   for (const i of corpus.items) {
     const { origin, destination, routeCode, clave, claves } = i.esperado
     for (const nombre of [origin, destination]) {
-      if (nombre) assert.equal(findPlaces(nombre, data)[0]?.name, nombre, `${i.id}: lugar «${nombre}»`)
+      if (nombre) assert.ok(nombres.has(nombre), `${i.id}: lugar «${nombre}»`)
     }
-    if (routeCode) assert.equal(findRouteByCode(routeCode, data)?.code, routeCode, `${i.id}: ruta ${routeCode}`)
+    if (routeCode) assert.ok(codigos.has(routeCode), `${i.id}: ruta ${routeCode}`)
     for (const c of [clave, ...(claves ?? [])]) {
       if (c) assert.ok(ESTACIONES_METRO_L1.some((e) => e.clave === c), `${i.id}: estación del Metro ${c}`)
     }
@@ -52,7 +64,7 @@ test("corpus: cubre las categorías pedidas y marca los fallos citados en #53", 
 // ── Puntuación ──
 
 const viaje = (origin: string | undefined, destination: string): Intent => ({ type: "trip", origin, destination })
-const esperadoViaje = { intent: "trip", origin: "Ricaurte", destination: "Calle 72" }
+const esperadoViaje: Esperado = { intent: "trip", origin: "Ricaurte", destination: "Calle 72" }
 
 test("puntuar: viaje acertado, con origen y destino invertidos, con origen inventado y sin origen", () => {
   assert.equal(puntuar(esperadoViaje, viaje("Ricaurte", "Calle 72"), data).ok, true)
@@ -72,7 +84,7 @@ test("puntuar: la intención correcta con otra entidad no cuenta", () => {
 })
 
 test("puntuar: origen fuera del catálogo exige conservarlo, no cambiarlo por una estación", () => {
-  const esperado = { intent: "trip", destination: "Ricaurte", origenFueraDelCatalogo: true, aclara: true }
+  const esperado: Esperado = { intent: "trip", destination: "Ricaurte", origenFueraDelCatalogo: true, aclara: true }
   const bien = puntuar(esperado, viaje("narnia", "Ricaurte"), data)
   assert.deepEqual([bien.ok, bien.pidioAclaracion], [true, true])
   assert.equal(puntuar(esperado, viaje("Nariño", "Ricaurte"), data).ok, false)
@@ -82,7 +94,7 @@ test("puntuar: origen fuera del catálogo exige conservarlo, no cambiarlo por un
 test("puntuar: viaje sin destino y consultas del Metro", () => {
   assert.equal(puntuar({ intent: "trip_missing_destination", origin: "Ricaurte", aclara: true }, { type: "trip_missing_destination", origin: "Ricaurte" }, data).ok, true)
   const metro = (consulta: Extract<Intent, { type: "metro" }>["consulta"]): Intent => ({ type: "metro", consulta })
-  const esperado = { intent: "metro", tipo: "servicio", tema: "viaje" }
+  const esperado: Esperado = { intent: "metro", tipo: "servicio", tema: "viaje" }
   assert.equal(puntuar(esperado, metro({ tipo: "servicio", tema: "viaje" }), data).ok, true)
   assert.equal(puntuar(esperado, metro({ tipo: "servicio", tema: "tarifa" }), data).ok, false)
   assert.equal(puntuar({ intent: "metro", tipo: "linea", linea: 2 }, metro({ tipo: "linea", linea: 1 }), data).ok, false)
@@ -94,7 +106,7 @@ const medicion = (id: string, categoria: string, ok: boolean, ms: number): Medic
   id,
   categoria,
   esperado: { intent: "gps" },
-  puntuacion: { intentOk: ok, entidadesOk: ok, aclaraOk: null, pidioAclaracion: false, ok },
+  puntuacion: { intentOk: ok, entidadesOk: ok, aclaraOk: null, pidioAclaracion: false, cancelo: false, ok },
   ms,
 })
 
@@ -102,6 +114,16 @@ test("percentil: rango más cercano", () => {
   const valores = [5, 1, 4, 2, 3, 6, 7, 8, 9, 10]
   assert.equal(percentil(valores, 50), 5)
   assert.equal(percentil(valores, 95), 10)
+})
+
+test("resumir: cancelaciones acertadas y sobrantes", () => {
+  const cancela = (id: string, esperaCancelar: boolean, cancelo: boolean): Medicion => ({
+    ...medicion(id, "cancelacion", esperaCancelar === cancelo, 1),
+    esperado: { intent: esperaCancelar ? "cancel" : "gps" },
+    puntuacion: { intentOk: true, entidadesOk: true, aclaraOk: null, pidioAclaracion: false, cancelo, ok: esperaCancelar === cancelo },
+  })
+  const r = resumir([cancela("a", true, true), cancela("b", true, false), cancela("c", false, true), cancela("d", false, false)])
+  assert.deepEqual(r.cancelaciones, { esperadas: 2, acertadas: 1, sobrantes: 1 })
 })
 
 test("resumir: exactitud por categoría, errores y latencia", () => {

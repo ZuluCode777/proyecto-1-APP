@@ -1,9 +1,8 @@
 # EA-27 (#53): evaluación del asistente, reglas frente a modelo
 
-Rama `docs/ea27-evaluacion`, desde `origin/main` 81fbe67. Este documento
-describe el método, el corpus y los resultados de las reglas. **Los resultados
-del modelo todavía no están:** los corre quien tiene acceso al Ollama del
-equipo (ver [Resultados del modelo](#resultados-del-modelo)).
+Este documento describe el método, el corpus y los resultados de las reglas.
+**Los resultados del modelo todavía no están.** Los corre quien tiene acceso al
+Ollama del equipo (ver [Resultados del modelo](#resultados-del-modelo)).
 
 La pregunta del issue era si otro modelo mejora la comprensión frente a las
 reglas y a Ollama sin degradar latencia, privacidad, costo ni las respuestas
@@ -38,7 +37,7 @@ coinciden. No se lee el texto de la respuesta. Reglas de puntuación
 | Motor | Qué es |
 | --- | --- |
 | `reglas` | `parseIntent`, en este proceso y sin red. |
-| `modelo` | `parseIntentWithOllama`: el mismo prompt, esquema JSON, `temperature: 0` y validación de entidades contra el catálogo que usa la app. Una salida que no valida (`null`) cuenta como `unknown`. No puede expresar `metro` ni `trip_missing_destination`: son solo de reglas y las falla por diseño. |
+| `modelo` | `parseIntentWithOllama`: el mismo prompt, esquema JSON, `temperature: 0` y validación de entidades contra el catálogo que usa la app. Una salida que no valida (`null`) cuenta como `unknown`. No puede expresar `metro` ni `trip_missing_destination`: son solo de reglas y las falla por diseño. Tampoco puede acertar los ítems con `origenFueraDelCatalogo` (`ambiguo-01`, `ambiguo-02`, `aclaracion-02a`): `parseIntentWithOllama` devuelve `null` cuando el origen que nombra el modelo no está en el catálogo (`lib/ollama.ts`, caso `trip`), eso cuenta como `unknown`, y un origen vacío tampoco cumple la referencia. Para esos tres ítems se lee la columna `app`: ahí el `unknown` del modelo deja la intención de las reglas, que sí conserva el origen. Se cuentan aparte al comparar `modelo` con `reglas`. |
 | `app` | Lo que responde `POST /api/agent` con el modelo cargado: `requiereModelo` y `elegirIntent` de `lib/seleccion-interprete.ts`, con las reglas como respaldo si el modelo falla o devuelve `unknown`. Es el número que importa para decidir. |
 
 La comparación que decide es `reglas` frente a `app`. `modelo` solo explica de
@@ -46,7 +45,12 @@ dónde sale la diferencia.
 
 **Catálogo.** El corpus se evalúa contra la copia congelada
 `data/transmilenio.json` con la evidencia GTFS aplicada, no contra el servicio
-en vivo, para que la corrida se repita.
+en vivo, para que la corrida se repita. El resultado guarda el sha256 del
+corpus y del catálogo con que se midió. Una prueba compara el del corpus con una
+constante versionada: si el corpus cambia, falla hasta que se suba `version` y se
+actualice la constante. El del catálogo solo se registra, porque
+`sync:transmilenio` puede regenerarlo; dos resultados con otra huella de catálogo
+no son comparables sin repetir las reglas.
 
 **Una frase, un turno.** `/api/agent` no guarda la conversación. Las
 aclaraciones de dos turnos se evalúan como dos peticiones independientes: el
@@ -72,7 +76,8 @@ encendido y con la sesión iniciada durante la feria; no se estimó en pesos.
 `data/ea27-corpus.json`, versión 1, congelado el 11/11/2026: **100 frases** en
 español de Bogotá («parce», «oiga», «la 26 a la 72», «el Tunal»), con
 referencia revisada contra el catálogo. Una prueba (`lib/ea27-evaluacion.test.ts`)
-comprueba que cada estación, ruta y estación del Metro de las referencias existe.
+comprueba que cada estación (por su nombre en el catálogo, sin pasar por el
+intérprete), ruta y estación del Metro de las referencias existe.
 La referencia dice qué quiere la persona, no lo que responde hoy un motor; el
 corpus no se ajusta para que un motor acierte, y un cambio sube `version`.
 
@@ -92,10 +97,22 @@ corpus no se ajusta para que un motor acierte, y un cambio sube `version`.
 
 Incluye las frases citadas en los comentarios del issue y en
 [`ollama-tunel-feria.md`](ollama-tunel-feria.md), marcadas con `falloConocido`
-(10 frases): norte de la ciudad, «en las aguas», «portal eldorado… museo
+(10 de las 100; las reglas fallan 3: `rutas-07`, `destino-02` y `avisos-03`):
+norte de la ciudad, «en las aguas», «portal eldorado… museo
 nacional», «desde Narnia», «portal de Suba», «información de la B23», «cuándo
 llega el bus» y las del Metro. Esa marca es una pista de dónde fallaba un motor
-cuando se midió; no cambia la referencia.
+cuando se midió; no cambia la referencia. Por eso el corpus no es una muestra
+neutral: el 10 % viene de fallos ya vistos y las cifras no son una tasa de error
+esperada en uso real.
+
+Tres referencias son decisiones de criterio, no hechos, y llevan su razón en
+`nota`: `destino-07` («qué buses pasan por la Calle 100» es un viaje solo con
+destino, porque la app no tiene otra intención para eso), `ambiguo-05` («Suba» es
+un lugar con nombre propio que el catálogo agrupa y la app sirve entero) y
+`ambiguo-06` («el museo… el portal» no nombra ningún lugar y se rechaza). Las tres
+coinciden con lo que hoy responden las reglas porque la app define esos lugares y
+esa intención; si el equipo prefiere otra referencia, se cambia el corpus y se
+sube `version`.
 
 ## Cómo correrla
 
@@ -119,11 +136,15 @@ token ni la dirección en el resultado y registra de los errores solo el mensaje
 
 ## Resultados de las reglas
 
-Corrida del 11/11/2026 en el portátil de desarrollo, en este proceso, sin red
-(`docs/expoandes/ea-27-resultados-reglas.json`, con el detalle de cada frase):
+Corrida del 12/11/2026 en el portátil de desarrollo, en este proceso, sin red
+(`docs/expoandes/ea-27-resultados-reglas.json`, con la intención, el acierto y los
+milisegundos de cada frase):
 
-**89 de 100 (89 %).** Latencia p50 0,06 ms, p95 0,23 ms, máximo 2,9 ms; sin
-errores. Son tiempos de CPU de una máquina concreta: sirven para comparar
+**89 de 100 (89 %)**, sobre un corpus donde 10 frases vienen de fallos ya vistos
+(las reglas fallan 3 de ellas). Latencia p50 0,05 ms, p95 0,34 ms, máximo 2,8 ms;
+sin errores. Las exactitudes salen de corpus, catálogo y código fijos; la
+latencia y los `ms` de cada frase son informativos y cambian en cada corrida.
+Son tiempos de CPU de una máquina concreta: sirven para comparar
 órdenes de magnitud con el modelo, no como objetivo.
 
 | Categoría | Aciertos |
@@ -144,6 +165,9 @@ errores. Son tiempos de CPU de una máquina concreta: sirven para comparar
 destino, origen que no existe), las reglas pidieron las 5. Una vez pidieron un
 dato donde no hacía falta: «quiero ir al Tunal desde el Portal 80» lo leen como
 viaje sin destino.
+
+**Cancelaciones.** 7 pedidas, 7 acertadas, 0 sobrantes (ninguna frase que no pedía
+cancelar la canceló).
 
 **Las 11 que fallan:**
 
@@ -168,12 +192,15 @@ acción validada contra el catálogo. Aun así no son un rechazo.
 ## Resultados del modelo
 
 > **PENDIENTE.** Los corre el orquestador contra el Ollama del equipo con el
-> comando de [Cómo correrla](#cómo-correrla). Se completan con los números del
-> archivo `ea-27-resultados-modelo.json`. No se inventan cifras.
+> comando de [Cómo correrla](#cómo-correrla), **al menos 3 veces**, guardando
+> cada `ea-27-resultados-modelo.json` con otro nombre antes de la siguiente
+> corrida (el corredor sobrescribe el archivo). El PR que corra el modelo
+> reemplaza esta sección y la tabla siguiente con esos números. No se inventan
+> cifras.
 
 | Motor | Aciertos | p50 | p95 | Errores |
 | --- | --- | --- | --- | --- |
-| `reglas` | 89/100 | 0,06 ms | 0,23 ms | 0 |
+| `reglas` | 89/100 | 0,05 ms | 0,34 ms | 0 |
 | `modelo` | _pendiente_ | _pendiente_ | _pendiente_ | _pendiente_ |
 | `app` (modelo primero, reglas de respaldo) | _pendiente_ | _pendiente_ | _pendiente_ | _pendiente_ |
 
@@ -248,7 +275,12 @@ estado real.
 - **Las frases son una a una.** No se evalúa memoria de conversación porque la
   app no la tiene.
 - **Latencia del modelo.** Medida desde donde se corra el comando. Desde el
-  mismo equipo no incluye la red de Render ni el túnel; los 0,6–1,4 s medidos
+  mismo equipo no incluye la red de Render ni el túnel; los de 0,6 a 1,4 s medidos
   desde Render el 11/11/2026 (comentario de #53) sí.
+- **Arranque en frío de Render.** La primera petición tras despertar el servidor
+  tardó 3,9 s el 11/11/2026 (comentario de #53). Esta evaluación no la mide.
+- **No determinismo.** `temperature: 0` en GPU no garantiza la misma salida en
+  cada corrida. Una sola corrida del modelo no basta: se repite al menos 3 veces
+  y se informa el rango, no un número.
 - **No se midió** concurrencia, el caso del equipo apagado ni otro modelo
   distinto de `qwen2.5:3b`. Esta evaluación no compara modelos alternativos.

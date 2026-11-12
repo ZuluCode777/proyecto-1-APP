@@ -24,7 +24,7 @@
  * propio y corre en hardware del equipo.
  */
 import { mkdirSync, writeFileSync } from "node:fs"
-import { catalogoCongelado, corpus, puntuar, resumir, type Medicion } from "@/lib/ea27-evaluacion"
+import { catalogoCongelado, corpus, huellaDeArchivo, puntuar, resumir, type Medicion } from "@/lib/ea27-evaluacion"
 import { parseIntent, type Intent } from "@/lib/local-agent"
 import { OLLAMA_MODEL, ollamaConfigured, ollamaStatus, parseIntentWithOllama, warmUpOllama } from "@/lib/ollama"
 import { elegirIntent, requiereModelo } from "@/lib/seleccion-interprete"
@@ -33,15 +33,16 @@ const conModelo = process.argv[2] === "modelo"
 if (process.argv[2] && !conModelo) throw new Error(`Modo desconocido «${process.argv[2]}». Usa «modelo» o nada.`)
 
 const data = catalogoCongelado()
-const medir = <T>(f: () => T): [T, number] => {
+const medir = async <T>(f: () => T | Promise<T>): Promise<[T, number]> => {
   const inicio = performance.now()
-  const valor = f()
+  const valor = await f()
   return [valor, performance.now() - inicio]
 }
 
 const reglas: Medicion[] = []
 const modelo: Medicion[] = []
 const app: Medicion[] = []
+const redondear = (n: number) => Math.round(n * 1000) / 1000
 const detalle: Record<string, Record<string, unknown>> = {}
 
 if (conModelo) {
@@ -56,36 +57,37 @@ for (const item of corpus.items) {
   const fila: Record<string, unknown> = (detalle[item.id] = { frase: item.frase })
   const base = { id: item.id, categoria: item.categoria, esperado: item.esperado }
 
-  const [deReglas, msReglas] = medir(() => parseIntent(item.frase, data))
+  const [deReglas, msReglas] = await medir(() => parseIntent(item.frase, data))
   reglas.push({ ...base, puntuacion: puntuar(item.esperado, deReglas, data), ms: msReglas })
-  fila.reglas = deReglas
+  fila.reglas = { intent: deReglas, ok: reglas.at(-1)!.puntuacion!.ok, ms: redondear(msReglas) }
 
   if (!conModelo) continue
 
-  let deModelo: Intent | null = null
   let error: string | undefined
-  const inicio = performance.now()
-  try {
-    deModelo = await parseIntentWithOllama(item.frase, data)
-  } catch (e) {
-    // Solo el mensaje: `fetch` pone la dirección en `cause`.
-    error = e instanceof Error ? e.message : "error desconocido"
-  }
-  const msModelo = performance.now() - inicio
+  const [deModelo, msModelo] = await medir(() =>
+    parseIntentWithOllama(item.frase, data).catch((e) => {
+      // Solo el mensaje: `fetch` pone la dirección en `cause`.
+      error = e instanceof Error ? e.message : "error desconocido"
+      return null
+    }),
+  )
 
   const crudo: Intent = deModelo ?? { type: "unknown" }
   modelo.push({ ...base, puntuacion: error ? null : puntuar(item.esperado, crudo, data), ms: msModelo, error })
-  fila.modelo = error ? { error } : deModelo === null ? { sinSalidaValida: true } : deModelo
+  const salida = error ? { error } : deModelo === null ? { sinSalidaValida: true } : { intent: deModelo }
+  fila.modelo = { ...salida, ok: modelo.at(-1)!.puntuacion?.ok ?? false, ms: redondear(msModelo) }
 
   // Como la ruta: las dos intenciones solo de reglas no consultan al modelo.
   const consultaba = requiereModelo(deReglas)
   const { intent, engine } = elegirIntent(deReglas, consultaba ? deModelo : null)
   app.push({ ...base, puntuacion: puntuar(item.esperado, intent, data), ms: msReglas + (consultaba ? msModelo : 0) })
-  fila.app = { engine, intent }
+  fila.app = { engine, intent, ok: app.at(-1)!.puntuacion!.ok, ms: redondear(app.at(-1)!.ms) }
 }
 
 const resultado = {
-  corpus: { version: corpus.version, congelado: corpus.congelado, items: corpus.items.length },
+  corpus: { version: corpus.version, congelado: corpus.congelado, items: corpus.items.length, sha256: huellaDeArchivo("ea27-corpus.json") },
+  catalogo: { archivo: "data/transmilenio.json", sha256: huellaDeArchivo("transmilenio.json") },
+  reproducibilidad: "Las exactitudes salen de corpus, catálogo y código fijos. `ejecutado`, `latenciaMs` y los `ms` de cada frase son informativos y cambian en cada corrida; un modelo con temperature 0 en GPU tampoco garantiza la misma salida.",
   ejecutado: new Date().toISOString(),
   modo: conModelo ? "reglas y modelo" : "solo reglas",
   modelo: conModelo ? OLLAMA_MODEL : null,
