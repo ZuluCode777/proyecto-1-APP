@@ -570,18 +570,22 @@ final class TransMiVozUITests: XCTestCase {
         abrirPestana("Consulta")
         let escenario = elemento("boton-escenario")
         XCTAssertTrue(escenario.waitForExistence(timeout: 10))
-        XCTAssertEqual(escenario.label, "Preguntar por el Metro (futuro)")
+        XCTAssertEqual(escenario.label, "Metro (futuro)")
+        XCTAssertEqual(escenario.value as? String, "desactivado")
+        XCTAssertGreaterThanOrEqual(escenario.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(escenario.frame.height, 44)
         escenario.tap()
-        esperar(escenario, "label == %@", "Volver a transporte de hoy", "No se cambió al escenario del Metro")
+        esperar(escenario, "value == %@", "activado", "No se cambió al escenario del Metro")
+        XCTAssertEqual(escenario.label, "Metro (futuro)", "el texto del selector no cambia: el estado va en su valor")
         XCTAssertTrue(
-            elemento("introduccion-consulta").label.hasPrefix("Escenario futuro: el Metro de Bogotá aún no presta servicio."),
-            "la pantalla debe decir que el Metro es futuro antes de preguntar")
+            elemento("introduccion-consulta").label.hasPrefix("Escenario Metro educativo: infraestructura futura, sin servicio comercial."),
+            "la pantalla debe decir que el Metro es educativo y futuro antes de preguntar")
         try auditar(app, "consulta-escenario-metro", testCase: self)
 
         preguntar("estaciones")
-        esperarTexto("Metro de Bogotá: escenario futuro")
+        esperarTexto("Escenario Metro: infraestructura futura")
         XCTAssertTrue(elemento("aviso-metro-futuro").exists, "el resultado debe decir que el Metro no presta servicio")
-        XCTAssertTrue(app.staticTexts["[SIMULADO] Metro de Bogotá, Línea 1: en construcción y sin servicio comercial."].exists)
+        XCTAssertTrue(app.staticTexts["[SIMULADO] Metro de Bogotá, estación de prueba: infraestructura futura y sin servicio comercial."].exists)
     }
 
     /// Servidor arrancando SIMULADO (no es Render): el plazo vence, la pregunta se conserva y el reintento responde.
@@ -682,6 +686,47 @@ final class TransMiVozTextoGrandeUITests: XCTestCase {
             } else {
                 try auditar(app, "texto-muy-grande-\(nombre)", testCase: self)
             }
+        }
+    }
+
+    /// El escenario Metro con el texto más grande (EA-17): el selector de la barra queda tocable y no menor de 44 pt, y la
+    /// pantalla en Metro (introducción y campo) pasa la misma auditoría que la de transporte. Prueba aparte para no
+    /// alargar la de arriba, que ya es larga en un runner lento.
+    func testMetroConTextoMuyGrande() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-PRUEBAS_UI_SIMULADAS", "-AppleLanguages", "(es)", "-AppleLocale", "es_CO",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL",
+        ]
+        app.launch()
+        addTeardownBlock { app.terminate() }
+        let pestana = app.tabBars.buttons["Consulta"]
+        XCTAssertTrue(pestana.waitForExistence(timeout: 10))
+        pestana.tap()
+        esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña Consulta")
+
+        let escenario = app.descendants(matching: .any).matching(identifier: "boton-escenario").firstMatch
+        XCTAssertTrue(escenario.waitForExistence(timeout: 10), "El selector del escenario Metro no existe")
+        XCTAssertTrue(escenario.isHittable, "El selector del escenario Metro no es tocable con el texto más grande")
+        XCTAssertGreaterThanOrEqual(escenario.frame.width, 44, "El selector mide menos de 44 pt de ancho")
+        XCTAssertGreaterThanOrEqual(escenario.frame.height, 44, "El selector mide menos de 44 pt de alto")
+        escenario.tap()
+        esperar(escenario, "value == %@", "activado", "No se cambió al escenario del Metro")
+
+        for (id, contexto) in [("introduccion-consulta", "introduccion"), ("boton-enviar", "campo")] {
+            exponer(id, en: app)
+            if id == "introduccion-consulta" {
+                XCTAssertTrue(
+                    app.staticTexts[id].label.hasPrefix("Escenario Metro educativo"),
+                    "La introducción debe decir que el Metro es un escenario educativo")
+            } else {
+                let contador = app.staticTexts["contador-caracteres"]
+                XCTAssertTrue(contador.isHittable, "El contador debe estar visible para auditarlo")
+                XCTAssertGreaterThanOrEqual(contador.frame.minY, app.navigationBars.firstMatch.frame.maxY)
+                XCTAssertLessThanOrEqual(contador.frame.maxY, app.scrollViews.firstMatch.frame.maxY)
+            }
+            try auditar(app, "texto-muy-grande-Consulta-metro-\(contexto)", testCase: self)
         }
     }
 }

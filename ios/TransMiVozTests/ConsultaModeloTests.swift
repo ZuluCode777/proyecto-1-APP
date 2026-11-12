@@ -309,6 +309,32 @@ final class ConsultaModeloTests: XCTestCase {
         cliente.responder(.success(respuesta))
     }
 
+    /// Vocabulario de `CONTEXT.md`: el Metro es un escenario educativo de infraestructura futura, sin servicio, y nunca
+    /// una «línea», un viaje operativo ni una ruta disponible.
+    func testLosTextosDelEscenarioMetroDicenEducativoFuturoYSinServicio() {
+        let metro = EscenarioConsulta.metroFuturo
+        let aviso = metro.avisoResultado ?? ""
+        let textos = [
+            metro.introduccion, metro.etiquetaCampo, metro.pistaSelector, metro.anuncioAlElegir, metro.tituloResultado,
+            aviso, metro.anuncioResultado ?? "",
+        ]
+        for texto in textos {
+            XCTAssertFalse(texto.lowercased().contains("línea"), texto)
+            XCTAssertFalse(texto.lowercased().contains("linea"), texto)
+        }
+        for texto in [metro.introduccion, metro.anuncioAlElegir] {
+            XCTAssertTrue(texto.contains("educativo"), texto)
+            XCTAssertTrue(texto.contains("futura"), texto)
+            XCTAssertTrue(texto.contains("sin servicio comercial"), texto)
+        }
+        XCTAssertTrue(aviso.contains("educativa") && aviso.contains("sin servicio comercial"), aviso)
+        XCTAssertNotNil(metro.anuncioResultado)
+        XCTAssertNil(EscenarioConsulta.transporte.avisoResultado)
+        XCTAssertNil(EscenarioConsulta.transporte.anuncioResultado)
+        XCTAssertEqual(EscenarioConsulta.transporte.valorSelector, "desactivado")
+        XCTAssertEqual(metro.valorSelector, "activado")
+    }
+
     func testCancelarSinConsultaEnCursoNoHaceNada() async {
         let modelo = ConsultaModelo(cliente: ClienteControlable())
         modelo.cancelar()

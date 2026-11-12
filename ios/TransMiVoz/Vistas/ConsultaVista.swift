@@ -30,9 +30,7 @@ struct ConsultaVista: View {
                     // y no se desliza bajo la barra de pestañas (que tapa y desdibuja lo que pasa por debajo).
                     ResultadoConsultaVista(modelo: modelo, foco: $foco, alReintentar: reintentar)
 
-                    Text(esMetro
-                        ? "Escenario futuro: el Metro de Bogotá aún no presta servicio. Pregunta por una estación o una línea; el texto se envía al servidor."
-                        : "Escribe una pregunta de transporte. El texto se envía al servidor configurado; no se envía tu ubicación.")
+                    Text(modelo.escenario.introduccion)
                         .font(.body)
                         .accessibilityIdentifier("introduccion-consulta")
 
@@ -48,8 +46,8 @@ struct ConsultaVista: View {
                             .focused($campoEnfocado)
                             .submitLabel(.send)
                             .onSubmit { enviar() }
-                            .accessibilityLabel(esMetro ? "Pregunta sobre el Metro, escenario futuro" : "Pregunta de transporte")
-                            .accessibilityHint(pistaCampo)
+                            .accessibilityLabel(modelo.escenario.etiquetaCampo)
+                            .accessibilityHint(modelo.escenario.pistaCampo)
                             .accessibilityIdentifier("campo-pregunta")
 
                         Text("\(modelo.texto.utf16.count) de \(modelo.escenario.maximoCaracteres) caracteres")
@@ -78,8 +76,8 @@ struct ConsultaVista: View {
             }
             .navigationTitle("Consulta")
             .navigationBarTitleDisplayMode(.inline)
-            // En la barra y no en el contenido: con el texto más grande un botón de ~230 pt, antes o después de «Enviar»,
-            // cambia hasta dónde se desplaza la pantalla y la auditoría deja de ver lo mismo que en `main` (CI de EA-17).
+            // En la barra y no en el contenido: un botón ancho dentro del contenido cambia la altura desplazable con
+            // los tamaños de texto de accesibilidad y rompe la auditoría de Dynamic Type.
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) { BotonEscenario(modelo: modelo) }
             }
@@ -88,24 +86,10 @@ struct ConsultaVista: View {
             .onChange(of: modelo.estado) { _, nuevo in
                 anunciar(nuevo)
             }
-            .onChange(of: modelo.escenario) { _, nuevo in
-                let texto: String = nuevo == .metroFuturo
-                    ? "Escenario Metro: futuro, sin servicio. Las respuestas son información del proyecto, no un viaje."
-                    : "Escenario de transporte de hoy."
-                AccessibilityNotification.Announcement(texto).post()
-            }
         }
         // `TabView` conserva el modelo al cambiar de pestaña: una consulta lenta no
         // debe terminar fuera de pantalla (arquitectura §7). Solo cancela la vigente.
         .onDisappear { modelo.cancelar() }
-    }
-
-    private var esMetro: Bool { modelo.escenario == .metroFuturo }
-
-    /// Sin permiso de ubicación que pedir ni denegar: el origen de un viaje se escribe en la pregunta.
-    private var pistaCampo: String {
-        let maximo = "Máximo \(modelo.escenario.maximoCaracteres) caracteres."
-        return esMetro ? maximo : maximo + " Para un viaje, escribe también desde dónde sales: la app no usa tu ubicación."
     }
 
     /// Cierra el teclado antes de enviar: si no, tapa el resultado y la barra de pestañas.
@@ -127,7 +111,7 @@ struct ConsultaVista: View {
         case .enviando: texto = "Consultando al servidor."
         case .respuesta(let respuesta):
             var partes = ["Respuesta recibida."]
-            if modelo.escenarioEnviado == .metroFuturo { partes.append("Metro de Bogotá: escenario futuro, sin servicio.") }
+            if let escenario = modelo.escenarioEnviado.anuncioResultado { partes.append(escenario) }
             if respuesta.catalogo?.antiguo == true { partes.append("Los datos de TransMilenio son antiguos.") }
             texto = partes.joined(separator: " ")
         case .error(let error): texto = "\(error.mensaje) \(error.recuperacion)"
@@ -138,20 +122,27 @@ struct ConsultaVista: View {
     }
 }
 
-/// Cambia de escenario. El Metro va aparte del transporte de hoy y siempre rotulado como futuro, en pantalla
-/// y para VoiceOver. Es el mismo botón con otro rótulo, así el foco no se pierde al cambiar. El texto visible es corto
-/// (cabe en la barra) y está contenido en la etiqueta de accesibilidad, que lo dice completo.
+/// Selector del escenario Metro, que va aparte del transporte de hoy. Es un interruptor: su texto visible no cambia
+/// («Metro (futuro)», lo dice también en voz) y su estado va en el valor de accesibilidad y en la introducción de la
+/// pantalla. El anuncio sale solo de aquí: un reintento que restablece el escenario no pisa «Consultando al servidor».
 private struct BotonEscenario: View {
     let modelo: ConsultaModelo
 
     var body: some View {
-        let esMetro = modelo.escenario == .metroFuturo
-        Button(esMetro ? "Transporte de hoy" : "Metro (futuro)") {
-            modelo.escenario = esMetro ? .transporte : .metroFuturo
+        Button {
+            let nuevo: EscenarioConsulta = modelo.escenario == .metroFuturo ? .transporte : .metroFuturo
+            modelo.escenario = nuevo
+            AccessibilityNotification.Announcement(nuevo.anuncioAlElegir).post()
+        } label: {
+            // El área táctil va dentro de la etiqueta: fuera del botón no ampliaría lo que recibe el toque.
+            Text("Metro (futuro)")
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
         }
-        .accessibilityLabel(esMetro ? "Volver a transporte de hoy" : "Preguntar por el Metro (futuro)")
-        .accessibilityValue(esMetro ? "Escenario actual: Metro, futuro y sin servicio" : "Escenario actual: transporte de hoy")
-        .accessibilityHint(esMetro ? "" : "El Metro de Bogotá todavía no presta servicio. Cambia la consulta a información del proyecto.")
+        // La barra no crece con el tamaño de texto: al mantener pulsado, el sistema lo muestra en grande.
+        .accessibilityShowsLargeContentViewer()
+        .accessibilityValue(modelo.escenario.valorSelector)
+        .accessibilityHint(modelo.escenario.pistaSelector)
         .accessibilityIdentifier("boton-escenario")
     }
 }
@@ -184,8 +175,7 @@ private struct ResultadoConsultaVista: View {
                 .accessibilityIdentifier("progreso-consulta")
         case .respuesta(let respuesta):
             RespuestaVista(
-                respuesta: respuesta, esMetro: modelo.escenarioEnviado == .metroFuturo, foco: foco,
-                alReintentar: alReintentar)
+                respuesta: respuesta, escenario: modelo.escenarioEnviado, foco: foco, alReintentar: alReintentar)
         case .error(let error):
             VStack(alignment: .leading, spacing: 8) {
                 Label("No se pudo completar", systemImage: "exclamationmark.triangle")
@@ -223,21 +213,20 @@ private struct ResultadoConsultaVista: View {
 
 private struct RespuestaVista: View {
     let respuesta: RespuestaAgente
-    /// La pregunta se hizo en el escenario del Metro: el resultado se rotula como futuro.
-    let esMetro: Bool
+    /// Escenario en que se hizo la pregunta: rotula el resultado.
+    let escenario: EscenarioConsulta
     var foco: AccessibilityFocusState<ZonaFocoConsulta?>.Binding
     let alReintentar: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(esMetro ? "Metro de Bogotá: escenario futuro" : "Respuesta", systemImage: esMetro ? "tram.fill" : "text.bubble")
+            Label(escenario.tituloResultado, systemImage: escenario == .metroFuturo ? "tram.fill" : "text.bubble")
                 .font(.headline)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityFocused(foco, equals: .resultado)
 
-            if esMetro {
-                Text("Información de un proyecto que todavía no presta servicio. No es un viaje ni una ruta en servicio.")
-                    .accessibilityIdentifier("aviso-metro-futuro")
+            if let aviso = escenario.avisoResultado {
+                Text(aviso).accessibilityIdentifier("aviso-metro-futuro")
             }
 
             if case .viaje(let tramos) = respuesta.accion {

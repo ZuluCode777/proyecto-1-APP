@@ -12,7 +12,7 @@ struct ClienteAgenteSimulado: ClienteAgente {
         let limpio = try EntradaConsulta.validar(texto).get()
         // Escenario Metro: la pregunta llega con su contexto delante (`EscenarioConsulta.prefijo`).
         if limpio.lowercased().hasPrefix("metro:") {
-            return RespuestaAgente(texto: "[SIMULADO] Metro de Bogotá, Línea 1: en construcción y sin servicio comercial.")
+            return RespuestaAgente(texto: "[SIMULADO] Metro de Bogotá, estación de prueba: infraestructura futura y sin servicio comercial.")
         }
         switch limpio.lowercased() {
         case "error401": throw ErrorConsulta.noAutorizado

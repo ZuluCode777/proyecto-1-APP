@@ -51,7 +51,8 @@ test("contrato iOS: los fixtures válidos de FixturesHTTP.swift cumplen AgentRep
 
 test("contrato iOS: el prefijo del escenario Metro hace que el servidor trate la frase como Metro", () => {
   const swift = readFileSync(new URL("../ios/TransMiVoz/Dominio/EscenarioConsulta.swift", import.meta.url), "utf8")
-  const prefijo = /case \.metroFuturo: return "([^"]+)"/.exec(swift)?.[1]
+  // Solo el bloque de `prefijo`: otras propiedades de `EscenarioConsulta` también tienen un `case .metroFuturo`.
+  const prefijo = /var prefijo: String \{[\s\S]*?case \.metroFuturo: return "([^"]+)"/.exec(swift)?.[1]
   assert.equal(prefijo, "Metro: ")
   for (const frase of ["Calle 72", "estaciones", "Ricaurte", "de Ricaurte a Calle 72", "cuánto cuesta"]) {
     assert.equal(parseIntent(`${prefijo}${frase}`, copia).type, "metro", frase)
