@@ -123,8 +123,9 @@ export async function POST(req: Request) {
 
   // EA-27 (#53), decisión de A1 del 10/11/2026: con el modelo cargado, TODA
   // pregunta se consulta al modelo; solo responden las reglas cuando no hay
-  // modelo cargado. Excepciones (ver `lib/seleccion-interprete.ts`): `metro` y
-  // `trip_missing_destination` los resuelven siempre las reglas, y un `unknown`
+  // modelo cargado. Excepciones (ver `lib/seleccion-interprete.ts`): `metro`,
+  // `trip_missing_destination` y `seguridad_fisica` los resuelven siempre las
+  // reglas (el modelo nunca decide si es seguro cruzar), y un `unknown`
   // del modelo no anula la intención de las reglas (EA-08, hallazgo 15). La
   // consulta tiene una espera acotada (`TIMEOUT_MS` en `lib/ollama.ts`). Sin
   // modelo cargado se responde con reglas al instante y se lanza la precarga

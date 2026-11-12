@@ -68,14 +68,14 @@ const MODEL_INTENT_HELP: Record<(typeof MODEL_INTENTS)[number], string> = {
   greeting: "saludo o agradecimiento.",
   help: "pregunta qué puede hacer el asistente.",
   cancel: "quiere cancelar.",
-  gps: "quiere saber dónde está o la estación más cercana.",
+  gps: "quiere saber dónde está o la estación más cercana. No es gps si pregunta si puede cruzar o subir, o si el camino, el semáforo o el andén están libres.",
   frequent: "pide sus rutas frecuentes o guardadas.",
   route_info: "pregunta por una ruta concreta (pon su código en routeCode).",
   schedule: "pregunta el horario de una ruta (pon su código en routeCode).",
   trip: "quiere ir a una estación. destination es obligatorio; origin solo si lo dice.",
   fares: "pregunta por tarifas o pasajes.",
   realtime: "pregunta cuándo llega un bus.",
-  unknown: "cualquier otra cosa.",
+  unknown: "cualquier otra cosa, incluida toda pregunta de seguridad física (si puede cruzar, subir, o si el camino, el semáforo o el andén están libres).",
 }
 
 const Extraction = z.object({
