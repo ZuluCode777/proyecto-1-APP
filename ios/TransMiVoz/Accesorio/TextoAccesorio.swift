@@ -120,9 +120,13 @@ enum TextoAccesorio {
     /// Las frases del bloqueo, en orden y en un solo sitio: `descripcion` las une con un espacio y la pantalla pinta una por párrafo.
     private static let frasesEnlaceNoVerificado = [
         "Avisos bloqueados: esta versión no puede verificar que el enlace con el accesorio sea cifrado y autenticado.",
-        "No se usa ninguna medida.",
-        "Esto no es una detección ni significa camino libre.",
+        sinMedidaPorEnlace,
+        noEsDeteccionNiCaminoLibre,
     ]
+
+    /// Las dos últimas frases del bloqueo con nombre propio: la Ayuda las repite y no depende de su orden en la lista.
+    static let sinMedidaPorEnlace = "No se usa ninguna medida."
+    static let noEsDeteccionNiCaminoLibre = "Esto no es una detección ni significa camino libre."
 
     /// El gesto del botón que abre la ventana de emparejamiento. Pulsar 10 s o más borra los vínculos (ea-12-ble.md).
     private static let pulsacionDeAlta = "de 3 a menos de 10 segundos"

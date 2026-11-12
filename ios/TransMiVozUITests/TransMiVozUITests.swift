@@ -565,7 +565,7 @@ final class TransMiVozUITests: XCTestCase {
     // MARK: Servidor
 
     func testServidorRechazaHttpYAceptaHttps() throws {
-        abrirPestana("Servidor")
+        abrirPestana("Ajustes")
         let origen = elemento("campo-origen")
         XCTAssertTrue(origen.waitForExistence(timeout: 10))
         escribir("http://servidor.ejemplo", en: origen, app: app)
@@ -594,7 +594,7 @@ final class TransMiVozUITests: XCTestCase {
     }
 
     func testAuditoriaAccesibilidadServidor() throws {
-        abrirPestana("Servidor")
+        abrirPestana("Ajustes")
         XCTAssertTrue(elemento("campo-origen").waitForExistence(timeout: 10))
         try auditar(app, "servidor", testCase: self)
     }
@@ -1034,5 +1034,167 @@ final class TransMiVozContrasteNegativoUITests: XCTestCase {
         XCTAssertTrue(fase.libro.fallos.contains { $0.contains("«\(id)»") && $0.contains("entero a la vista") },
             "El libro no rechazó el contraste visible. Fallos: \(fase.libro.fallos)")
         XCTAssertFalse(fase.libro.diferidos.keys.contains { $0.identificador == id }, "El contraste visible no puede diferirse")
+    }
+}
+
+/// Base de las pruebas de Ajustes: lanza la app con una categoría de texto, busca por identificador y abre una sección
+/// desde el menú «Más ajustes» (esperando a que la pestaña quede seleccionada, como `abrirPestana`).
+class AjustesUITestCase: XCTestCase {
+    var app: XCUIApplication!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    func lanzar(_ argumentos: [String], categoria: String = "UICTContentSizeCategoryL") {
+        app = XCUIApplication()
+        app.launchArguments += argumentos + [
+            "-AppleLanguages", "(es)", "-AppleLocale", "es_CO", "-UIPreferredContentSizeCategoryName", categoria,
+        ]
+        app.launch()
+        addTeardownBlock { [app] in app?.terminate() }
+    }
+
+    func elemento(_ identificador: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identificador).firstMatch
+    }
+
+    /// Abre la pestaña Ajustes y espera a que quede seleccionada.
+    func abrirPestanaAjustes(file: StaticString = #filePath, line: UInt = #line) {
+        let pestana = app.tabBars.buttons["Ajustes"]
+        XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña Ajustes", file: file, line: line)
+        pestana.tap()
+        esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña Ajustes", file: file, line: line)
+    }
+
+    /// Desde el menú «Más ajustes» abre la sección pedida (las opciones se buscan por su etiqueta).
+    func abrirSeccion(_ nombre: String, file: StaticString = #filePath, line: UInt = #line) {
+        abrirPestanaAjustes(file: file, line: line)
+        let menu = elemento("menu-mas-ajustes")
+        XCTAssertTrue(menu.waitForExistence(timeout: 10), "No existe el menú Más ajustes", file: file, line: line)
+        menu.tap()
+        let opcion = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", nombre)).firstMatch
+        XCTAssertTrue(opcion.waitForExistence(timeout: 10), "El menú no ofrece «\(nombre)»", file: file, line: line)
+        opcion.tap()
+    }
+}
+
+/// Preferencias, Favoritas y Ayuda de la pestaña Ajustes, en el Simulator y sin red. Se abren desde el menú «Más ajustes».
+/// Solo las pantallas cortas (Favoritas vacía, Preferencias) pasan la auditoría completa: la Ayuda y la lista de favoritas
+/// ocupan más que el área visible con texto grande y se comprueban por contenido. Nada de esto prueba VoiceOver real.
+final class TransMiVozAjustesUITests: AjustesUITestCase {
+    func testElServidorSigueEnLaPrimeraPantallaDeAjustes() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS"])
+        abrirPestanaAjustes()
+        for id in ["campo-origen", "campo-clave", "interruptor-recordar", "boton-aplicar", "boton-olvidar", "resumen-ajustes"] {
+            XCTAssertTrue(elemento(id).waitForExistence(timeout: 10), "Falta «\(id)» en Ajustes")
+        }
+    }
+
+    func testFavoritasVaciaExplicaComoSeAgregan() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS"])
+        abrirSeccion("Favoritas")
+        XCTAssertTrue(elemento("favoritas-vacio").waitForExistence(timeout: 10))
+        XCTAssertTrue(elemento("favoritas-como-agregar").label.contains("Guardar"))
+        try auditar(app, "ajustes-favoritas-vacia", testCase: self)
+    }
+
+    func testQuitarFavoritasLasSacaDeLaListaHastaVaciarla() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS", "-PRUEBAS_UI_FAVORITAS_SEMILLA"])
+        abrirSeccion("Favoritas")
+        XCTAssertTrue(elemento("favorita-Z99").waitForExistence(timeout: 10))
+        XCTAssertTrue(elemento("favorita-Z98").exists)
+        XCTAssertEqual(elemento("quitar-favorita-Z99").label, "Quitar la ruta Z99 de favoritas")
+
+        elemento("quitar-favorita-Z99").tap()
+        XCTAssertTrue(elemento("favorita-Z99").waitForNonExistence(timeout: 5))
+        XCTAssertTrue(elemento("favorita-Z98").exists)
+
+        elemento("quitar-favorita-Z98").tap()
+        XCTAssertTrue(elemento("favoritas-vacio").waitForExistence(timeout: 5))
+    }
+
+    func testAyudaSeAbreConSuPrimerTitulo() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS"])
+        abrirSeccion("Ayuda")
+        let titulo = elemento("ayuda-titulo-0")
+        XCTAssertTrue(titulo.waitForExistence(timeout: 10))
+        XCTAssertEqual(titulo.label, "Qué hace la app")
+    }
+
+    func testPreferenciasSinAccesorioDiceQueLaVozNoEstaDisponible() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS"])
+        abrirSeccion("Preferencias")
+        XCTAssertTrue(elemento("sin-voz-preferencias").waitForExistence(timeout: 10))
+        XCTAssertFalse(elemento("interruptor-voz-preferencias").exists)
+    }
+
+    func testPreferenciasComparteLaVozConElInterruptorDeSesion() throws {
+        lanzar(["-PRUEBAS_UI_ACCESORIO_SINTETICO"])
+        abrirSeccion("Preferencias")
+        let preferencias = elemento("interruptor-voz-preferencias")
+        XCTAssertTrue(preferencias.waitForExistence(timeout: 10))
+        let inicial = try XCTUnwrap(preferencias.value as? String)
+        preferencias.tap()
+        esperar(preferencias, "value != %@", inicial, "El interruptor de Preferencias no cambió de valor")
+        let cambiado = try XCTUnwrap(preferencias.value as? String)
+        try auditar(app, "ajustes-preferencias", testCase: self)
+
+        // Mismo estado: Sesión muestra lo que se fijó en Preferencias, y al revés.
+        app.tabBars.buttons["Sesión"].tap()
+        exponer("interruptor-voz-app", en: app)
+        let sesion = elemento("interruptor-voz-app")
+        XCTAssertEqual(sesion.value as? String, cambiado)
+        sesion.tap()
+        esperar(sesion, "value != %@", cambiado, "El interruptor de Sesión no cambió de valor")
+        let deSesion = try XCTUnwrap(sesion.value as? String)
+
+        abrirPestanaAjustes()
+        XCTAssertTrue(preferencias.waitForExistence(timeout: 10), "Ajustes debe conservar Preferencias abierta")
+        XCTAssertEqual(preferencias.value as? String, deSesion)
+    }
+}
+
+/// Preferencias, Favoritas y Ayuda con el texto más grande de Dynamic Type: no auditan (la Ayuda mide varias pantallas);
+/// comprueban que lo último de cada una se alcanza entero y tocable al desplazar, sin recortes ni controles inalcanzables.
+final class TransMiVozAjustesTextoGrandeUITests: AjustesUITestCase {
+    override func lanzar(_ argumentos: [String], categoria: String = "UICTContentSizeCategoryAccessibilityXXXL") {
+        super.lanzar(argumentos, categoria: categoria)
+    }
+
+    func testAyudaLlegaHastaElUltimoEnlaceDeEmergencia() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS"])
+        abrirSeccion("Ayuda")
+        let ultimo = elemento("ayuda-llamar-195")
+        XCTAssertTrue(ultimo.waitForExistence(timeout: 10))
+        // Un gesto lento por vez, un paso de vista cada uno, hasta que el último enlace quede entero entre las barras.
+        for _ in 0..<40 {
+            let contenido = app.scrollViews.firstMatch.frame
+            let arriba = max(app.navigationBars.firstMatch.frame.maxY, contenido.minY)
+            let abajo = min(app.tabBars.firstMatch.frame.minY, contenido.maxY)
+            let marco = ultimo.frame
+            if ultimo.isHittable && marco.minY >= arriba && marco.maxY <= abajo { break }
+            arrastrarContenido(abajo - arriba - 40, en: app, arriba: arriba, abajo: abajo, velocidad: .slow)
+        }
+        comprobarEnteros(["ayuda-llamar-195"], en: app, tocables: true)
+    }
+
+    func testPreferenciasEsAlcanzableConTextoMuyGrande() throws {
+        lanzar(["-PRUEBAS_UI_ACCESORIO_SINTETICO"])
+        abrirSeccion("Preferencias")
+        XCTAssertTrue(elemento("interruptor-voz-preferencias").waitForExistence(timeout: 10))
+        exponer("interruptor-voz-preferencias", en: app)
+        exponer("nota-voz-preferencias", en: app, completo: false)
+        exponer("nota-sistema-preferencias", en: app, completo: false)
+    }
+
+    func testQuitarFavoritaEsAlcanzableConTextoMuyGrande() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS", "-PRUEBAS_UI_FAVORITAS_SEMILLA"])
+        abrirSeccion("Favoritas")
+        XCTAssertTrue(elemento("favorita-Z98").waitForExistence(timeout: 10))
+        exponer("quitar-favorita-Z98", en: app)
+        elemento("quitar-favorita-Z98").tap()
+        XCTAssertTrue(elemento("favorita-Z98").waitForNonExistence(timeout: 5))
+        XCTAssertTrue(elemento("favorita-Z99").exists)
     }
 }

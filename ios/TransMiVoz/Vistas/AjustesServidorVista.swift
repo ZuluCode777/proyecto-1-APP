@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Origen HTTPS y clave del backend. La sesión local no depende de nada de esta pantalla.
+/// Primera sección de Ajustes: origen HTTPS y clave del backend. La sesión local no depende de nada de esta pantalla.
+/// La `NavigationStack` y el título los pone `AjustesVista`.
 ///
 /// Es un `ScrollView` y no un `Form`: las filas de un `Form` se reciclan y fijan la tipografía de
 /// encabezados y pies, y con texto grande la auditoría de accesibilidad los marcaba como parcialmente
@@ -13,24 +14,22 @@ struct AjustesServidorVista: View {
     @FocusState private var campoEnfocado: Campo?
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if avisoModoPruebas { AvisoModoPruebas() }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if avisoModoPruebas { AvisoModoPruebas() }
 
-                    estado
-                    campos
-                    acciones
-                }
-                .padding(16)
+                estado
+                campos
+                acciones
             }
-            .navigationTitle("Servidor")
-            .navigationBarTitleDisplayMode(.inline)
-            .scrollDismissesKeyboard(.interactively)
-            .bordeInferiorLegible()
-            .onChange(of: modelo.mensaje) { _, nuevo in
-                if let nuevo { AccessibilityNotification.Announcement(nuevo.texto).post() }
-            }
+            .padding(16)
+        }
+        .navigationTitle("Ajustes")
+        .navigationBarTitleDisplayMode(.inline)
+        .scrollDismissesKeyboard(.interactively)
+        .bordeInferiorLegible()
+        .onChange(of: modelo.mensaje) { _, nuevo in
+            if let nuevo { AccessibilityNotification.Announcement(nuevo.texto).post() }
         }
     }
 

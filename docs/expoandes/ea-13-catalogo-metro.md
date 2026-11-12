@@ -17,8 +17,9 @@ la fija `METRO_CORTE` en `lib/metro.ts`.
   para ir de Central a Calle 72 en metro» se responden como Metro; «ayuda» sola no cambia. La respuesta usa
   la acción `none` y los pasos existentes, así que el contrato HTTP del cliente iOS
   (`none/frequent/gps/search/route/trip`) no cambia.
-- `components/metro-list.tsx`: listado accesible sin mapa (acordeones con teclado),
-  estado visible, atribución CC BY 4.0 y enlaces a las fuentes. Se abre desde el inicio
+- `components/metro-list.tsx`: listado accesible (acordeones con teclado),
+  estado visible, atribución CC BY 4.0 y enlaces a las fuentes. El mapa ilustrativo
+  llegó después, con [EA-24](ea-24-cartografia-metro.md); el listado no depende de él. Se abre desde el inicio
   del modo baja visión («Metro de Bogotá»). En modo ceguera total se consulta por voz.
 - `components/diagnostics.tsx`: dos comprobaciones de Metro dentro de la prueba
   «Asistente», que ejecuta `pnpm verificar`.
@@ -46,8 +47,9 @@ la fija `METRO_CORTE` en `lib/metro.ts`.
 - Las 8 conexiones directas, E06/E07 por verificar y la discrepancia de E13 (2019 contra
   2026) se describen con su evidencia; ninguna se habilita para transbordo y la
   contraparte de TransMilenio es `null`.
-- Geometría, accesos, tarifas, frecuencias y tiempos permanecen ausentes. El mapa de
-  estaciones sigue pendiente del contrato geoespacial (CRS sin confirmar).
+- Accesos, tarifas, frecuencias y tiempos permanecen ausentes. El catálogo no lleva
+  geometría. El trazado y las huellas de estación verificados viven aparte, en
+  `lib/metro-cartografia.ts` ([EA-24](ea-24-cartografia-metro.md)).
 
 ## Contrato iOS
 
