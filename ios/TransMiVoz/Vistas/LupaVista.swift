@@ -181,7 +181,7 @@ struct LupaVista: View {
                     in: modelo.aumentoPiso...modelo.aumentoMaximo,
                     step: LupaModelo.pasoAumento)
                     .frame(minHeight: 44)
-                    .accessibilityLabel("Acercar la imagen")
+                    .accessibilityLabel("Aumento")
                     .accessibilityValue(TextoLupa.aumento(modelo.aumento))
                     .accessibilityHint(modelo.congelada ? TextoLupa.acercarCongelada : "")
                     .accessibilityIdentifier("control-aumento")

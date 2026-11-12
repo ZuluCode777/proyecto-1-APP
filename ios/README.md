@@ -39,6 +39,9 @@ Diferencias con la lupa web (`components/vision-assist.tsx`):
 - Congelado: la imagen fija se amplía recortándola y no se aleja por debajo del aumento que tenía al congelar; la web escala el vídeo entero.
 - Al salir de la pestaña se descongela; se conservan el filtro y el aumento elegidos.
 - La web pide el permiso sola; aquí una hoja lo explica antes.
+- La web reinicia filtro y aumento al salir; la app los conserva (acotados al rango del dispositivo).
+- Los avisos hablados de la web son de su propia voz (TTS); la app usa anuncios de VoiceOver.
+- La web pide la cámara con `facingMode: environment`; la app usa solo la cámara trasera de ángulo normal.
 
 ### Sesión con el accesorio real (EA-15, software)
 

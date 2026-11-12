@@ -2,8 +2,8 @@
 import UIKit
 
 /// Cámara SINTÉTICA, solo en compilaciones de depuración y solo para las pruebas de interfaz
-/// (`-PRUEBAS_UI_SIMULADAS`). Permite recorrer la MISMA pantalla y el MISMO modelo de la lupa en el Simulator, que no
-/// tiene cámara. La «imagen» es una carta de colores fija; el aumento recorta su centro. No pasa por Core Image ni por
+/// (`-PRUEBAS_UI_SIMULADAS` y `-PRUEBAS_UI_ACCESORIO_SINTETICO`). Permite recorrer la MISMA pantalla y el MISMO modelo
+/// de la lupa en el Simulator, que no tiene cámara. La «imagen» es una carta de colores fija; el aumento recorta su centro. No pasa por Core Image ni por
 /// los filtros (el filtro elegido se anota en el modelo, pero la carta no cambia de color). Motivo, sin confirmar: en la
 /// CI de #86 la app dejó de quedar en reposo (60 s) con la lupa activa, y se sospecha que pintar con Core Image en el
 /// hilo principal, en un Simulator sin GPU, era la causa. No prueba la cámara, ni el aumento del dispositivo, ni los
