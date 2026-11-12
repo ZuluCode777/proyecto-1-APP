@@ -13,20 +13,19 @@ final class EntornoApp {
     /// Mantiene vivos los avisos de ruta e interrupción de audio.
     private let monitorAudio: MonitorAudioSistema?
     /// Lupa de la cámara. En las pruebas de interfaz usa una cámara sintética rotulada.
-    let lupa: LupaModelo
+    let lupa = EntornoApp.crearLupa()
     /// `true` solo en las pruebas de interfaz (compilación de depuración).
     let modoPruebas: Bool
 
     init(
         ajustes: AjustesServidorModelo, consulta: ConsultaModelo, sesion: SesionLocalModelo,
-        accesorio: SesionAccesorioModelo? = nil, monitorAudio: MonitorAudioSistema? = nil, lupa: LupaModelo, modoPruebas: Bool
+        accesorio: SesionAccesorioModelo? = nil, monitorAudio: MonitorAudioSistema? = nil, modoPruebas: Bool
     ) {
         self.ajustes = ajustes
         self.consulta = consulta
         self.sesion = sesion
         self.accesorio = accesorio
         self.monitorAudio = monitorAudio
-        self.lupa = lupa
         self.modoPruebas = modoPruebas
     }
 
@@ -46,8 +45,19 @@ final class EntornoApp {
         return EntornoApp(
             ajustes: ajustes, consulta: ConsultaModelo(cliente: cliente), sesion: SesionLocalModelo(),
             accesorio: SesionAccesorioModelo(transporte: TransporteCoreBluetooth(), voz: voz, avisos: .sistema),
-            monitorAudio: MonitorAudioSistema(control: voz),
-            lupa: LupaModelo(camara: CamaraLupaAVFoundation(), avisos: .sistema), modoPruebas: false)
+            monitorAudio: MonitorAudioSistema(control: voz), modoPruebas: false)
+    }
+
+    /// Lupa de producción: cámara real y avisos del sistema. En depuración, con los argumentos de las pruebas de interfaz,
+    /// usa la cámara sintética (sin cámara real ni aviso de permiso del sistema).
+    private static func crearLupa() -> LupaModelo {
+        #if DEBUG
+        let argumentos = ProcessInfo.processInfo.arguments
+        if argumentos.contains("-PRUEBAS_UI_SIMULADAS") || argumentos.contains("-PRUEBAS_UI_ACCESORIO_SINTETICO") {
+            return LupaModelo(camara: camaraSinteticaParaPruebasUI(argumentos))
+        }
+        #endif
+        return LupaModelo(camara: CamaraLupaAVFoundation(), avisos: .sistema)
     }
 
     #if DEBUG
@@ -59,14 +69,13 @@ final class EntornoApp {
         let ajustes = AjustesServidorModelo(almacen: AlmacenClaveEnMemoria(), preferencias: preferencias)
         return EntornoApp(
             ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado()),
-            sesion: SesionLocalModelo(), lupa: LupaModelo(camara: camaraSinteticaParaPruebasUI()), modoPruebas: true)
+            sesion: SesionLocalModelo(), modoPruebas: true)
     }
 
     /// Cámara de la lupa en las pruebas de interfaz: sin cámara real ni aviso de permiso del sistema. Sin más
     /// argumentos, el permiso está por preguntar y el «sistema» concede. Variantes: `-PRUEBAS_UI_LUPA_PERMISO_CONCEDIDO`
     /// (sin explicación previa), `-PRUEBAS_UI_LUPA_PERMISO_DENEGADO` y `-PRUEBAS_UI_LUPA_SIN_CAMARA`.
-    private static func camaraSinteticaParaPruebasUI() -> CamaraSintetica {
-        let argumentos = ProcessInfo.processInfo.arguments
+    private static func camaraSinteticaParaPruebasUI(_ argumentos: [String]) -> CamaraSintetica {
         let permiso: CamaraSintetica.Permiso =
             argumentos.contains("-PRUEBAS_UI_LUPA_PERMISO_CONCEDIDO") ? .concedido
             : argumentos.contains("-PRUEBAS_UI_LUPA_PERMISO_DENEGADO") ? .porPreguntarYDenegar : .porPreguntar
@@ -89,7 +98,7 @@ final class EntornoApp {
             ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado()),
             sesion: SesionLocalModelo(),
             accesorio: SesionAccesorioModelo(transporte: TransporteSintetico(permiso: permiso), voz: voz),
-            lupa: LupaModelo(camara: camaraSinteticaParaPruebasUI()), modoPruebas: true)
+            modoPruebas: true)
     }
     #endif
 }

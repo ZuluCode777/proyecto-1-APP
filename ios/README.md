@@ -30,7 +30,15 @@ El texto de un viaje puede traer órdenes de abordaje sin parada, sentido ni vig
 
 ### Lupa de la cámara (EA-25, software)
 
-La pantalla explica el uso de la cámara **antes** del aviso de permiso de iOS; con el permiso denegado o restringido dice cómo activarlo («Abrir Ajustes») y el resto de la app sigue igual. La cámara solo está abierta con la pestaña a la vista y la escena activa: al salir de la pestaña, pasar a segundo plano o bloquear el iPhone se suelta la sesión y el dispositivo. Si la persona sale antes de contestar al aviso, la respuesta tardía no abre nada. La sesión de captura corre en una cola propia, fuera del hilo principal. Sin cámara (Simulator) la pantalla lo dice. Los filtros usan Core Image con valores traducidos a ojo de los filtros CSS de la web: **sin calibrar con la cámara real**. El aumento sale del dispositivo (mínimo y máximo que él declara, con tope de 10×). **No hay prueba con cámara, iPhone ni VoiceOver reales.**
+Una hoja explica el uso de la cámara **antes** del aviso de permiso de iOS, con «Continuar» y una salida «Ahora no» (no pide nada; «Activar la lupa» vuelve a explicarlo); con el permiso denegado o restringido dice cómo activarlo («Abrir Ajustes») y el resto de la app sigue igual. La cámara solo está abierta con la pestaña a la vista y la escena activa: al salir de la pestaña, pasar a segundo plano o bloquear el iPhone se suelta la sesión y el dispositivo. Si la persona sale antes de contestar al aviso, la respuesta tardía no abre nada. La sesión de captura corre en una cola propia, fuera del hilo principal. Sin cámara (Simulator) la pantalla lo dice. Los filtros usan Core Image con valores traducidos a ojo de los filtros CSS de la web: **sin calibrar con la cámara real**. El aumento sale del dispositivo (mínimo y máximo que él declara, con tope de 10×). Con la imagen congelada el control no baja del aumento que tenía al congelar (la cámara no guarda el encuadre completo). La imagen no se invierte con «Invertir colores». Si otra app toma la cámara o el sistema interrumpe la captura, la lupa la suelta y ofrece «Reintentar»: no se reanuda sola, a propósito, para no disputar la cámara a la otra app. **No hay prueba con cámara, iPhone ni VoiceOver reales.**
+
+Diferencias con la lupa web (`components/vision-assist.tsx`):
+
+- Aumento: en el iPhone es el del dispositivo (mínimo y máximo que declara, hasta 10×, paso 0,5); la web escala el vídeo de 1× a 3× con paso 0,1.
+- Filtros: los mismos cuatro, en el mismo orden y con «Alto contraste» de partida, pero los valores de Core Image son una traducción a ojo de los CSS y **no están calibrados** con la cámara real.
+- Congelado: la imagen fija se amplía recortándola y no se aleja por debajo del aumento que tenía al congelar; la web escala el vídeo entero.
+- Al salir de la pestaña se descongela; se conservan el filtro y el aumento elegidos.
+- La web pide el permiso sola; aquí una hoja lo explica antes.
 
 ### Sesión con el accesorio real (EA-15, software)
 

@@ -12,6 +12,7 @@ struct LupaVista: View {
 
     @Environment(\.scenePhase) private var faseEscena
     @Environment(\.openURL) private var abrirURL
+    @AccessibilityFocusState private var foco: ZonaFocoLupa?
 
     var body: some View {
         NavigationStack {
@@ -31,6 +32,15 @@ struct LupaVista: View {
             .navigationTitle("Lupa")
             .navigationBarTitleDisplayMode(.inline)
             .bordeInferiorLegible()
+            // La explicación del permiso va en una hoja propia, justo antes del aviso del sistema (EA-02 §8).
+            .sheet(isPresented: Binding(
+                get: { modelo.estado == .permisoPorPedir },
+                set: { if !$0 { modelo.posponerPermiso() } })
+            ) {
+                HojaPermisoCamara(
+                    continuar: { modelo.continuarTrasExplicacion() },
+                    ahoraNo: { modelo.posponerPermiso() })
+            }
         }
         .onAppear {
             modelo.escenaActiva(faseEscena == .active)
@@ -38,6 +48,7 @@ struct LupaVista: View {
         }
         .onDisappear { modelo.pantallaVisible(false) }
         .onChange(of: faseEscena) { _, nueva in modelo.escenaActiva(nueva == .active) }
+        .onChange(of: modelo.estado) { anterior, nuevo in moverFoco(de: anterior, a: nuevo) }
     }
 
     @ViewBuilder private var contenido: some View {
@@ -49,23 +60,24 @@ struct LupaVista: View {
                 seccionAumento
                 botonCongelar
             }
-        case .permisoPorPedir:
-            seccionExplicacionPermiso
+        case .permisoPorPedir, .permisoPospuesto:
+            mensaje
+            if modelo.estado == .permisoPospuesto {
+                Button(TextoLupa.activarLupa) { modelo.retomarPermiso() }
+                    .botonDeLupa(prominente: true)
+                    .accessibilityIdentifier("boton-activar-lupa")
+            }
         case .permisoDenegado, .permisoRestringido:
             mensaje
             Button("Abrir Ajustes") {
                 if let url = URL(string: UIApplication.openSettingsURLString) { abrirURL(url) }
             }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-            .frame(minHeight: 44)
+            .botonDeLupa(prominente: false)
             .accessibilityIdentifier("boton-abrir-ajustes-camara")
         case .error:
             mensaje
             Button("Reintentar") { modelo.reintentar() }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .frame(minHeight: 44)
+                .botonDeLupa(prominente: true)
                 .accessibilityIdentifier("boton-reintentar-camara")
         case .enPausa, .sinCamara, .pidiendoPermiso:
             mensaje
@@ -75,28 +87,21 @@ struct LupaVista: View {
     private var mensaje: some View {
         Text(TextoLupa.descripcion(modelo.estado))
             .fixedSize(horizontal: false, vertical: true)
+            .accessibilityFocused($foco, equals: .mensaje)
             .accessibilityIdentifier("estado-lupa")
     }
 
-    // MARK: Permiso
-
-    /// Un `Text` por párrafo, con la misma fuente, para que con el texto más grande cada uno quepa a la vista.
-    private var seccionExplicacionPermiso: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(TextoLupa.parrafosPermiso.enumerated()), id: \.offset) { posicion, parrafo in
-                Text(parrafo)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier(posicion == 0 ? "texto-permiso-camara" : "texto-permiso-camara-\(posicion)")
-            }
-            Button("Continuar") { modelo.continuarTrasExplicacion() }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .frame(minHeight: 44)
-                .accessibilityIdentifier("boton-permiso-camara-continuar")
-            Text(TextoLupa.permisoAlternativa)
-                .font(.footnote)
-                .foregroundStyle(.textoSecundario)
-                .fixedSize(horizontal: false, vertical: true)
+    /// Si el botón que se acaba de tocar desaparece («Continuar», «Reintentar») o un estado llega sin que la persona lo
+    /// pida (la cámara falla), el foco de VoiceOver va a lo que lo sustituye y no queda sin destino (EA-02 §1 y §7).
+    /// Con la pestaña recién abierta no se mueve: eso lo decide la propia navegación.
+    private func moverFoco(de anterior: EstadoLupa, a nuevo: EstadoLupa) {
+        switch nuevo {
+        case .iniciando where anterior == .pidiendoPermiso || anterior == .error:
+            foco = .visor
+        case .permisoDenegado, .permisoRestringido, .permisoPospuesto, .error:
+            if anterior != .enPausa { foco = .mensaje }
+        default:
+            break
         }
     }
 
@@ -105,7 +110,8 @@ struct LupaVista: View {
     private var visor: some View {
         VisorCamara(capa: modelo.capa)
             .frame(maxWidth: .infinity)
-            .frame(height: 320)
+            // Proporción y no alto fijo: la imagen no depende del tamaño del texto (EA-02 §2).
+            .aspectRatio(4.0 / 3.0, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay {
                 if modelo.estado == .iniciando {
@@ -127,9 +133,12 @@ struct LupaVista: View {
                         .padding(8)
                 }
             }
+            // La imagen de la cámara no se invierte con «Invertir colores» (EA-02 §6); tampoco lo que la rotula.
+            .accessibilityIgnoresInvertColors(true)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(TextoLupa.visor)
             .accessibilityValue(valorVisor)
+            .accessibilityFocused($foco, equals: .visor)
             .accessibilityIdentifier("visor-lupa")
     }
 
@@ -153,9 +162,7 @@ struct LupaVista: View {
                     Label(filtro.nombre, systemImage: elegido ? "checkmark.circle.fill" : "circle")
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .accion(prominente: elegido, disponible: true)
-                .controlSize(.large)
-                .frame(minHeight: 44)
+                .botonDeLupa(prominente: elegido)
                 .accessibilityAddTraits(elegido ? .isSelected : [])
                 .accessibilityIdentifier("filtro-\(filtro.rawValue)")
             }
@@ -171,18 +178,27 @@ struct LupaVista: View {
             if modelo.puedeAcercar {
                 Slider(
                     value: Binding(get: { modelo.aumento }, set: { modelo.fijarAumento($0) }),
-                    in: modelo.aumentoMinimo...modelo.aumentoMaximo,
+                    in: modelo.aumentoPiso...modelo.aumentoMaximo,
                     step: LupaModelo.pasoAumento)
                     .frame(minHeight: 44)
                     .accessibilityLabel("Acercar la imagen")
                     .accessibilityValue(TextoLupa.aumento(modelo.aumento))
+                    .accessibilityHint(modelo.congelada ? TextoLupa.acercarCongelada : "")
                     .accessibilityIdentifier("control-aumento")
             }
             // El valor ya lo dice el control; el texto es solo para quien ve la pantalla.
-            Text(modelo.puedeAcercar ? TextoLupa.aumento(modelo.aumento) : "Esta cámara no acerca más.")
+            Text(modelo.puedeAcercar ? TextoLupa.aumento(modelo.aumento) : TextoLupa.sinMasAumento)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityHidden(modelo.puedeAcercar)
                 .accessibilityIdentifier("valor-aumento")
+            if modelo.congelada && modelo.puedeAcercar {
+                // Para quien ve la pantalla: VoiceOver ya lo lee como pista del control.
+                Text(TextoLupa.acercarCongelada)
+                    .font(.footnote)
+                    .foregroundStyle(.textoSecundario)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityHidden(true)
+            }
         }
     }
 
@@ -191,10 +207,57 @@ struct LupaVista: View {
             Label(modelo.congelada ? "Reanudar" : "Congelar imagen", systemImage: modelo.congelada ? "play.fill" : "pause.fill")
                 .frame(maxWidth: .infinity)
         }
-        .accion(prominente: true, disponible: true)
-        .controlSize(.large)
-        .frame(minHeight: 44)
+        .botonDeLupa(prominente: true)
         .accessibilityIdentifier("boton-congelar")
+    }
+}
+
+/// A dónde va el foco de VoiceOver cuando cambia el estado de la lupa.
+private enum ZonaFocoLupa: Hashable {
+    case visor
+    case mensaje
+}
+
+/// Explicación del permiso de la cámara ANTES del aviso del sistema (EA-02 §8), con una salida sin permiso.
+private struct HojaPermisoCamara: View {
+    let continuar: () -> Void
+    let ahoraNo: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Un `Text` por párrafo, con la misma fuente, para que con el texto más grande cada uno quepa a la vista.
+                    ForEach(Array(TextoLupa.parrafosPermiso.enumerated()), id: \.offset) { posicion, parrafo in
+                        Text(parrafo)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier(posicion == 0 ? "texto-permiso-camara" : "texto-permiso-camara-\(posicion)")
+                    }
+                    Button("Continuar", action: continuar)
+                        .botonDeLupa(prominente: true)
+                        .accessibilityIdentifier("boton-permiso-camara-continuar")
+                    Button("Ahora no", action: ahoraNo)
+                        .botonDeLupa(prominente: false)
+                        .accessibilityIdentifier("boton-permiso-camara-ahora-no")
+                    Text(TextoLupa.permisoAlternativa)
+                        .font(.footnote)
+                        .foregroundStyle(.textoSecundario)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(16)
+            }
+            .navigationTitle(TextoLupa.tituloPermiso)
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+}
+
+private extension View {
+    /// Botón de la lupa: del estilo de la casa (`accion`), grande y de al menos 44 pt de alto.
+    func botonDeLupa(prominente: Bool) -> some View {
+        accion(prominente: prominente, disponible: true)
+            .controlSize(.large)
+            .frame(minHeight: 44)
     }
 }
 
@@ -206,13 +269,15 @@ private struct VisorCamara: UIViewRepresentable {
     func updateUIView(_ vista: VistaDeCapa, context: Context) {}
 }
 
-private final class VistaDeCapa: UIView {
+final class VistaDeCapa: UIView {
     private let capa: CALayer
 
     init(capa: CALayer) {
         self.capa = capa
         super.init(frame: .zero)
         layer.addSublayer(capa)
+        // La imagen de la cámara no se invierte con «Invertir colores» (EA-02 §6).
+        accessibilityIgnoresInvertColors = true
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError("No se crea desde un storyboard") }

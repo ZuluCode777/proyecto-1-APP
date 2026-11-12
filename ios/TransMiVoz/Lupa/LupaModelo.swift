@@ -2,6 +2,24 @@ import Foundation
 import Observation
 import QuartzCore
 
+/// Estado de la lupa que ve la persona.
+enum EstadoLupa: Equatable, CaseIterable {
+    /// Sin captura: la pestaña no está a la vista o la app no está activa.
+    case enPausa
+    case sinCamara
+    /// El sistema aún no ha preguntado por el permiso: una hoja lo explica antes.
+    case permisoPorPedir
+    /// La persona tocó «Ahora no» en esa hoja: no se pidió nada al sistema.
+    case permisoPospuesto
+    /// El aviso de permiso del sistema está en pantalla.
+    case pidiendoPermiso
+    case permisoDenegado
+    case permisoRestringido
+    case iniciando
+    case activa
+    case error
+}
+
 /// Lupa de la cámara: aumento, filtro y congelado de la imagen en vivo. No reconoce ni describe nada de lo que
 /// aparece en la imagen, no la guarda y no la envía.
 ///
@@ -12,7 +30,8 @@ import QuartzCore
 ///   la captura empieza cuando la pantalla vuelve a estar a la vista.
 /// - Cada captura lleva un token; lo que llegue de una captura ya soltada (una cámara que termina de abrir
 ///   cuando la persona ya salió) se descarta.
-/// - El permiso se explica en pantalla ANTES del aviso del sistema: `continuarTrasExplicacion` lo provoca.
+/// - El permiso se explica en una hoja ANTES del aviso del sistema: `continuarTrasExplicacion` lo provoca y
+///   `posponerPermiso` («Ahora no») no pide nada; `retomarPermiso` vuelve a explicarlo.
 @MainActor
 @Observable
 final class LupaModelo {
@@ -37,6 +56,10 @@ final class LupaModelo {
     private var pidiendo = false
     private var fallo = false
     private var abierta = false
+    /// La persona dijo «Ahora no» a la explicación del permiso.
+    private var pospuesta = false
+    /// Aumento de la imagen fija al congelar: congelada no se puede alejar por debajo de él.
+    private var aumentoAlCongelar = 1.0
 
     @ObservationIgnored private let camara: CamaraLupa
     @ObservationIgnored private let avisos: AvisosAccesibles
@@ -60,7 +83,7 @@ final class LupaModelo {
         guard visible && enPrimerPlano else { return .enPausa }
         guard camara.hayCamara else { return .sinCamara }
         switch permiso {
-        case .porPreguntar: return .permisoPorPedir
+        case .porPreguntar: return pospuesta ? .permisoPospuesto : .permisoPorPedir
         case .denegado: return .permisoDenegado
         case .restringido: return .permisoRestringido
         case .concedido: break
@@ -69,8 +92,12 @@ final class LupaModelo {
         return abierta ? .activa : .iniciando
     }
 
-    /// El dispositivo ofrece más de un aumento.
-    var puedeAcercar: Bool { aumentoMaximo > aumentoMinimo }
+    /// Aumento más bajo que admite el control ahora. Congelada, la imagen fija ya viene con el aumento que tenía al
+    /// congelar y la cámara no guarda el encuadre completo: no se puede alejar por debajo de él.
+    var aumentoPiso: Double { congelada ? aumentoAlCongelar : aumentoMinimo }
+
+    /// Hay margen para acercar más.
+    var puedeAcercar: Bool { aumentoMaximo > aumentoPiso }
 
     // MARK: Ciclo de vida
 
@@ -96,15 +123,29 @@ final class LupaModelo {
         avisarSiCambio()
     }
 
+    /// «Ahora no» en la explicación del permiso: no se pide nada al sistema y el resto de la app sigue igual.
+    func posponerPermiso() {
+        guard estado == .permisoPorPedir else { return }
+        pospuesta = true
+        avisarSiCambio()
+    }
+
+    /// «Activar la lupa» tras un «Ahora no»: vuelve a explicar el permiso.
+    func retomarPermiso() {
+        guard estado == .permisoPospuesto else { return }
+        pospuesta = false
+        avisarSiCambio()
+    }
+
     func reintentar() {
         guard fallo else { return }
         fallo = false
         sincronizar()
     }
 
-    /// Fuera del rango del dispositivo se ajusta al extremo más cercano.
+    /// Fuera del rango del dispositivo (o por debajo del piso, con la imagen congelada) se ajusta al extremo más cercano.
     func fijarAumento(_ valor: Double) {
-        aumento = min(max(valor, aumentoMinimo), aumentoMaximo)
+        aumento = min(max(valor, aumentoPiso), aumentoMaximo)
         if abierta { camara.fijarAumento(aumento) }
     }
 
@@ -118,6 +159,7 @@ final class LupaModelo {
 
     func alternarCongelada() {
         guard abierta else { return }
+        if !congelada { aumentoAlCongelar = aumento }
         congelada.toggle()
         camara.congelar(congelada)
         avisos.anunciar(congelada ? TextoLupa.imagenCongelada + "." : TextoLupa.imagenEnVivo + ".", .rutina)

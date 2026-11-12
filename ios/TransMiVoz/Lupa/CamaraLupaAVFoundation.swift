@@ -11,6 +11,7 @@ final class CamaraLupaAVFoundation: CamaraLupa {
     let capa = CALayer()
 
     private let motor = MotorCaptura()
+    private let pendiente = ImagenPendiente()
     /// Token de la captura que puede hablar y pintar; `tokenSinCaptura` si no hay ninguna.
     private var vigente = tokenSinCaptura
 
@@ -20,8 +21,12 @@ final class CamaraLupaAVFoundation: CamaraLupa {
         motor.alEvento = { [weak self] evento, token in
             Task { @MainActor in self?.recibir(evento, token: token) }
         }
+        let pendiente = self.pendiente
         motor.alPintar = { [weak self] imagen, token in
-            Task { @MainActor in self?.pintar(imagen, token: token) }
+            // Solo la última imagen espera turno en el hilo principal: si este se atrasa, las anteriores se descartan
+            // en vez de apilarse (cada una pesa varios MB).
+            guard pendiente.guardar(imagen, token: token) else { return }
+            Task { @MainActor in self?.pintarPendiente() }
         }
     }
 
@@ -53,6 +58,7 @@ final class CamaraLupaAVFoundation: CamaraLupa {
 
     func detener() {
         vigente = tokenSinCaptura
+        _ = pendiente.tomar()
         capa.contents = nil
         motor.cerrar()
     }
@@ -66,6 +72,11 @@ final class CamaraLupaAVFoundation: CamaraLupa {
         receptor?(evento, token)
     }
 
+    private func pintarPendiente() {
+        guard let (imagen, token) = pendiente.tomar() else { return }
+        pintar(imagen, token: token)
+    }
+
     private func pintar(_ imagen: CGImage, token: Int) {
         guard token == vigente else { return }
         // Sin la animación implícita de `contents`: cada imagen sustituye a la anterior.
@@ -73,6 +84,29 @@ final class CamaraLupaAVFoundation: CamaraLupa {
         CATransaction.setDisableActions(true)
         capa.contents = imagen
         CATransaction.commit()
+    }
+}
+
+/// La última imagen filtrada que espera pintarse. La escribe la cola de captura y la lee el hilo principal.
+private final class ImagenPendiente: @unchecked Sendable {
+    private let cerrojo = NSLock()
+    private var imagen: (CGImage, Int)?
+
+    /// Guarda la imagen y dice si hay que pedir el repintado: `false` si ya había otra esperando (queda sustituida).
+    func guardar(_ nueva: CGImage, token: Int) -> Bool {
+        cerrojo.lock()
+        defer { cerrojo.unlock() }
+        let habiaOtra = imagen != nil
+        imagen = (nueva, token)
+        return !habiaOtra
+    }
+
+    func tomar() -> (CGImage, Int)? {
+        cerrojo.lock()
+        defer { cerrojo.unlock() }
+        let actual = imagen
+        imagen = nil
+        return actual
     }
 }
 

@@ -1,4 +1,6 @@
 import CoreImage
+import QuartzCore
+import UIKit
 import XCTest
 @testable import TransMiVoz
 
@@ -91,6 +93,31 @@ final class LupaModeloTests: XCTestCase {
         banco.camara.responder(.concedido)
         XCTAssertEqual(banco.camara.veces("iniciar"), 1)
         XCTAssertEqual(banco.modelo.estado, .iniciando)
+    }
+
+    func testAhoraNoNoPideNadaYSePuedeRetomar() {
+        let banco = BancoLupa(permiso: .porPreguntar)
+        banco.mostrar()
+        banco.modelo.posponerPermiso()
+        XCTAssertEqual(banco.modelo.estado, .permisoPospuesto)
+        banco.modelo.continuarTrasExplicacion()
+        XCTAssertEqual(banco.camara.llamadas, [], "«Ahora no» no pide permiso ni abre la cámara")
+        banco.modelo.pantallaVisible(false)
+        banco.modelo.pantallaVisible(true)
+        XCTAssertEqual(banco.modelo.estado, .permisoPospuesto, "no vuelve a explicarlo solo")
+
+        banco.modelo.retomarPermiso()
+        XCTAssertEqual(banco.modelo.estado, .permisoPorPedir)
+        banco.modelo.continuarTrasExplicacion()
+        XCTAssertEqual(banco.camara.llamadas, ["pedirPermiso"])
+    }
+
+    func testAhoraNoSoloValeEnLaExplicacion() {
+        let banco = BancoLupa()
+        banco.abrir()
+        banco.modelo.posponerPermiso()
+        banco.modelo.retomarPermiso()
+        XCTAssertEqual(banco.modelo.estado, .activa, "con la lupa activa no hay nada que posponer")
     }
 
     func testPermisoQueLlegaTardeConLaPantallaFueraNoArrancaNada() {
@@ -254,6 +281,32 @@ final class LupaModeloTests: XCTestCase {
         XCTAssertEqual(banco.avisos.anuncios.last, "Imagen en vivo.")
     }
 
+    func testCongeladaNoSeAlejaPorDebajoDelAumentoAlCongelar() {
+        let banco = BancoLupa()
+        banco.abrir(maximo: 8)
+        banco.modelo.fijarAumento(4)
+        banco.modelo.alternarCongelada()
+        XCTAssertEqual(banco.modelo.aumentoPiso, 4)
+        banco.modelo.fijarAumento(2)
+        XCTAssertEqual(banco.modelo.aumento, 4, "la imagen fija ya viene con ese aumento: no se puede alejar")
+        banco.modelo.fijarAumento(6)
+        XCTAssertEqual(banco.modelo.aumento, 6, "acercar más sí")
+        banco.modelo.alternarCongelada()
+        XCTAssertEqual(banco.modelo.aumentoPiso, 1)
+        banco.modelo.fijarAumento(2)
+        XCTAssertEqual(banco.modelo.aumento, 2, "en vivo vuelve a poder alejarse")
+    }
+
+    func testCongeladaAlMaximoYaNoOfreceAcercar() {
+        let banco = BancoLupa()
+        banco.abrir(maximo: 8)
+        banco.modelo.fijarAumento(8)
+        banco.modelo.alternarCongelada()
+        XCTAssertFalse(banco.modelo.puedeAcercar)
+        banco.modelo.alternarCongelada()
+        XCTAssertTrue(banco.modelo.puedeAcercar)
+    }
+
     func testSalirDescongelaYAlVolverLaImagenEsEnVivo() {
         let banco = BancoLupa()
         banco.abrir()
@@ -277,6 +330,7 @@ final class LupaModeloTests: XCTestCase {
         textos += TextoLupa.parrafosPermiso
         textos += FiltroLupa.allCases.map(\.nombre)
         textos += [TextoLupa.visor, TextoLupa.fuenteSintetica, TextoLupa.permisoAlternativa, TextoLupa.imagenEnVivo, TextoLupa.imagenCongelada]
+        textos += [TextoLupa.tituloPermiso, TextoLupa.activarLupa, TextoLupa.sinMasAumento, TextoLupa.acercarCongelada]
         let prohibidas = ["ocr", "autobús", "autobus", "obstáculo", "obstaculo", "reconoc", "identific", "detecta", "lee el texto", "lector"]
         for texto in textos {
             for palabra in prohibidas {
@@ -285,6 +339,10 @@ final class LupaModeloTests: XCTestCase {
         }
         XCTAssertTrue(TextoLupa.visor.contains("VoiceOver no describe"), "el visor dice que VoiceOver no lo lee")
         XCTAssertTrue(TextoLupa.parrafosPermiso.contains { $0.contains("no se guarda ni se envía") })
+    }
+
+    func testLaImagenDeLaLupaNoSeInvierteConInvertirColores() {
+        XCTAssertTrue(VistaDeCapa(capa: CALayer()).accessibilityIgnoresInvertColors)
     }
 
     func testElAumentoSeDiceConComaYEnPlural() {
