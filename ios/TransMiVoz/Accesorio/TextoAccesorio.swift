@@ -113,9 +113,13 @@ enum TextoAccesorio {
     /// Las frases del bloqueo, en orden y en un solo sitio: `descripcion` las une con un espacio y la pantalla pinta una por párrafo.
     private static let frasesEnlaceNoVerificado = [
         "Avisos bloqueados: esta versión no puede verificar que el enlace con el accesorio sea cifrado y autenticado.",
-        "No se usa ninguna medida.",
-        "Esto no es una detección ni significa camino libre.",
+        sinMedidaPorEnlace,
+        noEsDeteccionNiCaminoLibre,
     ]
+
+    /// Las dos últimas frases del bloqueo con nombre propio: la Ayuda las repite y no depende de su orden en la lista.
+    static let sinMedidaPorEnlace = "No se usa ninguna medida."
+    static let noEsDeteccionNiCaminoLibre = "Esto no es una detección ni significa camino libre."
 
     /// La descripción repartida en párrafos para la pantalla. Solo el bloqueo lleva más de uno: con el texto más grande
     /// de accesibilidad su descripción en un solo bloque medía 869 pt, más que el área visible (659 pt), y no había

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Tres pestañas: sesión local (sin red), consulta de transporte y servidor. La sesión es la del
+/// Tres pestañas: sesión local (sin red), consulta de transporte y ajustes. La sesión es la del
 /// accesorio real; solo las pruebas de interfaz muestran la simulada.
 struct RaizVista: View {
     let entorno: EntornoApp
@@ -21,8 +21,8 @@ struct RaizVista: View {
                 resumenServidor: entorno.modoPruebas ? "Modo de pruebas: sin servidor." : entorno.ajustes.resumen,
                 avisoModoPruebas: entorno.modoPruebas)
                 .tabItem { Label("Consulta", systemImage: "bubble.left.and.text.bubble.right") }
-            AjustesServidorVista(modelo: entorno.ajustes, avisoModoPruebas: entorno.modoPruebas)
-                .tabItem { Label("Servidor", systemImage: "server.rack") }
+            AjustesVista(entorno: entorno)
+                .tabItem { Label("Ajustes", systemImage: "gearshape") }
         }
         // Solo en primer plano y activa: inactiva (bloqueo, centro de control) o en segundo plano se suspende.
         .onChange(of: faseEscena) { _, nueva in entorno.accesorio?.escenaActiva(nueva == .active) }
