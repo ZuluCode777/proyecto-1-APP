@@ -6,10 +6,7 @@ import SwiftUI
 struct AjustesVista: View {
     let entorno: EntornoApp
 
-    private enum Seccion: String, Identifiable, Hashable {
-        case preferencias, favoritas, ayuda
-        var id: String { rawValue }
-    }
+    private enum Seccion: Hashable { case preferencias, favoritas, ayuda }
 
     @State private var seccion: Seccion?
 

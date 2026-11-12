@@ -78,6 +78,7 @@ struct FavoritasVista: View {
         guard modelo.quitar(codigo) else { return }
         AccessibilityNotification.Announcement(
             TextoFavoritas.quitada(codigo, quedan: modelo.codigos.count)).post()
-        foco = .encabezado
+        // En la siguiente vuelta, con la lista ya repintada: tras la última, el encabezado vacío aún no existe en esta.
+        Task { @MainActor in foco = .encabezado }
     }
 }

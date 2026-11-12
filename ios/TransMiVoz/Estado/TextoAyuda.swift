@@ -1,46 +1,20 @@
 import Foundation
 
-/// Textos de las pantallas Preferencias, Favoritas y Ayuda, en un solo sitio para probarlos.
-/// Ayuda y Favoritas dicen lo que la app hace HOY: si cambian las pestañas o llega la pantalla de rutas, se actualizan aquí.
-enum TextoPreferencias {
-    static let tituloVoz = "Voz de la app"
-    static let notaVoz = "Es el mismo interruptor de la pestaña Sesión. Controla si la app dice en voz alta el estado del accesorio, y solo por una salida de audio privada (auriculares con cable o Bluetooth). Hoy el accesorio está bloqueado porque no se puede verificar el enlace, así que no hay avisos del sensor. Con VoiceOver activo empieza apagada para no hablar dos veces. Vuelve a su valor inicial al cerrar la app."
-    static let sinAccesorio = "La voz de la app no está disponible en este modo."
-    static let tituloSistema = "Texto, contraste y VoiceOver"
-    static let notaSistema = "El tamaño del texto sigue el ajuste de iOS. Los controles estándar siguen el contraste y el movimiento que elijas en iOS, pero algunos textos secundarios no cambian con «Aumentar contraste». Esta app no tiene un modo de alto contraste propio como la web. VoiceOver se activa en los ajustes de accesibilidad de iOS."
-}
-
-enum TextoFavoritas {
-    static let vacio = "Aún no tienes rutas favoritas."
-    static let comoSeAgregan = "Las rutas se guardan desde el detalle de cada ruta, con el botón «Guardar». En el iPhone esa pantalla todavía no está disponible, así que por ahora esta lista seguirá vacía."
-    static let dondeSeGuardan = "Las favoritas se guardan solo en este iPhone: no se envían al servidor ni se comparten con la web."
-
-    static func resumen(_ cantidad: Int) -> String {
-        cantidad == 1 ? "1 ruta favorita" : "\(cantidad) rutas favoritas"
-    }
-
-    static func etiquetaQuitar(_ codigo: String) -> String { "Quitar la ruta \(codigo) de favoritas" }
-
-    /// Anuncio de accesibilidad tras quitar una ruta (el foco se pierde con la fila).
-    static func quitada(_ codigo: String, quedan: Int) -> String {
-        let resto: String
-        switch quedan {
-        case 0: resto = "No quedan rutas favoritas."
-        case 1: resto = "Queda 1 ruta favorita."
-        default: resto = "Quedan \(quedan) rutas favoritas."
-        }
-        return "Quité la ruta \(codigo) de tus favoritas. \(resto)"
-    }
-}
-
-struct LlamadaAyuda: Equatable {
+/// Texto estático de la pantalla Ayuda. Dice lo que la app hace HOY: al cambiar las pestañas o llegar rutas y lupa, se actualiza aquí.
+struct LlamadaAyuda: Equatable, Sendable {
     let nombre: String
     let numero: String
+    let url: URL
 
-    var url: URL? { URL(string: "tel:\(numero)") }
+    init(nombre: String, numero: String) {
+        self.nombre = nombre
+        self.numero = numero
+        // Los números son constantes del código, solo dígitos: `tel:` siempre forma una URL válida.
+        url = URL(string: "tel:\(numero)")!
+    }
 }
 
-struct SeccionAyuda: Equatable {
+struct SeccionAyuda: Equatable, Sendable {
     let titulo: String
     let parrafos: [String]
     var llamadas: [LlamadaAyuda] = []
@@ -67,7 +41,7 @@ enum TextoAyuda {
         // (en la pantalla de Sesión se parte por el tamaño del texto) para que VoiceOver no se detenga a media frase.
         SeccionAyuda(titulo: "Accesorio de proximidad", parrafos: [
             TextoAccesorio.parrafosAvisoEnlace.joined(separator: " "),
-            TextoAccesorio.parrafos(.enlaceNoVerificado).suffix(2).joined(separator: " "),
+            "\(TextoAccesorio.sinMedidaPorEnlace) \(TextoAccesorio.noEsDeteccionNiCaminoLibre)",
             "Cuando los avisos no estén bloqueados, se dicen solo por una salida de audio privada (auriculares con cable o Bluetooth). El iPhone no distingue unos auriculares de un altavoz Bluetooth: comprueba que sean auriculares.",
             "Es un prototipo experimental: no reemplaza el bastón ni el perro guía.",
         ]),

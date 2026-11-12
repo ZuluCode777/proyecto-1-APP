@@ -27,11 +27,12 @@ final class TextoAjustesTests: XCTestCase {
         XCTAssertTrue(metro.contains("no presta servicio"))
     }
 
-    func testAyudaReutilizaElAvisoDeSeguridadDelAccesorio() throws {
+    func testAyudaReutilizaElAvisoDeSeguridadDelAccesorio() {
         let accesorio = textoDeAyuda("Accesorio de proximidad")
         XCTAssertTrue(accesorio.contains(TextoAccesorio.parrafosAvisoEnlace.joined(separator: " ")))
-        let frase = try XCTUnwrap(TextoAccesorio.parrafos(.enlaceNoVerificado).last)
-        XCTAssertTrue(accesorio.contains(frase))
+        XCTAssertTrue(accesorio.contains("\(TextoAccesorio.sinMedidaPorEnlace) \(TextoAccesorio.noEsDeteccionNiCaminoLibre)"))
+        // Las dos frases siguen siendo las del bloqueo de la pantalla de Sesión.
+        XCTAssertEqual(Array(TextoAccesorio.parrafos(.enlaceNoVerificado).suffix(2)), [TextoAccesorio.sinMedidaPorEnlace, TextoAccesorio.noEsDeteccionNiCaminoLibre])
         XCTAssertTrue(accesorio.contains("no distingue unos auriculares de un altavoz Bluetooth"))
         XCTAssertTrue(accesorio.contains("no reemplaza el bastón ni el perro guía"))
     }
@@ -44,7 +45,7 @@ final class TextoAjustesTests: XCTestCase {
         }
     }
 
-    func testAyudaAdviertaQueHoyElAccesorioNoDaAvisos() {
+    func testAyudaAdvierteQueHoyElAccesorioNoDaAvisos() {
         let uso = textoDeAyuda("Cómo usarla")
         XCTAssertTrue(uso.contains("bloquea las medidas y los avisos del sensor"))
         XCTAssertTrue(uso.contains("no puede verificar el enlace"))
@@ -58,7 +59,7 @@ final class TextoAjustesTests: XCTestCase {
     func testAyudaOfreceLosTresNumerosDeEmergenciaComoEnlaces() {
         let llamadas = TextoAyuda.secciones.flatMap(\.llamadas)
         XCTAssertEqual(llamadas.map(\.numero), ["123", "156", "195"])
-        XCTAssertEqual(llamadas.compactMap(\.url?.absoluteString), ["tel:123", "tel:156", "tel:195"])
+        XCTAssertEqual(llamadas.map(\.url.absoluteString), ["tel:123", "tel:156", "tel:195"])
     }
 
     func testAyudaNoTieneSeccionesNiParrafosVacios() {

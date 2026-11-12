@@ -39,6 +39,7 @@ struct PreferenciasVista: View {
                     get: { vozPropiaActiva(accesorio) },
                     set: { accesorio.fijarVozPropia($0) })) {
                         Text("Avisos hablados por la app")
+                            .accessibilityIdentifier("etiqueta-interruptor-voz-preferencias")
                     }
                     .frame(minHeight: 44)
                     .accessibilityIdentifier("interruptor-voz-preferencias")
