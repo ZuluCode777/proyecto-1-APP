@@ -318,8 +318,10 @@ motores. El modelo pone Museo del Oro como origen. Las otras cuatro (`horarios-0
 `metro-01`, `metro-02` y `aclaracion-01a`) las aciertan los dos.
 
 **Rechazo.** De las 14 frases rechazables (`avisos-06` a `avisos-08` y las 11 de
-`fuera_de_dominio`), 4 acaban en una acción con la app y 2 con las reglas.
-Las dos de más son las alertas físicas «¿ya puedo cruzar la calle?» y «¿está libre
+`fuera_de_dominio`), 6 acaban en algo distinto de `unknown` con la app y 3 con
+las reglas, y 4 contra 2 abren una pantalla. La diferencia que no abre pantalla es
+`fuera-04` («escríbeme un poema»), que la app contesta con un saludo. Las dos
+pantallas de más son las alertas físicas «¿ya puedo cruzar la calle?» y «¿está libre
 el andén?», que las reglas rechazan y la app convierte en abrir el GPS. El GPS no
 da la orden de cruzar ni de subir, pero no es el rechazo que pide el criterio. Las
 otras dos, `fuera-08` y `fuera-09`, son instrucciones disfrazadas de pedido, y
@@ -394,10 +396,11 @@ físicas:
   `falloConocido`, 8 contra 3 (p ≈ 0,23). Las tres corridas idénticas no suman
   evidencia independiente, porque repiten la misma comparación. No se afirma que
   las reglas sean mejores, sino que el modelo no muestra ventaja en este corpus.
-- **Rechazo y alertas físicas.** Peor en esta muestra, por 2 frases. Dos alertas
-  físicas pasan de rechazadas a abrir el GPS, y 4 de 14 frases rechazables acaban
-  en una acción contra 2. Con diferencias tan pequeñas no hay base para decir que
-  el modelo rechaza peor en general, pero el criterio propuesto no se cumple.
+- **Rechazo y alertas físicas.** Peor en esta muestra, por 3 frases. Dos alertas
+  físicas pasan de rechazadas a abrir el GPS, y 6 de 14 frases rechazables acaban
+  en algo distinto de `unknown` contra 3 (4 contra 2 abren una pantalla). Con
+  diferencias tan pequeñas no hay base para decir que el modelo rechaza peor en
+  general, pero el criterio propuesto no se cumple.
 - **Aclaraciones y cancelación.** Una frase menos en cada una. El origen
   inexistente se cambia por una estación, y «detente por favor» ya no cancela.
 - **Latencia.** Suma alrededor de medio segundo a la mediana, con colas de 6 a
