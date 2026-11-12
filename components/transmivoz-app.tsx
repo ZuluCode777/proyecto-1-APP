@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { AppHeader } from "@/components/app-header"
 import { Assistance } from "@/components/assistance"
 import { AuditoryGps } from "@/components/auditory-gps"
+import { Avisos } from "@/components/avisos"
 import { MetroList } from "@/components/metro-list"
 import { ModeMenu } from "@/components/mode-menu"
 import { PartialHome } from "@/components/partial-home"
@@ -47,6 +48,7 @@ export function TransMiVozApp() {
   const [mode, setMode] = useState<Mode>("parcial")
   const [history, setHistory] = useState<Screen[]>(["home"])
   const [menuOpen, setMenuOpen] = useState(false)
+  const [avisosOpen, setAvisosOpen] = useState(false)
   const [voiceOpen, setVoiceOpen] = useState(false)
   const [fluor, setFluor] = useState(false)
   const [query, setQuery] = useState("")
@@ -222,7 +224,8 @@ export function TransMiVozApp() {
         fluor ? "fluor" : "",
       ].join(" ")}
     >
-      <AppHeader onMenu={() => setMenuOpen(true)} onNotifications={() => speak("No tienes notificaciones nuevas.")} />
+      <AppHeader onMenu={() => setMenuOpen(true)} onNotifications={() => setAvisosOpen(true)} />
+      <Avisos open={avisosOpen} onClose={() => setAvisosOpen(false)} catalogo={data} errorCatalogo={error} />
 
       {avisoReintento}
 

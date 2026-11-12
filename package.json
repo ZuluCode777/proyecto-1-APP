@@ -9,6 +9,8 @@
     "start": "next start",
     "test": "node --import ./test/register.mjs --test \"lib/**/*.test.ts\"",
     "sync:transmilenio": "node --import ./test/register.mjs scripts/sync-transmilenio.ts",
+    "sync:metro-cartografia": "node --import ./test/register.mjs scripts/sync-metro-cartografia.ts",
+    "analisis:metro-cartografia": "node --import ./test/register.mjs scripts/analisis-metro-cartografia.ts",
     "migrar:paradas-sentido": "node --import ./test/register.mjs scripts/migrar-paradas-sentido.ts",
     "evaluar:ea27": "node --import ./test/register.mjs scripts/evaluar-ea27.ts",
     "verificar": "node scripts/verificar.mjs"

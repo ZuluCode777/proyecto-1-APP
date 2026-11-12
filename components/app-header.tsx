@@ -32,7 +32,7 @@ export function AppHeader({ onMenu, onNotifications }: AppHeaderProps) {
       <button
         type="button"
         onClick={onNotifications}
-        aria-label="Notificaciones"
+        aria-label="Avisos y anuncios"
         className="flex size-12 items-center justify-center rounded-2xl border-3 border-border bg-bar transition active:scale-95"
       >
         <Bell className="size-6" aria-hidden="true" />
