@@ -26,14 +26,11 @@ import {
   ROTULO_MAPA_METRO,
   TEXTO_HUELLA_METRO,
   TEXTO_MAPA_METRO,
-  type Posicion,
+  aLeaflet,
 } from "@/lib/metro-cartografia"
 
 /** Lo que dice la voz al entrar y lo que muestra la nota de arriba: el mismo texto. */
 const TEXTO_ESTADO = `${TEXTO_LINEA_1} ${TEXTO_LIMITES} ${TEXTO_MAPA_METRO} Datos al ${METRO_CORTE_HABLADO}.`
-
-/** Leaflet espera [latitud, longitud]; la cartografía guarda [longitud, latitud]. */
-const aLeaflet = (puntos: Posicion[]) => puntos.map(([lon, lat]): [number, number] => [lat, lon])
 
 /** Trazado y huellas verificados (EA-24): una ilustración, nunca una ruta ni un acceso. */
 const CAPA_METRO: MapOverlay = {
@@ -41,7 +38,8 @@ const CAPA_METRO: MapOverlay = {
   attribution: ATRIBUCION_MAPA_METRO_CORTA,
   lines: [aLeaflet(CARTOGRAFIA_METRO.trazado)],
   polygons: CARTOGRAFIA_METRO.huellas.map(({ id, huella }) => {
-    const estacion = ESTACIONES_METRO_L1.find((e) => e.idOficial === id)!
+    const estacion = ESTACIONES_METRO_L1.find((e) => e.idOficial === id)
+    if (!estacion) throw new Error(`La huella ${id} del mapa no corresponde a ninguna estación del catálogo del Metro.`)
     return { ring: aLeaflet(huella), label: `${id} · ${nombreEstacion(estacion)}: ${TEXTO_HUELLA_METRO}` }
   }),
 }
@@ -109,6 +107,7 @@ export function MetroList({ onBack }: MetroListProps) {
                 <p>Nombre técnico de referencia: {estacion.aliasSig} (archivo de 2022).</p>
                 <p>{describirConexion(estacion)}</p>
                 <p>No tengo ubicación exacta ni accesos validados. {TEXTO_HOMONIMO}</p>
+                <p>En el mapa: {TEXTO_HUELLA_METRO}.</p>
                 <p className="text-muted-foreground">
                   Fuentes: {estacion.fuentes.filter((id, i, ids) => ids.indexOf(id) === i).join(", ")}
                 </p>

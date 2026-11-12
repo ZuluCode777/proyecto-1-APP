@@ -23,7 +23,7 @@ export type MapMarker = {
  * servicio. El rótulo y la atribución son obligatorios.
  */
 export type MapOverlay = {
-  /** Rótulo permanente sobre el mapa. */
+  /** Rótulo fijo en el marco del mapa: sigue a la vista al acercar o mover. */
   label: string
   /** Fuente, licencia y fecha: se suma a la atribución del mapa. */
   attribution: string
@@ -40,6 +40,11 @@ type TransitMapProps = {
   className?: string
 }
 
+// Constantes, no `[]` en la firma: un arreglo nuevo en cada render redibujaría y
+// reencuadraría el mapa cada vez que el componente padre se actualiza.
+const SIN_LINEAS: MapLine[] = []
+const SIN_MARCADORES: MapMarker[] = []
+
 /** Centro de Bogotá, para cuando todavía no hay nada que mostrar. */
 const BOGOTA: [number, number] = [4.65, -74.1]
 
@@ -49,7 +54,7 @@ const BOGOTA: [number, number] = [4.65, -74.1]
  * Los marcadores son círculos grandes con borde grueso para que se distingan
  * con baja visión; no usan imágenes, así que no dependen de rutas a archivos.
  */
-export function TransitMap({ lines = [], markers = [], overlay, label, className = "" }: TransitMapProps) {
+export function TransitMap({ lines = SIN_LINEAS, markers = SIN_MARCADORES, overlay, label, className = "" }: TransitMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<LeafletMap | null>(null)
   const layerRef = useRef<LayerGroup | null>(null)
@@ -97,17 +102,20 @@ export function TransitMap({ lines = [], markers = [], overlay, label, className
 
     const bounds: [number, number][] = []
     if (overlay) {
-      for (const path of overlay.lines) {
-        L.polyline(path, { color: ink, weight: 5, opacity: 0.85, dashArray: "2 10", attribution: overlay.attribution })
-          .bindTooltip(overlay.label, { permanent: true, direction: "center" })
+      // La atribución va en cada pieza: Leaflet la muestra una sola vez y la
+      // conserva mientras quede alguna en el mapa.
+      const base = { color: ink, attribution: overlay.attribution }
+      if (overlay.lines.length) {
+        // Un solo trazo para todas las líneas de la capa.
+        L.polyline(overlay.lines, { ...base, weight: 5, opacity: 0.85, dashArray: "2 10" })
+          .bindTooltip(overlay.label, { sticky: true })
           .addTo(layer)
-        bounds.push(...path)
       }
       for (const polygon of overlay.polygons) {
-        L.polygon(polygon.ring, { color: ink, weight: 2, dashArray: "4 4", fillColor: ink, fillOpacity: 0.15 })
-          .bindTooltip(polygon.label)
-          .addTo(layer)
+        // Borde grueso: a escala de ciudad una huella mide pocos píxeles.
+        L.polygon(polygon.ring, { ...base, weight: 4, fillColor: ink, fillOpacity: 0.3 }).bindTooltip(polygon.label).addTo(layer)
       }
+      bounds.push(...overlay.lines.flat(), ...overlay.polygons.flatMap((polygon) => polygon.ring))
     }
     for (const line of lines) {
       L.polyline(line.path, {
@@ -138,12 +146,22 @@ export function TransitMap({ lines = [], markers = [], overlay, label, className
     else if (bounds.length > 1) map.fitBounds(bounds, { padding: [24, 24], maxZoom: 16 })
   }
 
-  return (
+  const mapa = (
     <div
       ref={containerRef}
       role="region"
       aria-label={label}
-      className={`relative z-0 min-h-64 w-full overflow-hidden rounded-2xl border-3 border-border ${className}`}
+      className={`relative z-0 min-h-64 w-full overflow-hidden rounded-2xl border-3 border-border ${overlay ? "rounded-t-none" : ""} ${className}`}
     />
+  )
+  if (!overlay) return mapa
+  // El rótulo va en el marco y no sobre el lienzo: dentro tapaba el trazo o
+  // quedaba bajo la atribución. Así no depende del zoom ni del cursor, y con
+  // letra grande se parte en renglones.
+  return (
+    <div className="w-full shrink-0">
+      <p className="rounded-t-2xl border-3 border-b-0 border-border bg-card px-3 py-2 text-base font-bold">{overlay.label}</p>
+      {mapa}
+    </div>
   )
 }

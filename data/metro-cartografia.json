@@ -6,7 +6,7 @@
     "licencia": "CC BY 4.0",
     "licenciaUrl": "https://creativecommons.org/licenses/by/4.0/",
     "fechaDato": "2022-04-18",
-    "consultado": "2026-11-11",
+    "consultado": "2026-11-12",
     "crs": "EPSG:4326, pedido al servicio con outSR=4326; pares [longitud, latitud]",
     "cambios": [
       "trazado simplificado con tolerancia de 1 m (de 8494 a 157 vértices)",
@@ -14,13 +14,17 @@
     ],
     "trazado": {
       "catalogo": "https://datosabiertos.bogota.gov.co/dataset/trazado-primera-linea-del-metro-de-bogota",
-      "consulta": "https://serviciosgis.catastrobogota.gov.co/arcgis/rest/services/movilidad/metrobogota/MapServer/1/query?where=LINEA='Primera'&outFields=OBJECTID,NOMBRE,LINEA&outSR=4326&f=json",
-      "sha256": "9ed31a2d18ef3222f64a5f03038ac6c9c6595d71c7b4b36d5ce4d0d502dab5b2"
+      "consulta": "https://serviciosgis.catastrobogota.gov.co/arcgis/rest/services/movilidad/metrobogota/MapServer/1/query?where=LINEA%3D%27Primera%27&outFields=OBJECTID%2CNOMBRE%2CLINEA&outSR=4326&f=json",
+      "sha256": "9ed31a2d18ef3222f64a5f03038ac6c9c6595d71c7b4b36d5ce4d0d502dab5b2",
+      "verticesFuente": 8494,
+      "vertices": 157
     },
     "estaciones": {
       "catalogo": "https://datosabiertos.bogota.gov.co/dataset/estaciones-de-la-primera-linea-del-metro-de-bogota",
-      "consulta": "https://serviciosgis.catastrobogota.gov.co/arcgis/rest/services/movilidad/metrobogota/MapServer/0/query?where=LINEAS='Primera'&outFields=OBJECTID,NUMERO,NOMBRE,NOMALTE,TIPO,LINEAS,ESTADO&outSR=4326&f=json",
-      "sha256": "4abc6a505ebc487bb500ed7e8a6e41e56cf2340f251d7428597fe7ebd9f7b109"
+      "consulta": "https://serviciosgis.catastrobogota.gov.co/arcgis/rest/services/movilidad/metrobogota/MapServer/0/query?where=LINEAS%3D%27Primera%27&outFields=OBJECTID%2CNUMERO%2CNOMBRE%2CNOMALTE%2CTIPO%2CLINEAS%2CESTADO&outSR=4326&f=json",
+      "sha256": "4abc6a505ebc487bb500ed7e8a6e41e56cf2340f251d7428597fe7ebd9f7b109",
+      "entidades": 16,
+      "vertices": 97
     }
   },
   "features": [
