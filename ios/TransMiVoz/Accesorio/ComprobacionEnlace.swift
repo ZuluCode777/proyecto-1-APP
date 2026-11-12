@@ -80,18 +80,3 @@ struct ComprobacionEnlace {
         }
     }
 }
-
-/// Lo único que el transporte conserva de un `Error?` de Core Bluetooth.
-struct ResultadoSistema: Equatable {
-    let huboError: Bool
-    /// El motivo del enlace seguro, si el error es de ese tipo (`ComprobacionEnlace.motivo(de:)`).
-    let motivoEnlace: MotivoFalla?
-
-    init(error: Error?) {
-        huboError = error != nil
-        motivoEnlace = ComprobacionEnlace.motivo(de: error)
-    }
-
-    /// El motivo del enlace seguro si lo hay; si no, el que corresponde a la operación que falló.
-    func motivo(o respaldo: MotivoFalla) -> MotivoFalla { motivoEnlace ?? respaldo }
-}

@@ -25,7 +25,7 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
     /// y entonces `.cifradoSinAutenticar`. Nunca `.cifradoAutenticado`: un impostor sin protección también supera la
     /// lectura (riesgo aceptado por A1 el 12/11/2026 para la feria, con la política demo). No hay ajuste, bandera ni
     /// preferencia que lo cambie.
-    var nivelEnlace: NivelEnlace { evidencia.nivel(vigente: ciclo.token) }
+    var nivelEnlace: NivelEnlace { comprobacion.nivel(vigente: ciclo.token) }
 
     /// Leer la autorización no la provoca (a diferencia de crear el gestor).
     var permisoPorPreguntar: Bool { CBManager.authorization == .notDetermined }
@@ -44,7 +44,7 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
     private var medicion: CBCharacteristic?
     private var informacionPedida = false
     private var clasificador = ClasificadorValores()
-    private var evidencia = ComprobacionEnlace()
+    private var comprobacion = ComprobacionEnlace()
 
     init() {
         delegado.duenio = self
@@ -82,7 +82,7 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
 
     func comprobarEnlace(token pedido: Int) {
         guard pedido == ciclo.token, let periferico = perifericoVigente(), let informacion else { return }
-        evidencia.pedir(token: pedido)
+        comprobacion.pedir(token: pedido)
         // El firmware genuino rechaza esta lectura sin enlace cifrado y autenticado; iOS empareja y la repite.
         periferico.readValue(for: informacion)
     }
@@ -165,7 +165,7 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
         medicion = nil
         informacionPedida = false
         clasificador.reiniciar()
-        evidencia.reiniciar()
+        comprobacion.reiniciar()
     }
 
     /// Los eventos de una conexión llevan SIEMPRE el token con el que se abrió, no el de «ahora».
@@ -205,14 +205,14 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
         p.discoverServices([servicio])
     }
 
-    /// `motivoEnlace`: el sistema dijo que falló el enlace seguro (p. ej. el accesorio borró el vínculo). Entonces
-    /// es un fallo con su recuperación, no una desconexión que se reintenta sola.
-    fileprivate func fallaLaConexion(_ p: CBPeripheral, motivoEnlace: MotivoFalla?) {
-        finalDeConexion(p, evento: ComprobacionEnlace.eventoDeCorte(motivoEnlace: motivoEnlace, fallaAlConectar: true))
+    /// Si el sistema dijo que falló el enlace seguro (p. ej. el accesorio borró el vínculo), es un fallo con su
+    /// recuperación, no una desconexión que se reintenta sola.
+    fileprivate func fallaLaConexion(_ p: CBPeripheral, resultado: ResultadoSistema) {
+        finalDeConexion(p, evento: ComprobacionEnlace.eventoDeCorte(motivoEnlace: resultado.motivoEnlace, fallaAlConectar: true))
     }
 
-    fileprivate func desconectado(_ p: CBPeripheral, motivoEnlace: MotivoFalla?) {
-        finalDeConexion(p, evento: ComprobacionEnlace.eventoDeCorte(motivoEnlace: motivoEnlace, fallaAlConectar: false))
+    fileprivate func desconectado(_ p: CBPeripheral, resultado: ResultadoSistema) {
+        finalDeConexion(p, evento: ComprobacionEnlace.eventoDeCorte(motivoEnlace: resultado.motivoEnlace, fallaAlConectar: false))
     }
 
     /// `didDisconnect` / `didFailToConnect`: o es el aviso del cierre que pedimos (se consume y, si había una
@@ -256,19 +256,19 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
         // Solo las características descubiertas en esta conexión (no un objeto viejo con el mismo UUID).
         if c === informacion {
             // La lectura de comprobación va primero y su valor se descarta: la sesión lee la Información después.
-            if let evento = evidencia.eventoDeLectura(valor: valor, motivoEnlace: resultado.motivoEnlace, vigente: ciclo.token) {
+            if let evento = comprobacion.eventoDeLectura(valor: valor, motivoEnlace: resultado.motivoEnlace, vigente: ciclo.token) {
                 avisar(evento)
                 return
             }
             guard informacionPedida else { return }
             informacionPedida = false
-            if let valor { avisar(.informacion(valor)) } else { avisar(.fallo(resultado.motivo(o: .errorDeLectura))) }
+            if let valor { avisar(.informacion(valor)) } else { avisar(.fallo(resultado.motivo(respaldo: .errorDeLectura))) }
         } else if c === medicion {
             // Lectura y notificación llegan por aquí; el clasificador las separa.
             switch clasificador.recibirValor(conError: valor == nil) {
             case .respuestaLectura: if let valor { avisar(.respuestaMedicion(valor)) }
             case .notificacion: if let valor { avisar(.notificacionMedicion(valor)) }
-            case .falloLectura: avisar(.fallo(resultado.motivo(o: .errorDeLectura)))
+            case .falloLectura: avisar(.fallo(resultado.motivo(respaldo: .errorDeLectura)))
             case .descartar: break
             }
         }
@@ -277,7 +277,7 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
     fileprivate func notificacionesActualizadas(_ p: CBPeripheral, _ c: CBCharacteristic, resultado: ResultadoSistema) {
         guard ciclo.vale(p.identifier.uuidString), c === medicion else { return }
         if resultado.huboError {
-            avisar(.fallo(resultado.motivo(o: .errorDeSuscripcion)))
+            avisar(.fallo(resultado.motivo(respaldo: .errorDeSuscripcion)))
             return
         }
         clasificador.confirmarNotificaciones(c.isNotifying)
@@ -310,13 +310,13 @@ private final class DelegadoCoreBluetooth: NSObject, CBCentralManagerDelegate, C
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
-        let motivoEnlace = ComprobacionEnlace.motivo(de: error)
-        enPrincipal { $0.fallaLaConexion(peripheral, motivoEnlace: motivoEnlace) }
+        let resultado = ResultadoSistema(error: error)
+        enPrincipal { $0.fallaLaConexion(peripheral, resultado: resultado) }
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        let motivoEnlace = ComprobacionEnlace.motivo(de: error)
-        enPrincipal { $0.desconectado(peripheral, motivoEnlace: motivoEnlace) }
+        let resultado = ResultadoSistema(error: error)
+        enPrincipal { $0.desconectado(peripheral, resultado: resultado) }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
@@ -338,4 +338,20 @@ private final class DelegadoCoreBluetooth: NSObject, CBCentralManagerDelegate, C
         let resultado = ResultadoSistema(error: error)
         enPrincipal { $0.notificacionesActualizadas(peripheral, characteristic, resultado: resultado) }
     }
+}
+
+/// Lo único que el transporte conserva de un `Error?` de Core Bluetooth: si hubo error y, si es del enlace seguro, su
+/// motivo (`ComprobacionEnlace.motivo(de:)`). Los avisos del sistema llegan en un hilo y se reenvían al principal ya
+/// reducidos a este valor.
+struct ResultadoSistema: Equatable {
+    let huboError: Bool
+    let motivoEnlace: MotivoFalla?
+
+    init(error: Error?) {
+        huboError = error != nil
+        motivoEnlace = ComprobacionEnlace.motivo(de: error)
+    }
+
+    /// El motivo del enlace seguro si lo hay; si no, el que corresponde a la operación que falló.
+    func motivo(respaldo: MotivoFalla) -> MotivoFalla { motivoEnlace ?? respaldo }
 }

@@ -116,6 +116,12 @@ final class ControlVoz {
     private(set) var interrumpido = false
     /// El sistema rechazó la última activación de la sesión de audio.
     private(set) var audioNoDisponible = false
+    /// La última locución empezada se cortó antes de terminar (la siguiente, un cambio de ruta, una interrupción o un
+    /// descarte). La sesión lo usa para saber si una frase que debe oírse entera, como la reserva de un enlace sin
+    /// autenticar, se oyó de verdad. Se limpia al empezar otra locución.
+    @ObservationIgnored private(set) var ultimaCortada = false
+    /// Hay una locución sonando o por sonar: si llega otra, la corta.
+    var hablando: Bool { salida.hablando }
     /// Se llama cuando vuelve a ser posible hablar (auriculares de nuevo, fin de la interrupción, o un
     /// corte con la ruta privada intacta que dejó una locución a medias).
     @ObservationIgnored var alRecuperarse: (@MainActor () -> Void)?
@@ -133,16 +139,23 @@ final class ControlVoz {
         ruta = consultarRuta()
     }
 
+    /// Corta lo que suene y anota si algo quedó a medias.
+    private func cortar() {
+        if salida.hablando { ultimaCortada = true }
+        salida.detener()
+    }
+
     @discardableResult
     func anunciar(_ texto: String) -> Resultado {
         ruta = consultarRuta()
-        salida.detener()
+        cortar()
         if interrumpido { return .silenciado(.interrumpido) }
         guard permitida() else { return .silenciado(.vozApagada) }
         guard ruta == .privada else { return .silenciado(.rutaNoPrivada) }
         switch salida.hablar(texto) {
         case .iniciada:
             audioNoDisponible = false
+            ultimaCortada = false
             return .hablado
         case .sesionNoDisponible:
             audioNoDisponible = true
@@ -155,14 +168,14 @@ final class ControlVoz {
     }
 
     func descartarTodo() {
-        salida.detener()
+        cortar()
     }
 
     /// El sistema avisó de un cambio de ruta (auriculares conectados o perdidos, otro destino).
     func rutaCambio() {
         let antes = ruta
         let cortada = salida.hablando
-        salida.detener()
+        cortar()
         audioNoDisponible = false
         ruta = consultarRuta()
         if antes == .privada && ruta != .privada { alPerderRuta?() }
@@ -173,7 +186,7 @@ final class ControlVoz {
     }
 
     func interrupcion(comenzo: Bool) {
-        salida.detener()
+        cortar()
         interrumpido = comenzo
         if !comenzo {
             audioNoDisponible = false

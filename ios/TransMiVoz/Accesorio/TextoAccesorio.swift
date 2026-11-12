@@ -124,14 +124,18 @@ enum TextoAccesorio {
         "Esto no es una detección ni significa camino libre.",
     ]
 
+    /// El gesto del botón que abre la ventana de emparejamiento. Pulsar 10 s o más borra los vínculos (ea-12-ble.md).
+    private static let pulsacionDeAlta = "de 3 a menos de 10 segundos"
+    private static let codigoDeSeisDigitos = "código de 6 dígitos"
+
     /// Qué verá y qué hará la persona mientras se comprueba el enlace. Lo que iOS muestra (la solicitud de emparejamiento
     /// que pide la clave de 6 dígitos) no se ha visto con la placa: está sin comprobar en banco. El accesorio no tiene
     /// pantalla y no muestra la clave; el botón y los 60 s son los del firmware (ea-12-ble.md).
     private static let frasesComprobandoEnlace = [
         "Comprobando el enlace seguro con el accesorio. Aún no hay medidas.",
-        "Si iOS muestra una solicitud de emparejamiento, escribe el código de 6 dígitos de este accesorio.",
+        "Si iOS muestra una solicitud de emparejamiento, escribe el \(codigoDeSeisDigitos) de este accesorio.",
         "El accesorio no tiene pantalla y no muestra el código.",
-        "Si es la primera vez, mantén pulsado su botón de 3 a menos de 10 segundos: solo acepta emparejar durante 60 segundos.",
+        "Si es la primera vez, mantén pulsado su botón \(pulsacionDeAlta): solo acepta emparejar durante 60 segundos.",
     ]
 
     /// Emparejamiento cancelado, clave incorrecta, ventana de alta cerrada, corte o plazo vencido. No se sabe cuál de
@@ -140,8 +144,8 @@ enum TextoAccesorio {
     private static let frasesEnlaceSeguroFallido = [
         fallo(.enlaceSeguroFallido),
         "Pudo cancelarse el emparejamiento, ser incorrecto el código, estar cerrada la ventana del accesorio o cortarse la conexión.",
-        "Toca Reconectar y, si iOS pide un código de 6 dígitos, escríbelo.",
-        "Si falla otra vez, mantén pulsado el botón del accesorio de 3 a menos de 10 segundos y toca Reconectar.",
+        "Toca Reconectar y, si iOS pide un \(codigoDeSeisDigitos), escríbelo.",
+        "Si falla otra vez, mantén pulsado el botón del accesorio \(pulsacionDeAlta) y toca Reconectar.",
         "Si sigue fallando, mantén el botón 10 segundos o más: borra los vínculos del accesorio.",
         "Luego olvida el accesorio en Ajustes > Bluetooth del iPhone y empareja de nuevo.",
         "No hay medidas.",
@@ -152,7 +156,7 @@ enum TextoAccesorio {
     private static let frasesVinculoBorrado = [
         fallo(.vinculoBorradoEnAccesorio),
         "En el iPhone abre Ajustes > Bluetooth, toca la «i» junto al accesorio y elige «Olvidar este dispositivo».",
-        "Luego mantén pulsado su botón de 3 a menos de 10 segundos, toca Reconectar y escribe el código de 6 dígitos que pida iOS.",
+        "Luego mantén pulsado su botón \(pulsacionDeAlta), toca Reconectar y escribe el \(codigoDeSeisDigitos) que pida iOS.",
         "No hay medidas.",
     ]
 
@@ -208,7 +212,21 @@ enum TextoAccesorio {
     /// con ese accesorio no puede tener éxito hasta reiniciar el Bluetooth o la app (límite sin probar con hardware).
     static let recuperacionRepetida = "Si vuelve a fallar, apaga y enciende el Bluetooth del iPhone o cierra y abre la app."
 
-    /// Se anuncia una vez por conexión, en `.calibrando`, mientras el enlace no conste autenticado.
+    /// La reserva hablada del enlace sin autenticar (contrato §6). La sesión la antepone a las locuciones de
+    /// `requiereReserva` hasta que se oye entera, y a cada vez que se repite el estado de ahora.
+    static let reservaEnlace = "Enlace sin autenticar."
+
+    static func conReserva(_ texto: String) -> String { "\(reservaEnlace) \(texto)" }
+
+    /// Los estados en los que el accesorio ya está aceptado y sus avisos se dicen: son los que llevan la reserva.
+    static func requiereReserva(_ e: EstadoAccesorio) -> Bool {
+        switch e {
+        case .calibrando, .sinDeteccion, .presencia, .objetivo, .sinDatos, .radarNoDisponible: return true
+        default: return false
+        }
+    }
+
+    /// Anuncio de VoiceOver al conectar con un enlace sin autenticar (una vez, en `.calibrando`).
     private static let textoEnlaceSinAutenticar = "Accesorio conectado con enlace sin autenticar: un aparato ajeno podría hacerse pasar por él. Calibrando."
 
     static let audioNoDisponibleAviso = "Audio no disponible: no se pueden decir avisos en voz alta. El estado queda en pantalla."
@@ -230,7 +248,7 @@ enum TextoAccesorio {
         case .rechazado:
             return "Accesorio rechazado. Sin avisos."
         case .comprobandoEnlace:
-            return "Comprobando el enlace seguro. Si iOS pide un código de 6 dígitos, escríbelo."
+            return "Comprobando el enlace seguro. Si iOS pide un \(codigoDeSeisDigitos), escríbelo."
         case .falla(let motivo):
             if frasesFalloSeguro(motivo) != nil { return "\(fallo(motivo)) Sin avisos. La pantalla explica cómo reintentar." }
             return "\(fallo(motivo)) Sin avisos. Usa Reconectar. \(recuperacionRepetida)"
@@ -269,19 +287,13 @@ enum TextoAccesorio {
     /// Texto hablado de cada estado, o nil si no se dice nada. La distancia se redondea
     /// a medio metro y el lado a tres sectores: la exactitud del radar no está
     /// certificada y una cifra más fina sería falsa precisión.
-    ///
-    /// `enlaceAutenticado`: con un enlace sin autenticar, la primera locución tras conectar lo declara (contrato §6).
-    /// Por defecto `false`: nunca se presenta como autenticado lo que no consta.
-    static func locucion(_ e: EstadoAccesorio, enlaceAutenticado: Bool = false) -> Locucion? {
+    static func locucion(_ e: EstadoAccesorio) -> Locucion? {
         switch e {
         case .sinAccesorio, .detenido, .conectado: return nil
         case .bluetoothNoDisponible: return Locucion(texto: "Bluetooth no disponible. Sin avisos.")
         case .conectando: return Locucion(texto: "Conectando con el accesorio.")
-        case .comprobandoEnlace: return Locucion(texto: "Comprobando el enlace seguro. Si iOS pide un código de 6 dígitos, escríbelo.")
-        case .calibrando:
-            return Locucion(texto: enlaceAutenticado
-                ? "Accesorio conectado. Calibrando. Aún sin avisos."
-                : "Accesorio conectado, con enlace sin autenticar. Calibrando. Aún sin avisos.")
+        case .comprobandoEnlace: return Locucion(texto: "Comprobando el enlace seguro. Si iOS pide un \(codigoDeSeisDigitos), escríbelo.")
+        case .calibrando: return Locucion(texto: "Accesorio conectado. Calibrando. Aún sin avisos.")
         case .enlaceNoVerificado: return Locucion(texto: "Avisos bloqueados. No se puede verificar la seguridad del enlace.")
         case .rechazado: return Locucion(texto: "Accesorio rechazado. Sin avisos.")
         case .falla: return Locucion(texto: "Fallo del accesorio. Sin avisos.")

@@ -59,7 +59,7 @@ Sin configuración local compila, pero **no habilita nada**: sin pines no abre l
 1. `cp firmware/accesorio/configuracion_local.ejemplo.h firmware/accesorio/configuracion_local.h` (Git ignora el resultado).
 2. Genera una clave de 6 dígitos con `printf '%06d\n' $(( $(od -An -N4 -tu4 /dev/urandom) % 899999 + 100000 ))` y pégala en el archivo. No la escribas en el repositorio, un issue ni un chat; el iPhone la pedirá al emparejar.
 3. Fija los pines (`VISIONARIA_PIN_RADAR_RX`, `VISIONARIA_PIN_RADAR_TX`, `VISIONARIA_PIN_BOTON`) mirando la serigrafía de **la placa recibida**. Ningún pin de este repositorio está probado. El compilador rechaza los de arranque, USB, consola y PSRAM.
-4. Compila y carga. Alta: mantén el botón de 3 a 10 s (60 s para emparejar); 10 s o más borra los vínculos.
+4. Compila y carga. Alta: mantén el botón de 3 a menos de 10 s (60 s para emparejar); 10 s o más borra los vínculos.
 
 Compilación de simulación (presencia sintética, bit 5, nombre `Visionaria-SIM`, sin radar): `-DVISIONARIA_SIMULACION=1` más botón y clave. Otras banderas, límites de seguridad y guion de banco: [ea-12-ble.md](../docs/expoandes/ea-12-ble.md).
 

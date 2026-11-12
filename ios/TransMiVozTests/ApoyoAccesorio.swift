@@ -45,6 +45,10 @@ final class TransporteFalso: TransporteAccesorio {
 final class SalidaVozFalsa: SalidaVoz {
     private(set) var llamadas: [String] = []
     private(set) var hablando = false
+    /// Las locuciones que el «sistema» cortó antes de terminar, y las que terminaron enteras, en orden.
+    private(set) var cortadas: [String] = []
+    private(set) var completas: [String] = []
+    private var sonando: String?
     /// Lo que responde el «sistema» al intentar hablar (por ejemplo, la sesión de audio rechazada).
     var resultado: ResultadoHabla = .iniciada
     var dicho: [String] { llamadas.compactMap { $0.hasPrefix("hablar:") ? String($0.dropFirst(7)) : nil } }
@@ -52,12 +56,23 @@ final class SalidaVozFalsa: SalidaVoz {
     func hablar(_ texto: String) -> ResultadoHabla {
         guard resultado == .iniciada else { llamadas.append("intento:\(texto)"); return resultado }
         llamadas.append("hablar:\(texto)")
+        sonando = texto
         hablando = true
         return .iniciada
     }
-    func detener() { llamadas.append("detener"); hablando = false }
-    /// La locución terminó sola (no la cortó nadie).
-    func terminarSola() { hablando = false }
+    /// Corta lo que suene: la locución a medias consta como cortada (no se oyó entera).
+    func detener() {
+        llamadas.append("detener")
+        if hablando, let texto = sonando { cortadas.append(texto) }
+        sonando = nil
+        hablando = false
+    }
+    /// La locución terminó sola (no la cortó nadie): consta como completa.
+    func terminarSola() {
+        if let texto = sonando { completas.append(texto) }
+        sonando = nil
+        hablando = false
+    }
 }
 
 /// Avisos accesibles falsos: anotan lo que la app anunciaría por VoiceOver y las vibraciones.

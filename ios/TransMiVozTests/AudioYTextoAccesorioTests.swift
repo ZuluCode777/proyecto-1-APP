@@ -10,6 +10,26 @@ final class ControlVozTests: XCTestCase {
         return (ControlVoz(salida: salida, consultarRuta: { rutaFalsa.valor }), salida, rutaFalsa)
     }
 
+    func testSabeSiLaUltimaLocucionSeCorto() {
+        let (control, salida, _) = crear(.privada)
+        XCTAssertFalse(control.hablando)
+        control.anunciar("a")
+        XCTAssertTrue(control.hablando)
+        XCTAssertFalse(control.ultimaCortada)
+        salida.terminarSola()
+        XCTAssertFalse(control.hablando)
+        control.descartarTodo()
+        XCTAssertFalse(control.ultimaCortada, "no había nada sonando que cortar")
+
+        control.anunciar("b")
+        control.descartarTodo()
+        XCTAssertTrue(control.ultimaCortada, "b sonaba y se descartó")
+        control.anunciar("c")
+        XCTAssertFalse(control.ultimaCortada, "una locución nueva limpia la marca")
+        control.rutaCambio()
+        XCTAssertTrue(control.ultimaCortada, "un cambio de ruta también corta lo que suene")
+    }
+
     func testClasificaLaRutaDeAudio() {
         XCTAssertEqual(RutaAudio.clasificar([.auricularCableado]), .privada)
         XCTAssertEqual(RutaAudio.clasificar([.bluetooth]), .privada)
@@ -327,13 +347,23 @@ final class TextoAccesorioTests: XCTestCase {
         for parrafo in TextoAccesorio.parrafosAvisoEnlace { XCTAssertLessThanOrEqual(parrafo.count, 86, parrafo) }
     }
 
-    /// Al conectar con un enlace sin autenticar la voz y VoiceOver declaran el límite una vez; con uno autenticado (solo el
-    /// doble de prueba) el texto de siempre. Por defecto se asume sin autenticar: nunca se presenta como autenticado lo que no consta.
-    func testAlConectarSeDeclaraElEnlaceSinAutenticar() {
-        XCTAssertEqual(TextoAccesorio.locucion(.calibrando, enlaceAutenticado: false)?.texto,
-                       "Accesorio conectado, con enlace sin autenticar. Calibrando. Aún sin avisos.")
-        XCTAssertEqual(TextoAccesorio.locucion(.calibrando)?.texto, TextoAccesorio.locucion(.calibrando, enlaceAutenticado: false)?.texto)
-        XCTAssertEqual(TextoAccesorio.locucion(.calibrando, enlaceAutenticado: true)?.texto, "Accesorio conectado. Calibrando. Aún sin avisos.")
+    /// La reserva hablada va delante de las locuciones del accesorio ya aceptado (la sesión la antepone mientras el enlace
+    /// no conste autenticado); VoiceOver la anuncia una vez al conectar. Por defecto se asume sin autenticar: nunca se
+    /// presenta como autenticado lo que no consta.
+    func testLaReservaDelEnlaceSinAutenticarVaSoloEnLosEstadosDelAccesorioAceptado() {
+        XCTAssertEqual(TextoAccesorio.reservaEnlace, "Enlace sin autenticar.")
+        XCTAssertEqual(TextoAccesorio.conReserva("Sin detección en este momento."), "Enlace sin autenticar. Sin detección en este momento.")
+        XCTAssertEqual(TextoAccesorio.locucion(.calibrando)?.texto, "Accesorio conectado. Calibrando. Aún sin avisos.")
+        let conReserva: [EstadoAccesorio] = [
+            .calibrando, .sinDeteccion, .presencia, .objetivo(distanciaMm: 1000, azimutCentesimas: nil),
+            .sinDatos(.vencido), .radarNoDisponible(.iniciando),
+        ]
+        for estado in conReserva { XCTAssertTrue(TextoAccesorio.requiereReserva(estado), "\(estado)") }
+        let sinReserva: [EstadoAccesorio] = [
+            .sinAccesorio, .detenido, .conectando, .comprobandoEnlace, .conectado, .enlaceNoVerificado,
+            .rechazado(.enlaceNoAutenticado), .falla(.tiempoAgotado), .desconectado, .bluetoothNoDisponible(.apagado),
+        ]
+        for estado in sinReserva { XCTAssertFalse(TextoAccesorio.requiereReserva(estado), "\(estado)") }
         XCTAssertTrue(TextoAccesorio.anuncioAccesible(.calibrando, enlaceAutenticado: false)?.contains("sin autenticar") == true)
         XCTAssertNil(TextoAccesorio.anuncioAccesible(.calibrando, enlaceAutenticado: true))
     }

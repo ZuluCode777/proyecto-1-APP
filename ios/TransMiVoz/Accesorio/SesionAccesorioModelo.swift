@@ -21,7 +21,7 @@ enum FaseConexion: Equatable {
 ///   aprobada por A1 el 12/11/2026 solo para la feria (H3 informado). No hay ajuste, bandera ni preferencia que la
 ///   cambie. Condiciones del contrato: la sesión queda marcada NO autenticada (`enlaceAutenticado == false`), la
 ///   interfaz no la presenta como autenticada y declara el límite (aviso fijo, línea «Enlace autenticado» y aviso
-///   hablado al conectar). Se acepta `.cifradoSinAutenticar` o `.cifradoAutenticado`; `.sinCifrar` y `.desconocido`
+///   hablado, con la reserva «Enlace sin autenticar.» delante hasta que se oye entera). Se acepta `.cifradoSinAutenticar` o `.cifradoAutenticado`; `.sinCifrar` y `.desconocido`
 ///   se rechazan y no se lee ni se suscribe nada. Riesgo aceptado: Core Bluetooth no expone el nivel del enlace, así
 ///   que un impostor sin protección con los mismos UUID supera la lectura de comprobación y se acepta igual.
 ///   Ninguna medida cuenta antes de esa comprobación.
@@ -30,8 +30,8 @@ enum FaseConexion: Equatable {
 /// - Comprobación del enlace: tras `.conectado` y ANTES de abrir la sesión del contrato, una lectura protegida
 ///   de comprobación (Información). Si el enlace no está protegido, iOS empareja por su cuenta y pide la clave a
 ///   la persona; hasta que termine no se llama a `SesionProximidad.conectar(accesorio:enlace:)`, que recibe el
-///   nivel del transporte (siempre `.desconocido` en producción). Es una aclaración de plataforma propuesta,
-///   pendiente de revisión por el responsable del contrato (H3); ver contrato-ble.md §5.1 y §6. La escena puede
+///   nivel del transporte (`.desconocido`, o `.cifradoSinAutenticar` tras la lectura). Aclaración de plataforma
+///   aprobada por A1 el 12/11/2026 para la feria, H3 informado; ver contrato-ble.md §5.1 y §6. La escena puede
 ///   quedar inactiva mientras iOS muestra la solicitud: en ese paso el resultado se procesa aunque la sesión esté
 ///   suspendida y al volver no se reinicia la conexión, para no repetir la solicitud.
 /// - Orden de sincronización: Información → notificaciones apagadas y confirmadas → lectura
@@ -121,6 +121,10 @@ final class SesionAccesorioModelo {
     @ObservationIgnored private var escaneando = false
     @ObservationIgnored private var ultimoAvisoEstado: String?
     @ObservationIgnored private var avisadoAudioNoDisponible = false
+    /// La reserva hablada del enlace sin autenticar ya se oyó entera en esta conexión.
+    @ObservationIgnored private var reservaOida = false
+    /// La última locución dicha llevaba la reserva (se sabrá si se oyó entera al llegar la siguiente).
+    @ObservationIgnored private var ultimaLlevabaReserva = false
 
     init(
         transporte: TransporteAccesorio,
@@ -266,6 +270,7 @@ final class SesionAccesorioModelo {
         ultimaLocucion = nil
         ultimoAvisoEstado = nil
         avisadoAudioNoDisponible = false
+        olvidarReservaOida()
     }
 
     func reconectar() {
@@ -300,6 +305,7 @@ final class SesionAccesorioModelo {
             suspendida = false
             // iOS puede no entregar el fin de una interrupción: se vuelve a mirar el audio de cero.
             voz.escenaVolvio()
+            olvidarReservaOida()  // se resincroniza: la reserva vuelve a decirse
             sincronizarEscaneo()
             guard activa else { return }
             if paso == .suscrito {
@@ -494,6 +500,7 @@ final class SesionAccesorioModelo {
         tramasPerdidas = 0
         enlaceAutenticado = false
         nivelAfirmado = .desconocido
+        olvidarReservaOida()
         intentosReferencia = 0
         fase = nueva
         paso = disponibilidad == .disponible ? .conectando : .ninguno
@@ -573,13 +580,31 @@ final class SesionAccesorioModelo {
         avisarEnPantalla(vozHablo: anunciar())
     }
 
-    /// Verdadero si la voz propia dijo algo ahora.
+    /// Verdadero si la voz propia dijo algo ahora. Con un enlace sin autenticar, las locuciones del accesorio ya aceptado
+    /// llevan delante «Enlace sin autenticar.» hasta que esa frase se oye entera: cada locución corta la anterior, así que
+    /// no se confía en que una sola (como «calibrando», que dura un instante) se oiga completa.
     @discardableResult
     private func anunciar() -> Bool {
-        guard activa, !suspendida, let locucion = TextoAccesorio.locucion(estado, enlaceAutenticado: enlaceAutenticado),
+        guard activa, !suspendida, let locucion = TextoAccesorio.locucion(estado),
               locucion != ultimaLocucion else { return false }
         ultimaLocucion = locucion
-        return voz.anunciar(locucion.texto) == .hablado
+        comprobarReservaAnterior()
+        let conReserva = !enlaceAutenticado && !reservaOida && TextoAccesorio.requiereReserva(estado)
+        let hablado = voz.anunciar(conReserva ? TextoAccesorio.conReserva(locucion.texto) : locucion.texto) == .hablado
+        ultimaLlevabaReserva = conReserva && hablado
+        return hablado
+    }
+
+    /// La locución anterior llevaba la reserva: se oyó entera si nada la cortó ni sigue sonando (la que llega la cortaría).
+    private func comprobarReservaAnterior() {
+        guard ultimaLlevabaReserva else { return }
+        ultimaLlevabaReserva = false
+        if !voz.ultimaCortada && !voz.hablando { reservaOida = true }
+    }
+
+    private func olvidarReservaOida() {
+        reservaOida = false
+        ultimaLlevabaReserva = false
     }
 
     /// Vuelve el audio (auriculares de nuevo, fin de una llamada, corte que dejó una locución a medias):
@@ -591,6 +616,7 @@ final class SesionAccesorioModelo {
         sesion?.evaluar(ahoraMs: reloj())
         sincronizarDesdeSesion()
         ultimaLocucion = nil
+        olvidarReservaOida()  // cada vez que se repite el estado de ahora, también la reserva
         avisarEnPantalla(vozHablo: anunciar())
     }
 
