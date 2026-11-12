@@ -673,16 +673,21 @@ final class TransMiVozTextoGrandeUITests: XCTestCase {
             esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña \(nombre)")
             if nombre == "Consulta" {
                 // La introducción mide ~500 pt: se audita entera y a la vista, y luego el campo con sus botones.
+                // Bajo la fila fija del selector, el vecino del objetivo queda recortado por el borde de arriba del área
+                // desplazable y el sistema mide el contraste de ese trozo: se difiere y se mide entero al cerrar la fase
+                // (`FaseAuditada`). Lo que está entero a la vista sigue fallando en el acto.
+                let consulta = FaseAuditada("consulta-texto-muy-grande", app: app, caso: self, velocidad: .slow)
                 for (id, contexto) in [("introduccion-consulta", "introduccion"), ("boton-enviar", "campo")] {
                     exponer(id, en: app)
                     if id == "boton-enviar" {
                         let contador = app.staticTexts["contador-caracteres"]
                         XCTAssertTrue(contador.isHittable, "El contador debe estar visible para auditarlo")
-                        XCTAssertGreaterThanOrEqual(contador.frame.minY, app.navigationBars.firstMatch.frame.maxY)
+                        XCTAssertGreaterThanOrEqual(contador.frame.minY, max(app.navigationBars.firstMatch.frame.maxY, app.scrollViews.firstMatch.frame.minY))
                         XCTAssertLessThanOrEqual(contador.frame.maxY, app.scrollViews.firstMatch.frame.maxY)
                     }
-                    try auditar(app, "texto-muy-grande-Consulta-\(contexto)", testCase: self)
+                    try consulta.auditar("texto-muy-grande-Consulta-\(contexto)")
                 }
+                try consulta.cerrar()
             } else {
                 try auditar(app, "texto-muy-grande-\(nombre)", testCase: self)
             }
@@ -714,6 +719,8 @@ final class TransMiVozTextoGrandeUITests: XCTestCase {
         escenario.tap()
         esperar(escenario, "value == %@", "activado", "No se cambió al escenario del Metro")
 
+        // Misma fase diferida que la prueba de arriba: ver el comentario allí.
+        let metro = FaseAuditada("consulta-metro-texto-muy-grande", app: app, caso: self, velocidad: .slow)
         for (id, contexto) in [("introduccion-consulta", "introduccion"), ("boton-enviar", "campo")] {
             exponer(id, en: app)
             if id == "introduccion-consulta" {
@@ -723,11 +730,12 @@ final class TransMiVozTextoGrandeUITests: XCTestCase {
             } else {
                 let contador = app.staticTexts["contador-caracteres"]
                 XCTAssertTrue(contador.isHittable, "El contador debe estar visible para auditarlo")
-                XCTAssertGreaterThanOrEqual(contador.frame.minY, app.navigationBars.firstMatch.frame.maxY)
+                XCTAssertGreaterThanOrEqual(contador.frame.minY, max(app.navigationBars.firstMatch.frame.maxY, app.scrollViews.firstMatch.frame.minY))
                 XCTAssertLessThanOrEqual(contador.frame.maxY, app.scrollViews.firstMatch.frame.maxY)
             }
-            try auditar(app, "texto-muy-grande-Consulta-metro-\(contexto)", testCase: self)
+            try metro.auditar("texto-muy-grande-Consulta-metro-\(contexto)")
         }
+        try metro.cerrar()
     }
 }
 
