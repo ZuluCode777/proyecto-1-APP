@@ -19,7 +19,7 @@ import Foundation
 ///
 /// Falla cerrado: la comprobación solo cuenta sin error y en la conexión en la que se pidió. No se guarda nada: el
 /// resultado no pasa a otra conexión ni a otro periférico.
-struct EvidenciaEnlace {
+struct ComprobacionEnlace {
     private var pedidaEn: Int?
 
     /// Se pide la lectura de comprobación en la conexión `token`.
@@ -38,7 +38,7 @@ struct EvidenciaEnlace {
     }
 
     mutating func reiniciar() {
-        self = EvidenciaEnlace()
+        self = ComprobacionEnlace()
     }
 
     /// Evento que ve la sesión cuando termina la conexión vigente. Un error del enlace seguro (p. ej. el accesorio
@@ -66,4 +66,19 @@ struct EvidenciaEnlace {
             return nil
         }
     }
+}
+
+/// Lo único que el transporte conserva de un `Error?` de Core Bluetooth.
+struct ResultadoSistema: Equatable {
+    let huboError: Bool
+    /// El motivo del enlace seguro, si el error es de ese tipo (`ComprobacionEnlace.motivo(de:)`).
+    let motivoEnlace: MotivoFalla?
+
+    init(error: Error?) {
+        huboError = error != nil
+        motivoEnlace = ComprobacionEnlace.motivo(de: error)
+    }
+
+    /// El motivo del enlace seguro si lo hay; si no, el que corresponde a la operación que falló.
+    func motivo(o respaldo: MotivoFalla) -> MotivoFalla { motivoEnlace ?? respaldo }
 }

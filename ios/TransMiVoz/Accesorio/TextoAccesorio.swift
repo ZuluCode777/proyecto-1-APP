@@ -131,7 +131,7 @@ enum TextoAccesorio {
         "Comprobando el enlace seguro con el accesorio. Aún no hay medidas.",
         "Si iOS muestra una solicitud de emparejamiento, escribe el código de 6 dígitos de este accesorio.",
         "El accesorio no tiene pantalla y no muestra el código.",
-        "Si es la primera vez, mantén pulsado su botón de 3 a 10 segundos: solo acepta emparejar durante 60 segundos.",
+        "Si es la primera vez, mantén pulsado su botón de 3 a menos de 10 segundos: solo acepta emparejar durante 60 segundos.",
     ]
 
     /// Emparejamiento cancelado, clave incorrecta, ventana de alta cerrada, corte o plazo vencido. No se sabe cuál de
@@ -141,7 +141,7 @@ enum TextoAccesorio {
         fallo(.enlaceSeguroFallido),
         "Pudo cancelarse el emparejamiento, ser incorrecto el código, estar cerrada la ventana del accesorio o cortarse la conexión.",
         "Toca Reconectar y, si iOS pide un código de 6 dígitos, escríbelo.",
-        "Si falla otra vez, mantén pulsado el botón del accesorio de 3 a 10 segundos y toca Reconectar.",
+        "Si falla otra vez, mantén pulsado el botón del accesorio de 3 a menos de 10 segundos y toca Reconectar.",
         "Si sigue fallando, mantén el botón 10 segundos o más: borra los vínculos del accesorio.",
         "Luego olvida el accesorio en Ajustes > Bluetooth del iPhone y empareja de nuevo.",
         "No hay medidas.",
@@ -152,7 +152,7 @@ enum TextoAccesorio {
     private static let frasesVinculoBorrado = [
         fallo(.vinculoBorradoEnAccesorio),
         "En el iPhone abre Ajustes > Bluetooth, toca la «i» junto al accesorio y elige «Olvidar este dispositivo».",
-        "Luego mantén pulsado el botón del accesorio de 3 a 10 segundos, toca Reconectar y escribe el código de 6 dígitos que pida iOS.",
+        "Luego mantén pulsado su botón de 3 a menos de 10 segundos, toca Reconectar y escribe el código de 6 dígitos que pida iOS.",
         "No hay medidas.",
     ]
 

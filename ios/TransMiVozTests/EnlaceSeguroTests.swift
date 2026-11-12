@@ -3,27 +3,27 @@ import CoreBluetooth
 import XCTest
 @testable import TransMiVoz
 
-/// La traducción de la lectura protegida de comprobación (`EvidenciaEnlace`). Es una estructura pura: no toca Core
+/// La traducción de la lectura protegida de comprobación (`ComprobacionEnlace`). Es una estructura pura: no toca Core
 /// Bluetooth ni ningún accesorio. Lo que sí tocaría un accesorio de verdad (que iOS pida la clave, qué código de error
 /// entrega al cancelar) sigue pendiente de banco; aquí solo se prueba la traducción.
 @MainActor
-final class EvidenciaEnlaceTests: XCTestCase {
+final class ComprobacionEnlaceTests: XCTestCase {
     private let valor = Data([1, 2, 3])
 
     func testLecturaTerminadaSinErrorEnLaMismaConexionEsLecturaSuperada() {
-        var e = EvidenciaEnlace()
+        var e = ComprobacionEnlace()
         e.pedir(token: 3)
         XCTAssertEqual(e.eventoDeLectura(valor: valor, motivoEnlace: nil, vigente: 3), .lecturaProtegidaSuperada)
     }
 
     func testSinValorEsFalloYNoSeEntregaComoSuperada() {
-        var e = EvidenciaEnlace()
+        var e = ComprobacionEnlace()
         e.pedir(token: 3)
         XCTAssertEqual(e.eventoDeLectura(valor: nil, motivoEnlace: nil, vigente: 3), .fallo(.enlaceSeguroFallido))
     }
 
     func testElMotivoDelSistemaSeConservaEnElFallo() {
-        var e = EvidenciaEnlace()
+        var e = ComprobacionEnlace()
         e.pedir(token: 3)
         XCTAssertEqual(
             e.eventoDeLectura(valor: nil, motivoEnlace: .vinculoBorradoEnAccesorio, vigente: 3),
@@ -31,19 +31,19 @@ final class EvidenciaEnlaceTests: XCTestCase {
     }
 
     func testSiLaConexionCambioMientrasTantoFallaAunqueHayaValor() {
-        var e = EvidenciaEnlace()
+        var e = ComprobacionEnlace()
         e.pedir(token: 3)
         XCTAssertEqual(e.eventoDeLectura(valor: valor, motivoEnlace: nil, vigente: 4), .fallo(.enlaceSeguroFallido))
     }
 
     func testSinConexionVigenteFalla() {
-        var e = EvidenciaEnlace()
+        var e = ComprobacionEnlace()
         e.pedir(token: 3)
         XCTAssertEqual(e.eventoDeLectura(valor: valor, motivoEnlace: nil, vigente: nil), .fallo(.enlaceSeguroFallido))
     }
 
     func testUnValorSinComprobacionPedidaNoEsDeLaComprobacionNiSeResuelveDosVeces() {
-        var e = EvidenciaEnlace()
+        var e = ComprobacionEnlace()
         XCTAssertNil(e.eventoDeLectura(valor: valor, motivoEnlace: nil, vigente: 3), "el valor es de otra lectura")
         e.pedir(token: 3)
         XCTAssertEqual(e.eventoDeLectura(valor: valor, motivoEnlace: nil, vigente: 3), .lecturaProtegidaSuperada)
@@ -51,7 +51,7 @@ final class EvidenciaEnlaceTests: XCTestCase {
     }
 
     func testReiniciarOlvidaLaComprobacionPedida() {
-        var e = EvidenciaEnlace()
+        var e = ComprobacionEnlace()
         e.pedir(token: 3)
         e.reiniciar()
         XCTAssertNil(e.eventoDeLectura(valor: valor, motivoEnlace: nil, vigente: 3), "tras reiniciar no hay comprobación pedida")
@@ -62,7 +62,7 @@ final class EvidenciaEnlaceTests: XCTestCase {
         for pedida in [1, 2] {
             for vigente in [nil, 1, 2] as [Int?] {
                 for conValor in [false, true] {
-                    var e = EvidenciaEnlace()
+                    var e = ComprobacionEnlace()
                     e.pedir(token: pedida)
                     let evento = e.eventoDeLectura(valor: conValor ? valor : nil, motivoEnlace: nil, vigente: vigente)
                     XCTAssertTrue(evento == .lecturaProtegidaSuperada || evento == .fallo(.enlaceSeguroFallido), "\(String(describing: evento))")
@@ -73,35 +73,52 @@ final class EvidenciaEnlaceTests: XCTestCase {
 
     func testUnErrorDeEnlaceSeguroAlCortarseLaConexionEsUnFalloConSuRecuperacion() {
         XCTAssertEqual(
-            EvidenciaEnlace.eventoDeCorte(motivoEnlace: .vinculoBorradoEnAccesorio, fallaAlConectar: false),
+            ComprobacionEnlace.eventoDeCorte(motivoEnlace: .vinculoBorradoEnAccesorio, fallaAlConectar: false),
             .fallo(.vinculoBorradoEnAccesorio), "didDisconnect con peerRemovedPairingInformation")
         XCTAssertEqual(
-            EvidenciaEnlace.eventoDeCorte(motivoEnlace: .enlaceSeguroFallido, fallaAlConectar: true),
+            ComprobacionEnlace.eventoDeCorte(motivoEnlace: .enlaceSeguroFallido, fallaAlConectar: true),
             .fallo(.enlaceSeguroFallido), "didFailToConnect con un error del enlace seguro")
     }
 
     func testSinErrorDeEnlaceElCorteSigueSiendoElDeSiempre() {
-        XCTAssertEqual(EvidenciaEnlace.eventoDeCorte(motivoEnlace: nil, fallaAlConectar: false), .desconectado)
-        XCTAssertEqual(EvidenciaEnlace.eventoDeCorte(motivoEnlace: nil, fallaAlConectar: true), .fallo(.conexionFallida))
+        XCTAssertEqual(ComprobacionEnlace.eventoDeCorte(motivoEnlace: nil, fallaAlConectar: false), .desconectado)
+        XCTAssertEqual(ComprobacionEnlace.eventoDeCorte(motivoEnlace: nil, fallaAlConectar: true), .fallo(.conexionFallida))
     }
 
     func testLosErroresDeEnlaceSeguroSeExplicanPeroNoSubenNivel() {
         func error(_ dominio: String, _ codigo: Int) -> Error { NSError(domain: dominio, code: codigo) }
         XCTAssertEqual(
-            EvidenciaEnlace.motivo(de: error(CBErrorDomain, CBError.Code.peerRemovedPairingInformation.rawValue)),
+            ComprobacionEnlace.motivo(de: error(CBErrorDomain, CBError.Code.peerRemovedPairingInformation.rawValue)),
             .vinculoBorradoEnAccesorio)
         XCTAssertEqual(
-            EvidenciaEnlace.motivo(de: error(CBErrorDomain, CBError.Code.encryptionTimedOut.rawValue)),
+            ComprobacionEnlace.motivo(de: error(CBErrorDomain, CBError.Code.encryptionTimedOut.rawValue)),
             .enlaceSeguroFallido)
         for codigo in [
             CBATTError.Code.insufficientAuthentication, .insufficientAuthorization,
             .insufficientEncryption, .insufficientEncryptionKeySize,
         ] {
-            XCTAssertEqual(EvidenciaEnlace.motivo(de: error(CBATTErrorDomain, codigo.rawValue)), .enlaceSeguroFallido, "\(codigo)")
+            XCTAssertEqual(ComprobacionEnlace.motivo(de: error(CBATTErrorDomain, codigo.rawValue)), .enlaceSeguroFallido, "\(codigo)")
         }
-        XCTAssertNil(EvidenciaEnlace.motivo(de: error(CBErrorDomain, CBError.Code.connectionTimeout.rawValue)), "otro error: no es del enlace seguro")
-        XCTAssertNil(EvidenciaEnlace.motivo(de: error("OtroDominio", CBError.Code.peerRemovedPairingInformation.rawValue)))
-        XCTAssertNil(EvidenciaEnlace.motivo(de: nil))
+        XCTAssertNil(ComprobacionEnlace.motivo(de: error(CBErrorDomain, CBError.Code.connectionTimeout.rawValue)), "otro error: no es del enlace seguro")
+        XCTAssertNil(ComprobacionEnlace.motivo(de: error("OtroDominio", CBError.Code.peerRemovedPairingInformation.rawValue)))
+        XCTAssertNil(ComprobacionEnlace.motivo(de: nil))
+    }
+
+    func testResultadoSistemaConservaSoloSiHuboErrorYSuMotivoDeEnlace() {
+        let sin = ResultadoSistema(error: nil)
+        XCTAssertFalse(sin.huboError)
+        XCTAssertNil(sin.motivoEnlace)
+        XCTAssertEqual(sin.motivo(o: .errorDeLectura), .errorDeLectura, "sin error el respaldo es el de la operación")
+
+        let ajeno = ResultadoSistema(error: NSError(domain: "OtroDominio", code: 1))
+        XCTAssertTrue(ajeno.huboError)
+        XCTAssertNil(ajeno.motivoEnlace)
+        XCTAssertEqual(ajeno.motivo(o: .errorDeSuscripcion), .errorDeSuscripcion)
+
+        let borrado = ResultadoSistema(error: NSError(domain: CBErrorDomain, code: CBError.Code.peerRemovedPairingInformation.rawValue))
+        XCTAssertTrue(borrado.huboError)
+        XCTAssertEqual(borrado.motivoEnlace, .vinculoBorradoEnAccesorio)
+        XCTAssertEqual(borrado.motivo(o: .errorDeLectura), .vinculoBorradoEnAccesorio, "el motivo del enlace gana al de la operación")
     }
 }
 
@@ -309,6 +326,67 @@ final class ComprobacionEnlaceSesionTests: XCTestCase {
 
         XCTAssertEqual(banco.modelo.estado, .comprobandoEnlace)
         XCTAssertEqual(banco.transporte.veces("comprobarEnlace"), 2, "solo la persona decide reintentar")
+    }
+
+    func testUnaConexionFallidaDuranteLaComprobacionEsUnFalloDelEnlaceSeguro() {
+        // Con la escena suspendida o no: un `didFailToConnect` en este paso no debe dejar que el regreso reinicie la conexión.
+        for suspendida in [true, false] {
+            let banco = bancoEnComprobacion(nivel: .cifradoAutenticado)
+            defer { banco.cerrar() }
+            if suspendida { banco.modelo.escenaActiva(false) }
+            banco.transporte.emitir(.fallo(.conexionFallida))
+            if suspendida { banco.modelo.escenaActiva(true) }
+
+            XCTAssertEqual(banco.modelo.estado, .falla(.enlaceSeguroFallido), "suspendida: \(suspendida)")
+            XCTAssertEqual(banco.transporte.veces("conectar:acc-1"), 1, "suspendida: \(suspendida)")
+            XCTAssertEqual(banco.transporte.veces("comprobarEnlace"), 1, "suspendida: \(suspendida)")
+        }
+    }
+
+    func testUnaConexionFallidaFueraDeLaComprobacionConservaSuMotivo() {
+        let banco = BancoAccesorio(nivel: .cifradoAutenticado)
+        defer { banco.cerrar() }
+        banco.iniciar()
+        banco.transporte.emitir(.fallo(.conexionFallida))
+        XCTAssertEqual(banco.modelo.estado, .falla(.conexionFallida))
+    }
+
+    func testTrasUnRechazoLaVueltaAPrimerPlanoNoReconectaNiVuelveALeer() {
+        // Rechazo terminal (contrato §4): sin vínculo, una lectura protegida más podría volver a pedir la clave.
+        let banco = bancoEnComprobacion(nivel: .cifradoSinAutenticar)
+        defer { banco.cerrar() }
+        banco.transporte.emitir(.lecturaProtegidaSuperada)
+        XCTAssertEqual(banco.modelo.estado, .enlaceNoVerificado)
+
+        banco.modelo.escenaActiva(false)
+        banco.modelo.escenaActiva(true)
+        XCTAssertEqual(banco.modelo.estado, .enlaceNoVerificado, "el bloqueo sigue en pantalla")
+        XCTAssertEqual(banco.transporte.veces("conectar:acc-1"), 1, "no se reconecta solo")
+        XCTAssertEqual(banco.transporte.veces("comprobarEnlace"), 1, "no se vuelve a leer la característica protegida")
+
+        // Reconectar sigue disponible: es la persona quien decide reintentar.
+        banco.modelo.reconectar()
+        banco.transporte.emitir(.conectado(id: banco.accesorio.id))
+        XCTAssertEqual(banco.transporte.veces("comprobarEnlace"), 2)
+    }
+
+    func testElPlazoDeLaComprobacionCuentaDesdeLaVueltaAPrimerPlano() {
+        // El latido no corre con la escena suspendida: sin reiniciar el plazo, al volver fallaría de golpe aunque la
+        // persona siga en la solicitud de iOS.
+        let banco = bancoEnComprobacion(nivel: .cifradoAutenticado)
+        defer { banco.cerrar() }
+        banco.modelo.escenaActiva(false)
+        banco.reloj.avanzar(SesionAccesorioModelo.plazoEmparejamientoMs + 5_000)
+        banco.modelo.escenaActiva(true)
+        banco.modelo.evaluar()
+        XCTAssertEqual(banco.modelo.estado, .comprobandoEnlace, "no falla por el tiempo que estuvo suspendida")
+
+        banco.reloj.avanzar(SesionAccesorioModelo.plazoEmparejamientoMs)
+        banco.modelo.evaluar()
+        XCTAssertEqual(banco.modelo.estado, .comprobandoEnlace, "en 35 000 ms desde la vuelta todavía espera")
+        banco.reloj.avanzar(1)
+        banco.modelo.evaluar()
+        XCTAssertEqual(banco.modelo.estado, .falla(.enlaceSeguroFallido))
     }
 
     func testElAvisoFijoSigueVisibleSalvoConEnlaceAutenticado() {

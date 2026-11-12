@@ -19,7 +19,7 @@ enum FaseConexion: Equatable {
 /// Reglas de esta capa:
 /// - Política de autenticación fija y cerrada (`.exigirAutenticado`). No hay ajuste, bandera ni
 ///   preferencia que la cambie. El transporte de producción afirma siempre `.desconocido`
-///   (`EvidenciaEnlace`: la app no puede distinguir a un impostor sin protección), así que la sesión queda
+///   (`ComprobacionEnlace`: la app no puede distinguir a un impostor sin protección), así que la sesión queda
 ///   rechazada en cuanto conecta: no lee Información (salvo la lectura de comprobación, con el valor descartado)
 ///   ni se suscribe (contrato §6).
 /// - Cada conexión lleva un `token` nuevo. Todo evento con otro token se descarta: devoluciones
@@ -159,8 +159,7 @@ final class SesionAccesorioModelo {
         case .conectada:
             switch estadoSesion {
             case .desconectada:
-                if case .comprobandoEnlace = paso { return .comprobandoEnlace }
-                return .conectando
+                return comprobandoEnlace ? .comprobandoEnlace : .conectando
             case .esperandoInformacion: return .conectado
             case .sincronizando: return .calibrando
             case .rechazada(.enlaceNoAutenticado): return .enlaceNoVerificado
@@ -298,8 +297,12 @@ final class SesionAccesorioModelo {
                 sesion?.reanudar()
                 empezarReferencia()
             } else if esperandoALaPersona {
-                // Comprobación del enlace en curso o fallo del enlace seguro: no se reinicia. Un reinicio volvería a
-                // pedir la clave en cada vuelta a primer plano; reintentar es decisión de la persona (Reconectar).
+                // Comprobación del enlace en curso, fallo del enlace seguro o sesión rechazada: no se reinicia. Un
+                // reinicio volvería a leer la característica protegida en cada vuelta a primer plano y, sin vínculo,
+                // a pedir la clave; reintentar es decisión de la persona (Reconectar).
+                // El latido no corrió con la escena suspendida: el plazo de la comprobación cuenta desde la vuelta,
+                // para no fallar de golpe con la persona aún en la solicitud de iOS.
+                if comprobandoEnlace { inicioPasoMs = reloj() }
             } else {
                 // Sincronización a medias o enlace perdido durante la suspensión: de cero.
                 conexion += 1
@@ -372,7 +375,7 @@ final class SesionAccesorioModelo {
         if suspendida {
             // La solicitud de emparejamiento de iOS puede dejar la escena inactiva: durante la comprobación del enlace
             // el resultado (superada, fallo o corte) se procesa igual, para no perder un fallo ni quedarse esperando.
-            guard case .comprobandoEnlace = paso else {
+            guard comprobandoEnlace else {
                 if case .desconectado = evento { paso = .ninguno }
                 return
             }
@@ -421,9 +424,11 @@ final class SesionAccesorioModelo {
             // Un corte durante la comprobación puede ser una alta cerrada, una clave mala o una solicitud cancelada, y
             // un corte de radio no se distingue de ellos: no se reconecta solo (cada intento volvería a pedir la
             // clave) y el texto del fallo no afirma cuál fue.
-            if case .comprobandoEnlace = paso { fallar(.enlaceSeguroFallido) } else { perderEnlace() }
+            if comprobandoEnlace { fallar(.enlaceSeguroFallido) } else { perderEnlace() }
         case .fallo(let motivo):
-            fallar(motivo)
+            // `didFailToConnect` durante la comprobación (con la escena suspendida o no) es un fallo de la comprobación:
+            // un reinicio al volver volvería a pedir la clave.
+            fallar(comprobandoEnlace && motivo == .conexionFallida ? .enlaceSeguroFallido : motivo)
         case .disponibilidad, .encontrado:
             break
         }
@@ -512,10 +517,16 @@ final class SesionAccesorioModelo {
         arrancarConexion(fase: .perdida)
     }
 
-    /// La conexión espera a la persona y no debe reiniciarse sola: comprobando el enlace, o con un fallo del enlace
-    /// seguro en pantalla.
-    private var esperandoALaPersona: Bool {
+    private var comprobandoEnlace: Bool {
         if case .comprobandoEnlace = paso { return true }
+        return false
+    }
+
+    /// La conexión espera a la persona y no debe reiniciarse sola: comprobando el enlace, con un fallo del enlace
+    /// seguro en pantalla, o con la sesión rechazada (terminal hasta nueva conexión, contrato §4).
+    private var esperandoALaPersona: Bool {
+        if comprobandoEnlace { return true }
+        if case .rechazada = estadoSesion { return true }
         if case .falla(let motivo) = fase { return motivo == .enlaceSeguroFallido || motivo == .vinculoBorradoEnAccesorio }
         return false
     }

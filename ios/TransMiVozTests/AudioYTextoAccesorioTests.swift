@@ -347,10 +347,10 @@ final class TextoAccesorioTests: XCTestCase {
         XCTAssertEqual(comprobando.count, 4)
         XCTAssertTrue(comprobando[1].contains("solicitud de emparejamiento") && comprobando[1].contains("6 dígitos"), comprobando[1])
         XCTAssertTrue(comprobando[2].contains("no tiene pantalla"), comprobando[2])
-        XCTAssertTrue(comprobando[3].contains("botón") && comprobando[3].contains("3 a 10 segundos"), comprobando[3])
+        XCTAssertTrue(comprobando[3].contains("botón") && comprobando[3].contains("3 a menos de 10 segundos"), comprobando[3])
 
         let fallido = TextoAccesorio.descripcion(.falla(.enlaceSeguroFallido))
-        for pista in ["Reconectar", "3 a 10 segundos", "6 dígitos", "10 segundos o más", "Ajustes > Bluetooth", "No hay medidas"] {
+        for pista in ["Reconectar", "3 a menos de 10 segundos", "6 dígitos", "10 segundos o más", "Ajustes > Bluetooth", "No hay medidas"] {
             XCTAssertTrue(fallido.contains(pista), "falta «\(pista)» en: \(fallido)")
         }
         // Un corte de radio llega igual que una cancelación: el texto no afirma cuál fue y no manda borrar vínculos de entrada.
@@ -363,7 +363,7 @@ final class TextoAccesorioTests: XCTestCase {
         XCTAssertNotNil(posicionBorrar)
         XCTAssertLessThan(posicionReconectar ?? Int.max, posicionBorrar ?? 0, "reconectar va antes que borrar los vínculos")
         let borrado = TextoAccesorio.descripcion(.falla(.vinculoBorradoEnAccesorio))
-        for pista in ["Ajustes > Bluetooth", "Olvidar este dispositivo", "Reconectar", "3 a 10 segundos", "No hay medidas"] {
+        for pista in ["Ajustes > Bluetooth", "Olvidar este dispositivo", "Reconectar", "3 a menos de 10 segundos", "No hay medidas"] {
             XCTAssertTrue(borrado.contains(pista), "falta «\(pista)» en: \(borrado)")
         }
         XCTAssertNotEqual(fallido, borrado)

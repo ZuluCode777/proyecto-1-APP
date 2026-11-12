@@ -73,7 +73,7 @@ final class SesionAccesorioModeloTests: XCTestCase {
     func testElTransporteRealAfirmaSiempreDesconocido() {
         // Core Bluetooth no expone el nivel del enlace y a la app le llega lo mismo de un impostor sin protección: el
         // transporte REAL afirma `.desconocido` al crearlo y también tras pedir la lectura de comprobación (ver
-        // `EvidenciaEnlace`). Se prueba con el transporte de producción (su creación es perezosa: no crea el gestor ni
+        // `ComprobacionEnlace`). Se prueba con el transporte de producción (su creación es perezosa: no crea el gestor ni
         // pide permiso), no con el doble. Si alguien lo cambia para afirmar otro nivel, esta prueba falla.
         let real = TransporteCoreBluetooth()
         XCTAssertEqual(real.nivelEnlace, .desconocido)

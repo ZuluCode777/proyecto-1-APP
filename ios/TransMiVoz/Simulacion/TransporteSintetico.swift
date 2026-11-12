@@ -8,9 +8,9 @@ import Foundation
 /// Bluetooth, radio, audio ni red.
 ///
 /// Honestidad: la pantalla lo rotula («Modo de pruebas: transporte sintético») y este transporte afirma
-/// `.desconocido`, igual que el de producción, así que la sesión se bloquea por enlace no verificado. No ofrece
-/// ningún camino que entregue medidas ni lecturas: solo hallazgo de un accesorio de mentira, conexión y los estados
-/// de permiso.
+/// `.desconocido`, igual que el de producción, así que la sesión se bloquea por enlace no verificado. No
+/// ofrece ningún camino que entregue medidas ni lecturas: solo hallazgo de un accesorio de mentira, conexión
+/// y los estados de permiso.
 @MainActor
 final class TransporteSintetico: TransporteAccesorio {
     enum Permiso {

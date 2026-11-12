@@ -42,7 +42,7 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
     private var medicion: CBCharacteristic?
     private var informacionPedida = false
     private var clasificador = ClasificadorValores()
-    private var evidencia = EvidenciaEnlace()
+    private var evidencia = ComprobacionEnlace()
 
     init() {
         delegado.duenio = self
@@ -206,11 +206,11 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
     /// `motivoEnlace`: el sistema dijo que falló el enlace seguro (p. ej. el accesorio borró el vínculo). Entonces
     /// es un fallo con su recuperación, no una desconexión que se reintenta sola.
     fileprivate func fallaLaConexion(_ p: CBPeripheral, motivoEnlace: MotivoFalla?) {
-        finalDeConexion(p, evento: EvidenciaEnlace.eventoDeCorte(motivoEnlace: motivoEnlace, fallaAlConectar: true))
+        finalDeConexion(p, evento: ComprobacionEnlace.eventoDeCorte(motivoEnlace: motivoEnlace, fallaAlConectar: true))
     }
 
     fileprivate func desconectado(_ p: CBPeripheral, motivoEnlace: MotivoFalla?) {
-        finalDeConexion(p, evento: EvidenciaEnlace.eventoDeCorte(motivoEnlace: motivoEnlace, fallaAlConectar: false))
+        finalDeConexion(p, evento: ComprobacionEnlace.eventoDeCorte(motivoEnlace: motivoEnlace, fallaAlConectar: false))
     }
 
     /// `didDisconnect` / `didFailToConnect`: o es el aviso del cierre que pedimos (se consume y, si había una
@@ -248,34 +248,34 @@ final class TransporteCoreBluetooth: TransporteAccesorio {
         avisar(.conectado(id: p.identifier.uuidString))
     }
 
-    fileprivate func valorActualizado(_ p: CBPeripheral, _ c: CBCharacteristic, huboError: Bool, motivoEnlace: MotivoFalla?) {
+    fileprivate func valorActualizado(_ p: CBPeripheral, _ c: CBCharacteristic, resultado: ResultadoSistema) {
         guard ciclo.vale(p.identifier.uuidString) else { return }
-        let valor = huboError ? nil : c.value
+        let valor = resultado.huboError ? nil : c.value
         // Solo las características descubiertas en esta conexión (no un objeto viejo con el mismo UUID).
         if c === informacion {
             // La lectura de comprobación va primero y su valor se descarta: la sesión lee la Información después.
-            if let evento = evidencia.eventoDeLectura(valor: valor, motivoEnlace: motivoEnlace, vigente: ciclo.token) {
+            if let evento = evidencia.eventoDeLectura(valor: valor, motivoEnlace: resultado.motivoEnlace, vigente: ciclo.token) {
                 avisar(evento)
                 return
             }
             guard informacionPedida else { return }
             informacionPedida = false
-            if let valor { avisar(.informacion(valor)) } else { avisar(.fallo(motivoEnlace ?? .errorDeLectura)) }
+            if let valor { avisar(.informacion(valor)) } else { avisar(.fallo(resultado.motivo(o: .errorDeLectura))) }
         } else if c === medicion {
             // Lectura y notificación llegan por aquí; el clasificador las separa.
             switch clasificador.recibirValor(conError: valor == nil) {
             case .respuestaLectura: if let valor { avisar(.respuestaMedicion(valor)) }
             case .notificacion: if let valor { avisar(.notificacionMedicion(valor)) }
-            case .falloLectura: avisar(.fallo(motivoEnlace ?? .errorDeLectura))
+            case .falloLectura: avisar(.fallo(resultado.motivo(o: .errorDeLectura)))
             case .descartar: break
             }
         }
     }
 
-    fileprivate func notificacionesActualizadas(_ p: CBPeripheral, _ c: CBCharacteristic, huboError: Bool, motivoEnlace: MotivoFalla?) {
+    fileprivate func notificacionesActualizadas(_ p: CBPeripheral, _ c: CBCharacteristic, resultado: ResultadoSistema) {
         guard ciclo.vale(p.identifier.uuidString), c === medicion else { return }
-        if huboError {
-            avisar(.fallo(motivoEnlace ?? .errorDeSuscripcion))
+        if resultado.huboError {
+            avisar(.fallo(resultado.motivo(o: .errorDeSuscripcion)))
             return
         }
         clasificador.confirmarNotificaciones(c.isNotifying)
@@ -308,12 +308,12 @@ private final class DelegadoCoreBluetooth: NSObject, CBCentralManagerDelegate, C
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
-        let motivoEnlace = EvidenciaEnlace.motivo(de: error)
+        let motivoEnlace = ComprobacionEnlace.motivo(de: error)
         enPrincipal { $0.fallaLaConexion(peripheral, motivoEnlace: motivoEnlace) }
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        let motivoEnlace = EvidenciaEnlace.motivo(de: error)
+        let motivoEnlace = ComprobacionEnlace.motivo(de: error)
         enPrincipal { $0.desconectado(peripheral, motivoEnlace: motivoEnlace) }
     }
 
@@ -328,14 +328,12 @@ private final class DelegadoCoreBluetooth: NSObject, CBCentralManagerDelegate, C
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        let huboError = error != nil
-        let motivoEnlace = EvidenciaEnlace.motivo(de: error)
-        enPrincipal { $0.valorActualizado(peripheral, characteristic, huboError: huboError, motivoEnlace: motivoEnlace) }
+        let resultado = ResultadoSistema(error: error)
+        enPrincipal { $0.valorActualizado(peripheral, characteristic, resultado: resultado) }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
-        let huboError = error != nil
-        let motivoEnlace = EvidenciaEnlace.motivo(de: error)
-        enPrincipal { $0.notificacionesActualizadas(peripheral, characteristic, huboError: huboError, motivoEnlace: motivoEnlace) }
+        let resultado = ResultadoSistema(error: error)
+        enPrincipal { $0.notificacionesActualizadas(peripheral, characteristic, resultado: resultado) }
     }
 }

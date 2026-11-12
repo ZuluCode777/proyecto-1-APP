@@ -70,7 +70,7 @@ let tokenSinConexion = 0
 protocol TransporteAccesorio: AnyObject {
     var receptor: (@MainActor (EventoTransporte, Int) -> Void)? { get set }
     /// Nivel de seguridad que el transporte puede AFIRMAR de la conexión vigente. Core Bluetooth no lo expone: el
-    /// transporte de producción devuelve siempre `.desconocido` (contrato §6, `EvidenciaEnlace`). La sesión lo
+    /// transporte de producción devuelve siempre `.desconocido` (contrato §6, `ComprobacionEnlace`). La sesión lo
     /// consulta al recibir `.lecturaProtegidaSuperada`; solo los dobles de prueba declaran otro nivel.
     var nivelEnlace: NivelEnlace { get }
     /// El sistema todavía no ha preguntado a la persona por el permiso de Bluetooth. Consultarlo no
