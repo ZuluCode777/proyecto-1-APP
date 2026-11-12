@@ -31,7 +31,7 @@ const TIPOS: Record<Intent["type"], true> = {
   metro: true,
   unknown: true,
 }
-export const INTENCIONES = Object.keys(TIPOS) as [Intent["type"], ...Intent["type"][]]
+const INTENCIONES = Object.keys(TIPOS) as [Intent["type"], ...Intent["type"][]]
 
 const EsperadoSchema = z.object({
   intent: z.enum(INTENCIONES),
@@ -76,9 +76,12 @@ export function catalogoCongelado(): TransmilenioData {
   return data
 }
 
-/** Huella sha256 de un archivo de `data/`, para que un resultado diga con qué corpus y catálogo se midió. */
+/** Huella sha256 de un texto. Los saltos de línea se normalizan: en Windows con `autocrlf` el mismo archivo llega con CRLF. */
+export const huellaDeTexto = (texto: string) => createHash("sha256").update(texto.replace(/\r\n/g, "\n")).digest("hex")
+
+/** Huella de un archivo de `data/`, para que un resultado diga con qué corpus y catálogo se midió. */
 export const huellaDeArchivo = (nombre: "ea27-corpus.json" | "transmilenio.json") =>
-  createHash("sha256").update(readFileSync(new URL(`../data/${nombre}`, import.meta.url))).digest("hex")
+  huellaDeTexto(readFileSync(new URL(`../data/${nombre}`, import.meta.url), "utf8"))
 
 const lugar = (nombre: string | undefined, data: TransmilenioData) => (nombre ? findPlaces(nombre, data)[0]?.name : undefined)
 

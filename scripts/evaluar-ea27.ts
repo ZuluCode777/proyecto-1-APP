@@ -39,6 +39,15 @@ const medir = async <T>(f: () => T | Promise<T>): Promise<[T, number]> => {
   return [valor, performance.now() - inicio]
 }
 
+/** Consulta al modelo; un fallo devuelve solo el mensaje, porque `fetch` pone la dirección en `cause`. */
+async function consultarModelo(frase: string): Promise<{ intent: Intent | null; error?: string }> {
+  try {
+    return { intent: await parseIntentWithOllama(frase, data) }
+  } catch (e) {
+    return { intent: null, error: e instanceof Error ? e.message : "error desconocido" }
+  }
+}
+
 const reglas: Medicion[] = []
 const modelo: Medicion[] = []
 const app: Medicion[] = []
@@ -58,30 +67,26 @@ for (const item of corpus.items) {
   const base = { id: item.id, categoria: item.categoria, esperado: item.esperado }
 
   const [deReglas, msReglas] = await medir(() => parseIntent(item.frase, data))
-  reglas.push({ ...base, puntuacion: puntuar(item.esperado, deReglas, data), ms: msReglas })
-  fila.reglas = { intent: deReglas, ok: reglas.at(-1)!.puntuacion!.ok, ms: redondear(msReglas) }
+  const pReglas = puntuar(item.esperado, deReglas, data)
+  reglas.push({ ...base, puntuacion: pReglas, ms: msReglas })
+  fila.reglas = { intent: deReglas, ok: pReglas.ok, ms: redondear(msReglas) }
 
   if (!conModelo) continue
 
-  let error: string | undefined
-  const [deModelo, msModelo] = await medir(() =>
-    parseIntentWithOllama(item.frase, data).catch((e) => {
-      // Solo el mensaje: `fetch` pone la dirección en `cause`.
-      error = e instanceof Error ? e.message : "error desconocido"
-      return null
-    }),
-  )
+  const [{ intent: deModelo, error }, msModelo] = await medir(() => consultarModelo(item.frase))
 
-  const crudo: Intent = deModelo ?? { type: "unknown" }
-  modelo.push({ ...base, puntuacion: error ? null : puntuar(item.esperado, crudo, data), ms: msModelo, error })
+  const pModelo = error ? null : puntuar(item.esperado, deModelo ?? { type: "unknown" }, data)
+  modelo.push({ ...base, puntuacion: pModelo, ms: msModelo, error })
   const salida = error ? { error } : deModelo === null ? { sinSalidaValida: true } : { intent: deModelo }
-  fila.modelo = { ...salida, ok: modelo.at(-1)!.puntuacion?.ok ?? false, ms: redondear(msModelo) }
+  fila.modelo = { ...salida, ok: pModelo?.ok ?? false, ms: redondear(msModelo) }
 
   // Como la ruta: las dos intenciones solo de reglas no consultan al modelo.
   const consultaba = requiereModelo(deReglas)
   const { intent, engine } = elegirIntent(deReglas, consultaba ? deModelo : null)
-  app.push({ ...base, puntuacion: puntuar(item.esperado, intent, data), ms: msReglas + (consultaba ? msModelo : 0) })
-  fila.app = { engine, intent, ok: app.at(-1)!.puntuacion!.ok, ms: redondear(app.at(-1)!.ms) }
+  const pApp = puntuar(item.esperado, intent, data)
+  const msApp = msReglas + (consultaba ? msModelo : 0)
+  app.push({ ...base, puntuacion: pApp, ms: msApp })
+  fila.app = { engine, intent, ok: pApp.ok, ms: redondear(msApp) }
 }
 
 const resultado = {

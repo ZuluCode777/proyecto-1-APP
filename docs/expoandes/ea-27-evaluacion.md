@@ -37,18 +37,29 @@ coinciden. No se lee el texto de la respuesta. Reglas de puntuación
 | Motor | Qué es |
 | --- | --- |
 | `reglas` | `parseIntent`, en este proceso y sin red. |
-| `modelo` | `parseIntentWithOllama`: el mismo prompt, esquema JSON, `temperature: 0` y validación de entidades contra el catálogo que usa la app. Una salida que no valida (`null`) cuenta como `unknown`. No puede expresar `metro` ni `trip_missing_destination`: son solo de reglas y las falla por diseño. Tampoco puede acertar los ítems con `origenFueraDelCatalogo` (`ambiguo-01`, `ambiguo-02`, `aclaracion-02a`): `parseIntentWithOllama` devuelve `null` cuando el origen que nombra el modelo no está en el catálogo (`lib/ollama.ts`, caso `trip`), eso cuenta como `unknown`, y un origen vacío tampoco cumple la referencia. Para esos tres ítems se lee la columna `app`: ahí el `unknown` del modelo deja la intención de las reglas, que sí conserva el origen. Se cuentan aparte al comparar `modelo` con `reglas`. |
+| `modelo` | `parseIntentWithOllama`: el mismo prompt, esquema JSON, `temperature: 0` y validación de entidades contra el catálogo que usa la app. Una salida que no valida (`null`) cuenta como `unknown`. No puede expresar `metro` ni `trip_missing_destination`: son solo de reglas y las falla por diseño. Tampoco acierta los ítems con `origenFueraDelCatalogo` (ver abajo). |
 | `app` | Lo que responde `POST /api/agent` con el modelo cargado: `requiereModelo` y `elegirIntent` de `lib/seleccion-interprete.ts`, con las reglas como respaldo si el modelo falla o devuelve `unknown`. Es el número que importa para decidir. |
 
 La comparación que decide es `reglas` frente a `app`. `modelo` solo explica de
 dónde sale la diferencia.
 
+**Ítems con `origenFueraDelCatalogo`** (`ambiguo-01`, `ambiguo-02`,
+`aclaracion-02a`). El motor `modelo` nunca los acierta. `parseIntentWithOllama`
+devuelve `null` cuando el origen que nombra el modelo no está en el catálogo
+(`lib/ollama.ts`, caso `trip`), y eso cuenta como `unknown`. Si el modelo deja el
+origen vacío, tampoco cumple la referencia. En `app` los acierta si el modelo no
+valida, porque entonces responden las reglas, que sí conservan el origen. Si el
+modelo omite el origen, `parseIntentWithOllama` devuelve un viaje sin origen,
+`elegirIntent` lo usa y el ítem falla también en `app`. Por eso se cuentan aparte
+al comparar `modelo` con `reglas`.
+
 **Catálogo.** El corpus se evalúa contra la copia congelada
 `data/transmilenio.json` con la evidencia GTFS aplicada, no contra el servicio
 en vivo, para que la corrida se repita. El resultado guarda el sha256 del
 corpus y del catálogo con que se midió. Una prueba compara el del corpus con una
-constante versionada: si el corpus cambia, falla hasta que se suba `version` y se
-actualice la constante. El del catálogo solo se registra, porque
+constante versionada. Si el corpus cambia, falla hasta que se suba `version` y se
+actualice la constante. Antes de comparar, el texto se normaliza a saltos de línea
+LF, para que la huella no cambie en Windows con `autocrlf`. El del catálogo solo se registra, porque
 `sync:transmilenio` puede regenerarlo; dos resultados con otra huella de catálogo
 no son comparables sin repetir las reglas.
 
@@ -73,13 +84,13 @@ encendido y con la sesión iniciada durante la feria; no se estimó en pesos.
 
 ## Corpus
 
-`data/ea27-corpus.json`, versión 1, congelado el 11/11/2026: **100 frases** en
+`data/ea27-corpus.json`, versión 2, congelado el 12/11/2026: **100 frases** en
 español de Bogotá («parce», «oiga», «la 26 a la 72», «el Tunal»), con
 referencia revisada contra el catálogo. Una prueba (`lib/ea27-evaluacion.test.ts`)
 comprueba que cada estación (por su nombre en el catálogo, sin pasar por el
 intérprete), ruta y estación del Metro de las referencias existe.
 La referencia dice qué quiere la persona, no lo que responde hoy un motor; el
-corpus no se ajusta para que un motor acierte, y un cambio sube `version`.
+corpus no se ajusta para que un motor acierte, y un cambio sube `version`. La versión 2 solo reescribe tres `nota` respecto de la 1 (`frase` y `esperado` no cambian); la 1 no llegó a usarse con el modelo.
 
 | Categoría | Frases | Qué cubre |
 | --- | ---: | --- |
@@ -141,7 +152,7 @@ Corrida del 12/11/2026 en el portátil de desarrollo, en este proceso, sin red
 milisegundos de cada frase):
 
 **89 de 100 (89 %)**, sobre un corpus donde 10 frases vienen de fallos ya vistos
-(las reglas fallan 3 de ellas). Latencia p50 0,05 ms, p95 0,34 ms, máximo 2,8 ms;
+(las reglas fallan 3 de ellas). Latencia p50 0,05 ms, p95 0,34 ms, máximo 2,7 ms;
 sin errores. Las exactitudes salen de corpus, catálogo y código fijos; la
 latencia y los `ms` de cada frase son informativos y cambian en cada corrida.
 Son tiempos de CPU de una máquina concreta: sirven para comparar
@@ -211,7 +222,7 @@ donde las empeora (en particular las marcadas `falloConocido`); si alguna de las
 una acción; y la latencia medida desde el mismo equipo que corre el Ollama, que
 no incluye la red de Render.
 
-**Decisión integrar / no integrar:** pendiente de esos números. El modelo ya
+Decisión de integrar o no integrar: pendiente de esos números. El modelo ya
 está integrado como «modelo primero» (PR #78). Esta evaluación decide si se
 mantiene o si se vuelve a «reglas primero»; el criterio propuesto es que `app`
 supere a `reglas` en exactitud sin empeorar el rechazo de las frases fuera de

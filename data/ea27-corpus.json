@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "congelado": "2026-11-11",
+  "version": 2,
+  "congelado": "2026-11-12",
   "descripcion": "Corpus congelado de EA-27 (#53): frases en español de Bogotá con su intención y entidades de referencia, revisadas contra data/transmilenio.json y lib/metro.ts. Las referencias dicen qué quiere la persona, no lo que responde hoy un motor. No se edita para que un motor acierte: un cambio nuevo sube `version`.",
   "items": [
     {"id":"rutas-01","categoria":"rutas","frase":"cómo llego de Ricaurte a la Calle 72","esperado":{"intent":"trip","origin":"Ricaurte","destination":"Calle 72"}},
@@ -22,7 +22,7 @@
     {"id":"destino-04","categoria":"destino","frase":"voy para la Universidad Nacional","esperado":{"intent":"trip","destination":"Universidad Nacional"}},
     {"id":"destino-05","categoria":"destino","frase":"necesito llegar al Museo del Oro","esperado":{"intent":"trip","destination":"Museo del Oro"}},
     {"id":"destino-06","categoria":"destino","frase":"¿hay algo que me deje en las aguas?","esperado":{"intent":"trip","destination":"Las Aguas"},"falloConocido":"Comentario de #53 del 11/11/2026: el modelo abre el GPS en vez de buscar Las Aguas."},
-    {"id":"destino-07","categoria":"destino","frase":"qué buses pasan por la Calle 100","esperado":{"intent":"trip","destination":"Calle 100"},"nota":"La app no tiene una intención «qué pasa por esta estación»: la ayuda dice que lo responde con un viaje solo con destino, que lista las rutas cuyo recorrido pasa por ahí."},
+    {"id":"destino-07","categoria":"destino","frase":"qué buses pasan por la Calle 100","esperado":{"intent":"trip","destination":"Calle 100"},"nota":"La app no tiene una intención «qué pasa por esta estación». La resuelve como un viaje solo con destino (`lib/local-agent.ts`, `trip` sin origen), que lista las rutas cuyo recorrido pasa por ahí. Con una posición reciente del GPS, la app usaría la estación más cercana como origen."},
     {"id":"destino-08","categoria":"destino","frase":"llévame a Alcalá","esperado":{"intent":"trip","destination":"Alcalá"}},
     {"id":"destino-09","categoria":"destino","frase":"a mí me toca llegar a Portal Américas","esperado":{"intent":"trip","destination":"Portal Américas"}},
 

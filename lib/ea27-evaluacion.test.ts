@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { INTENCIONES, catalogoCongelado, corpus, huellaDeArchivo, percentil, puntuar, resumir, type Esperado, type Medicion } from "./ea27-evaluacion"
+import { catalogoCongelado, corpus, huellaDeArchivo, huellaDeTexto, percentil, puntuar, resumir, type Esperado, type Medicion } from "./ea27-evaluacion"
 import { shortName } from "./routes"
 import { ESTACIONES_METRO_L1 } from "./metro"
 import type { Intent } from "./local-agent"
@@ -14,7 +14,7 @@ const data = catalogoCongelado()
  * `version` en el archivo, actualiza esta constante y vuelve a correr la
  * evaluación; los resultados anteriores ya no son comparables.
  */
-const HUELLA_CORPUS = "87ba59ce337033543bc9e10ef7770dc1bcf12b281a0c8e1dd50e2970e34c40e3"
+const HUELLA_CORPUS = "83c985371b422f7a6aff8b7473ae9853431103d9f7f7963da8ba032f5347b82f"
 
 // ── Corpus ──
 
@@ -23,13 +23,17 @@ test("corpus: de 60 a 100 ítems, ids únicos y turnos 2 que apuntan a un turno 
   const ids = new Set(corpus.items.map((i) => i.id))
   assert.equal(ids.size, corpus.items.length)
   for (const i of corpus.items) {
-    assert.ok(INTENCIONES.includes(i.esperado.intent), `${i.id}: intención ${i.esperado.intent}`)
     if (i.tras) assert.ok(ids.has(i.tras) && i.turno === 2, `${i.id}: «tras» inválido`)
   }
 })
 
 test("corpus: la huella coincide con la congelada", () => {
   assert.equal(huellaDeArchivo("ea27-corpus.json"), HUELLA_CORPUS)
+})
+
+test("huella: un archivo con CRLF (Windows con autocrlf) da la misma huella que con LF", () => {
+  assert.equal(huellaDeTexto("{\r\n  \"a\": 1\r\n}\r\n"), huellaDeTexto("{\n  \"a\": 1\n}\n"))
+  assert.notEqual(huellaDeTexto("a\n"), huellaDeTexto("b\n"))
 })
 
 test("corpus: toda entidad de referencia existe en el catálogo, por nombre y sin pasar por el intérprete", () => {
