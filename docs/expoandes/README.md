@@ -19,6 +19,6 @@ Comenzar por [plan de ejecución](plan-ejecucion.md), que identifica prioridades
 | [Corroboración](corroboracion.md) | Pruebas observadas, fuentes contrastadas, datos confirmados y lo que permanece pendiente. |
 | [Prototipo iPhone accesible: EA-02](prototipos/ea-02/README.md) | Prototipo desechable con dos variantes, especificación de accesibilidad, evaluación provisional y guion de sesiones de #28. A2 eligió la variante B. |
 
-Las fuentes primarias y sus fechas están junto a las afirmaciones en los informes. Las recomendaciones posteriores de arquitectura ajustan las propuestas iniciales al calendario: SwiftUI **mínimo** condicionado a prueba, conservando backend Next y web; paridad completa permanece como trabajo posterior. Las cifras de ensayo son metas propuestas, no desempeño medido.
+Las fuentes primarias y sus fechas están junto a las afirmaciones en los informes. Las recomendaciones posteriores de arquitectura ajustan las propuestas iniciales al calendario: SwiftUI **mínimo** (aceptado el 11/11), conservando backend Next y web; paridad completa permanece como trabajo posterior. Las cifras de ensayo son metas propuestas, no desempeño medido.
 
 Actualización del 3/11: el equipo aportó enunciado ExpoAndes, entrega previa y evaluaciones de documento/MVP. Se leyeron y reconciliaron en la lectura académica; fecha y formato del informe siguen sin especificarse en esos PDF. No se publican originales, calificaciones, formularios ni datos identificables de participantes.
