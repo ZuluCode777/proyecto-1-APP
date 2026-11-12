@@ -1,0 +1,1331 @@
+{
+  "corpus": {
+    "version": 2,
+    "congelado": "2026-11-12",
+    "items": 100,
+    "sha256": "83c985371b422f7a6aff8b7473ae9853431103d9f7f7963da8ba032f5347b82f"
+  },
+  "modo": "app desplegada (POST /api/agent)",
+  "corrida": 1,
+  "inicio": "2026-11-12T15:32:47.738Z",
+  "fin": "2026-11-12T15:39:57.506Z",
+  "despliegue": {
+    "buildId": "y5APtRHo2aYpRWD_yP8pg",
+    "motorAlEmpezar": {
+      "engine": "ollama",
+      "model": "qwen2.5:3b",
+      "reachable": true,
+      "hasModel": true
+    }
+  },
+  "puntuacion": "La respuesta no trae la intención: se reconstruye de `reply`, `action` y `steps` (lib/ea27-render.ts). Lo que no se reconoce cuenta como fallo.",
+  "costo": "Sin precio por petición: el modelo es propio (Ollama) y corre en hardware que el equipo ya tiene.",
+  "resumen": {
+    "n": 100,
+    "ok": 83,
+    "exactitud": 0.83,
+    "porCategoria": {
+      "rutas": {
+        "n": 12,
+        "ok": 10,
+        "exactitud": 0.833
+      },
+      "destino": {
+        "n": 9,
+        "ok": 7,
+        "exactitud": 0.778
+      },
+      "ambiguo": {
+        "n": 9,
+        "ok": 5,
+        "exactitud": 0.556
+      },
+      "gps": {
+        "n": 8,
+        "ok": 8,
+        "exactitud": 1
+      },
+      "horarios": {
+        "n": 12,
+        "ok": 12,
+        "exactitud": 1
+      },
+      "metro": {
+        "n": 10,
+        "ok": 10,
+        "exactitud": 1
+      },
+      "avisos": {
+        "n": 8,
+        "ok": 6,
+        "exactitud": 0.75
+      },
+      "cancelacion": {
+        "n": 7,
+        "ok": 6,
+        "exactitud": 0.857
+      },
+      "conversacion": {
+        "n": 6,
+        "ok": 5,
+        "exactitud": 0.833
+      },
+      "aclaracion": {
+        "n": 8,
+        "ok": 7,
+        "exactitud": 0.875
+      },
+      "fuera_de_dominio": {
+        "n": 11,
+        "ok": 7,
+        "exactitud": 0.636
+      }
+    },
+    "aclaraciones": {
+      "esperadas": 5,
+      "acertadas": 4,
+      "sobrantes": 1
+    },
+    "cancelaciones": {
+      "esperadas": 7,
+      "acertadas": 6,
+      "sobrantes": 0
+    },
+    "errores": [],
+    "latenciaMs": {
+      "p50": 624.31,
+      "p95": 1183.483,
+      "max": 9297.42,
+      "n": 99
+    },
+    "primerContactoMs": 1270.232,
+    "primeraPeticionMs": 4029.953,
+    "decididoPor": {
+      "ollama": {
+        "n": 76,
+        "ok": 61
+      },
+      "reglas": {
+        "n": 24,
+        "ok": 22
+      }
+    },
+    "reintentos429": 0
+  },
+  "items": {
+    "rutas-01": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "origin": "Ricaurte",
+        "destination": "Calle 72"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 4029.953,
+      "reintentos429": 0
+    },
+    "rutas-02": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "origin": "Portal Norte",
+        "destination": "Portal Sur"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 9297.42,
+      "reintentos429": 0
+    },
+    "rutas-03": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "origin": "Portal 80",
+        "destination": "Portal Américas"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 1681.752,
+      "reintentos429": 0
+    },
+    "rutas-04": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "origin": "Museo Nacional",
+        "destination": "Calle 100"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 1107.184,
+      "reintentos429": 0
+    },
+    "rutas-05": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "origin": "Portal Suba",
+        "destination": "Portal Tunal"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 1184.444,
+      "reintentos429": 0
+    },
+    "rutas-06": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "origin": "Portal Usme",
+        "destination": "Universidad Nacional"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 1124.509,
+      "reintentos429": 0
+    },
+    "rutas-07": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "origin": "Museo del Oro",
+        "destination": "Portal El Dorado"
+      },
+      "estado": 200,
+      "ok": false,
+      "ms": 987.124,
+      "reintentos429": 0
+    },
+    "rutas-08": {
+      "engine": "ollama",
+      "accion": "trip",
+      "observado": {
+        "type": "trip",
+        "origin": "Calle 26",
+        "destination": "Héroes"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 777.708,
+      "reintentos429": 0
+    },
+    "rutas-09": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "origin": "Banderas",
+        "destination": "Terminal"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 1118.549,
+      "reintentos429": 0
+    },
+    "rutas-10": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "origin": "Portal 80",
+        "destination": "Corferias"
+      },
+      "estado": 200,
+      "ok": false,
+      "ms": 1183.483,
+      "reintentos429": 0
+    },
+    "rutas-11": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "origin": "Toberin",
+        "destination": "Portal Américas"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 1086.909,
+      "reintentos429": 0
+    },
+    "rutas-12": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "origin": "Calle 72",
+        "destination": "Ricaurte"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 810.959,
+      "reintentos429": 0
+    },
+    "destino-01": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "destination": "Calle 72"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 735.324,
+      "reintentos429": 0
+    },
+    "destino-02": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "destination": "Portal Suba"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 612.838,
+      "reintentos429": 0
+    },
+    "destino-03": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "destination": "Portal Tunal"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 662.577,
+      "reintentos429": 0
+    },
+    "destino-04": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "destination": "Universidad Nacional"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 625.224,
+      "reintentos429": 0
+    },
+    "destino-05": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "destination": "Museo del Oro"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 554.88,
+      "reintentos429": 0
+    },
+    "destino-06": {
+      "engine": "ollama",
+      "accion": "gps",
+      "observado": {
+        "type": "gps"
+      },
+      "estado": 200,
+      "ok": false,
+      "ms": 636.541,
+      "reintentos429": 0
+    },
+    "destino-07": {
+      "engine": "ollama",
+      "accion": "route",
+      "observado": {
+        "type": "route_info",
+        "routeCode": "Z61"
+      },
+      "estado": 200,
+      "ok": false,
+      "ms": 582.399,
+      "reintentos429": 0
+    },
+    "destino-08": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "destination": "Alcalá"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 624.687,
+      "reintentos429": 0
+    },
+    "destino-09": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "destination": "Portal Américas"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 735.073,
+      "reintentos429": 0
+    },
+    "ambiguo-01": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "origin": "Nariño",
+        "destination": "Ricaurte"
+      },
+      "estado": 200,
+      "ok": false,
+      "ms": 1094.599,
+      "reintentos429": 0
+    },
+    "ambiguo-02": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "trip",
+        "origin": "chapinero",
+        "destination": "Calle 72"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 748.393,
+      "reintentos429": 0
+    },
+    "ambiguo-03": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "destination": "Nariño"
+      },
+      "estado": 200,
+      "ok": false,
+      "ms": 647.642,
+      "reintentos429": 0
+    },
+    "ambiguo-04": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "trip",
+        "origin": "Ricaurte",
+        "destination": "Ricaurte"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 635.864,
+      "reintentos429": 0
+    },
+    "ambiguo-05": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "destination": "Suba"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 577.428,
+      "reintentos429": 0
+    },
+    "ambiguo-06": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "origin": "Museo del Oro",
+        "destination": "Portal 80"
+      },
+      "estado": 200,
+      "ok": false,
+      "ms": 1165.698,
+      "reintentos429": 0
+    },
+    "ambiguo-07": {
+      "engine": "ollama",
+      "accion": "trip",
+      "observado": {
+        "type": "trip",
+        "origin": "Calle 26",
+        "destination": "Calle 72"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 743.329,
+      "reintentos429": 0
+    },
+    "ambiguo-08": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "origin": "Ricaurte",
+        "destination": "Portal Américas"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 1044.178,
+      "reintentos429": 0
+    },
+    "ambiguo-09": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "trip_missing_destination",
+        "origin": "Portal 80"
+      },
+      "estado": 200,
+      "ok": false,
+      "ms": 113.766,
+      "reintentos429": 0
+    },
+    "gps-01": {
+      "engine": "ollama",
+      "accion": "gps",
+      "observado": {
+        "type": "gps"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 997.406,
+      "reintentos429": 0
+    },
+    "gps-02": {
+      "engine": "ollama",
+      "accion": "gps",
+      "observado": {
+        "type": "gps"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 592.709,
+      "reintentos429": 0
+    },
+    "gps-03": {
+      "engine": "ollama",
+      "accion": "gps",
+      "observado": {
+        "type": "gps"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 581.413,
+      "reintentos429": 0
+    },
+    "gps-04": {
+      "engine": "ollama",
+      "accion": "gps",
+      "observado": {
+        "type": "gps"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 619.508,
+      "reintentos429": 0
+    },
+    "gps-05": {
+      "engine": "ollama",
+      "accion": "gps",
+      "observado": {
+        "type": "gps"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 565.74,
+      "reintentos429": 0
+    },
+    "gps-06": {
+      "engine": "ollama",
+      "accion": "gps",
+      "observado": {
+        "type": "gps"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 681.023,
+      "reintentos429": 0
+    },
+    "gps-07": {
+      "engine": "ollama",
+      "accion": "gps",
+      "observado": {
+        "type": "gps"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 528.559,
+      "reintentos429": 0
+    },
+    "gps-08": {
+      "engine": "ollama",
+      "accion": "gps",
+      "observado": {
+        "type": "gps"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 669.65,
+      "reintentos429": 0
+    },
+    "horarios-01": {
+      "engine": "ollama",
+      "accion": "route",
+      "observado": {
+        "type": "schedule",
+        "routeCode": "B23"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 653.631,
+      "reintentos429": 0
+    },
+    "horarios-02": {
+      "engine": "ollama",
+      "accion": "route",
+      "observado": {
+        "type": "schedule",
+        "routeCode": "H54"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 579.56,
+      "reintentos429": 0
+    },
+    "horarios-03": {
+      "engine": "ollama",
+      "accion": "route",
+      "observado": {
+        "type": "schedule",
+        "routeCode": "M83"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 556.012,
+      "reintentos429": 0
+    },
+    "horarios-04": {
+      "engine": "ollama",
+      "accion": "route",
+      "observado": {
+        "type": "route_info",
+        "routeCode": "B23"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 709.782,
+      "reintentos429": 0
+    },
+    "horarios-05": {
+      "engine": "ollama",
+      "accion": "route",
+      "observado": {
+        "type": "route_info",
+        "routeCode": "K86"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 646.568,
+      "reintentos429": 0
+    },
+    "horarios-06": {
+      "engine": "ollama",
+      "accion": "route",
+      "observado": {
+        "type": "schedule",
+        "routeCode": "G47"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 764.002,
+      "reintentos429": 0
+    },
+    "horarios-07": {
+      "engine": "ollama",
+      "accion": "route",
+      "observado": {
+        "type": "schedule",
+        "routeCode": "J24"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 625.029,
+      "reintentos429": 0
+    },
+    "horarios-08": {
+      "engine": "ollama",
+      "accion": "route",
+      "observado": {
+        "type": "schedule",
+        "routeCode": "8 G"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 549.452,
+      "reintentos429": 0
+    },
+    "horarios-09": {
+      "engine": "ollama",
+      "accion": "route",
+      "observado": {
+        "type": "route_info",
+        "routeCode": "F19"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 659.218,
+      "reintentos429": 0
+    },
+    "horarios-10": {
+      "engine": "ollama",
+      "accion": "frequent",
+      "observado": {
+        "type": "frequent"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 520.908,
+      "reintentos429": 0
+    },
+    "horarios-11": {
+      "engine": "ollama",
+      "accion": "frequent",
+      "observado": {
+        "type": "frequent"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 516.431,
+      "reintentos429": 0
+    },
+    "horarios-12": {
+      "engine": "ollama",
+      "accion": "route",
+      "observado": {
+        "type": "schedule",
+        "routeCode": "D20"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 736.914,
+      "reintentos429": 0
+    },
+    "metro-01": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "metro",
+        "consulta": {
+          "tipo": "servicio",
+          "tema": "viaje"
+        }
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 214.682,
+      "reintentos429": 0
+    },
+    "metro-02": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "metro",
+        "consulta": {
+          "tipo": "linea",
+          "linea": 2
+        }
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 219.735,
+      "reintentos429": 0
+    },
+    "metro-03": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "metro",
+        "consulta": {
+          "tipo": "listado"
+        }
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 117.23,
+      "reintentos429": 0
+    },
+    "metro-04": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "metro",
+        "consulta": {
+          "tipo": "estacion",
+          "clave": "metro-bogota:l1:e01"
+        }
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 159.692,
+      "reintentos429": 0
+    },
+    "metro-05": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "metro",
+        "consulta": {
+          "tipo": "servicio",
+          "tema": "tarifa"
+        }
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 133.989,
+      "reintentos429": 0
+    },
+    "metro-06": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "metro",
+        "consulta": {
+          "tipo": "servicio",
+          "tema": "horario"
+        }
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 136.13,
+      "reintentos429": 0
+    },
+    "metro-07": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "metro",
+        "consulta": {
+          "tipo": "general"
+        }
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 117.885,
+      "reintentos429": 0
+    },
+    "metro-08": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "metro",
+        "consulta": {
+          "tipo": "estacion",
+          "clave": "metro-bogota:l1:e16"
+        }
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 118.386,
+      "reintentos429": 0
+    },
+    "metro-09": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "metro",
+        "consulta": {
+          "tipo": "estacion_ambigua",
+          "claves": [
+            "metro-bogota:l1:e03",
+            "metro-bogota:l1:e05"
+          ]
+        }
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 118.762,
+      "reintentos429": 0
+    },
+    "metro-10": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "metro",
+        "consulta": {
+          "tipo": "estacion",
+          "clave": "metro-bogota:l1:e04"
+        }
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 162.929,
+      "reintentos429": 0
+    },
+    "avisos-01": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "unsupported",
+        "topic": "tarifas"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 541.013,
+      "reintentos429": 0
+    },
+    "avisos-02": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "unsupported",
+        "topic": "tarifas"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 594.081,
+      "reintentos429": 0
+    },
+    "avisos-03": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "unsupported",
+        "topic": "tiempo_real"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 561.498,
+      "reintentos429": 0
+    },
+    "avisos-04": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "unsupported",
+        "topic": "tiempo_real"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 566.646,
+      "reintentos429": 0
+    },
+    "avisos-05": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "unsupported",
+        "topic": "tiempo_real"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 729.99,
+      "reintentos429": 0
+    },
+    "avisos-06": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "unknown"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 564.099,
+      "reintentos429": 0
+    },
+    "avisos-07": {
+      "engine": "ollama",
+      "accion": "gps",
+      "observado": {
+        "type": "gps"
+      },
+      "estado": 200,
+      "ok": false,
+      "ms": 543.229,
+      "reintentos429": 0
+    },
+    "avisos-08": {
+      "engine": "ollama",
+      "accion": "gps",
+      "observado": {
+        "type": "gps"
+      },
+      "estado": 200,
+      "ok": false,
+      "ms": 597.361,
+      "reintentos429": 0
+    },
+    "cancelacion-01": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "cancel"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 545.925,
+      "reintentos429": 0
+    },
+    "cancelacion-02": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "cancel"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 554.539,
+      "reintentos429": 0
+    },
+    "cancelacion-03": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "cancel"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 682.702,
+      "reintentos429": 0
+    },
+    "cancelacion-04": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "greeting"
+      },
+      "estado": 200,
+      "ok": false,
+      "ms": 586.612,
+      "reintentos429": 0
+    },
+    "cancelacion-05": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "cancel"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 563.067,
+      "reintentos429": 0
+    },
+    "cancelacion-06": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "cancel"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 660.791,
+      "reintentos429": 0
+    },
+    "cancelacion-07": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "cancel"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 629.661,
+      "reintentos429": 0
+    },
+    "conversacion-01": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "greeting"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 624.31,
+      "reintentos429": 0
+    },
+    "conversacion-02": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "greeting"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 610.065,
+      "reintentos429": 0
+    },
+    "conversacion-03": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "greeting"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 591.763,
+      "reintentos429": 0
+    },
+    "conversacion-04": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "help"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 751.339,
+      "reintentos429": 0
+    },
+    "conversacion-05": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "help"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 576.363,
+      "reintentos429": 0
+    },
+    "conversacion-06": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "unknown"
+      },
+      "estado": 200,
+      "ok": false,
+      "ms": 684.262,
+      "reintentos429": 0
+    },
+    "aclaracion-01a": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "trip_missing_destination",
+        "origin": "Ricaurte"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 168.417,
+      "reintentos429": 0
+    },
+    "aclaracion-01b": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "destination": "Calle 72"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 895.064,
+      "reintentos429": 0
+    },
+    "aclaracion-02a": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "trip",
+        "origin": "narnia",
+        "destination": "Ricaurte"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 625.738,
+      "reintentos429": 0
+    },
+    "aclaracion-02b": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "origin": "Calle 72",
+        "destination": "Ricaurte"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 794.478,
+      "reintentos429": 0
+    },
+    "aclaracion-03a": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "destination": "Terminal"
+      },
+      "estado": 200,
+      "ok": false,
+      "ms": 666.265,
+      "reintentos429": 0
+    },
+    "aclaracion-03b": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "destination": "Portal 80"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 608.196,
+      "reintentos429": 0
+    },
+    "aclaracion-04a": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "trip_missing_destination",
+        "origin": "Calle 76"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 6018.646,
+      "reintentos429": 0
+    },
+    "aclaracion-04b": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "destination": "Portal Norte"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 1045.544,
+      "reintentos429": 0
+    },
+    "fuera-01": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "unknown"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 613.556,
+      "reintentos429": 0
+    },
+    "fuera-02": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "unknown"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 546.765,
+      "reintentos429": 0
+    },
+    "fuera-03": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "unknown"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 606.983,
+      "reintentos429": 0
+    },
+    "fuera-04": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "greeting"
+      },
+      "estado": 200,
+      "ok": false,
+      "ms": 562.95,
+      "reintentos429": 0
+    },
+    "fuera-05": {
+      "engine": "ollama",
+      "accion": "none",
+      "observado": {
+        "type": "greeting"
+      },
+      "estado": 200,
+      "ok": false,
+      "ms": 678.675,
+      "reintentos429": 0
+    },
+    "fuera-06": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "unknown"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 577.255,
+      "reintentos429": 0
+    },
+    "fuera-07": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "unknown"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 714.393,
+      "reintentos429": 0
+    },
+    "fuera-08": {
+      "engine": "ollama",
+      "accion": "search",
+      "observado": {
+        "type": "trip",
+        "destination": "Portal Norte"
+      },
+      "estado": 200,
+      "ok": false,
+      "ms": 605.86,
+      "reintentos429": 0
+    },
+    "fuera-09": {
+      "engine": "ollama",
+      "accion": "gps",
+      "observado": {
+        "type": "gps"
+      },
+      "estado": 200,
+      "ok": false,
+      "ms": 535.937,
+      "reintentos429": 0
+    },
+    "fuera-10": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "unknown"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 639.712,
+      "reintentos429": 0
+    },
+    "fuera-11": {
+      "engine": "reglas",
+      "accion": "none",
+      "observado": {
+        "type": "unknown"
+      },
+      "estado": 200,
+      "ok": true,
+      "ms": 516.318,
+      "reintentos429": 0
+    }
+  }
+}
