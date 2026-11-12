@@ -1005,6 +1005,19 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         exponer("aviso-transporte-sintetico", en: app)
         comprobarEnteros(["aviso-accesorio-real"], en: app, comienzo: true)
         try reposo.auditar("texto-muy-grande-Accesorio-avisos-iniciales")
+        // El aviso del sensor real son tres frases (entero medía 987 pt, más que el área visible de 659 pt) y cada una tiene su
+        // posición, como el aviso de seguridad: expuesta por su identificador y su texto exacto, con la auditoría completa.
+        let frasesAvisoReal = [
+            "Sensor real por Bluetooth.", "Los avisos hablados solo salen por auriculares.",
+            "Con la pantalla bloqueada o la app en segundo plano la sesión se detiene; al volver se sincroniza de nuevo.",
+        ]
+        var frasesSinMedir: [String] = []
+        for (posicion, frase) in frasesAvisoReal.enumerated() {
+            let id = posicion == 0 ? "aviso-accesorio-real" : "aviso-accesorio-real-\(posicion)"
+            try reposo.exponerPorEscalas(id, etiqueta: frase)
+            try reposo.auditar("texto-muy-grande-Accesorio-sensor-real-\(posicion + 1)")
+            if !reposo.libro.limpios.contains(ClaveNodo(identificador: id, etiqueta: frase)) { frasesSinMedir.append(id) }
+        }
         // El aviso de seguridad son dos párrafos y cada uno tiene su posición: entero y tocable (`completo`), expuesto por su
         // identificador y su texto exacto y con la auditoría completa. Ninguno se deja a la remedición de otra posición.
         var avisoSinMedir: [String] = []
@@ -1019,6 +1032,7 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         exponer("boton-buscar", en: app)
         try reposo.auditar("texto-muy-grande-Accesorio-busqueda")
         try reposo.cerrar()
+        XCTAssertEqual(frasesSinMedir, [], "Cada frase del aviso del sensor real debe quedar medida entera a la vista, con su texto exacto, en su propia posición")
         XCTAssertEqual(avisoSinMedir, [], "Cada párrafo del aviso de seguridad debe quedar medido entero a la vista, con su texto exacto, en su propia posición")
 
         // Buscar cambia el estado (aparece la lista): fase nueva. El cierre de la fase pudo mover el desplazamiento: se
