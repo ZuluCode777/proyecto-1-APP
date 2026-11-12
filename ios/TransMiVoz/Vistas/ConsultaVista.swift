@@ -19,11 +19,6 @@ struct ConsultaVista: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    // Un solo botón, arriba del todo y antes del aviso de pruebas. La auditoría con el texto más grande
-                    // centra la introducción y luego «Enviar»: así lo que queda a la vista en esas posiciones no cambia.
-                    // Tampoco crece al pasar al Metro, para que «Enviar» siga por encima del teclado.
-                    BotonEscenario(modelo: modelo)
-
                     if avisoModoPruebas { AvisoModoPruebas() }
 
                     Text(resumenServidor)
@@ -77,6 +72,10 @@ struct ConsultaVista: View {
                                     .accessibilityIdentifier("boton-cancelar")
                             }
                         }
+
+                        // Acción secundaria, después de la principal («Enviar»): sobre la introducción empujaba el campo
+                        // y «Enviar» fuera del área visible con el texto más grande (CI, `TransMiVozTextoGrandeUITests`).
+                        BotonEscenario(modelo: modelo)
                     }
                 }
                 .padding(16)
