@@ -77,9 +77,9 @@ enum ErrorConsulta: Error, Equatable, Sendable {
         case .entradaInvalida:
             return "Corrige el texto y vuelve a enviar."
         case .servidorNoConfigurado:
-            return "Abre la pestaña Servidor y escribe la dirección HTTPS."
+            return "Abre la pestaña Ajustes y escribe la dirección HTTPS."
         case .noAutorizado:
-            return "Abre la pestaña Servidor y escribe la clave correcta."
+            return "Abre la pestaña Ajustes y escribe la clave correcta."
         case .servicioNoDisponible:
             return "Avisa a quien administra el servidor. La sesión local sigue disponible."
         case .demasiadasPeticiones:
@@ -93,7 +93,7 @@ enum ErrorConsulta: Error, Equatable, Sendable {
         case .conexionNoSegura:
             return "Revisa la dirección del servidor y la fecha del iPhone."
         case .redireccionNoPermitida:
-            return "Corrige la dirección en la pestaña Servidor."
+            return "Corrige la dirección en la pestaña Ajustes."
         case .errorDelServidor, .respuestaIncompatible:
             return "Pulsa Reintentar más tarde."
         case .cancelada:
