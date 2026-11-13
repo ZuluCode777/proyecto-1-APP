@@ -203,6 +203,7 @@ Sin cambio de código, a propósito: **R3** (el radar se reinicia solo unos 20 s
 ## Pendiente
 
 - **Placa y radar:** todo lo del guion. Hasta entonces, nada de esto se declara probado.
+  Estado del banco del 13/11 y lo que falta, para quien lo continúe: [traspaso](verificaciones/banco-2026-11-13/traspaso.md).
 - **B2:** si el GPIO2 cambia antes que la trama. El firmware no lo usa; cuando B2 lo decida, se añade solo con `latido_vigente()` y sin tomar la edad del pin.
 - **Pines y cableado:** los fija quien reciba la placa en `configuracion_local.h`.
 - **Core Bluetooth y qué evidencia afirma `cifradoAutenticado` en iOS:** EA-15 concluye (diseño, sin banco) que la app no puede obtener ninguna que rechace a un impostor sin protección con el mismo nombre y UUID; ver [Seguridad del enlace](ea-15-ios-ble-audio.md#seguridad-del-enlace). La app afirma `cifradoSinAutenticar` tras una lectura protegida y usa `permitirAsociacionSinMITM`: aprobado por A1 el 12/11/2026 para la feria; H3 informado.

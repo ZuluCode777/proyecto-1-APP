@@ -1,0 +1,237 @@
+# captura iniciada 2026-11-13 10:25:36 en /dev/ttyACM0
+10:25:36     0.00 Accesorio Visionaria, firmware 0.1.0, contrato 1.0, modo real
+10:25:36     0.00 BLE: Visionaria listo, contrato 1.0, firmware 0.1.0, arranque f911b90d
+10:25:36     0.00 Build:Mar 27 2021
+10:25:36     0.00 rst:0x15 (USB_UART_CHIP_RESET),boot:0x2b (SPI_FAST_FLASH_BOOT)
+10:25:36     0.00 Saved PC:0x4037f5be
+10:25:36     0.00 SPIWP:0xee
+10:25:36     0.00 mode:DIO, clock div:1
+10:25:36     0.00 load:0x3fce2820,len:0x10cc
+10:25:36     0.00 load:0x403c8700,len:0xc2c
+10:25:36     0.00 load:0x403cb700,len:0x30b0
+10:25:36     0.00 entry 0x403c88b8
+10:25:36     0.05 Accesorio Visionaria, firmware 0.1.0, contrato 1.0, modo real
+10:25:36     0.40 BLE: Visionaria listo, contrato 1.0, firmware 0.1.0, arranque 5580a21c
+# captura iniciada 2026-11-13 10:25:51 en /dev/ttyACM0
+10:26:01     9.97 estado t=25001 radar=real salud=2 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:26:01     9.97 uart validas=13 parciales=1 largas=1 otras=3 ignoradas=12 errores=0 timeouts=0 descartados=17 perdidas=1 reintentos=0
+10:26:06    15.44 Radar: sin latido o configuración fallida; se repite el arranque del radar (sin reescribir su flash si ya guardó la configuración)
+10:26:27    35.61 Radar: sin latido o configuración fallida; se repite el arranque del radar (sin reescribir su flash si ya guardó la configuración)
+10:26:47    55.78 Radar: sin latido o configuración fallida; se repite el arranque del radar (sin reescribir su flash si ya guardó la configuración)
+10:27:01    69.98 estado t=85005 radar=real salud=2 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:27:01    69.98 uart validas=28 parciales=4 largas=1 otras=12 ignoradas=36 errores=0 timeouts=0 descartados=17 perdidas=1 reintentos=3
+10:27:07    75.95 Radar: sin latido o configuración fallida; se repite el arranque del radar (sin reescribir su flash si ya guardó la configuración)
+10:28:01   129.98 estado t=145006 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:28:01   129.98 uart validas=55 parciales=5 largas=2 otras=15 ignoradas=44 errores=0 timeouts=0 descartados=34 perdidas=2 reintentos=4
+10:29:01   189.97 estado t=205006 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:29:01   189.97 uart validas=116 parciales=5 largas=2 otras=15 ignoradas=44 errores=0 timeouts=0 descartados=34 perdidas=2 reintentos=4
+10:30:01   249.97 estado t=265006 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:30:01   249.97 uart validas=176 parciales=5 largas=2 otras=15 ignoradas=44 errores=0 timeouts=0 descartados=34 perdidas=2 reintentos=4
+10:31:01   309.97 estado t=325009 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:31:01   309.97 uart validas=237 parciales=5 largas=2 otras=15 ignoradas=44 errores=0 timeouts=0 descartados=34 perdidas=2 reintentos=4
+10:32:01   369.97 estado t=385009 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:32:01   369.97 uart validas=301 parciales=5 largas=2 otras=15 ignoradas=44 errores=0 timeouts=0 descartados=34 perdidas=2 reintentos=4
+10:32:09   377.58 Alta: ventana abierta 60 s
+10:33:01   429.97 estado t=445009 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=7610 notif=0 lecturas=0 rechazados=0
+10:33:01   429.97 uart validas=361 parciales=5 largas=2 otras=15 ignoradas=44 errores=0 timeouts=0 descartados=34 perdidas=2 reintentos=4
+10:33:09   437.58 Alta: ventana cerrada
+10:34:01   489.97 estado t=505009 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:34:01   489.97 uart validas=421 parciales=5 largas=2 otras=15 ignoradas=44 errores=0 timeouts=0 descartados=34 perdidas=2 reintentos=4
+10:34:07   495.60 Alta: ventana abierta 60 s
+10:34:27   515.67 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+10:34:59   548.47 BLE: enlace sin proteger pasado el plazo; se corta
+10:34:59   548.47 BLE: enlace sin protección suficiente; se corta
+10:34:59   548.49 BLE: conexión terminada
+10:35:01   549.97 estado t=565009 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=5634 notif=0 lecturas=0 rechazados=0
+10:35:01   549.97 uart validas=481 parciales=5 largas=2 otras=15 ignoradas=44 errores=0 timeouts=0 descartados=34 perdidas=2 reintentos=4
+10:35:07   555.60 Alta: ventana cerrada
+10:36:01   609.97 estado t=625009 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:36:01   609.97 uart validas=540 parciales=5 largas=3 otras=15 ignoradas=44 errores=0 timeouts=0 descartados=51 perdidas=3 reintentos=4
+10:37:01   669.97 estado t=685009 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:37:01   669.97 uart validas=599 parciales=5 largas=4 otras=15 ignoradas=44 errores=0 timeouts=0 descartados=68 perdidas=4 reintentos=4
+10:38:01   729.96 estado t=745009 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:38:01   729.96 uart validas=659 parciales=5 largas=4 otras=15 ignoradas=44 errores=0 timeouts=0 descartados=68 perdidas=4 reintentos=4
+10:38:32   761.56 Alta: ventana abierta 60 s
+10:38:46   775.23 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+10:39:01   789.96 estado t=805009 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=31596 notif=0 lecturas=0 rechazados=0
+10:39:01   789.96 uart validas=719 parciales=5 largas=4 otras=15 ignoradas=44 errores=0 timeouts=0 descartados=68 perdidas=4 reintentos=4
+10:39:21   809.87 BLE: enlace sin proteger pasado el plazo; se corta
+10:39:21   809.87 BLE: enlace sin protección suficiente; se corta
+10:39:21   809.88 BLE: conexión terminada
+10:39:25   814.05 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+10:39:32   821.56 Alta: ventana cerrada
+10:39:56   845.28 BLE: enlace cifrado, autenticado y vinculado
+10:40:01   849.96 estado t=865009 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:40:01   849.96 uart validas=778 parciales=5 largas=5 otras=15 ignoradas=44 errores=0 timeouts=0 descartados=85 perdidas=5 reintentos=4
+10:41:01   909.96 estado t=925009 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:41:01   909.96 uart validas=837 parciales=5 largas=6 otras=15 ignoradas=44 errores=0 timeouts=0 descartados=102 perdidas=6 reintentos=4
+10:42:01   969.96 estado t=985009 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:42:01   969.96 uart validas=897 parciales=5 largas=6 otras=15 ignoradas=44 errores=0 timeouts=0 descartados=102 perdidas=6 reintentos=4
+10:43:01  1029.96 estado t=1045009 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=4 rechazados=0
+10:43:01  1029.96 uart validas=957 parciales=5 largas=6 otras=15 ignoradas=44 errores=0 timeouts=0 descartados=102 perdidas=6 reintentos=4
+10:44:01  1089.95 estado t=1105009 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=4 rechazados=0
+10:44:01  1089.95 uart validas=1017 parciales=5 largas=6 otras=15 ignoradas=44 errores=0 timeouts=0 descartados=102 perdidas=6 reintentos=4
+# puerto perdido
+# captura iniciada 2026-11-13 10:44:48 en /dev/ttyACM0
+10:44:48     0.01 BLE: Visionaria listo, contrato 1.0, firmware 0.1.0, arranque 2ae1c45a
+10:44:57     8.94 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+10:44:57     8.94 BLE: enlace cifrado, autenticado y vinculado
+10:45:03    14.64 estado t=15001 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:45:03    14.64 uart validas=12 parciales=0 largas=0 otras=0 ignoradas=12 errores=0 timeouts=0 descartados=0 perdidas=0 reintentos=0
+10:45:18    29.89 Radar: sin latido o configuración fallida; se repite el arranque del radar (sin reescribir su flash si ya guardó la configuración)
+10:45:38    50.06 Radar: sin latido o configuración fallida; se repite el arranque del radar (sin reescribir su flash si ya guardó la configuración)
+10:45:58    70.23 Radar: sin latido o configuración fallida; se repite el arranque del radar (sin reescribir su flash si ya guardó la configuración)
+10:46:03    74.65 estado t=75006 radar=real salud=1 fase=1 conectada=1 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:46:03    74.65 uart validas=33 parciales=3 largas=0 otras=9 ignoradas=34 errores=0 timeouts=0 descartados=17 perdidas=1 reintentos=3
+10:46:19    90.39 Radar: sin latido o configuración fallida; se repite el arranque del radar (sin reescribir su flash si ya guardó la configuración)
+10:46:57   128.97 BLE: conexión terminada
+10:47:03   134.65 estado t=135008 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=1 rechazados=0
+10:47:03   134.65 uart validas=57 parciales=5 largas=0 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=34 perdidas=2 reintentos=4
+10:47:04   135.39 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+10:47:04   135.39 BLE: enlace cifrado, autenticado y vinculado
+10:47:08   140.01 BLE: conexión terminada
+10:47:17   149.22 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+10:47:17   149.22 BLE: enlace cifrado, autenticado y vinculado
+10:47:56   187.89 BLE: conexión terminada
+10:47:59   191.28 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+10:47:59   191.28 BLE: enlace cifrado, autenticado y vinculado
+10:48:02   194.04 BLE: conexión terminada
+10:48:03   194.65 estado t=195008 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+10:48:03   194.65 uart validas=128 parciales=5 largas=1 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=51 perdidas=3 reintentos=4
+10:48:06   197.40 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+10:48:06   197.40 BLE: enlace cifrado, autenticado y vinculado
+10:48:08   199.62 BLE: conexión terminada
+10:48:11   203.01 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+10:48:12   203.46 BLE: enlace cifrado, autenticado y vinculado
+10:48:13   204.48 BLE: conexión terminada
+10:48:19   210.45 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+10:48:19   210.90 BLE: enlace cifrado, autenticado y vinculado
+10:48:21   213.27 BLE: conexión terminada
+10:48:29   220.62 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+10:48:29   220.62 BLE: enlace cifrado, autenticado y vinculado
+10:49:03   254.64 estado t=255008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+10:49:03   254.64 uart validas=190 parciales=5 largas=1 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=51 perdidas=3 reintentos=4
+10:50:03   314.64 estado t=315008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+10:50:03   314.64 uart validas=249 parciales=5 largas=2 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=68 perdidas=4 reintentos=4
+10:51:03   374.64 estado t=375008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+10:51:03   374.64 uart validas=309 parciales=5 largas=2 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=68 perdidas=4 reintentos=4
+10:52:03   434.64 estado t=435008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+10:52:03   434.64 uart validas=370 parciales=5 largas=3 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=85 perdidas=5 reintentos=4
+10:53:03   494.64 estado t=495008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+10:53:03   494.64 uart validas=439 parciales=5 largas=3 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=85 perdidas=5 reintentos=4
+10:54:03   554.64 estado t=555008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+10:54:03   554.64 uart validas=499 parciales=5 largas=3 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=85 perdidas=5 reintentos=4
+10:55:03   614.64 estado t=615008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+10:55:03   614.64 uart validas=557 parciales=5 largas=5 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=119 perdidas=7 reintentos=4
+10:56:03   674.63 estado t=675008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+10:56:03   674.63 uart validas=617 parciales=5 largas=5 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=119 perdidas=7 reintentos=4
+10:57:03   734.63 estado t=735008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+10:57:03   734.63 uart validas=677 parciales=5 largas=5 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=119 perdidas=7 reintentos=4
+10:58:03   794.63 estado t=795008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+10:58:03   794.63 uart validas=737 parciales=5 largas=5 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=119 perdidas=7 reintentos=4
+10:59:03   854.63 estado t=855008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+10:59:03   854.63 uart validas=797 parciales=5 largas=5 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=119 perdidas=7 reintentos=4
+11:00:03   914.63 estado t=915008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:00:03   914.63 uart validas=857 parciales=5 largas=5 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=119 perdidas=7 reintentos=4
+11:01:03   974.63 estado t=975008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:01:03   974.63 uart validas=916 parciales=5 largas=6 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=136 perdidas=8 reintentos=4
+11:02:03  1034.63 estado t=1035008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:02:03  1034.63 uart validas=974 parciales=5 largas=8 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=170 perdidas=10 reintentos=4
+11:03:03  1094.62 estado t=1095008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:03:03  1094.62 uart validas=1033 parciales=5 largas=9 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=187 perdidas=11 reintentos=4
+11:04:03  1154.62 estado t=1155008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:04:03  1154.62 uart validas=1093 parciales=5 largas=9 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=187 perdidas=11 reintentos=4
+11:05:03  1214.62 estado t=1215008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:05:03  1214.62 uart validas=1162 parciales=5 largas=9 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=187 perdidas=11 reintentos=4
+11:06:03  1274.62 estado t=1275008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:06:03  1274.62 uart validas=1224 parciales=5 largas=9 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=187 perdidas=11 reintentos=4
+11:07:03  1334.62 estado t=1335008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:07:03  1334.62 uart validas=1288 parciales=5 largas=9 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=187 perdidas=11 reintentos=4
+11:08:03  1394.62 estado t=1395008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:08:03  1394.62 uart validas=1353 parciales=5 largas=9 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=187 perdidas=11 reintentos=4
+11:09:03  1454.61 estado t=1455008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:09:03  1454.61 uart validas=1417 parciales=5 largas=9 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=187 perdidas=11 reintentos=4
+11:10:03  1514.61 estado t=1515008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:10:03  1514.61 uart validas=1477 parciales=5 largas=10 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=204 perdidas=12 reintentos=4
+11:11:03  1574.61 estado t=1575008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:11:03  1574.61 uart validas=1545 parciales=5 largas=10 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=204 perdidas=12 reintentos=4
+11:12:03  1634.61 estado t=1635008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:12:03  1634.61 uart validas=1611 parciales=5 largas=10 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=204 perdidas=12 reintentos=4
+11:13:03  1694.61 estado t=1695008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:13:03  1694.61 uart validas=1673 parciales=5 largas=10 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=204 perdidas=12 reintentos=4
+11:14:03  1754.61 estado t=1755008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:14:03  1754.61 uart validas=1736 parciales=5 largas=10 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=204 perdidas=12 reintentos=4
+11:15:03  1814.61 estado t=1815008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:15:03  1814.61 uart validas=1799 parciales=5 largas=10 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=204 perdidas=12 reintentos=4
+11:16:03  1874.60 estado t=1875008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:16:03  1874.60 uart validas=1860 parciales=5 largas=10 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=204 perdidas=12 reintentos=4
+11:16:34  1905.61 BLE: conexión terminada
+11:16:36  1908.07 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+11:16:36  1908.07 BLE: enlace cifrado, autenticado y vinculado
+11:16:39  1910.77 BLE: conexión terminada
+11:16:40  1911.94 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+11:16:40  1911.94 BLE: enlace cifrado, autenticado y vinculado
+11:16:42  1913.62 BLE: conexión terminada
+11:16:43  1914.67 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+11:16:43  1915.12 BLE: enlace cifrado, autenticado y vinculado
+11:17:03  1934.60 estado t=1935008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:17:03  1934.60 uart validas=1921 parciales=5 largas=10 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=204 perdidas=12 reintentos=4
+11:18:03  1994.60 estado t=1995008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:18:03  1994.60 uart validas=1981 parciales=5 largas=10 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=204 perdidas=12 reintentos=4
+11:19:03  2054.60 estado t=2055008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:19:03  2054.60 uart validas=2041 parciales=5 largas=10 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=204 perdidas=12 reintentos=4
+11:20:03  2114.60 estado t=2115008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:20:03  2114.60 uart validas=2102 parciales=5 largas=10 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=204 perdidas=12 reintentos=4
+11:21:03  2174.60 estado t=2175008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:21:03  2174.60 uart validas=2164 parciales=5 largas=10 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=204 perdidas=12 reintentos=4
+11:22:03  2234.60 estado t=2235008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:22:03  2234.60 uart validas=2224 parciales=5 largas=10 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=204 perdidas=12 reintentos=4
+11:23:03  2294.59 estado t=2295008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:23:03  2294.59 uart validas=2284 parciales=5 largas=10 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=204 perdidas=12 reintentos=4
+11:24:03  2354.59 estado t=2355008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:24:03  2354.59 uart validas=2343 parciales=5 largas=11 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=221 perdidas=13 reintentos=4
+11:24:04  2355.78 BLE: CONNECT con status 26 (lectura de funciones remotas del par); se comprueba el enlace
+11:24:04  2355.78 BLE: segundo cliente rechazado; un solo cliente a la vez
+11:25:03  2414.59 estado t=2415008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:25:03  2414.59 uart validas=2403 parciales=5 largas=11 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=221 perdidas=13 reintentos=4
+11:25:56  2467.52 BLE: conexión terminada
+11:26:03  2474.59 estado t=2475008 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:26:03  2474.59 uart validas=2463 parciales=5 largas=11 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=221 perdidas=13 reintentos=4
+11:27:03  2534.59 estado t=2535008 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:27:03  2534.59 uart validas=2523 parciales=5 largas=11 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=221 perdidas=13 reintentos=4
+11:28:03  2594.59 estado t=2595008 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:28:03  2594.59 uart validas=2583 parciales=5 largas=11 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=221 perdidas=13 reintentos=4
+11:29:03  2654.59 estado t=2655008 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:29:03  2654.59 uart validas=2645 parciales=5 largas=11 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=221 perdidas=13 reintentos=4
+11:30:03  2714.58 estado t=2715008 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:30:03  2714.58 uart validas=2705 parciales=5 largas=11 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=221 perdidas=13 reintentos=4
+11:31:03  2774.58 estado t=2775008 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:31:03  2774.58 uart validas=2767 parciales=5 largas=11 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=221 perdidas=13 reintentos=4
+11:32:03  2834.58 estado t=2835008 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:32:03  2834.58 uart validas=2829 parciales=5 largas=12 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=238 perdidas=14 reintentos=4
+11:32:45  2876.49 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+11:32:45  2876.97 BLE: enlace cifrado, autenticado y vinculado
+11:33:03  2894.58 estado t=2895008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:33:03  2894.58 uart validas=2889 parciales=5 largas=12 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=238 perdidas=14 reintentos=4
+11:34:03  2954.58 estado t=2955008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:34:03  2954.58 uart validas=2950 parciales=5 largas=12 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=238 perdidas=14 reintentos=4
+11:35:03  3014.58 estado t=3015008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:35:03  3014.58 uart validas=3009 parciales=5 largas=13 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=255 perdidas=15 reintentos=4
+11:36:03  3074.58 estado t=3075008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:36:03  3074.58 uart validas=3069 parciales=5 largas=13 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=255 perdidas=15 reintentos=4
+11:37:03  3134.57 estado t=3135008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:37:03  3134.57 uart validas=3133 parciales=5 largas=13 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=255 perdidas=15 reintentos=4
+11:38:03  3194.57 estado t=3195008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:38:03  3194.57 uart validas=3195 parciales=5 largas=13 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=255 perdidas=15 reintentos=4
+11:39:03  3254.57 estado t=3255008 radar=real salud=0 fase=2 conectada=1 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:39:03  3254.57 uart validas=3258 parciales=5 largas=13 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=255 perdidas=15 reintentos=4
+11:39:13  3264.49 BLE: conexión terminada
+11:40:03  3314.57 estado t=3315008 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:40:03  3314.57 uart validas=3319 parciales=5 largas=13 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=255 perdidas=15 reintentos=4
+11:41:03  3374.57 estado t=3375008 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:41:03  3374.57 uart validas=3383 parciales=5 largas=13 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=255 perdidas=15 reintentos=4
+11:42:03  3434.57 estado t=3435008 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=20 rechazados=0
+11:42:03  3434.57 uart validas=3443 parciales=5 largas=15 otras=15 ignoradas=42 errores=0 timeouts=0 descartados=289 perdidas=17 reintentos=4
+# puerto perdido
+# captura iniciada 2026-11-13 11:44:01 en /dev/ttyACM0
+11:44:01     0.00 BLE: Visionaria listo, contrato 1.0, firmware 0.1.0, arranque d406b29f
