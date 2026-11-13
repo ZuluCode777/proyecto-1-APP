@@ -110,7 +110,11 @@ final class DemoVideosUITests: XCTestCase {
         let previo = (campo.value as? String) ?? ""
         let hayTexto = comprobar && !previo.isEmpty && previo != campo.placeholderValue
         campo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10), "El teclado no apareció")
+        if !app.keyboards.firstMatch.waitForExistence(timeout: 5) {
+            // Un segundo toque, algo más a la izquierda, por si el primero solo movió el foco.
+            campo.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.2)).tap()
+        }
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 8), "El teclado no apareció")
         if hayTexto {
             // La consulta conserva la pregunta anterior. El toque deja el cursor a mitad del texto y «borrar» solo quita lo
             // de antes; lo que queda es más corto, así que el siguiente toque cae después de su final. Con letra grande,
@@ -140,6 +144,25 @@ final class DemoVideosUITests: XCTestCase {
         desde.press(forDuration: 0.1, thenDragTo: hasta, withVelocity: .slow, thenHoldForDuration: 0.2)
         _ = teclado.waitForNonExistence(timeout: 4)
         pausa(0.4)
+    }
+
+    /// Con el teclado abierto, sube el contenido hasta que el elemento quede entero por encima del teclado. Así se toca
+    /// «Enviar» sin cerrar el teclado a mano: cerrarlo arrastrando dejaba el campo sin volver a abrir el teclado.
+    private func subirSobreTeclado(_ identificador: String) {
+        let objetivo = elemento(identificador)
+        let teclado = app.keyboards.firstMatch
+        for _ in 0..<3 {
+            guard teclado.exists, objetivo.exists else { return }
+            let limite = teclado.frame.minY - 12
+            let exceso = objetivo.frame.maxY - limite
+            if exceso <= 0 { return }
+            let ventana = app.windows.firstMatch
+            let inicio = ventana.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: ventana.frame.width * 0.85, dy: limite - 10))
+            inicio.press(forDuration: 0.1, thenDragTo: inicio.withOffset(CGVector(dx: 0, dy: -(exceso + 30))),
+                         withVelocity: .slow, thenHoldForDuration: 0.4)
+            pausa(0.4)
+        }
     }
 
     /// Arrastra el contenido `desplazamiento` puntos (positivo: hacia abajo de la pantalla), sin inercia.
@@ -223,9 +246,13 @@ final class DemoVideosUITests: XCTestCase {
         let campo = elemento("campo-pregunta")
         mostrar("campo-pregunta")
         escribir(texto, en: campo)
-        cerrarTeclado()
-        mostrar("boton-enviar")
-        tocar(elemento("boton-enviar"), "Toca «Enviar»")
+        subirSobreTeclado("boton-enviar")
+        let enviar = elemento("boton-enviar")
+        if app.keyboards.firstMatch.exists, !enviar.isHittable {
+            cerrarTeclado()
+            mostrar("boton-enviar")
+        }
+        tocar(enviar, "Toca «Enviar»")
         _ = app.keyboards.firstMatch.waitForNonExistence(timeout: 5)
         let respuesta = elemento("texto-respuesta")
         let viaje = elemento("aviso-viaje")
