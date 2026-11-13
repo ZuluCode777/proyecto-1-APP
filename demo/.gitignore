@@ -1,2 +1,5 @@
 # Grabaciones y videos: se descargan del artefacto del workflow, no se versionan.
 salida/
+
+# Caché de Python al probar demo/componer.py en local.
+__pycache__/

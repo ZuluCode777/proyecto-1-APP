@@ -67,9 +67,19 @@ const fallos = []
  * `crearAyudas`) y tiene que llamar a `d.marcarInicio()` cuando la app ya está
  * en pantalla: el video empieza ahí y se descarta la carga en blanco.
  */
-async function grabar(id, titulo, recorrido, { reconocimientoSimulado = false } = {}) {
+async function grabar(id, titulo, recorrido, opciones = {}) {
   if (SOLO.length && !SOLO.includes(id)) return
   console.log(`\n▶ ${id}: ${titulo}`)
+  try {
+    await grabarUno(id, titulo, recorrido, opciones)
+  } catch (e) {
+    // Un fallo al preparar o guardar la grabación no detiene las demás.
+    console.log(`  ✗ ${id} no se pudo grabar: ${e instanceof Error ? e.stack ?? e.message : e}`)
+    if (!fallos.includes(id)) fallos.push(id)
+  }
+}
+
+async function grabarUno(id, titulo, recorrido, { reconocimientoSimulado = false } = {}) {
   const carpetaTemporal = join(SALIDA, `.tmp-${id}`)
   rmSync(carpetaTemporal, { recursive: true, force: true })
   const contexto = await browser.newContext({

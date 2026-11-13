@@ -4,6 +4,11 @@
 # Solo corre en la rama demo/videos o a mano: no se dispara con los PR ni con
 # main, no despliega nada y no usa secretos del repositorio (la clave de la app
 # es desechable y solo vive en el runner).
+#
+# Para volver a grabar solo una plataforma, el mensaje del commit puede llevar
+# «[solo web]» o «[solo iphone]». Cada plataforma cancela solo su propia
+# grabación anterior en curso, así que un arreglo de la web no corta la del
+# iPhone.
 name: Grabar videos de demostración
 
 on:
@@ -14,10 +19,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: grabar-demos-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
   APP_PASSWORD: clave-desechable-de-grabacion
   TZ: America/Bogota
@@ -25,8 +26,12 @@ env:
 jobs:
   web:
     name: Grabar la app web (Chrome sin ventana)
+    if: ${{ !contains(github.event.head_commit.message, '[solo iphone]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    concurrency:
+      group: grabar-demos-web-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
 
@@ -50,6 +55,8 @@ jobs:
           cd "$RUNNER_TEMP/grabador"
           npm init -y > /dev/null
           npm install --no-audit --no-fund playwright@1 > /dev/null
+          # La grabación de video de Playwright usa su propio ffmpeg; el navegador es el Chrome del runner.
+          npx playwright install ffmpeg
           npx playwright --version
           google-chrome --version
 
@@ -82,8 +89,12 @@ jobs:
 
   iphone:
     name: Grabar la app del iPhone (Simulator)
+    if: ${{ !contains(github.event.head_commit.message, '[solo web]') }}
     runs-on: macos-26
     timeout-minutes: 80
+    concurrency:
+      group: grabar-demos-iphone-${{ github.ref }}
+      cancel-in-progress: true
     env:
       # La misma selección que .github/workflows/ios.yml.
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
