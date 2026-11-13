@@ -6,6 +6,8 @@ import SwiftUI
 /// Funciona sin red ni servidor. Un aviso de esta lista no es una notificación del sistema ni un push remoto.
 struct AvisosVista: View {
     let centro: CentroAvisos
+    /// Anuncios oficiales del servidor (EA-26): su sección va dentro de «Anuncios oficiales».
+    let anuncios: AnunciosModelo
 
     /// Lleva el foco de VoiceOver al resultado de «Repetir».
     @AccessibilityFocusState private var enResultado: Bool
@@ -37,10 +39,11 @@ struct AvisosVista: View {
 
     // MARK: Secciones
 
-    /// Fila única, sin lista: no hay fuente de anuncios oficiales conectada. #52 monta aquí su sección y quita estas frases.
+    /// Los anuncios del servidor (EA-26) con el estado de su fuente. Sin fuente conectada o con la consulta caída dicen que
+    /// la app no puede saber si hay incidentes; nunca que no los haya.
     private var seccionOficiales: some View {
         seccion(TextoAvisos.encabezadoOficiales, id: "encabezado-anuncios-oficiales") {
-            parrafos(TextoAvisos.sinFuenteOficial, id: "anuncios-oficiales-sin-fuente")
+            AnunciosSeccionVista(modelo: anuncios)
         }
     }
 

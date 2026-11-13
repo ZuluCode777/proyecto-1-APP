@@ -19,11 +19,7 @@ enum TextoAvisos {
     static let encabezadoSimulado = "Escenario simulado"
 
     /// Una frase por párrafo: con el texto más grande cada una cabe entera en el área visible.
-    /// #52 (anuncios oficiales) reemplaza estas dos frases por su sección cuando haya una fuente conectada.
-    static let sinFuenteOficial = [
-        "No hay ninguna fuente de anuncios oficiales conectada en la app.",
-        "Por eso no se puede saber si hay incidentes: consulta al operador.",
-    ]
+    /// Los anuncios oficiales tienen sus textos en `TextoAnuncios` (EA-26).
     static let sinAvisosPropios = [
         "La app no tiene avisos propios ahora.",
         "Esto no es un anuncio oficial ni significa que no haya incidentes.",

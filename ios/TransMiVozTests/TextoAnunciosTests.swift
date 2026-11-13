@@ -56,6 +56,9 @@ final class TextoAnunciosTests: XCTestCase {
         let simulado = anuncio(origen: .simulado)
         XCTAssertEqual(TextoAnuncios.marca(simulado), "Simulado · no es un anuncio del operador")
         XCTAssertEqual(TextoAnuncios.marcaAccesible(simulado), "Anuncio simulado de demostración. No es un anuncio del operador.")
+        XCTAssertEqual(
+            TextoAnuncios.origenSimulado(simulado),
+            "Origen: contenido de demostración publicado por «Entidad Ejemplo», sin ninguna fuente real.")
         XCTAssertFalse(TextoAnuncios.marca(simulado).contains("oficial"))
         XCTAssertFalse(TextoAnuncios.marcaAccesible(simulado).contains("oficial"))
     }

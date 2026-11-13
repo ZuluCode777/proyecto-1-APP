@@ -31,13 +31,13 @@ Los estados de rutina de la sesión (conectando, comprobando el enlace, calibran
 
 La respuesta hablada de la consulta no existe hoy. Cuando #45 la agregue debe pasar por `ControlVoz.anunciar(texto, prioridad: .rutina)` (el valor por defecto), nunca por un sintetizador propio. Con eso: un aviso la corta, y ella no corta ni calla un aviso que suena (devuelve `.silenciado(.cedeAUnAviso)`: #45 puede reintentar con `debeCeder(prioridad:)` o dejar el texto en pantalla). Si #45 habla un error de red, el aviso `redCaida` ya lo dice: habrá una sola voz, la del aviso.
 
-## Cómo se monta #52 (anuncios oficiales)
+## Cómo se montó #52 (anuncios oficiales)
 
-`AvisosVista` deja una sección «Anuncios oficiales» con una fila fija: «No hay ninguna fuente de anuncios oficiales conectada en la app» y «No se puede saber si hay incidentes». #52 reemplaza esas dos frases (`TextoAvisos.sinFuenteOficial`, identificadores `anuncios-oficiales-sin-fuente*`) por su sección cuando haya fuente. Los avisos propios (`OrigenAviso.propio`) y el escenario simulado (`OrigenAviso.simulado`) tienen sus propias secciones y nunca se mezclan con un anuncio oficial. La lista jamás dice que no hay incidentes.
+`AvisosVista` tenía una sección «Anuncios oficiales» con una fila fija («No hay ninguna fuente de anuncios oficiales conectada en la app»). #52 la sustituyó por `AnunciosSeccionVista` (ver [ea-26-anuncios.md](ea-26-anuncios.md#ios-lista-de-anuncios-en-la-app)): el encabezado y el recuadro siguen siendo de esta pantalla (`encabezado-anuncios-oficiales`); dentro van el estado de la fuente y los anuncios, y sin fuente o con la consulta caída dice que no se puede saber si hay incidentes. Se quitaron `TextoAvisos.sinFuenteOficial` y los identificadores `anuncios-oficiales-sin-fuente*`. Los avisos propios (`OrigenAviso.propio`) y el escenario simulado (`OrigenAviso.simulado`) tienen sus propias secciones y nunca se mezclan con un anuncio oficial. La lista jamás dice que no hay incidentes.
 
 ## Notificaciones del sistema y segundo plano
 
-- **No se pide el permiso de notificaciones.** Ningún comportamiento de este PR lo necesita: la app no declara `UIBackgroundModes` y la sesión se suspende con la escena inactiva, bloqueada o en segundo plano, así que no hay nada que notificar fuera de ella. Un aviso de la lista **no** es una notificación del sistema ni un push remoto (#52 decidió no usar APNs). Si #52 agrega notificaciones locales, ese permiso es suyo.
+- **No se pide el permiso de notificaciones.** Ningún comportamiento de este PR lo necesita: la app no declara `UIBackgroundModes` y la sesión se suspende con la escena inactiva, bloqueada o en segundo plano, así que no hay nada que notificar fuera de ella. Un aviso de la lista **no** es una notificación del sistema ni un push remoto (#52 decidió no usar APNs). #52 decidió no agregar notificaciones locales ni segundo plano.
 - **Alcance en segundo plano: ninguno.** Los avisos se producen y se dicen solo con la app en primer plano y activa. Con el iPhone bloqueado o la app en segundo plano la sesión se detiene, corta la voz y cierra sus avisos; al volver se sincroniza de nuevo y dice el estado de ahora. Lo prueba (en simulación) `InfoPlistAccesorioTests` y `AvisosSesionTests`; el comportamiento real con la pantalla bloqueada está **pendiente** en un iPhone.
 
 ## Sin red, sin servidor, sin modelo
@@ -53,7 +53,7 @@ Todas en simulación (voz, ruta, transporte y reloj falsos); ninguna es de un iP
 | Prioridad en la voz: corta rutina, no calla un aviso, misma prioridad reemplaza | `PrioridadVozTests` |
 | Clases, severidad, deduplicación y ráfaga repetida, caducidad y renovación, cierre por fuente, interrupción, ritmo y aplazado, silencio por severidad, «Repetir», red caída, datos viejos, origen simulado, texto sin «no hay incidentes» | `CentroAvisosTests` |
 | Pérdida del accesorio durante la habla, rutina que no calla un aviso, silencio de lo urgente, suspensión | `AvisosSesionTests` |
-| Pestaña: cinco pestañas, fila sin fuente oficial, red caída y datos viejos en la lista, «Repetir» explica por qué no se dijo, auditoría de accesibilidad (texto normal y `AccessibilityXXXL`) | `TransMiVozAvisosUITests`, `TransMiVozAvisosTextoGrandeUITests` |
+| Pestaña: cinco pestañas, anuncios oficiales sin fuente, red caída y datos viejos en la lista, «Repetir» explica por qué no se dijo, auditoría de accesibilidad (texto normal y `AccessibilityXXXL`) | `TransMiVozAvisosUITests`, `TransMiVozAvisosTextoGrandeUITests` |
 
 Un cambio de comportamiento: antes, un mensaje de rutina cortaba un aviso que sonaba (p. ej. «Calibrando» cortaba «Accesorio desconectado.»). Ahora cede. `testDesconexionReconectaConSesionNuevaSinAvisosHistoricos` termina la locución antes de reconectar, como ocurre en la práctica.
 

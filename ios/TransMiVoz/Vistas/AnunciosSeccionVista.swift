@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Sección «Anuncios del operador» (EA-26, #52). Es autónoma: sin `NavigationStack` ni `ScrollView` propios, para
-/// montarla dentro de la pestaña de avisos. Pide los anuncios al aparecer y con el botón; muestra siempre el estado de
-/// la fuente, con texto y no solo con icono o color. Sin fuente, con la fuente caída o sin anuncios vigentes nunca dice
+/// Contenido de la sección «Anuncios oficiales» de la pestaña Avisos (EA-26, #52). Es autónoma: sin `NavigationStack` ni
+/// `ScrollView` propios, y sin encabezado (lo pone quien la monta). Pide los anuncios al aparecer y con el botón; muestra
+/// siempre el estado de la fuente, con texto y no solo con icono o color. Sin fuente, con la fuente caída o sin anuncios vigentes nunca dice
 /// que no haya incidentes: dice que la app no puede saberlo. No toca la sesión con el accesorio ni sus avisos.
 struct AnunciosSeccionVista: View {
     let modelo: AnunciosModelo
@@ -13,12 +13,6 @@ struct AnunciosSeccionVista: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(TextoAnuncios.titulo)
-                .font(.title2.bold())
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("anuncios-titulo")
-
             TarjetaFuenteAnuncios(modelo: modelo)
 
             ForEach(modelo.anuncios) { anuncio in
@@ -49,8 +43,11 @@ private struct TarjetaFuenteAnuncios: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(TextoAnuncios.etiqueta(modelo.estadoFuente), systemImage: icono)
+            // Icono dentro del texto (no un `Label`): así es un solo elemento, con un solo identificador.
+            Text("\(Image(systemName: icono)) \(TextoAnuncios.etiqueta(modelo.estadoFuente))")
                 .font(.headline)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel(TextoAnuncios.etiqueta(modelo.estadoFuente))
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("anuncios-estado")
 
@@ -102,12 +99,13 @@ private struct TarjetaAnuncio: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label(TextoAnuncios.marca(anuncio), systemImage: anuncio.origen == .simulado ? "testtube.2" : "building.columns")
+            Text("\(Image(systemName: anuncio.origen == .simulado ? "testtube.2" : "building.columns")) \(TextoAnuncios.marca(anuncio))")
                 .font(.subheadline.bold())
+                .fixedSize(horizontal: false, vertical: true)
                 .accessibilityLabel(TextoAnuncios.marcaAccesible(anuncio))
                 .accessibilityIdentifier(identificador("marca"))
             if anuncio.origen == .simulado {
-                linea(TextoAnuncios.origenSimulado, "origen")
+                linea(TextoAnuncios.origenSimulado(anuncio), "origen")
             }
             Text(anuncio.titulo)
                 .font(.headline)

@@ -6,11 +6,9 @@ import Foundation
 enum TextoAnuncios {
     /// Misma redacción que `AVISO_SIN_GARANTIA` del servidor.
     static let avisoSinGarantia = "Esto no significa que no haya novedades en el servicio."
-    static let titulo = "Anuncios del operador"
     static let consultando = "Consultando los anuncios de TransMilenio."
     static let sinConsultar = "Todavía no se han consultado los anuncios."
     static let independencia = "Los anuncios son independientes de la sesión: si fallan, la sesión del accesorio y sus avisos siguen igual."
-    static let origenSimulado = "Origen: contenido de demostración de la app, sin ninguna fuente real."
     static let marcaSimulado = "Simulado · no es un anuncio del operador"
     static let marcaSimuladoAccesible = "Anuncio simulado de demostración. No es un anuncio del operador."
 
@@ -97,6 +95,11 @@ enum TextoAnuncios {
     }
 
     // MARK: Un anuncio
+
+    /// Dice quién lo publica y que no hay fuente real detrás.
+    static func origenSimulado(_ anuncio: Anuncio) -> String {
+        "Origen: contenido de demostración publicado por «\(anuncio.entidad)», sin ninguna fuente real."
+    }
 
     static func marca(_ anuncio: Anuncio) -> String {
         anuncio.origen == .simulado ? marcaSimulado : "Anuncio oficial · \(anuncio.entidad)"

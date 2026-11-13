@@ -138,7 +138,7 @@ Rama `feat/ea26-anuncios-ios` (PR de iPhone, #52). El iPhone consume `GET /api/a
 
 ### Qué muestra y cuándo
 
-La sección `AnunciosSeccionVista` pide los anuncios al aparecer y con el botón «Actualizar» (o «Reintentar» si la última consulta falló). Muestra siempre el estado de la fuente **con texto** (no solo icono ni color) y la confianza:
+La sección `AnunciosSeccionVista` va dentro del recuadro «Anuncios oficiales» de la pestaña Avisos (EA-20, #46), que conserva la separación entre anuncios oficiales, avisos propios y escenario simulado; en las pruebas de interfaz el contenido simulado sale ahí mismo, con su marca (como los avisos propios simulados de #46). Pide los anuncios al aparecer y con el botón «Actualizar» (o «Reintentar» si la última consulta falló). Muestra siempre el estado de la fuente **con texto** (no solo icono ni color) y la confianza:
 
 | Situación | Estado que ve la persona | Confianza | Lista |
 | --- | --- | --- | --- |
@@ -154,7 +154,7 @@ Lo que la app repite del servidor es solo lo mínimo: descarta los anuncios con 
 
 ### Origen y marca de simulación
 
-El contrato solo emite `oficial`. El modelo de Swift admite además `simulado` (el contrato exige que el contenido de demostración lleve su propio origen): un anuncio simulado muestra «Simulado · no es un anuncio del operador», la línea «Origen: contenido de demostración de la app, sin ninguna fuente real» y la etiqueta de VoiceOver «Anuncio simulado de demostración. No es un anuncio del operador.». El único contenido simulado es el del cliente `ClienteAnunciosSimulado` (solo compilaciones de depuración; argumentos `-PRUEBAS_UI_SIMULADAS`, y `-PRUEBAS_UI_ANUNCIOS_SIN_FUENTE` o `-PRUEBAS_UI_ANUNCIOS_CAIDA`): ningún anuncio simulado sale del servidor ni llega a una compilación de lanzamiento.
+El contrato solo emite `oficial`. El modelo de Swift admite además `simulado` (el contrato exige que el contenido de demostración lleve su propio origen): un anuncio simulado muestra «Simulado · no es un anuncio del operador», la línea «Origen: contenido de demostración publicado por «Simulación de la app», sin ninguna fuente real» (con su entidad) y la etiqueta de VoiceOver «Anuncio simulado de demostración. No es un anuncio del operador.». El único contenido simulado es el del cliente `ClienteAnunciosSimulado` (solo compilaciones de depuración; argumentos `-PRUEBAS_UI_SIMULADAS`, y `-PRUEBAS_UI_ANUNCIOS_SIN_FUENTE` o `-PRUEBAS_UI_ANUNCIOS_CAIDA`): ningún anuncio simulado sale del servidor ni llega a una compilación de lanzamiento.
 
 ### Independencia de la sesión y de los avisos del radar
 
@@ -186,4 +186,5 @@ Si se retoma, hace falta antes una autorización concreta para el modo de segund
 - `AnunciosRespuestaTests` (8), `ClienteAnunciosHTTPTests` (14), `AnunciosModeloTests` (14) y `TextoAnunciosTests` (16): decodificación del contrato, cliente con red simulada, vigencia, deduplicación, fallo que conserva la fecha, recuperación, una consulta a la vez y textos. `lib/ea26-anuncios-ios.test.ts` comprueba que los fixtures JSON de `FixturesAnuncios.swift` cumplen el `AnunciosRespuestaSchema` real (zod), como ya hace EA-17 con `FixturesHTTP.swift`. Los fixtures son **simulaciones de contrato con valores inventados**, no respuestas del servidor real.
 - Las 52 pruebas unitarias se compilaron y pasaron en Linux (Swift 6.2, contenedor `swift:6.2`, un paquete de prueba con los archivos sin SwiftUI). Eso no acredita ejecución en Apple: la CI de iOS es la primera compilación de SwiftUI y de las pruebas de interfaz.
 - Pruebas de mutación a mano (se rompió el código, falló la prueba, se restauró): quitar el filtro de vencidos, la deduplicación, el ocultar la lista con `sin-fuente`, la degradación por fallo, la conservación de la última respuesta, la distinción cancelar/fallar, la consulta única, la frase de seguridad, el rechazo de `mensaje` en blanco y la zona horaria.
-- **Pendiente:** montar la sección en la pestaña Avisos de #46 y su prueba de interfaz con auditoría de accesibilidad; VoiceOver, Dynamic Type y contraste en un iPhone real; la consulta contra el Render real; el comportamiento con el accesorio real.
+- Pruebas de interfaz (`TransMiVozAnunciosUITests`, `TransMiVozAnunciosTextoGrandeUITests`; cliente simulado, sin red): la lista con cada campo y la marca de simulación, vencidos y repetidos ocultos, sin fuente, una consulta caída que conserva las dos fechas y baja la confianza sin tocar los avisos propios ni la sesión, auditoría de accesibilidad con texto normal y alcance de los elementos con `AccessibilityXXXL`. Las pruebas de #46 que recorrían la fila provisional ahora usan `-PRUEBAS_UI_ANUNCIOS_SIN_FUENTE`. **Escritas sin Xcode: la primera ejecución es la de la CI de macOS.**
+- **Pendiente:** VoiceOver, Dynamic Type y contraste en un iPhone real; la consulta contra el Render real; el comportamiento con el accesorio real.
