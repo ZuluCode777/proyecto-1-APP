@@ -3,6 +3,7 @@ import http from "node:http"
 import type { AddressInfo } from "node:net"
 import test from "node:test"
 import { crearPeticion, medir, percentil, validarBase } from "../scripts/medir-render.mjs"
+import { LIMITE_ASISTENTE } from "./cuota-asistente"
 
 /**
  * EA-14 (#40): lógica de `scripts/medir-render.mjs` con una petición simulada.
@@ -17,7 +18,7 @@ type Respuesta = { estado: number; ms: number; retryAfter: string | null; texto:
 const respuesta = (estado: number, texto = "", retryAfter: string | null = null): Respuesta => ({ estado, ms: 100, retryAfter, texto })
 
 /** Servidor simulado correcto: 401 sin clave buena, 413 con cuerpo grande, 429 desde la POST número `corteLimite`. */
-function servidor({ corteLimite = 21, motor = "reglas" } = {}) {
+function servidor({ corteLimite = LIMITE_ASISTENTE + 1, motor = "reglas" } = {}) {
   let posts = 0
   return async (s: Solicitud): Promise<Respuesta> => {
     if (s.autorizacion !== BASIC) return respuesta(401)
@@ -110,7 +111,7 @@ test("latencia: resume p50/p95 por serie, marca el origen del catálogo y espaci
   assert.equal(codigo, 0)
   assert.ok(lineas.some((l) => l.includes("origen live")))
   assert.equal(lineas.filter((l) => l.includes("p50 100 ms · p95 100 ms")).length, 2)
-  assert.deepEqual(esperas, [3200, 3200], "n-1 pausas: unos 18 POST por minuto, bajo el límite de 20")
+  assert.deepEqual(esperas, [3200, 3200], "n-1 pausas: unos 18 POST por minuto, muy por debajo del límite de la ruta")
 })
 
 test("latencia: un 429 o un 5xx en la serie hace fallar la medición", async () => {
@@ -122,10 +123,10 @@ test("latencia: un 429 o un 5xx en la serie hace fallar la medición", async () 
 test("limite: exige un 429 con Retry-After; sin 429 o sin cabecera falla", async () => {
   const bien = captura()
   assert.equal(await medir({ modo: "limite", base: "x", clave: CLAVE, peticion: servidor(), salida: bien.salida }), 0)
-  assert.ok(bien.lineas.some((l) => l.startsWith("OK") && l.includes("429 en la petición 21") && l.includes("Retry-After 42")))
+  assert.ok(bien.lineas.some((l) => l.startsWith("OK") && l.includes(`429 en la petición ${LIMITE_ASISTENTE + 1}`) && l.includes("Retry-After 42")))
   const sin = captura()
   assert.equal(await medir({ modo: "limite", base: "x", clave: CLAVE, peticion: servidor({ corteLimite: 999 }), salida: sin.salida }), 1)
-  assert.ok(sin.lineas.some((l) => l.includes("25 peticiones seguidas sin ningún 429")))
+  assert.ok(sin.lineas.some((l) => l.includes("150 peticiones seguidas sin ningún 429")))
 })
 
 test("limite: un 429 sin Retry-After falla (un solo servidor con estado que sí llega al 429)", async () => {
@@ -136,7 +137,7 @@ test("limite: un 429 sin Retry-After falla (un solo servidor con estado que sí 
     return r.estado === 429 ? respuesta(429) : r
   }
   assert.equal(await medir({ modo: "limite", base: "x", clave: CLAVE, peticion, salida: sinCabecera.salida }), 1)
-  assert.ok(sinCabecera.lineas.some((l) => l.startsWith("FALLO") && l.includes("429 en la petición 21") && l.includes("Retry-After ausente")), "debe haber llegado al 429")
+  assert.ok(sinCabecera.lineas.some((l) => l.startsWith("FALLO") && l.includes(`429 en la petición ${LIMITE_ASISTENTE + 1}`) && l.includes("Retry-After ausente")), "debe haber llegado al 429")
   assert.ok(!sinCabecera.lineas.some((l) => l.includes("sin ningún 429")), "no es el caso de «nunca hubo 429»")
 })
 

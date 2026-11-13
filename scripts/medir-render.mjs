@@ -15,17 +15,19 @@
  *                 /api/agent y GET /api/transmilenio; 200 con la correcta en `/` y
  *                 GET /api/agent; 413 por cuerpo grande y motor «reglas». El 200 del
  *                 catálogo con clave lo exige `latencia`, que ya lo pide. Solo el
- *                 POST de 413 gasta cupo: 1 de los 20 por minuto (el 401 no gasta).
+ *                 POST de 413 gasta 1 del cupo del minuto (el 401 no gasta).
  *   latencia [n]  Catálogo (marca si vino «live» o «snapshot») y, ya en caliente,
  *                 n lecturas de GET /api/agent (red + Render, sin datos) y n de
  *                 POST /api/agent (reglas + catálogo en caché), espaciadas para
- *                 no pasar de 20/min. Por defecto n = 30 (unos 100 s).
+ *                 mantenerse muy por debajo del límite por minuto de la ruta
+ *                 (unos 18 POST por minuto). Por defecto n = 30 (unos 100 s).
  *   despertar     Una sola petición con plazo de 120 s. Es arranque en frío solo si
  *                 el servicio llevaba más de 15 min sin tráfico; si no, es una
  *                 medición en caliente y no se registra como frío. No envíes
  *                 tráfico artificial para dormirlo ni para evitarlo.
- *   limite        Hasta 25 POST seguidos hasta recibir 429. Gasta el cupo
- *                 COMPARTIDO de la instancia: hazlo en un ensayo aparte.
+ *   limite        Hasta `TOPE_LIMITE` POST seguidos hasta recibir 429; informa en cuál
+ *                 llegó (límite + 1). Gasta el cupo COMPARTIDO de la instancia:
+ *                 hazlo en un ensayo aparte, sin público.
  *
  * Corre `despertar` primero y espera su 200: los demás modos tienen plazo de 20 s
  * por petición y un arranque en frío (cerca de 60 s, sin garantía) los haría
@@ -37,8 +39,10 @@
 import { pathToFileURL } from "node:url"
 
 const FRASE = "¿dónde estoy?"
-/** Espacio entre POST para quedar por debajo de 20 por minuto. */
+/** Espacio entre POST: unos 18 por minuto, muy por debajo del límite de la ruta (`lib/cuota-asistente.ts`). */
 const ESPERA_POST_MS = 3_200
+/** POST seguidos que `limite` intenta como máximo: debe superar el límite de la ruta (`LIMITE_ASISTENTE`). */
+const TOPE_LIMITE = 150
 
 /** Origen HTTPS sin credenciales, ruta ni consulta; si no, lanza. */
 export function validarBase(texto) {
@@ -153,7 +157,7 @@ async function despertar({ peticion, clave, salida }) {
 
 async function limite({ peticion, clave, salida }) {
   const buena = basic(clave)
-  for (let i = 1; i <= 25; i++) {
+  for (let i = 1; i <= TOPE_LIMITE; i++) {
     const r = await peticion(post(buena))
     if (r.estado === 429) {
       const conCabecera = r.retryAfter !== null
@@ -165,7 +169,7 @@ async function limite({ peticion, clave, salida }) {
       return false
     }
   }
-  salida.error("FALLO: 25 peticiones seguidas sin ningún 429.")
+  salida.error(`FALLO: ${TOPE_LIMITE} peticiones seguidas sin ningún 429.`)
   return false
 }
 

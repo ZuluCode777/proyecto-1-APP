@@ -145,6 +145,14 @@ queda PENDIENTE de EA-14/#40, antes de exponer.
 | ¿Puede un cliente inyectar saltos extra? | Que no muevan el salto de confianza |
 | `x-real-ip`: ¿lo escribe el proxy o el cliente? | No usarlo como identidad si lo puede escribir el cliente |
 
+**Sonda temporal (#40).** `GET /api/diagnostico-proxy` devuelve en JSON solo
+`x-forwarded-for`, `x-real-ip`, `cf-connecting-ip`, `true-client-ip`, `forwarded`,
+`x-forwarded-proto` y `x-forwarded-host`, tal como llegan (`null` si faltan): ni
+otras cabeceras, ni entorno, ni cuerpo, ni registro. Exige la clave HTTP Basic (la
+del `proxy` y la misma guardia en la ruta). Sirve para medir la cadena real de
+Render desde redes conocidas; se quita en cuanto #40 termine
+(`app/api/diagnostico-proxy/route.ts`, marcada «shortcut: sonda temporal de #40»).
+
 **Hallazgo medido en Next local (16.3.3, `next start` en loopback; NO es
 Render).** Next solo escribe `x-forwarded-for` cuando la petición no lo trae:
 sin la cabecera, el manejador la ve como `127.0.0.1` (la dirección del socket);
@@ -161,6 +169,65 @@ medición HTTP fue una sonda ad hoc con una ruta temporal que no se conservó.
 clave acotada, toda identidad es conservadora (comportamiento seguro). Combinado
 con el criterio 1 (producción sin clave = 503), la reversión segura suspende la
 exposición.
+
+### Cuota del asistente en la feria (EA-28, #75)
+
+Con una sola clave compartida, `RATE_LIMIT` es el tope de **todos los teléfonos a
+la vez**. Con 20 por minuto, tres teléfonos activos ya podían recibir «Estás
+haciendo muchas peticiones seguidas». Separar la cuota por IP no es la salida:
+exige confiar en `x-forwarded-for` (pendiente de #40) y teléfonos en la misma
+Wi-Fi o tras el NAT de un operador comparten IP pública. La clave sigue siendo
+una sola y `claveCliente()` no cambió.
+
+**Fórmula** (`lib/cuota-asistente.ts`; los tres números son constantes con nombre):
+
+```
+límite = ceil( TELEFONOS_FERIA × (60 / SEGUNDOS_POR_TURNO) × MARGEN )
+       = ceil( 3 × (60 / 6) × 1,5 ) = ceil( 3 × 10 × 1,5 ) = 45 por minuto
+```
+
+| Entrada | Valor | De dónde sale |
+| --- | --- | --- |
+| `TELEFONOS_FERIA` | 3 | Teléfonos en total que usan el asistente en la feria. **Confirmado por el responsable.** Es el único número que hay que cambiar si cambia el conteo. |
+| `SEGUNDOS_POR_TURNO` | 6 | Turno mínimo de una persona: dictar una frase corta, revisar y tocar «Enviar». 6 s son 10 consultas por minuto por teléfono. Supuesto de ritmo humano, no medido; lo acotan los hechos del cliente de abajo. |
+| `MARGEN` | 1,5 | Pruebas del equipo durante la feria, `/diagnostico` (4 POST por pasada) y más teléfonos de los previstos. |
+
+**Qué fija el ritmo, según el cliente (no son estimaciones):**
+
+- **iPhone** (`ConsultaModelo`, `ClienteAgenteHTTP`): una sola consulta en vuelo;
+  «Enviar» queda inactivo mientras espera. Plazo de 12 s. Ningún reintento
+  automático: «Reintentar» lo toca la persona. Lo dictado no se envía solo: la
+  persona lo revisa y toca «Enviar». Cancelar no devuelve la petición ya contada
+  en el servidor.
+- **Web** (`consultarAgente`, `TotalAgent`): una sola consulta en vuelo
+  (`busyRef`; una pregunta nueva aborta la anterior, pero el servidor ya la
+  contó). Plazo de 6 s y, si vence, respaldo local sin repetir la petición.
+- **Aclaración de origen** y **«Reintentar»** son turnos como los demás: no
+  suben el ritmo máximo por teléfono. Tras un plazo vencido de 12 s, el
+  reintento llega 12 s después como pronto (5 por minuto).
+- Solo cuentan los `POST /api/agent`. `GET /api/agent` (diagnóstico) y
+  `/api/planificador` (cubos propios de 30 y 60 por minuto) no gastan esta cuota.
+
+**Resultado:** pico total 3 × 10 = 30 por minuto; el límite de 45 deja un 50 %
+de holgura y alcanza hasta para 4 teléfonos al ritmo máximo a la vez. Si el
+conteo cambia, se cambia `TELEFONOS_FERIA`: con 5 teléfonos serían 75; con 6, 90.
+
+**Memoria.** El contador guarda una entrada por clave con `{ count, reset }`:
+con una sola clave son un objeto y dos números, vengan 20 o 45 peticiones. El
+límite no cambia el tamaño del mapa, y `maximoClaves` (5000) sigue acotando la
+cardinalidad. El coste por petición es el de siempre (cuerpo de hasta 4 000
+bytes, leído por stream).
+
+**Exceso:** sigue siendo 429 con `Retry-After` y el mismo cuerpo `AgentReply`;
+iPhone y web muestran su mensaje de espera accesible sin cambios. No se tocó
+`ios/`: ninguna prueba ni texto de la app fija el número.
+
+**No verificado en esta rama:** el comportamiento en Render Free (memoria de
+512 MB, p50/p95 con una ráfaga sostenida al nuevo límite, y la petición 46 con
+429) se mide tras el despliegue, con el procedimiento de #40
+(`scripts/medir-render.mjs`, modo `limite`). Con Ollama activo en la feria
+(EA-27) 45 por minuto pueden llegar al modelo: no hay tope propio de
+concurrencia hacia Ollama, y el plazo de 4,5 s cae a reglas.
 
 ### Redirecciones sin fuga de credenciales
 
@@ -214,9 +281,10 @@ nuevas:
 - `lib/ea10-identidad-cliente.test.ts`: la clave del cliente es siempre la acotada
   común (no se confía en cabeceras). (Sintética; no certifica el proxy.)
 - `lib/ea10-endpoint.test.ts`: endpoint real → 413 (cuerpo grande), 400 (error de
-  lectura, sin 500), 200 válido, 429 + `Retry-After`, **21 peticiones
-  autenticadas con `x-forwarded-for` y `x-real-ip` distintos en cada una: las 20
-  primeras no son 429 y la 21ª sí, con `Retry-After`** (las cabeceras
+  lectura, sin 500), 200 válido, 429 + `Retry-After`, **`LIMITE_ASISTENTE` + 1
+  peticiones autenticadas con `x-forwarded-for` y `x-real-ip` distintos en cada
+  una: las primeras `LIMITE_ASISTENTE` (20 en EA-10, 45 desde EA-28) no son 429 y
+  la siguiente sí, con `Retry-After`** (las cabeceras
   falsificadas no compran cuota propia), y la **guardia Basic en GET y POST**
   (producción sin clave/vacía/whitespace → 503; con clave: 401 sin
   credencial o incorrecta, acceso con la correcta; desarrollo sin clave permite),

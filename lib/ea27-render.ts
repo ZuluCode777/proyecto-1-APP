@@ -104,7 +104,7 @@ export function observarRespuesta(r: RespuestaAgente, esperado: Esperado, data: 
 
 // ── Ritmo y reintentos ──
 
-/** Espacio mínimo entre peticiones: 3,5 s son 17 por minuto, bajo el límite de 20 de la ruta. */
+/** Espacio mínimo entre peticiones: 3,5 s son 17 por minuto, muy por debajo del límite de la ruta (`lib/cuota-asistente.ts`). */
 export const ESPERA_ENTRE_PETICIONES_MS = 3_500
 /** Espera por defecto tras un 429 sin `Retry-After`. */
 const ESPERA_429_MS = 20_000
