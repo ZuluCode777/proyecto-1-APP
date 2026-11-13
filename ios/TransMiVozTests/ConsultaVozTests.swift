@@ -128,7 +128,7 @@ final class ConsultaVozTests: XCTestCase {
         ]
         for (accion, texto) in acciones {
             let hablado = RespuestaAgente(texto: texto, accion: accion).textoHablado
-            XCTAssertEqual(hablado, "\(texto) \(accion.limite ?? "")", "\(accion)")
+            XCTAssertEqual(hablado, accion.limite.map { "\(texto) \($0)" } ?? texto, "\(accion)")
         }
         XCTAssertEqual(RespuestaAgente(texto: "Sin acción.", accion: .ninguna).textoHablado, "Sin acción.", "sin límite no se agrega nada")
     }
