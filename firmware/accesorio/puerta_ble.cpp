@@ -33,11 +33,22 @@ bool PuertaBle::generar_medicion(uint32_t ahora_ms, uint8_t trama[ble::kLongitud
   return emisor_.generar(ahora_ms, e, trama) == ble::Error::Ninguno;
 }
 
+Registro PuertaBle::registrar_enlace(uint16_t conexion, bool viva, uint32_t ahora_ms) {
+  if (!viva || conexion == kSinConexion) return Registro::Ninguno;
+  const bool nueva = !sesion_.conectada();
+  if (!al_conectar(conexion, ahora_ms)) return Registro::Rechazado;
+  return nueva ? Registro::Nuevo : Registro::Conocido;
+}
+
 bool PuertaBle::al_conectar(uint16_t conexion, uint32_t ahora_ms) {
   if (borrado_pendiente_.load()) return false;
-  if (sesion_.conectada() && conexion != sesion_.id_conexion()) return false;
-  // Una sesión revocada no se reinicia con un evento repetido: termina primero.
-  if (sesion_.conectada() && revocada_.load()) return false;
+  if (sesion_.conectada()) {
+    // El mismo enlace visto por otro evento (CONNECT llega después de ENC_CHANGE, o
+    // dos veces): ya está registrado y no se reinicia, o se borraría lo que ese
+    // evento anterior decidió (protección, suscripción, plazo). Una sesión
+    // revocada tampoco se reinicia: termina primero.
+    return conexion == sesion_.id_conexion() && !revocada_.load();
+  }
   emparejamiento_autorizado_.store(false);
   sesion_.conectar(conexion, ahora_ms);
   return true;
@@ -61,6 +72,7 @@ AccionClave PuertaBle::al_pedir_clave(uint8_t accion, uint16_t conexion, uint32_
   // Esta conexión, con la ventana de alta física abierta AHORA, puede dejar un
   // vínculo; ninguna otra ni ninguna anterior (persistir_vinculo).
   emparejamiento_autorizado_.store(true);
+  sesion_.clave_pedida(ahora_ms);  // la persona teclea la clave: gracia propia, con tope
   *clave = clave_;
   return AccionClave::Inyectar;
 }

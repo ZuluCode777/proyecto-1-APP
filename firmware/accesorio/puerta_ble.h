@@ -49,6 +49,7 @@ constexpr int kAttInesperado = 0x0E;
 constexpr uint8_t kAccionClaveEnPantalla = 3;  // BLE_SM_IOACT_DISP
 constexpr int kObjetoClaveNuestra = 1;         // BLE_STORE_OBJ_TYPE_OUR_SEC
 constexpr int kObjetoClaveDelPar = 2;          // BLE_STORE_OBJ_TYPE_PEER_SEC
+constexpr uint16_t kSinConexion = 0xFFFF;      // BLE_HS_CONN_HANDLE_NONE: un fallo de conexión no trae manejador
 
 // --- UUID de 128 bits ----------------------------------------------------------
 // NimBLE los pide en orden little-endian. Se calculan del texto del contrato para
@@ -100,6 +101,10 @@ enum class AccionGap : uint8_t { Nada, Cortar };
 enum class AccionClave : uint8_t { Inyectar, Cortar };
 enum class Notificacion : uint8_t { Nada, Cortar, Enviar };
 enum class Envio : uint8_t { Nada, Cortada, Enviada, Fallida };
+// Qué pasó al registrar un enlace: Ninguno (no vive o no es un enlace: no se crea
+// sesión), Nuevo (sesión creada ahora), Conocido (ya era la de la sesión) o
+// Rechazado (hay otra conexión, sesión revocada o borrado pendiente: se corta).
+enum class Registro : uint8_t { Ninguno, Nuevo, Conocido, Rechazado };
 
 // Lo que PuertaBle necesita del stack para las dos operaciones que deben ser UNA
 // sola en el hilo del host de NimBLE (atender_notificacion, atender_borrado).
@@ -136,8 +141,17 @@ class PuertaBle {
   enlace::SesionEnlace& sesion() { return sesion_; }
 
   // --- Conexión -------------------------------------------------------------------
-  // false si ya hay otra conexión: un solo cliente a la vez. La segunda no toca la
-  // sesión de la primera y el llamador debe cortarla.
+  // Todo enlace VIVO tiene sesión, y con ella el corte de gracia. Lo llaman CONNECT
+  // y también ENC_CHANGE, la petición de clave y la suscripción: CONNECT llega
+  // cuando acaba la lectura de funciones remotas del par, con un status que no dice
+  // si el enlace vive, y a veces después de esos eventos. `viva` es lo que dice el
+  // stack (ble_gap_conn_find), nunca el status del evento: un enlace que ya no
+  // existe, o un fallo de conexión (sin manejador), no crea sesión.
+  Registro registrar_enlace(uint16_t conexion, bool viva, uint32_t ahora_ms);
+  // Crea la sesión de la conexión. Idempotente para la de la sesión (no la
+  // reinicia). false si ya hay otra conexión (un solo cliente a la vez: la segunda
+  // no toca la sesión de la primera y el llamador debe cortarla), si la sesión está
+  // revocada o si hay un borrado pendiente.
   bool al_conectar(uint16_t conexion, uint32_t ahora_ms);
   // Solo si es la conexión de la sesión; una vieja o ajena no la borra.
   bool al_desconectar(uint16_t conexion);
@@ -226,7 +240,8 @@ class PuertaBle {
   // ritmo: dos envíos nunca quedan a menos de kPeriodoNotificacionMs.
   Notificacion preparar_notificacion(uint16_t conexion, bool hay_enlace, const enlace::EstadoSeguridad& seguridad,
                                      uint32_t ahora_ms, uint8_t trama[ble::kLongitudTrama]);
-  // El enlace sigue sin protegerse pasada la gracia: hay que cortar.
+  // El enlace sigue sin protegerse pasada la gracia (30 s desde la conexión; hasta
+  // 30 s desde que se mostró la clave, con tope de 60 s): hay que cortar.
   bool gracia_vencida(uint32_t ahora_ms, uint16_t* conexion) const;
 
  private:

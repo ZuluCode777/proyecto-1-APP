@@ -139,6 +139,7 @@ void SesionEnlace::conectar(uint16_t id_conexion, uint32_t ahora_ms) {
   id_ = id_conexion;
   t_conexion_ = ahora_ms;
   proxima_ = ahora_ms;
+  gracia_ms_ = kGraciaSeguridadMs;
 }
 
 void SesionEnlace::desconectar() {
@@ -178,9 +179,18 @@ bool SesionEnlace::debe_notificar(uint32_t ahora_ms) {
   return true;
 }
 
+void SesionEnlace::clave_pedida(uint32_t ahora_ms) {
+  if (!conectada_) return;
+  // Resta módulo 2^32 como el resto de plazos. Si el tiempo transcurrido es tan
+  // grande que la suma da la vuelta, el límite no crece: falla cerrada.
+  uint32_t limite = static_cast<uint32_t>(ahora_ms - t_conexion_) + kGraciaClaveMs;
+  if (limite > kGraciaMaximaMs) limite = kGraciaMaximaMs;
+  if (limite > gracia_ms_) gracia_ms_ = limite;
+}
+
 bool SesionEnlace::vencio_gracia(uint32_t ahora_ms) const {
   return conectada_ && !protegida_ &&
-         static_cast<uint32_t>(ahora_ms - t_conexion_) >= kGraciaSeguridadMs;
+         static_cast<uint32_t>(ahora_ms - t_conexion_) >= gracia_ms_;
 }
 
 }  // namespace enlace
