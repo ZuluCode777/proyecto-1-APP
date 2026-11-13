@@ -90,3 +90,17 @@ export function intencionUsaUbicacion(intent: Intent): boolean {
   if (intent.type === "trip") return intent.origin === undefined
   return false
 }
+
+/**
+ * Aclaración entre turnos (EA-19, #45). «Salgo desde Ricaurte» deja el origen
+ * pendiente en el cliente (`aclaracion` de la respuesta); la pregunta siguiente
+ * («Calle 72») lo trae de vuelta como `pendiente`. Solo completa un viaje que
+ * llega SIN origen: un origen que la persona dijo ahora no se sustituye, y
+ * cualquier otra intención (cancelar, ayuda, una ruta) ignora el pendiente. Como
+ * el viaje ya trae origen, `runIntent` no usa el GPS. El servidor no guarda
+ * historial: el pendiente viaja en la petición y se descarta al responder.
+ */
+export function conOrigenPendiente(intent: Intent, origenPendiente: string | undefined): Intent {
+  if (origenPendiente && intent.type === "trip" && intent.origin === undefined) return { ...intent, origin: origenPendiente }
+  return intent
+}
