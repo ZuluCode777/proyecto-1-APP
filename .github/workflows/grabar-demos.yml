@@ -1,0 +1,178 @@
+# Graba videos de demostración de la app web y de la app del iPhone tal como
+# están en la rama, con subtítulos. Guía: demo/README.md.
+#
+# Solo corre en la rama demo/videos o a mano: no se dispara con los PR ni con
+# main, no despliega nada y no usa secretos del repositorio (la clave de la app
+# es desechable y solo vive en el runner).
+name: Grabar videos de demostración
+
+on:
+  push:
+    branches: [demo/videos]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: grabar-demos-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_PASSWORD: clave-desechable-de-grabacion
+  TZ: America/Bogota
+
+jobs:
+  web:
+    name: Grabar la app web (Chrome sin ventana)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Compilar
+        run: pnpm build
+
+      - name: Herramientas de grabación (Playwright, ffmpeg)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core > /dev/null
+          mkdir -p "$RUNNER_TEMP/grabador"
+          cd "$RUNNER_TEMP/grabador"
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund playwright@1 > /dev/null
+          npx playwright --version
+          google-chrome --version
+
+      - name: Arrancar la app
+        run: |
+          nohup pnpm start -H 127.0.0.1 -p 3000 > "$RUNNER_TEMP/next.log" 2>&1 &
+          for i in $(seq 1 60); do curl -sf -u "demo:$APP_PASSWORD" http://127.0.0.1:3000/ > /dev/null && break; sleep 1; done
+          curl -sS -u "demo:$APP_PASSWORD" -o /dev/null -w "catálogo: %{http_code} en %{time_total} s\n" http://127.0.0.1:3000/api/transmilenio
+
+      - name: Grabar
+        env:
+          GRABADOR_DIR: ${{ runner.temp }}/grabador
+          DEMO_CAMARA: ${{ runner.temp }}/camara-letrero.mjpeg
+        run: |
+          bash demo/web/camara-letrero.sh "$DEMO_CAMARA" || echo "Sin imagen de letrero: se usará el patrón de Chrome."
+          node demo/web/grabar.mjs
+
+      - name: Registro del servidor
+        if: ${{ always() }}
+        run: tail -n 80 "$RUNNER_TEMP/next.log" || true
+
+      - name: Subir la grabación cruda
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: crudo-web
+          path: demo/salida/crudo-web/
+          if-no-files-found: warn
+          retention-days: 1
+
+  iphone:
+    name: Grabar la app del iPhone (Simulator)
+    runs-on: macos-26
+    timeout-minutes: 80
+    env:
+      # La misma selección que .github/workflows/ios.yml.
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      SIMULADOR_NOMBRE: "iPhone 17"
+      IOS_MAYOR_ESPERADO: "26"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Compilar el backend
+        run: pnpm build
+
+      - name: Backend con HTTPS de grabación
+        env:
+          DEMO_HTTPS: ${{ runner.temp }}/demo-https
+        run: bash demo/ios/servidor.sh
+
+      - name: Grabar
+        env:
+          DEMO_ORIGEN: https://localhost:8443
+          DEMO_CLAVE: ${{ env.APP_PASSWORD }}
+          DEMO_CA: ${{ runner.temp }}/demo-https/ca.pem
+        run: bash demo/ios/grabar.sh
+
+      - name: Registros del backend
+        if: ${{ always() }}
+        run: |
+          tail -n 60 "$RUNNER_TEMP/demo-https/next.log" || true
+          tail -n 60 "$RUNNER_TEMP/demo-https/proxy.log" || true
+
+      - name: Subir la grabación cruda
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: crudo-iphone
+          path: |
+            demo/salida/crudo-iphone/*.mov
+            demo/salida/crudo-iphone/*.json
+            demo/salida/crudo-iphone/*.jsonl
+            demo/salida/crudo-iphone/*.log
+          if-no-files-found: warn
+          retention-days: 1
+
+  componer:
+    name: Componer los videos con subtítulos
+    needs: [web, iphone]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: crudo-*
+          path: demo/salida
+
+      - name: ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core > /dev/null
+
+      - name: Componer
+        run: |
+          ls demo/salida
+          entradas=()
+          for d in demo/salida/crudo-web demo/salida/crudo-iphone; do [ -d "$d" ] && entradas+=("$d"); done
+          python3 demo/componer.py demo/salida/videos "${entradas[@]}"
+          cp demo/README.md demo/salida/videos/LEEME.md
+          cat demo/salida/videos/indice.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Subir los videos
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: videos-transmivoz
+          path: |
+            demo/salida/videos/*.mp4
+            demo/salida/videos/*.jpg
+            demo/salida/videos/indice.md
+            demo/salida/videos/indice.json
+            demo/salida/videos/LEEME.md
+          if-no-files-found: warn
+          retention-days: 7
