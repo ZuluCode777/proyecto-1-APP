@@ -97,7 +97,7 @@ firmware/
 
 **Comportamiento:**
 
-1. **Arranque.** Genera un identificador de arranque aleatorio. Envía `sensorStop`, `detRangeCfg`, `outputLatency`, `saveCfg` y `sensorStart`, y exige `Done` en cada uno; si alguno falla, salud `4`. Mientras el sensor se estabiliza (al menos 5 s; B1 lo mide), salud `1`. Guardar la configuración en cada arranque escribe la flash del sensor; con decenas de arranques no importa.
+1. **Arranque.** Genera un identificador de arranque aleatorio. Envía `sensorStop`, `detRangeCfg`, `outputLatency`, `saveCfg` y `sensorStart`, y exige `Done` en cada uno; si alguno falla, salud `4` (con una excepción: `sensorStop` con el radar ya parado contesta `sensor stopped already` y `Error`, y cuenta como `Done`). Mientras el sensor se estabiliza (al menos 5 s; B1 lo mide), salud `1`. Guardar la configuración en cada arranque escribe la flash del sensor; con decenas de arranques no importa.
 2. **Lectura.** Lee la UART sin bloquear y acepta solo `$JYBSS,0, , , *` y `$JYBSS,1, , , *` completas. Trama parcial o desconocida: salud `3`. Sin trama válida durante 2,5 s: salud `2`. Tras un fallo nunca reutiliza el último resultado.
 3. **Emisión.** Cada 100 ms toma la presencia (del pin GPIO2 si EA-04 adopta la opción 1), codifica Medición y notifica, también sin presencia o con fallo, con secuencia, instante y edad del resultado. Información se fija al arrancar.
 4. **Enlace.** Servicio y UUID de §8.1. Lectura y suscripción solo con enlace cifrado. Alta con el botón BOOT (GPIO0, que puede leerse después del arranque) durante 60 s y clave fija del accesorio, según EA-12. Si la placa solo logra emparejamiento sin protección MITM, se declara ese límite.

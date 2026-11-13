@@ -7,6 +7,7 @@
 #include <stdio.h>
 
 #include <string>
+#include <vector>
 
 #include "emisor_sintetico.h"
 #include "sen0395.h"
@@ -945,6 +946,187 @@ void probar_contadores_y_emisor() {
 
 }  // namespace
 
+// Contesta cada orden pendiente con `respuesta(orden sin terminador)` hasta que no
+// quede ninguna (configuración terminada o en fallo). Devuelve las órdenes enviadas.
+template <typename F>
+std::vector<std::string> responder_todo(Interprete& r, uint32_t& t, F respuesta) {
+  std::vector<std::string> enviadas;
+  for (int i = 0; i < 10 && !orden(r).empty(); ++i) {
+    const std::string o = orden(r);
+    enviadas.push_back(o.substr(0, o.find("\r\n")));
+    r.salida_enviada(t);
+    t += 20;
+    dar(r, respuesta(enviadas.back()), t);
+  }
+  return enviadas;
+}
+
+const char* const kYaParado = "sensor stopped already\r\nError\r\n";
+const char* const kNoGuardado = "new parameter isn't save, can't startSensor\r\nError\r\n";
+typedef std::vector<std::string> Ordenes;
+const char* const kGuardar = "saveCfg 0x45670123 0xCDEF89AB 0x956128C6 0xDF54AC89";
+
+std::string todo_done(const std::string&) { return "Done\r\n"; }
+
+// R1 (banco 12/11): sensorStop con el radar ya parado contesta `sensor stopped
+// already` y `Error`. Parado es lo pedido: la configuración sigue, sin fallo.
+void probar_sensor_ya_parado() {
+  Interprete r;
+  uint32_t t = 100;
+  r.salida_enviada(t);
+  t += 20;
+  dar(r, kYaParado, t);
+  exigir(r.fase() == Fase::Configurando && r.motivo_fallo() == MotivoFallo::Ninguno, "ya parado", "no es fallo");
+  exigir(orden(r) == "detRangeCfg -1 0 3\r\n", "ya parado", "sigue con la ventana");
+  exigir(r.contadores().errores_radar == 0, "ya parado", "no cuenta como error del radar");
+
+  // La configuración entera llega a estabilizar con el radar ya parado.
+  Interprete c;
+  t = 100;
+  const Ordenes todas = responder_todo(c, t, [](const std::string& o) -> std::string {
+    return o == "sensorStop" ? kYaParado : "Done\r\n";
+  });
+  exigir(todas == Ordenes({"sensorStop", "detRangeCfg -1 0 3", "outputLatency -1 100 400", kGuardar, "sensorStart"}),
+         "ya parado", "las cinco órdenes salen igual");
+  exigir(c.fase() == Fase::Estabilizando && c.contadores().errores_radar == 0, "ya parado", "estabiliza");
+  c.procesar(nullptr, 0, t + c.configuracion().estabilizacion_ms);
+  dar(c, kN, t + c.configuracion().estabilizacion_ms + 10);
+  exigir(c.salud(t + c.configuracion().estabilizacion_ms + 10) == kSaludOk, "ya parado", "y llega a salud 0");
+
+  // Llega byte a byte, como por la UART.
+  Interprete b;
+  b.salida_enviada(100);
+  for (const char* p = kYaParado; *p != '\0'; ++p) dar(b, std::string(1, *p), 120);
+  exigir(b.fase() == Fase::Configurando && orden(b) == "detRangeCfg -1 0 3\r\n", "ya parado", "byte a byte");
+
+  // Cualquier otro Error sigue siendo un fallo.
+  Interprete e;
+  e.salida_enviada(100);
+  dar(e, "Error\r\n", 120);
+  exigir(e.fase() == Fase::Fallo && e.motivo_fallo() == MotivoFallo::RespuestaError, "ya parado", "Error a secas");
+  exigir(e.contadores().errores_radar == 1 && salud_de(e, 130) == kSaludFalloRadar, "ya parado", "salud 4");
+  Interprete otro;
+  otro.salida_enviada(100);
+  dar(otro, "sensor stopped\r\nError\r\n", 120);
+  exigir(otro.fase() == Fase::Fallo, "ya parado", "otra frase no vale");
+  Interprete mayus;
+  mayus.salida_enviada(100);
+  dar(mayus, "Sensor stopped already\r\nError\r\n", 120);
+  exigir(mayus.fase() == Fase::Fallo, "ya parado", "la frase es exacta");
+  Interprete antes;
+  antes.salida_enviada(100);
+  dar(antes, "Error\r\nsensor stopped already\r\n", 120);
+  exigir(antes.fase() == Fase::Fallo, "ya parado", "el Error primero ya es fallo");
+  // La frase sola no confirma nada: sin Error ni Done, vence el plazo.
+  Interprete sola;
+  sola.salida_enviada(100);
+  dar(sola, "sensor stopped already\r\n", 120);
+  exigir(sola.fase() == Fase::Configurando && orden(sola).empty(), "ya parado", "la frase sola no avanza");
+  exigir(salud_de(sola, 100 + 2001) == kSaludFalloRadar && sola.motivo_fallo() == MotivoFallo::RespuestaTimeout,
+         "ya parado", "sin Error ni Done, timeout");
+  // Solo vale para sensorStop: con otra orden en curso es un Error cualquiera.
+  Interprete rango;
+  rango.salida_enviada(100);
+  dar(rango, "Done\r\n", 110);
+  rango.salida_enviada(120);
+  dar(rango, kYaParado, 130);
+  exigir(rango.fase() == Fase::Fallo && rango.motivo_fallo() == MotivoFallo::RespuestaError, "ya parado",
+         "en detRangeCfg es un fallo");
+  // La marca no pasa a la orden siguiente: tras confirmar sensorStop, un Error suelto falla.
+  Interprete sigue;
+  sigue.salida_enviada(100);
+  dar(sigue, kYaParado, 110);
+  sigue.salida_enviada(120);
+  dar(sigue, "Error\r\n", 130);
+  exigir(sigue.fase() == Fase::Fallo, "ya parado", "la marca no sobrevive a su orden");
+}
+
+// R2 (banco 12/11): el SEN0395 no arranca con parámetros aplicados sin guardar.
+// recuperar() no los reaplica si ya están guardados, y los guarda si no.
+void probar_recuperar() {
+  const Ordenes completa = {"sensorStop", "detRangeCfg -1 0 3", "outputLatency -1 100 400", kGuardar, "sensorStart"};
+  const Ordenes ligera = {"sensorStop", "sensorStart"};
+
+  // Con la configuración guardada: solo parar y arrancar. Ni rango, ni latencia, ni flash.
+  Interprete r;
+  uint32_t t = operar(r, 0);
+  r.recuperar();
+  exigir(r.fase() == Fase::Configurando && r.contadores().reinicios == 1, "recuperar", "reinicia la configuración");
+  exigir(responder_todo(r, t, todo_done) == ligera, "recuperar", "con la configuración guardada: parar y arrancar");
+  exigir(r.fase() == Fase::Estabilizando, "recuperar", "estabiliza");
+  dar(r, kP, t + 5000);
+  exigir(salud_de(r, t + 5100) == kSaludOk, "recuperar", "y una trama nueva da salud 0");
+
+  // Radar que se reinició solo y vuelve parado (R3): la respuesta de R1 sirve igual.
+  r.recuperar();
+  const Ordenes parado = responder_todo(r, t, [](const std::string& o) -> std::string {
+    return o == "sensorStop" ? kYaParado : "Done\r\n";
+  });
+  exigir(parado == ligera && r.fase() == Fase::Estabilizando && r.contadores().errores_radar == 0, "recuperar",
+         "radar ya parado: parar, arrancar, sin error");
+
+  // Sin guardar nunca (saveCfg enviado y sin Done): la recuperación es la completa.
+  Interprete n;
+  t = 100;
+  for (int i = 0; i < 3; ++i) {
+    n.salida_enviada(t);
+    t += 20;
+    dar(n, "Done\r\n", t);
+  }
+  n.salida_enviada(t);  // saveCfg en vuelo, sin respuesta
+  n.recuperar();
+  t += n.configuracion().respuesta_max_ms + 1;  // vence el plazo de saveCfg: empieza la purga
+  n.procesar(nullptr, 0, t);
+  t += n.configuracion().respuesta_max_ms;  // y termina
+  n.procesar(nullptr, 0, t);
+  exigir(responder_todo(n, t, todo_done) == completa, "recuperar", "sin saveCfg confirmado: completa, con saveCfg");
+  exigir(n.fase() == Fase::Estabilizando, "recuperar", "estabiliza");
+  n.recuperar();
+  exigir(responder_todo(n, t, todo_done) == ligera, "recuperar", "confirmado el saveCfg, ya es ligera");
+
+  // Un radar mudo desde el arranque tampoco tiene nada guardado.
+  Interprete m;
+  m.salida_enviada(0);
+  exigir(salud_de(m, 2001) == kSaludFalloRadar, "recuperar", "arranque mudo: timeout");
+  m.recuperar();
+  t = 2001 + 2000;
+  m.procesar(nullptr, 0, t);
+  exigir(responder_todo(m, t, todo_done) == completa, "recuperar", "arranque mudo: la primera vez guarda");
+
+  // Un intento ligero rechazado con Error: el siguiente configura y guarda; luego vuelve a ser ligero.
+  Interprete e;
+  t = operar(e, 0);
+  e.recuperar();
+  const Ordenes rechazada = responder_todo(e, t, [](const std::string& o) -> std::string {
+    return o == "sensorStart" ? kNoGuardado : "Done\r\n";
+  });
+  exigir(rechazada == ligera && e.fase() == Fase::Fallo && e.motivo_fallo() == MotivoFallo::RespuestaError,
+         "recuperar", "arranque rechazado: fallo");
+  e.recuperar();
+  exigir(responder_todo(e, t, todo_done) == completa, "recuperar", "tras un Error ligero, completa");
+  e.recuperar();
+  exigir(responder_todo(e, t, todo_done) == ligera, "recuperar", "y guardada otra vez, ligera");
+
+  // Un timeout ligero (radar mudo) no pide guardar: sigue ligera.
+  Interprete u;
+  t = operar(u, 0);
+  u.recuperar();
+  u.salida_enviada(t);
+  exigir(salud_de(u, t + 2001) == kSaludFalloRadar && u.motivo_fallo() == MotivoFallo::RespuestaTimeout,
+         "recuperar", "radar mudo en el intento ligero");
+  u.recuperar();
+  t += 2001 + 2000;
+  u.procesar(nullptr, 0, t);
+  exigir(responder_todo(u, t, todo_done) == ligera, "recuperar", "el timeout no cambia a completa");
+
+  // reiniciar() es el arranque: siempre completo, aunque ya esté guardado.
+  Interprete a;
+  t = operar(a, 0);
+  a.reiniciar();
+  exigir(responder_todo(a, t, todo_done) == completa, "recuperar", "reiniciar() guarda siempre");
+}
+
+
 int main() {
   probar_ordenes();
   probar_configuracion_invalida();
@@ -960,6 +1142,8 @@ int main() {
   probar_reinicio();
   probar_reinicio_completo();
   probar_purga_tras_timeout();
+  probar_sensor_ya_parado();
+  probar_recuperar();
   probar_hueco_de_lectura();
   probar_cota_de_lectura();
   probar_oversize_rechazado();

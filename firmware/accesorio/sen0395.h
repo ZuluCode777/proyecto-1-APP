@@ -94,13 +94,13 @@ enum class Fase : uint8_t {
   Configurando,   // enviando órdenes y esperando Done/Error
   Estabilizando,  // sensorStart aceptado; se ignoran las tramas
   Operando,       // se interpretan tramas
-  Fallo,          // terminal hasta reiniciar()
+  Fallo,          // terminal hasta reiniciar() o recuperar()
 };
 
 enum class MotivoFallo : uint8_t {
   Ninguno,
   ConfiguracionInvalida,
-  RespuestaError,     // el radar contestó Error
+  RespuestaError,     // el radar contestó Error (salvo sensorStop con el radar ya parado)
   RespuestaTimeout,   // la orden no recibió respuesta a tiempo
 };
 
@@ -133,10 +133,9 @@ class Interprete {
   // recuperación exige una observación íntegra NUEVA tras la estabilización.
   // Úsalo tras reiniciar o desconectar el radar. Una configuración fallida no
   // se reintenta sola: quien reintenta es enlace_radar.h (SupervisorRadar), con
-  // espera creciente. `guardar_en_flash = false` omite saveCfg: aplica rango y
-  // latencia solo en la RAM del sensor, sin gastar ciclos de su flash. El
-  // arranque de la placa usa true (una escritura por arranque); toda recuperación
-  // posterior usa false.
+  // espera creciente. Configuración COMPLETA: sensorStop, rango, latencia,
+  // saveCfg y sensorStart. Es la del arranque de la placa (una escritura de la
+  // flash del radar por arranque).
   // Purga: tras un fallo por timeout, o si se reinicia con una orden en vuelo,
   // la primera orden nueva se retiene hasta que pasen respuesta_max_ms desde que
   // venció el plazo de la orden vieja (en total, >= 2 x respuesta_max_ms desde
@@ -146,7 +145,20 @@ class Interprete {
   // de su orden no se distingue de la de la orden nueva; B1 mide la latencia
   // real de cada orden y fija un plazo que lo haga imposible. El llamador debe
   // además vaciar la UART al reiniciar.
-  void reiniciar(bool guardar_en_flash = true);
+  void reiniciar();
+  // Igual que reiniciar() (mismos efectos y misma purga), pero para el reintento
+  // de la recuperación. El SEN0395 NO arranca con parámetros aplicados sin
+  // guardar (`new parameter isn't save, can't startSensor`, aunque sean los
+  // mismos), así que reaplicar rango y latencia sin saveCfg lo deja parado.
+  // Con la configuración ya guardada en esta ejecución (saveCfg confirmado con
+  // `Done`), solo repite sensorStop y sensorStart: no toca rango, latencia ni la
+  // flash del radar, y un radar que se reinicia solo vuelve a la configuración
+  // guardada. Hace la configuración completa, con saveCfg, si esa confirmación
+  // falta (arranque con el radar mudo, o saveCfg sin confirmar) o si el
+  // intento ligero anterior recibió un `Error`; cada saveCfg exige antes que el
+  // radar conteste a sensorStop, rango y latencia, y el SupervisorRadar espacia
+  // los reintentos.
+  void recuperar();
 
   // --- Salida: órdenes hacia el radar ---------------------------------------
   // Copia la orden pendiente (con "\r\n") a destino y devuelve su longitud.
@@ -228,13 +240,17 @@ class Interprete {
   void linea_completa(uint32_t ahora_ms, uint32_t sello_ms);
   void marcar_malo(Malo m, CausaInvalida causa);
   void fallar(MotivoFallo m, uint32_t ahora_ms);
+  void empezar(bool ligero);
+  void confirmar_paso(uint32_t ahora_ms);
   size_t construir_orden(uint8_t paso, uint8_t* destino, size_t capacidad) const;
   uint8_t salud_actual(uint32_t ahora_ms) const;
 
   Configuracion cfg_;
   Contadores cont_;
 
-  bool guardar_ = true;  // false: la configuración se aplica sin saveCfg (paso 3)
+  bool ligero_ = false;    // recuperar() con la configuración guardada: solo sensorStop y sensorStart
+  bool guardada_ = false;  // saveCfg confirmado con Done para esta configuración
+  bool ya_parado_ = false;  // sensorStop contestó `sensor stopped already`: su `Error` no es un fallo
   Fase fase_ = Fase::Configurando;
   MotivoFallo motivo_ = MotivoFallo::Ninguno;
   uint8_t paso_ = 0;

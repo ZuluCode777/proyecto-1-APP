@@ -4,9 +4,9 @@
 // ENTREGA las órdenes pendientes; si se pierden bytes (más de un trozo esperando,
 // o un desborde del controlador) se lo dice con Interprete::perder_entrada() en
 // vez de dejar una línea a medias que se una con lo que llegue después.
-// (2) SupervisorRadar reinicia la configuración del radar, con espera creciente
-// y sin escribir su flash, cuando el radar se reinicia, calla o rechaza la
-// configuración.
+// (2) SupervisorRadar recupera el radar, con espera creciente y sin escribir su
+// flash mientras la configuración ya esté guardada, cuando el radar se reinicia,
+// calla o rechaza la configuración.
 //
 // Qué NO hace: no toca la UART de Arduino ni el reloj: usa PuertoUart, que
 // implementa accesorio.ino y que las pruebas sustituyen por un doble. No decide
@@ -77,13 +77,19 @@ void atender_uart(sen0395::Interprete& radar, PuertoUart& uart, EstadoUart& esta
 // el doble tras cada intento sin recuperación, tope kEsperaMaximaMs) y el
 // contador vuelve a cero cuando el radar lleva kSanoReseteaMs sano.
 //
-// Cada reintento hace reiniciar(false): aplica rango y latencia en la RAM del
-// sensor, sin saveCfg, así que ni un radar mudo ni uno que se reinicia sin
-// parar gastan su flash. Antes de reiniciar vacía la UART: lo que haya quedado
-// no vale como observación ni como respuesta a la orden nueva. El intérprete
-// exige luego su estabilización (>= 5 s) y una trama íntegra NUEVA. Si la
-// purga topa con kMaxDrenajePorCiclo y queda cola, el reinicio espera al ciclo
-// en que la UART quede vacía.
+// Cada reintento hace recuperar(): con la configuración ya guardada en la flash
+// del radar (saveCfg confirmado desde el arranque), solo repite sensorStop y
+// sensorStart, así que ni un radar mudo ni uno que se reinicia sin parar gastan
+// su flash. NO reaplica rango y latencia sin saveCfg: el SEN0395 se niega a
+// arrancar con parámetros sin guardar y quedaría parado hasta reiniciar la placa.
+// Si esa configuración nunca llegó a guardarse (arranque con el radar mudo) o un
+// intento ligero recibió `Error`, recuperar() hace la configuración completa con
+// saveCfg; eso solo ocurre si el radar contesta antes a sensorStop, rango y
+// latencia, y los reintentos van espaciados (tope kEsperaMaximaMs). Antes de
+// reiniciar vacía la UART: lo que haya quedado no vale como observación ni como
+// respuesta a la orden nueva. El intérprete exige luego su estabilización
+// (>= 5 s) y una trama íntegra NUEVA. Si la purga topa con kMaxDrenajePorCiclo y
+// queda cola, el reinicio espera al ciclo en que la UART quede vacía.
 //
 // Tiempos reales para quien documente el enlace (EA-12): el contrato fija solo el
 // latido (2500 ms desde la última trama válida); NO fija 10 s para recuperar.

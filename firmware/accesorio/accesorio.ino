@@ -307,7 +307,7 @@ void atender_radar() {
   if (!kRadarHabilitado) return;
   radar::atender_uart(g_radar, g_uart, g_uart_estado);
   if (g_supervisor.vigilar(g_radar, g_uart)) {
-    Serial.println("Radar: sin latido o configuración fallida; se reaplica la configuración (sin escribir su flash)");
+    Serial.println("Radar: sin latido o configuración fallida; se recupera el radar");
   }
 }
 
@@ -319,7 +319,7 @@ void iniciar_radar() {
   // Nada que haya quedado en el búfer antes de arrancar vale como observación.
   while (Serial1.available() > 0) Serial1.read();
   g_perdida_uart.store(false);
-  g_radar.reiniciar(true);  // el arranque guarda la configuración (una vez); las recuperaciones, no
+  g_radar.reiniciar();  // el arranque guarda la configuración (una vez); las recuperaciones, no, si ya está guardada
 #endif
 }
 

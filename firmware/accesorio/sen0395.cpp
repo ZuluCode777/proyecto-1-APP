@@ -7,7 +7,13 @@ namespace sen0395 {
 
 namespace {
 
-constexpr uint8_t kPasoGuardar = 3;  // saveCfg
+constexpr uint8_t kPasoParar = 0;     // sensorStop
+constexpr uint8_t kPasoGuardar = 3;   // saveCfg
+constexpr uint8_t kPasoArrancar = 4;  // sensorStart
+
+// Respuesta (seguida de `Error`) de sensorStop con el radar ya parado, medida en
+// el banco del 12/11. Parado es el estado que pide sensorStop: no es un fallo.
+const char kYaParado[] = "sensor stopped already";
 
 const char kTramaPresencia[] = "$JYBSS,1, , , *";
 const char kTramaNadie[] = "$JYBSS,0, , , *";
@@ -77,9 +83,13 @@ Interprete::Interprete(const Configuracion& cfg) : cfg_(cfg) {
   cont_.reinicios = 0;  // la construcción no es un reinicio
 }
 
-void Interprete::reiniciar(bool guardar_en_flash) {
+void Interprete::reiniciar() { empezar(false); }
+
+void Interprete::recuperar() { empezar(guardada_); }
+
+void Interprete::empezar(bool ligero) {
   ++cont_.reinicios;
-  guardar_ = guardar_en_flash;
+  ligero_ = ligero;
   // Una respuesta tardía de la orden vieja no debe confirmar la nueva. Con la
   // orden en vuelo, la purga empieza cuando venza su plazo (en avanzar()), como
   // tras un timeout: así dura >= 2 x respuesta_max_ms desde su envío.
@@ -96,6 +106,7 @@ void Interprete::reiniciar(bool guardar_en_flash) {
   largo_ = 0;
   descartando_ = false;
   hay_llamada_ = false;
+  ya_parado_ = false;
 }
 
 size_t Interprete::construir_orden(uint8_t paso, uint8_t* destino, size_t capacidad) const {
@@ -142,6 +153,20 @@ void Interprete::salida_enviada(uint32_t ahora_ms) {
   // Lo recibido antes de la orden no es su respuesta.
   largo_ = 0;
   descartando_ = false;
+  ya_parado_ = false;
+}
+
+// La orden en curso quedó cumplida (`Done`, o sensorStop con el radar ya parado).
+void Interprete::confirmar_paso(uint32_t ahora_ms) {
+  esperando_ = false;
+  ya_parado_ = false;
+  if (paso_ == kPasoGuardar) guardada_ = true;
+  ++paso_;
+  if (ligero_ && paso_ == kPasoParar + 1) paso_ = kPasoArrancar;  // sin rango, latencia ni saveCfg
+  if (paso_ >= kPasosConfiguracion) {
+    fase_ = Fase::Estabilizando;
+    t_estab_ = ahora_ms;  // los 5 s cuentan desde el Done de sensorStart
+  }
 }
 
 void Interprete::fallar(MotivoFallo m, uint32_t ahora_ms) {
@@ -211,16 +236,18 @@ void Interprete::linea_completa(uint32_t ahora_ms, uint32_t sello_ms) {
       if (!esperando_) {
         ++cont_.lineas_ignoradas;  // respuesta sin orden en curso: nunca vale
       } else if (igual(l, n, "Done")) {
-        esperando_ = false;
-        ++paso_;
-        if (!guardar_ && paso_ == kPasoGuardar) ++paso_;
-        if (paso_ >= kPasosConfiguracion) {
-          fase_ = Fase::Estabilizando;
-          t_estab_ = ahora_ms;  // los 5 s cuentan desde el Done de sensorStart
-        }
+        confirmar_paso(ahora_ms);
+      } else if (paso_ == kPasoParar && igual(l, n, kYaParado)) {
+        ya_parado_ = true;  // el `Error` que sigue es de un radar que ya estaba parado
       } else if (igual(l, n, "Error")) {
-        ++cont_.errores_radar;
-        fallar(MotivoFallo::RespuestaError, ahora_ms);
+        if (paso_ == kPasoParar && ya_parado_) {
+          confirmar_paso(ahora_ms);
+        } else {
+          ++cont_.errores_radar;
+          // Un intento ligero rechazado: el siguiente recuperar() configura y guarda.
+          if (ligero_) guardada_ = false;
+          fallar(MotivoFallo::RespuestaError, ahora_ms);
+        }
       } else {
         ++cont_.lineas_ignoradas;  // eco de la orden, tramas de salida continua...
       }

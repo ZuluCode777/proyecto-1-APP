@@ -95,7 +95,7 @@ bool SupervisorRadar::vigilar(sen0395::Interprete& radar, PuertoUart& uart) {
   // Queda cola sin vaciar (cota del ciclo): atender_uart() la sigue descartando
   // y el reinicio espera al ciclo en que la UART esté vacía.
   if (uart.disponibles() > 0) return false;
-  radar.reiniciar(false);
+  radar.recuperar();
   if (intentos_ < 255) ++intentos_;
   ++reintentos_;
   proximo_ms_ = ahora + espera_tras(intentos_);
