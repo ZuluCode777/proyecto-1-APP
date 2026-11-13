@@ -140,6 +140,7 @@ funcionan ahí.
 app/
   api/agent/route.ts         asistente: Ollama si está cargado, reglas si no
   api/transmilenio/route.ts  estaciones y rutas, en vivo o desde la copia
+  api/planificador/route.ts  rutas, detalle y viaje entre dos lugares elegidos (iPhone)
   diagnostico/               pruebas en vivo de cada función
 components/                  una pantalla por archivo, el mapa y los diálogos
 data/transmilenio.json       copia de los datos para cuando el servicio falla

@@ -24,7 +24,7 @@ struct AlmacenFavoritasUserDefaults: AlmacenFavoritas {
 }
 
 /// Rutas favoritas, por código (por ejemplo «B23»), en el orden en que se guardaron. Se guardan solo en este
-/// iPhone. La pantalla de rutas usará `agregar`, `quitar` y `contiene`; nada más se expone.
+/// iPhone. El detalle de una ruta usa `agregar`, `quitar` y `contiene`; nada más se expone.
 @MainActor
 @Observable
 final class FavoritasModelo {

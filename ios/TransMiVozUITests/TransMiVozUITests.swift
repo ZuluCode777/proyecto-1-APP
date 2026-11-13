@@ -601,7 +601,8 @@ final class TransMiVozUITests: XCTestCase {
     func testDatosAntiguosSeAvisanYSePuedeVolverAConsultar() throws {
         preguntar("antiguo")
         XCTAssertTrue(elemento("aviso-catalogo-antiguo").waitForExistence(timeout: 10), "los datos antiguos deben avisarse")
-        XCTAssertTrue(elemento("limite-accion").exists, "una ruta no tiene pantalla propia: debe decirse")
+        XCTAssertTrue(elemento("enlace-ruta-detalle").exists, "una ruta abre su detalle con el mapa (EA-25)")
+        XCTAssertFalse(elemento("limite-accion").exists, "la ruta ya no declara un límite: tiene pantalla")
         elemento("boton-volver-a-consultar").tap()
         esperarTexto("[SIMULADO] La ruta Z99 es de prueba. [SIMULADO] Datos consultados hoy.")
         XCTAssertFalse(elemento("aviso-catalogo-antiguo").exists, "con datos recientes el aviso desaparece")
@@ -1884,5 +1885,259 @@ final class TransMiVozDictadoUITests: XCTestCase {
         exponer("estado-dictado", en: app, completo: false)
         XCTAssertTrue(elemento("estado-dictado").isHittable || elemento("estado-dictado").exists)
         XCTAssertTrue(elemento("estado-dictado").label.hasPrefix("Dictado con el servicio de Apple"))
+    }
+}
+
+/// Base de las pruebas de rutas, detalle y viaje (EA-25): lanza la app con el planificador SIMULADO (`-PRUEBAS_UI_SIMULADAS`,
+/// datos inventados, sin red) y llega a ellas por el botón de rutas de la barra de Consulta. Con el planificador simulado
+/// el mapa no se dibuja (la pantalla lo dice); no prueban MapKit, VoiceOver ni el servidor real.
+class RutasUITestCase: XCTestCase {
+    var app: XCUIApplication!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    func lanzar(categoria: String = "UICTContentSizeCategoryL") {
+        app = XCUIApplication()
+        app.launchArguments += [
+            "-PRUEBAS_UI_SIMULADAS", "-AppleLanguages", "(es)", "-AppleLocale", "es_CO",
+            "-UIPreferredContentSizeCategoryName", categoria,
+        ]
+        app.launch()
+        addTeardownBlock { [app] in app?.terminate() }
+    }
+
+    func elemento(_ identificador: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identificador).firstMatch
+    }
+
+    func abrirConsulta(file: StaticString = #filePath, line: UInt = #line) {
+        let pestana = app.tabBars.buttons["Consulta"]
+        XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña Consulta", file: file, line: line)
+        pestana.tap()
+        esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña Consulta", file: file, line: line)
+    }
+
+    /// Consulta ▸ botón de rutas de la barra de navegación.
+    func abrirRutas(file: StaticString = #filePath, line: UInt = #line) {
+        abrirConsulta(file: file, line: line)
+        let enlace = elemento("enlace-rutas")
+        XCTAssertTrue(enlace.waitForExistence(timeout: 10), "Consulta no ofrece el acceso a rutas", file: file, line: line)
+        enlace.tap()
+        XCTAssertTrue(elemento("campo-busqueda-rutas").waitForExistence(timeout: 10), "No se abrió la búsqueda de rutas", file: file, line: line)
+    }
+
+    /// Escribe en el campo de búsqueda y busca; la búsqueda cierra el teclado.
+    func buscar(_ texto: String, file: StaticString = #filePath, line: UInt = #line) {
+        escribir(texto, en: elemento("campo-busqueda-rutas"), app: app, file: file, line: line)
+        elemento("boton-buscar-rutas").tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "El teclado debe cerrarse al buscar", file: file, line: line)
+    }
+
+    /// Búsqueda de rutas ▸ planear un viaje entre dos lugares.
+    func abrirViaje(file: StaticString = #filePath, line: UInt = #line) {
+        abrirRutas(file: file, line: line)
+        exponer("enlace-viaje", en: app, file: file, line: line)
+        elemento("enlace-viaje").tap()
+        XCTAssertTrue(elemento("selector-origen").waitForExistence(timeout: 10), "No se abrió el viaje", file: file, line: line)
+    }
+
+    /// Abre la lista de lugares del selector, elige uno y espera a que el selector lo diga.
+    func elegirLugar(_ selector: String, _ lugar: String, file: StaticString = #filePath, line: UInt = #line) {
+        exponer(selector, en: app, file: file, line: line)
+        elemento(selector).tap()
+        exponer("lugar-\(lugar)", en: app, file: file, line: line)
+        elemento("lugar-\(lugar)").tap()
+        let fila = elemento(selector)
+        XCTAssertTrue(fila.waitForExistence(timeout: 10), "No volvió al viaje", file: file, line: line)
+        esperar(fila, "label CONTAINS %@", lugar, "El selector no muestra «\(lugar)»", file: file, line: line)
+    }
+}
+
+/// Buscar rutas, ver su detalle, elegir origen y destino y planear el viaje, con el listado y el mapa del mismo tramo.
+/// Las auditorías son de tamaño normal; con el texto más grande, ver `TransMiVozRutasTextoGrandeUITests`.
+final class TransMiVozRutasUITests: RutasUITestCase {
+    private let norte = "Estación Ejemplo Norte"
+    private let centro = "Estación Ejemplo Centro"
+    private let sur = "Estación Ejemplo Sur"
+
+    func testBuscarUnaRutaYAbrirSuDetalleConListadoYMapa() throws {
+        lanzar()
+        abrirRutas()
+        buscar("z99")
+        let fila = elemento("ruta-Z99")
+        XCTAssertTrue(fila.waitForExistence(timeout: 10), "La búsqueda no devolvió la ruta Z99")
+        XCTAssertEqual(fila.label, "Ruta Z99, de \(norte) hacia \(sur)")
+        fila.tap()
+
+        let titulo = elemento("detalle-ruta-titulo")
+        XCTAssertTrue(titulo.waitForExistence(timeout: 10), "No se abrió el detalle de la ruta")
+        XCTAssertEqual(titulo.label, "Ruta Z99")
+        XCTAssertTrue(elemento("mapa-recorrido").waitForExistence(timeout: 5), "Falta el mapa o su aviso de modo de pruebas")
+        XCTAssertTrue(elemento("mapa-recorrido").label.contains("Modo de pruebas"), "el mapa simulado debe decir que no se dibuja")
+
+        // El listado tiene todo lo que dibujaría el mapa, con las paradas verificadas dichas en texto.
+        exponer("estacion-1", en: app)
+        XCTAssertTrue(elemento("estacion-1").label.contains(norte))
+        XCTAssertTrue(elemento("estacion-1").label.contains("Parada verificada"))
+        exponer("estacion-3", en: app)
+        XCTAssertTrue(elemento("estacion-3").label.contains(sur))
+
+        // Guardar la ruta cambia el botón y su etiqueta, sin depender del color.
+        exponer("boton-favorita", en: app)
+        let guardar = elemento("boton-favorita")
+        XCTAssertEqual(guardar.label, "Guardar la ruta Z99 en favoritas")
+        guardar.tap()
+        esperar(guardar, "label == %@", "Quitar la ruta Z99 de favoritas", "El botón no pasó a «Quitar»")
+    }
+
+    func testPlanearUnViajeEligiendoOrigenYDestinoMuestraListadoYMapaDelMismoTramo() throws {
+        lanzar()
+        abrirViaje()
+        XCTAssertFalse(elemento("boton-planear-viaje").isEnabled, "sin origen ni destino no se puede planear")
+        elegirLugar("selector-origen", norte)
+        elegirLugar("selector-destino", sur)
+        let planear = elemento("boton-planear-viaje")
+        XCTAssertTrue(planear.isEnabled, "con origen y destino se puede planear")
+        planear.tap()
+
+        let titulo = elemento("resultado-viaje-titulo")
+        XCTAssertTrue(titulo.waitForExistence(timeout: 10), "No apareció el resultado del viaje")
+        XCTAssertEqual(titulo.label, "Viaje de \(norte) a \(sur)")
+        exponer("tramo-1", en: app)
+        let tramo = elemento("tramo-1").label
+        XCTAssertTrue(tramo.contains("Abordaje: \(norte)"), tramo)
+        XCTAssertTrue(tramo.contains("Descenso: \(sur)"), tramo)
+        XCTAssertTrue(tramo.contains("3 estaciones (conteo verificado)"), tramo)
+        XCTAssertTrue(elemento("mapa-recorrido").exists, "falta el mapa del mismo tramo")
+    }
+
+    /// Un servicio candidato (operación sin confirmar) solo lista el código de su ruta: ni paradas, ni conteo, ni mapa.
+    func testUnServicioCandidatoSoloListaLaRutaSinParadasNiMapa() throws {
+        lanzar()
+        abrirViaje()
+        elegirLugar("selector-origen", centro)
+        elegirLugar("selector-destino", sur)
+        elemento("boton-planear-viaje").tap()
+
+        let titulo = elemento("resultado-viaje-titulo")
+        XCTAssertTrue(titulo.waitForExistence(timeout: 10), "No apareció el resultado del viaje")
+        XCTAssertEqual(titulo.label, "Servicio candidato de \(centro) a \(sur)")
+        XCTAssertEqual(elemento("ruta-candidata-1").label, "Ruta Z99")
+        XCTAssertFalse(elemento("tramo-1").exists, "un candidato no lista tramos con paradas")
+        XCTAssertFalse(elemento("mapa-recorrido").exists, "un candidato no dibuja mapa")
+        for palabra in ["Abordaje", "Descenso"] {
+            XCTAssertFalse(
+                app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", palabra)).firstMatch.exists,
+                "un candidato no dice «\(palabra)»")
+        }
+    }
+
+    func testUnaRutaDeLaConsultaAbreSuDetalle() throws {
+        lanzar()
+        abrirConsulta()
+        let campo = elemento("campo-pregunta")
+        XCTAssertTrue(campo.waitForExistence(timeout: 10))
+        escribir("antiguo", en: campo, app: app)
+        elemento("boton-enviar").tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "El teclado debe cerrarse al enviar")
+        let enlace = elemento("enlace-ruta-detalle")
+        XCTAssertTrue(enlace.waitForExistence(timeout: 10), "una respuesta de ruta debe ofrecer su detalle")
+        enlace.tap()
+        let titulo = elemento("detalle-ruta-titulo")
+        XCTAssertTrue(titulo.waitForExistence(timeout: 10), "No se abrió el detalle de la ruta desde la consulta")
+        XCTAssertEqual(titulo.label, "Ruta Z99")
+    }
+
+    func testUnTextoVacioNoBuscaYUnaBusquedaSinResultadosDiceQueHacer() throws {
+        lanzar()
+        abrirRutas()
+        elemento("boton-buscar-rutas").tap()
+        let aviso = elemento("aviso-entrada-rutas")
+        XCTAssertTrue(aviso.waitForExistence(timeout: 5), "Un texto vacío debe decir qué escribir")
+        XCTAssertEqual(aviso.label, "Escribe un código de ruta o el nombre de una estación.")
+        XCTAssertFalse(elemento("progreso-busqueda-rutas").exists, "un texto vacío no llama al servidor")
+
+        buscar("vacio")
+        let resumen = elemento("resumen-busqueda-rutas")
+        XCTAssertTrue(resumen.waitForExistence(timeout: 10), "No apareció el estado sin resultados")
+        XCTAssertEqual(resumen.label, "No encontré rutas para «vacio».")
+        XCTAssertTrue(elemento("ayuda-sin-resultados").exists)
+    }
+
+    func testUnErrorDeLaBusquedaSeDiceYOfreceReintentar() throws {
+        lanzar()
+        abrirRutas()
+        buscar("sinred")
+        let mensaje = elemento("mensaje-error-rutas")
+        XCTAssertTrue(mensaje.waitForExistence(timeout: 10), "No apareció el error de la búsqueda")
+        XCTAssertEqual(mensaje.label, "No hay conexión con el servidor.")
+        XCTAssertTrue(elemento("boton-reintentar-rutas").exists, "un error de red ofrece reintentar")
+    }
+
+    // MARK: Auditoría automática de accesibilidad (falla el test si hay problemas)
+
+    func testAuditoriaAccesibilidadBusquedaDeRutasConResultados() throws {
+        lanzar()
+        abrirRutas()
+        buscar("z99")
+        XCTAssertTrue(elemento("ruta-Z99").waitForExistence(timeout: 10))
+        try auditar(app, "rutas-resultados", testCase: self)
+    }
+
+    func testAuditoriaAccesibilidadViajeAntesDePlanear() throws {
+        lanzar()
+        abrirViaje()
+        try auditar(app, "viaje-seleccion", testCase: self)
+    }
+}
+
+/// Rutas y viaje con el texto más grande de Dynamic Type: no auditan (el detalle y el viaje miden varias pantallas, como la
+/// Ayuda de Ajustes); comprueban que lo esencial se alcanza entero y tocable al desplazar. Se llega sin escribir: por el
+/// viaje (lugares de una lista) y, desde su recorrido, al detalle de una ruta.
+final class TransMiVozRutasTextoGrandeUITests: RutasUITestCase {
+    private let norte = "Estación Ejemplo Norte"
+    private let sur = "Estación Ejemplo Sur"
+    private let centro = "Estación Ejemplo Centro"
+
+    func testElViajeSePlaneaYSuResultadoSeAlcanzaConTextoMuyGrande() throws {
+        lanzar(categoria: "UICTContentSizeCategoryAccessibilityXXXL")
+        abrirViaje()
+        elegirLugar("selector-origen", norte)
+        elegirLugar("selector-destino", sur)
+        exponer("boton-planear-viaje", en: app)
+        elemento("boton-planear-viaje").tap()
+        XCTAssertTrue(elemento("resultado-viaje-titulo").waitForExistence(timeout: 10))
+        exponer("resultado-viaje-titulo", en: app, completo: false)
+        exponer("tramo-1", en: app, completo: false)
+    }
+
+    func testElDetalleDeUnaRutaLlegaHastaSuUltimaEstacionConTextoMuyGrande() throws {
+        lanzar(categoria: "UICTContentSizeCategoryAccessibilityXXXL")
+        abrirViaje()
+        elegirLugar("selector-origen", norte)
+        elegirLugar("selector-destino", centro) // el simulado solo devuelve el recorrido de la Z98
+        exponer("boton-planear-viaje", en: app)
+        elemento("boton-planear-viaje").tap()
+        XCTAssertTrue(elemento("resultado-viaje-titulo").waitForExistence(timeout: 10))
+        exponer("ruta-por-el-trazado-Z98", en: app)
+        elemento("ruta-por-el-trazado-Z98").tap()
+        XCTAssertTrue(elemento("detalle-ruta-titulo").waitForExistence(timeout: 10), "No se abrió el detalle de la Z98")
+        exponer("boton-favorita", en: app)
+        // Las estaciones van en un LazyVStack: no existen hasta llegar cerca, y `exponer` da cuatro gestos como máximo,
+        // menos de lo que mide el detalle con este texto. Se baja, con tope, hasta que exista y luego se centra.
+        let ultima = elemento("estacion-3")
+        let contenido = app.scrollViews.firstMatch.frame
+        let arriba = max(app.navigationBars.firstMatch.frame.maxY, contenido.minY)
+        let abajo = min(app.tabBars.firstMatch.frame.minY, contenido.maxY)
+        var gestos = 0
+        while !ultima.exists && gestos < 12 {
+            arrastrarContenido(abajo - arriba - 40, en: app, arriba: arriba, abajo: abajo, velocidad: .slow)
+            gestos += 1
+        }
+        XCTAssertTrue(ultima.exists, "«estacion-3» no existe tras \(gestos) desplazamientos")
+        exponer("estacion-3", en: app, velocidad: .slow)
+        comprobarEnteros(["estacion-3"], en: app)
     }
 }
