@@ -9,8 +9,8 @@ protocol ClienteAgente: Sendable {
     func consultar(texto: String) async throws -> RespuestaAgente
 }
 
-/// Rechaza toda redirección: `Authorization` no debe viajar a otro origen.
-private final class SinRedirecciones: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+/// Rechaza toda redirección: `Authorization` no debe viajar a otro origen. También la usa `ClienteAnunciosHTTP`.
+final class SinRedirecciones: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
@@ -143,7 +143,7 @@ struct ClienteAgenteHTTP: ClienteAgente {
 }
 
 /// Ejecuta `operacion` con un plazo total. Al vencer cancela la operación y lanza `tiempoAgotado`.
-private func conPlazo<T: Sendable>(_ segundos: TimeInterval, _ operacion: @escaping @Sendable () async throws -> T) async throws -> T {
+func conPlazo<T: Sendable>(_ segundos: TimeInterval, _ operacion: @escaping @Sendable () async throws -> T) async throws -> T {
     try await withThrowingTaskGroup(of: T.self) { grupo in
         grupo.addTask { try await operacion() }
         grupo.addTask {

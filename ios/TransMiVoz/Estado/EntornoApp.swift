@@ -5,6 +5,8 @@ import Foundation
 final class EntornoApp {
     let ajustes: AjustesServidorModelo
     let consulta: ConsultaModelo
+    /// Anuncios operativos del servidor (EA-26). Independientes de la sesión con el accesorio y de sus avisos.
+    let anuncios: AnunciosModelo
     /// Rutas favoritas, guardadas en este iPhone. La pantalla de rutas las agregará con `agregar`.
     let favoritas: FavoritasModelo
     /// Sesión SIMULADA: solo se muestra en las pruebas de interfaz (`modoPruebas`).
@@ -20,11 +22,13 @@ final class EntornoApp {
     let modoPruebas: Bool
 
     init(
-        ajustes: AjustesServidorModelo, consulta: ConsultaModelo, favoritas: FavoritasModelo, sesion: SesionLocalModelo,
-        accesorio: SesionAccesorioModelo? = nil, monitorAudio: MonitorAudioSistema? = nil, modoPruebas: Bool
+        ajustes: AjustesServidorModelo, consulta: ConsultaModelo, anuncios: AnunciosModelo, favoritas: FavoritasModelo,
+        sesion: SesionLocalModelo, accesorio: SesionAccesorioModelo? = nil, monitorAudio: MonitorAudioSistema? = nil,
+        modoPruebas: Bool
     ) {
         self.ajustes = ajustes
         self.consulta = consulta
+        self.anuncios = anuncios
         self.favoritas = favoritas
         self.sesion = sesion
         self.accesorio = accesorio
@@ -47,6 +51,7 @@ final class EntornoApp {
         let voz = ControlVoz(salida: SintetizadorSistema(), consultarRuta: SintetizadorSistema.rutaActual)
         return EntornoApp(
             ajustes: ajustes, consulta: ConsultaModelo(cliente: cliente),
+            anuncios: AnunciosModelo(cliente: ClienteAnunciosHTTP { await ajustes.configuracion }),
             favoritas: FavoritasModelo(almacen: AlmacenFavoritasUserDefaults()), sesion: SesionLocalModelo(),
             accesorio: SesionAccesorioModelo(transporte: TransporteCoreBluetooth(), voz: voz, avisos: .sistema),
             monitorAudio: MonitorAudioSistema(control: voz), modoPruebas: false)
@@ -73,6 +78,7 @@ final class EntornoApp {
         let ajustes = AjustesServidorModelo(almacen: AlmacenClaveEnMemoria(), preferencias: preferencias)
         return EntornoApp(
             ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado()),
+            anuncios: anunciosDePruebas(argumentos),
             favoritas: favoritasDePruebas(preferencias, argumentos: argumentos),
             sesion: SesionLocalModelo(), modoPruebas: true)
     }
@@ -101,9 +107,19 @@ final class EntornoApp {
         let voz = ControlVoz(salida: SalidaVozSintetica(), consultarRuta: { .noPrivada })
         return EntornoApp(
             ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado()),
+            anuncios: anunciosDePruebas(argumentos),
             favoritas: favoritasDePruebas(preferencias, argumentos: argumentos), sesion: SesionLocalModelo(),
             accesorio: SesionAccesorioModelo(transporte: TransporteSintetico(permiso: permiso), voz: voz),
             modoPruebas: true)
+    }
+
+    /// Anuncios simulados y rotulados, sin red. Por defecto, la lista; `-PRUEBAS_UI_ANUNCIOS_SIN_FUENTE` deja la fuente sin
+    /// conectar y `-PRUEBAS_UI_ANUNCIOS_CAIDA` hace que la primera consulta traiga la lista y las siguientes fallen.
+    private static func anunciosDePruebas(_ argumentos: [String]) -> AnunciosModelo {
+        let escenario: ClienteAnunciosSimulado.Escenario =
+            argumentos.contains("-PRUEBAS_UI_ANUNCIOS_SIN_FUENTE") ? .sinFuente
+            : argumentos.contains("-PRUEBAS_UI_ANUNCIOS_CAIDA") ? .caidaTrasExito : .lista
+        return AnunciosModelo(cliente: ClienteAnunciosSimulado(escenario: escenario))
     }
 
     /// Favoritas en la suite limpia de las pruebas. Con `-PRUEBAS_UI_FAVORITAS_SEMILLA` parten con dos rutas inventadas
