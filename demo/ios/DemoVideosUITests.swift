@@ -11,10 +11,13 @@ import XCTest
 //   DEMO_EVENTOS  archivo donde se anotan los subtítulos (una línea JSON por evento, con la hora de reloj)
 //   DEMO_ORIGEN   origen HTTPS del backend Next.js arrancado en el runner (por defecto https://localhost:8443)
 //   DEMO_CLAVE    clave de ese backend (APP_PASSWORD)
+//   DEMO_CATEGORIA_TEXTO  tamaño de letra de la app (por defecto, el 2.º tamaño de accesibilidad); el script pone el
+//                 mismo en todo el Simulator, junto con el contraste aumentado, como lo tendría una persona con baja visión
 
 private let entorno = ProcessInfo.processInfo.environment
 private let origenServidor = entorno["DEMO_ORIGEN"] ?? "https://localhost:8443"
 private let claveServidor = entorno["DEMO_CLAVE"] ?? ""
+private let categoriaTexto = entorno["DEMO_CATEGORIA_TEXTO"] ?? "UICTContentSizeCategoryAccessibilityL"
 
 final class DemoVideosUITests: XCTestCase {
     private var app: XCUIApplication!
@@ -56,7 +59,7 @@ final class DemoVideosUITests: XCTestCase {
         anotar("titulo", titulo)
         app = XCUIApplication()
         app.launchArguments += argumentos + [
-            "-AppleLanguages", "(es)", "-AppleLocale", "es_CO", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
+            "-AppleLanguages", "(es)", "-AppleLocale", "es_CO", "-UIPreferredContentSizeCategoryName", categoriaTexto,
         ]
         app.launch()
         addTeardownBlock { [app] in app?.terminate() }
@@ -118,6 +121,19 @@ final class DemoVideosUITests: XCTestCase {
         pausa(0.6)
     }
 
+    /// Con letra grande, lo que va debajo del campo (Enviar, el siguiente campo) queda bajo el teclado: se cierra
+    /// arrastrando hacia abajo a través del teclado (las pantallas usan `scrollDismissesKeyboard(.interactively)`).
+    private func cerrarTeclado() {
+        let teclado = app.keyboards.firstMatch
+        guard teclado.exists else { return }
+        let ventana = app.windows.firstMatch
+        let desde = ventana.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.32))
+        let hasta = ventana.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.97))
+        desde.press(forDuration: 0.1, thenDragTo: hasta, withVelocity: .slow, thenHoldForDuration: 0.2)
+        _ = teclado.waitForNonExistence(timeout: 4)
+        pausa(0.4)
+    }
+
     /// Arrastra el contenido `desplazamiento` puntos (positivo: hacia abajo de la pantalla), sin inercia.
     private func arrastrar(_ desplazamiento: CGFloat) {
         let ventana = app.windows.firstMatch.frame
@@ -131,8 +147,9 @@ final class DemoVideosUITests: XCTestCase {
         pausa(0.5)
     }
 
-    /// Desplaza hasta que el elemento quede entero entre la barra de navegación y la de pestañas.
-    private func mostrar(_ identificador: String, haciaAtras: Bool = false) {
+    /// Desplaza hasta que el elemento quede entero entre la barra de navegación y la de pestañas. Con `comienzo`,
+    /// basta que su comienzo quede arriba a la vista: un texto largo con letra grande mide más que la pantalla.
+    private func mostrar(_ identificador: String, haciaAtras: Bool = false, comienzo: Bool = false) {
         let objetivo = elemento(identificador)
         for _ in 0..<6 {
             let contenido = app.scrollViews.firstMatch.frame
@@ -141,8 +158,14 @@ final class DemoVideosUITests: XCTestCase {
             let paso = abajo - arriba - 60
             if objetivo.exists {
                 let marco = objetivo.frame
-                if marco.minY >= arriba, marco.maxY <= abajo, objetivo.isHittable { return }
-                arrastrar(max(-paso, min(paso, marco.midY - (arriba + abajo) / 2)))
+                if comienzo {
+                    if marco.minY >= arriba, marco.minY <= arriba + 200 { return }
+                } else if marco.minY >= arriba, marco.maxY <= abajo, objetivo.isHittable {
+                    return
+                }
+                let deseado = comienzo ? marco.minY - (arriba + 40) : marco.midY - (arriba + abajo) / 2
+                if abs(deseado) < 20 { return }
+                arrastrar(max(-paso, min(paso, deseado)))
             } else {
                 arrastrar(haciaAtras ? -paso : paso)
             }
@@ -162,20 +185,20 @@ final class DemoVideosUITests: XCTestCase {
             return
         }
         nota("La app pide un servidor HTTPS. Aquí es el backend de este repositorio, arrancado en el mismo Mac.")
+        mostrar("campo-origen")
         escribir(origenServidor, en: elemento("campo-origen"), descripcion: "Escribe la dirección del servidor")
+        cerrarTeclado()
+        mostrar("campo-clave")
         escribir(claveServidor, en: elemento("campo-clave"), descripcion: "Escribe la clave de acceso", comprobar: false)
         app.typeText("\n")
-        if !app.keyboards.firstMatch.waitForNonExistence(timeout: 4) {
-            // La pantalla cierra el teclado al arrastrar hacia abajo (`scrollDismissesKeyboard(.interactively)`).
-            arrastrar(-220)
-            _ = app.keyboards.firstMatch.waitForNonExistence(timeout: 4)
-        }
+        if !app.keyboards.firstMatch.waitForNonExistence(timeout: 4) { cerrarTeclado() }
         let recordar = elemento("interruptor-recordar")
         mostrar("interruptor-recordar")
         accion("Activa «Recordar la clave en el Llavero»")
         pausa(0.6)
-        recordar.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
-        if (recordar.value as? String) != "1" { recordar.switches.firstMatch.tap() }
+        // Con letra grande el interruptor puede ir debajo de su texto: se toca el control de dentro si lo hay.
+        let control = recordar.switches.firstMatch
+        if control.exists { control.tap() } else { recordar.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap() }
         pausa(0.8)
         mostrar("boton-aplicar")
         tocar(elemento("boton-aplicar"), "Toca «Aplicar»")
@@ -192,6 +215,8 @@ final class DemoVideosUITests: XCTestCase {
         let campo = elemento("campo-pregunta")
         mostrar("campo-pregunta")
         escribir(texto, en: campo)
+        cerrarTeclado()
+        mostrar("boton-enviar")
         tocar(elemento("boton-enviar"), "Toca «Enviar»")
         _ = app.keyboards.firstMatch.waitForNonExistence(timeout: 5)
         let respuesta = elemento("texto-respuesta")
@@ -213,11 +238,13 @@ final class DemoVideosUITests: XCTestCase {
             pantalla(partes.joined(separator: " "))
         }
         XCTAssertTrue(respuesta.exists || viaje.exists || error.exists, "No llegó ninguna respuesta a «\(texto)»")
-        pausa(4.0)
-        arrastrar(260)
+        // El resultado va encima del campo: se sube a su comienzo y se recorre, que con letra grande mide varias pantallas.
+        mostrar(viaje.exists ? "aviso-viaje" : (error.exists ? "mensaje-error" : "texto-respuesta"), haciaAtras: true, comienzo: true)
+        pausa(3.5)
+        arrastrar(380)
         pausa(2.5)
-        arrastrar(-600)
-        pausa(1.0)
+        arrastrar(380)
+        pausa(2.5)
     }
 
     // MARK: Recorridos

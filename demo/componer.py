@@ -147,6 +147,7 @@ def subtitulos(datos: dict, total: float) -> str:
         estilo("Persona", 42, "&H00FFD38F", 262, negrita=True),
         estilo("Nota", 33, "&H00C8C8C8", 390, cursiva=True),
         estilo("Voz", 42, "&H00FFFFFF", 560),
+        estilo("Pie", 27, "&H00A0A0A0", 1000),
         "\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n",
     ]
 
@@ -159,6 +160,9 @@ def subtitulos(datos: dict, total: float) -> str:
     fijo = inicio  # el título y la plataforma se ven todo el video
     dialogo(fijo, fijo + total, "Titulo", escapar(datos.get("titulo", "")))
     dialogo(fijo, fijo + total, "Plataforma", escapar(f"{plataforma}{fecha}"))
+    if datos.get("configuracion"):
+        # Cómo estaba configurado el teléfono (letra, contraste), a la vista todo el video.
+        dialogo(fijo, fijo + total, "Pie", escapar(datos["configuracion"]))
 
     def franja(tipos: tuple[str, ...], maximo: float) -> None:
         """Una línea a la vez: cada una dura hasta la siguiente de la misma franja o `maximo` segundos."""

@@ -13,7 +13,11 @@
 #   <id>.xcodebuild.log  la salida de xcodebuild
 # Termina con código 1 si algún recorrido falló; los demás se graban igual.
 #
-# Variables: SIMULADOR_NOMBRE (iPhone 17), IOS_MAYOR_ESPERADO (26), DEMO_ORIGEN, DEMO_CLAVE, DEMO_CA, DEMO_SOLO.
+# Variables: SIMULADOR_NOMBRE (iPhone 17), IOS_MAYOR_ESPERADO (26), DEMO_ORIGEN, DEMO_CLAVE, DEMO_CA, DEMO_SOLO y
+# DEMO_TAMANO_TEXTO (por defecto accessibility-large: el 2.º de los 5 tamaños de accesibilidad de iOS).
+#
+# El Simulator se configura como lo tendría una persona con baja visión: letra grande de accesibilidad y contraste
+# aumentado. Es configuración del teléfono, no de la app: la app es la misma de la rama.
 set -euo pipefail
 
 raiz="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -46,6 +50,27 @@ echo "Simulator: $nombre ($udid)"
 xcrun simctl boot "$udid" 2>/dev/null || true
 xcrun simctl bootstatus "$udid" -b
 xcrun simctl ui "$udid" appearance light || true
+
+# Letra grande y contraste aumentado en todo el Simulator; la app recibe además el mismo tamaño al arrancar.
+tamano="${DEMO_TAMANO_TEXTO:-accessibility-large}"
+case "$tamano" in
+  accessibility-medium) categoria=UICTContentSizeCategoryAccessibilityM; nombre_tamano="1.º" ;;
+  accessibility-large) categoria=UICTContentSizeCategoryAccessibilityL; nombre_tamano="2.º" ;;
+  accessibility-extra-large) categoria=UICTContentSizeCategoryAccessibilityXL; nombre_tamano="3.º" ;;
+  accessibility-extra-extra-large) categoria=UICTContentSizeCategoryAccessibilityXXL; nombre_tamano="4.º" ;;
+  accessibility-extra-extra-extra-large) categoria=UICTContentSizeCategoryAccessibilityXXXL; nombre_tamano="5.º" ;;
+  *) echo "DEMO_TAMANO_TEXTO no es un tamaño de accesibilidad: $tamano"; exit 2 ;;
+esac
+xcrun simctl ui "$udid" content_size "$tamano" || echo "simctl no cambió el tamaño del sistema; la app lo recibe igual al arrancar."
+echo "Tamaño de letra del Simulator: $(xcrun simctl ui "$udid" content_size 2>&1)"
+configuracion="Letra grande de accesibilidad (${nombre_tamano} de 5 tamaños)"
+if xcrun simctl ui "$udid" increase_contrast enabled && xcrun simctl ui "$udid" increase_contrast 2>&1 | grep -qw enabled; then
+  configuracion="$configuracion y contraste aumentado"
+  echo "Contraste aumentado: activado"
+else
+  echo "No se pudo activar el contraste aumentado: el video no lo dirá."
+fi
+configuracion="$configuracion en el iPhone"
 xcrun simctl status_bar "$udid" override --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 || true
 if [ -n "${DEMO_CA:-}" ]; then
   xcrun simctl keychain "$udid" add-root-cert "$DEMO_CA"
@@ -94,6 +119,7 @@ grabar() {
   fi
   local estado=0
   TEST_RUNNER_DEMO_EVENTOS="$eventos" TEST_RUNNER_DEMO_ORIGEN="$origen" TEST_RUNNER_DEMO_CLAVE="$clave" \
+  TEST_RUNNER_DEMO_CATEGORIA_TEXTO="$categoria" \
     xcodebuild test-without-building "${comunes[@]}" -parallel-testing-enabled NO \
       -only-testing:"TransMiVozUITests/DemoVideosUITests/$prueba" \
       -resultBundlePath "$salida/$id.xcresult" > "$salida/$id.xcodebuild.log" 2>&1 || estado=$?
@@ -104,15 +130,15 @@ grabar() {
   if [ ! -s "$eventos" ]; then
     grep -o 'DEMO_EVENTO {.*}' "$salida/$id.xcodebuild.log" | sed 's/^DEMO_EVENTO //' | awk '!visto[$0]++' > "$eventos" || true
   fi
-  python3 - "$salida/$id.json" "$id" "$inicio" "$estado" <<'EOF'
+  python3 - "$salida/$id.json" "$id" "$inicio" "$estado" "$configuracion" <<'EOF'
 import json, sys
-ruta, ident, inicio, estado = sys.argv[1], sys.argv[2], float(sys.argv[3]), int(sys.argv[4])
+ruta, ident, inicio, estado, configuracion = sys.argv[1], sys.argv[2], float(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
 from datetime import datetime, timedelta, timezone
 # Hora de Bogotá (UTC-5, sin horario de verano): de ella dependen el horario y el calendario que da el servidor.
 bogota = timezone(timedelta(hours=-5))
 json.dump({
     "id": ident, "plataforma": "iphone", "video": f"{ident}.mov", "eventos": f"{ident}.eventos.jsonl",
-    "grabacion_epoch": inicio, "estado": estado,
+    "grabacion_epoch": inicio, "estado": estado, "configuracion": configuracion,
     "grabado": datetime.fromtimestamp(inicio, bogota).isoformat(timespec="seconds"),
 }, open(ruta, "w"), ensure_ascii=False, indent=2)
 EOF

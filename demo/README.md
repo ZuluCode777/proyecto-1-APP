@@ -83,7 +83,11 @@ Simulado, y los subtítulos lo dicen:
   antes de cargar la app (`demo/web/navegador/`): la voz como subtítulo, el
   indicador de toques y, solo en Ceguera total, el reconocimiento simulado.
 - **iPhone** (`demo/ios/grabar.sh` y `demo/ios/DemoVideosUITests.swift`): el
-  Simulator «iPhone 17» de Xcode 26.6. La clase de demostración se copia a
+  Simulator «iPhone 17» de Xcode 26.6, configurado como lo tendría una persona
+  con baja visión: letra grande de accesibilidad (el 2.º de los 5 tamaños de
+  accesibilidad de iOS; se cambia con `DEMO_TAMANO_TEXTO`) y contraste
+  aumentado. Es configuración del teléfono: la app es la misma. El pie del panel
+  de subtítulos dice qué configuración tenía cada grabación. La clase de demostración se copia a
   `ios/TransMiVozUITests/` solo en el runner, antes de compilar, y no cambia la
   suite de pruebas del proyecto. Cada recorrido se graba con
   `xcrun simctl io … recordVideo`.
