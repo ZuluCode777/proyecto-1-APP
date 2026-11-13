@@ -11,11 +11,8 @@
  * Para cambiar el límite basta con corregir `TELEFONOS_FERIA`.
  */
 
-/**
- * Teléfonos que consultan al asistente a la vez: 5 iPhones con la app y 1 web en
- * Safari. PROVISIONAL: el responsable aún no confirma la cifra (criterio 1 de #75).
- */
-export const TELEFONOS_FERIA = 6
+/** Teléfonos que consultan al asistente a la vez: 3 en total, cifra confirmada por el responsable (criterio 1 de #75). */
+export const TELEFONOS_FERIA = 3
 
 /**
  * Segundos que dura como mínimo un turno de una persona en un teléfono: dictar una

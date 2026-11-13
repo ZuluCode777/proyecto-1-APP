@@ -171,7 +171,7 @@ La clave de acceso a la app se lee del archivo, dentro del proceso. No va en
 argumentos ni en el resultado, que no guarda cabeceras, cookies ni la dirección
 con credenciales, y un error de lectura o de red no nombra el archivo ni el
 servidor. Manda una petición cada 3,5 s (17 por minuto, muy por debajo del límite de
-la ruta, que desde EA-28 es de 90). Tras un 429 espera el `Retry-After`, pero nunca menos de 3,5 s. Cada 20
+la ruta, que desde EA-28 es de 45). Tras un 429 espera el `Retry-After`, pero nunca menos de 3,5 s. Cada 20
 frases comprueba que el modelo siga alcanzable y, si deja de estarlo, se detiene
 sin puntuar lo que falta. Una corrida tarda unos 7 minutos y gasta casi todo el
 cupo por minuto del cliente, así que no se corre mientras otra persona prueba la
@@ -462,7 +462,7 @@ estado real.
    - Timeout de 4,5 s en cada consulta.
    - Un 429, un fallo de red, un plazo vencido, un estado HTTP de error, un 200
      que no es de Ollama o un modelo sin cargar hacen que respondan las reglas.
-   - La ruta limita 90 peticiones por minuto por cliente (20 hasta EA-28; una sola clave compartida). **No hay tope propio
+   - La ruta limita 45 peticiones por minuto por cliente (20 hasta EA-28; una sola clave compartida). **No hay tope propio
      de concurrencia hacia Ollama, ni se midió con carga.** No hay gasto que
      topar; el único límite real es el hardware del equipo.
 5. **Cambio de `engine`.** No cambia, porque el esquema ya acepta `reglas` y `ollama`
@@ -504,7 +504,7 @@ estado real.
   tres corridas seguidas en un mismo build; se repiten al cambiar el build, el
   modelo o el prompt.
 - **Cupo de la ruta.** Una corrida usa 17 de las peticiones por minuto del
-  cliente (de 20 cuando se midió; 90 desde EA-28), y el cupo es compartido con quien pruebe la app desde el mismo origen.
+  cliente (de 20 cuando se midió; 45 desde EA-28), y el cupo es compartido con quien pruebe la app desde el mismo origen.
 - **No se midió** el motor `modelo` aislado (falta el token), concurrencia, el
   caso del equipo apagado ni otro modelo distinto de `qwen2.5:3b`. Esta
   evaluación no compara modelos alternativos.

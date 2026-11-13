@@ -183,12 +183,12 @@ una sola y `claveCliente()` no cambió.
 
 ```
 límite = ceil( TELEFONOS_FERIA × (60 / SEGUNDOS_POR_TURNO) × MARGEN )
-       = ceil( 6 × (60 / 6) × 1,5 ) = ceil( 6 × 10 × 1,5 ) = 90 por minuto
+       = ceil( 3 × (60 / 6) × 1,5 ) = ceil( 3 × 10 × 1,5 ) = 45 por minuto
 ```
 
 | Entrada | Valor | De dónde sale |
 | --- | --- | --- |
-| `TELEFONOS_FERIA` | 6 | 5 iPhones con la app + 1 web en Safari. **Provisional: el responsable aún no confirma la cifra.** Es el único número que hay que cambiar si cambia el conteo. |
+| `TELEFONOS_FERIA` | 3 | Teléfonos en total que usan el asistente en la feria. **Confirmado por el responsable.** Es el único número que hay que cambiar si cambia el conteo. |
 | `SEGUNDOS_POR_TURNO` | 6 | Turno mínimo de una persona: dictar una frase corta, revisar y tocar «Enviar». 6 s son 10 consultas por minuto por teléfono. Supuesto de ritmo humano, no medido; lo acotan los hechos del cliente de abajo. |
 | `MARGEN` | 1,5 | Pruebas del equipo durante la feria, `/diagnostico` (4 POST por pasada) y más teléfonos de los previstos. |
 
@@ -208,13 +208,12 @@ límite = ceil( TELEFONOS_FERIA × (60 / SEGUNDOS_POR_TURNO) × MARGEN )
 - Solo cuentan los `POST /api/agent`. `GET /api/agent` (diagnóstico) y
   `/api/planificador` (cubos propios de 30 y 60 por minuto) no gastan esta cuota.
 
-**Resultado:** pico total 6 × 10 = 60 por minuto; el límite de 90 deja un 50 %
-de holgura y alcanza hasta para 9 teléfonos al ritmo máximo a la vez. Si el
-conteo definitivo es otro, se cambia `TELEFONOS_FERIA`: con 8 teléfonos serían
-120; con 10, 150.
+**Resultado:** pico total 3 × 10 = 30 por minuto; el límite de 45 deja un 50 %
+de holgura y alcanza hasta para 4 teléfonos al ritmo máximo a la vez. Si el
+conteo cambia, se cambia `TELEFONOS_FERIA`: con 5 teléfonos serían 75; con 6, 90.
 
 **Memoria.** El contador guarda una entrada por clave con `{ count, reset }`:
-con una sola clave son un objeto y dos números, vengan 20 o 90 peticiones. El
+con una sola clave son un objeto y dos números, vengan 20 o 45 peticiones. El
 límite no cambia el tamaño del mapa, y `maximoClaves` (5000) sigue acotando la
 cardinalidad. El coste por petición es el de siempre (cuerpo de hasta 4 000
 bytes, leído por stream).
@@ -224,10 +223,10 @@ iPhone y web muestran su mensaje de espera accesible sin cambios. No se tocó
 `ios/`: ninguna prueba ni texto de la app fija el número.
 
 **No verificado en esta rama:** el comportamiento en Render Free (memoria de
-512 MB, p50/p95 con una ráfaga sostenida al nuevo límite, y la petición 91 con
+512 MB, p50/p95 con una ráfaga sostenida al nuevo límite, y la petición 46 con
 429) se mide tras el despliegue, con el procedimiento de #40
 (`scripts/medir-render.mjs`, modo `limite`). Con Ollama activo en la feria
-(EA-27) 90 por minuto pueden llegar al modelo: no hay tope propio de
+(EA-27) 45 por minuto pueden llegar al modelo: no hay tope propio de
 concurrencia hacia Ollama, y el plazo de 4,5 s cae a reglas.
 
 ### Redirecciones sin fuga de credenciales
@@ -284,7 +283,7 @@ nuevas:
 - `lib/ea10-endpoint.test.ts`: endpoint real → 413 (cuerpo grande), 400 (error de
   lectura, sin 500), 200 válido, 429 + `Retry-After`, **`LIMITE_ASISTENTE` + 1
   peticiones autenticadas con `x-forwarded-for` y `x-real-ip` distintos en cada
-  una: las primeras `LIMITE_ASISTENTE` (20 en EA-10, 90 desde EA-28) no son 429 y
+  una: las primeras `LIMITE_ASISTENTE` (20 en EA-10, 45 desde EA-28) no son 429 y
   la siguiente sí, con `Retry-After`** (las cabeceras
   falsificadas no compran cuota propia), y la **guardia Basic en GET y POST**
   (producción sin clave/vacía/whitespace → 503; con clave: 401 sin
