@@ -49,10 +49,14 @@ const ESCALA = 2
 
 mkdirSync(SALIDA, { recursive: true })
 
+// La grabación de Playwright toma los cuadros en píxeles CSS: con `deviceScaleFactor: 2` saldrían a 390 × 844 con
+// relleno gris. Con la densidad fijada en el propio Chrome y sin viewport emulado, los cuadros salen a 780 × 1688.
 const browser = await chromium.launch({
   channel: process.env.DEMO_CANAL ?? "chrome",
   headless: true,
   args: [
+    `--force-device-scale-factor=${ESCALA}`,
+    `--window-size=${ANCHO},${ALTO}`,
     "--use-fake-ui-for-media-stream",
     "--use-fake-device-for-media-stream",
     ...(CAMARA ? [`--use-file-for-fake-video-capture=${CAMARA}`] : []),
@@ -83,9 +87,7 @@ async function grabarUno(id, titulo, recorrido, { reconocimientoSimulado = false
   const carpetaTemporal = join(SALIDA, `.tmp-${id}`)
   rmSync(carpetaTemporal, { recursive: true, force: true })
   const contexto = await browser.newContext({
-    viewport: { width: ANCHO, height: ALTO },
-    deviceScaleFactor: ESCALA,
-    isMobile: true,
+    viewport: null,
     hasTouch: true,
     locale: "es-CO",
     timezoneId: "America/Bogota",
@@ -334,7 +336,9 @@ await grabar("web-02-asistente-rutas", "Asistente: ayuda, recorrido y horario", 
   await d.esperarVoz(6000)
   d.nota("Sin micrófono en la grabación: las preguntas se escriben. El asistente usa las reglas (sin Ollama).")
   await preguntarAlAsistente(d, "¿qué puedes hacer?")
-  await d.mostrar(d.page.getByRole("heading", { name: /Lo que hice/ }))
+  // La ayuda no tiene pasos; si los hubiera, se muestran.
+  const pasos = d.page.getByRole("heading", { name: /Lo que hice/ })
+  if (await pasos.isVisible().catch(() => false)) await d.mostrar(pasos)
   await d.esperarVoz(12_000)
   await d.pausa(1000)
 
@@ -416,7 +420,7 @@ await grabar("web-05-mapa-y-gps", "Mapa y GPS auditivo", async (d) => {
   await d.page.getByRole("button", { name: "Repetir indicación" }).waitFor({ timeout: 30_000 })
   await d.pausa(3000)
   await d.esperarVoz(10_000)
-  await d.mostrar(d.page.getByRole("heading", { name: "Estaciones cercanas" }))
+  await d.mostrar(d.page.getByText("Estaciones cercanas", { exact: true }).first())
   await d.pausa(1500)
   await d.tocar(d.boton("Oriéntame por voz", true).first(), "Toca «Oriéntame por voz»")
   await d.esperarVoz(16_000)
