@@ -426,11 +426,8 @@ final class CentroAvisosTests: XCTestCase {
         XCTAssertEqual(TextoAvisos.detalle(aviso, vigente: false), "Advertencia · Escenario simulado · Ya no vigente")
     }
 
-    func testSinFuenteConectadaLaListaNuncaDiceQueNoHayIncidentes() {
-        let sinFuente = TextoAvisos.sinFuenteOficial.joined(separator: " ")
-        XCTAssertTrue(sinFuente.contains("No hay ninguna fuente de anuncios oficiales conectada"))
-        XCTAssertTrue(sinFuente.contains("no se puede saber"))
-        for texto in TextoAvisos.sinFuenteOficial + TextoAvisos.sinAvisosPropios {
+    func testSinAvisosPropiosLaListaNuncaDiceQueNoHayIncidentes() {
+        for texto in TextoAvisos.sinAvisosPropios {
             let minusculas = texto.lowercased()
             XCTAssertFalse(minusculas.contains("no hay incidentes") || minusculas.contains("sin incidentes"), texto)
         }
@@ -439,7 +436,7 @@ final class CentroAvisosTests: XCTestCase {
     }
 
     func testCadaFraseDeLaPantallaEsUnaSolaOracion() {
-        let frases = TextoAvisos.sinFuenteOficial + TextoAvisos.sinAvisosPropios + TextoAvisos.escenarioSimulado
+        let frases = TextoAvisos.sinAvisosPropios + TextoAvisos.escenarioSimulado
             + TextoAvisos.notaSilencio + [TextoAvisos.avisoModoPruebas, TextoAvisos.yaNoVigente]
         for frase in frases {
             XCTAssertEqual(frase.filter { $0 == "." }.count, 1, "una oración por Text: \(frase)")
