@@ -60,7 +60,7 @@ constexpr uint32_t kPlazoMaxMs = 0x7FFFFFFFu;
 constexpr size_t kLongitudLineaMax = 64;       // más larga: línea inválida
 constexpr size_t kMaxBytesPorLlamada = 256;    // más que esto en una oferta: se descarta entera
 constexpr size_t kLongitudOrdenMax = 64;       // capacidad suficiente para salida_pendiente
-constexpr uint8_t kPasosConfiguracion = 5;     // stop, rango, latencia, guardar, start (la recuperación ligera solo envía stop y start)
+constexpr uint8_t kPasosConfiguracion = 5;     // stop, rango, latencia, guardar, start (la recuperación ligera envía stop, getRange y start)
 constexpr uint8_t kIndiceVentanaMax = 127;     // detRangeCfg: índices 0..127
 constexpr uint16_t kPasoVentanaMm = 150;       // 15 cm por índice
 
@@ -129,6 +129,7 @@ struct Contadores {
   uint32_t errores_radar = 0;     // líneas `Error`
   uint32_t timeouts_orden = 0;
   uint32_t reinicios = 0;
+  uint32_t rangos_distintos = 0;  // recuperaciones ligeras que cayeron a la completa: getRange no coincidió
 };
 
 class Interprete {
@@ -146,16 +147,25 @@ class Interprete {
   // saveCfg y sensorStart; una escritura de la flash del radar por arranque.
   //
   // `completa = false` (toda recuperación posterior): si el radar ya guardó
-  // NUESTRA configuración en esta ejecución (saveCfg con Done), solo envía
-  // sensorStop y sensorStart. Un SEN0395 que se reinició conserva su flash, y
+  // NUESTRA configuración en esta ejecución (saveCfg con Done), envía sensorStop,
+  // getRange y sensorStart. Un SEN0395 que se reinició conserva su flash, y
   // tocar el rango o la latencia otra vez, aunque sean los mismos valores, deja
   // «parámetros sin guardar» y el radar rechaza sensorStart (`new parameter
   // isn't save, can't startSensor`, banco 12/11, R2). Así la recuperación no
-  // escribe su flash y sí lo vuelve a arrancar. Si el radar no llegó a guardar la
-  // configuración (el arranque falló antes de saveCfg), o si una recuperación así
-  // acaba en `Error`, la siguiente repite la secuencia completa con saveCfg:
-  // es la única forma de arrancarlo, y cada escritura tiene detrás un intento
-  // fallido y la espera creciente del supervisor.
+  // escribe su flash y sí lo vuelve a arrancar.
+  //
+  // getRange, con el radar ya parado, comprueba que su flash aún tiene NUESTRA
+  // ventana (`Response 0.000 0.300`, en metros, con tolerancia de 10 mm): si se
+  // cambió el módulo con la placa encendida, o la flash perdió la configuración
+  // (un bajón de tensión al guardar), arrancarlo así lo dejaría con otros ajustes
+  // y sin avisar. Si la ventana no coincide, la respuesta es ilegible o llega
+  // `Error`, el mismo intento sigue con la secuencia completa y saveCfg. NO se
+  // comprueba la latencia: getLatency contradice la documentación (R5). Si el
+  // arranque no llegó a guardar la configuración (falló antes de saveCfg), o si
+  // una recuperación ligera acaba en `Error`, la siguiente repite la secuencia
+  // completa con saveCfg: es la única forma de arrancarlo, y cada escritura tiene
+  // detrás un intento fallido o una ventana distinta y la espera creciente del
+  // supervisor. Una ventana que coincide no escribe nada.
   //
   // Purga: tras un fallo por timeout, o si se reinicia con una orden en vuelo,
   // la primera orden nueva se retiene hasta que pasen respuesta_max_ms desde que
@@ -258,8 +268,9 @@ class Interprete {
   // El radar tiene guardada en su flash NUESTRA configuración (saveCfg con Done en
   // esta ejecución): una recuperación puede arrancarlo sin tocar sus parámetros.
   bool guardada_ = false;
-  bool ligera_ = false;     // la secuencia en curso solo envía sensorStop y sensorStart
+  bool ligera_ = false;     // la secuencia en curso envía sensorStop, getRange y sensorStart
   bool parado_ya_ = false;  // sensorStop contestó `sensor stopped already`: su Error no es un fallo
+  bool rango_ok_ = false;   // getRange devolvió la ventana configurada (solo en la recuperación ligera)
   Fase fase_ = Fase::Configurando;
   MotivoFallo motivo_ = MotivoFallo::Ninguno;
   uint8_t paso_ = 0;

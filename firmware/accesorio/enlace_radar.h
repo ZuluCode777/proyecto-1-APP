@@ -78,12 +78,14 @@ void atender_uart(sen0395::Interprete& radar, PuertoUart& uart, EstadoUart& esta
 // contador vuelve a cero cuando el radar lleva kSanoReseteaMs sano.
 //
 // Cada reintento hace reiniciar(false). Si el radar ya guardó nuestra
-// configuración en esta ejecución, eso envía solo sensorStop y sensorStart: un
+// configuración en esta ejecución, eso envía sensorStop, getRange y sensorStart: un
 // SEN0395 que se reinició conserva su flash, y volver a mandar rango y latencia
 // (aunque sean los mismos valores) lo deja con «parámetros sin guardar» y rechaza
 // sensorStart (banco 12/11, R2). Así ni un radar mudo ni uno que se reinicia sin
-// parar gastan su flash, y sí vuelve a arrancar. Si no la guardó, o si el intento
-// ligero acabó en Error, el siguiente repite la secuencia completa con saveCfg
+// parar gastan su flash, y sí vuelve a arrancar. getRange comprueba que su flash
+// sigue teniendo NUESTRA ventana: si no coincide, el mismo intento sigue con la
+// secuencia completa. Si no la guardó, o si el intento ligero acabó en Error, el
+// siguiente repite la secuencia completa con saveCfg
 // (ver Interprete::reiniciar). Antes de reiniciar vacía la UART: lo que haya
 // quedado no vale como observación ni como respuesta a la orden nueva. El
 // intérprete exige luego su estabilización (>= 5 s) y una trama íntegra NUEVA. Si

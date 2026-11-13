@@ -52,7 +52,8 @@ done
 for requerido in ble_gatts_notify_custom BLE_GATT_CHR_F_READ_AUTHEN BLE_GATT_CHR_F_NOTIFY_INDICATE_AUTHEN \
                  store_write_cb BLE_GAP_EVENT_PASSKEY_ACTION BLE_GAP_EVENT_REPEAT_PAIRING sm_oob_data_flag \
                  al_pedir_clave leer_medicion atender_notificacion atender_borrado persistir_vinculo \
-                 nimble_port_get_dflt_eventq ble_npl_eventq_put atender_uart BLE_OWN_ADDR_PUBLIC registrar_enlace; do
+                 nimble_port_get_dflt_eventq ble_npl_eventq_put atender_uart BLE_OWN_ADDR_PUBLIC registrar_enlace \
+                 'BLE: se pide la clave en el teléfono' 'BLE: se pide la clave y se rechaza'; do
   if ! grep -qF -- "$requerido" <<<"$sin_comentarios"; then
     echo "FALLO: accesorio.ino ya no usa '$requerido'" >&2
     fallo=1
@@ -70,8 +71,13 @@ if grep -E 'connect\.status[^;]*\)[[:space:]]*return' <<<"$sin_comentarios" >/de
   echo "FALLO: accesorio.ino descarta BLE_GAP_EVENT_CONNECT por su status; ver registrar_enlace" >&2
   fallo=1
 fi
-# La clave de enlace nunca sale por el puerto serie.
-if grep -E 'Serial[0-9]?\.print[^;]*(kClave|VISIONARIA_CLAVE_ENLACE|clave\))' <<<"$sin_comentarios" >/dev/null; then
+# La clave de enlace nunca sale por el puerto serie. Se miran las llamadas enteras
+# (también las partidas en varias líneas) con las cadenas de texto vaciadas: un `;` dentro
+# de un mensaje no corta la búsqueda, y el texto de un aviso no cuenta, pero cualquier
+# nombre de la clave (`clave`, `kClave`, `VISIONARIA_CLAVE_ENLACE`) o el campo `passkey` del
+# evento o del `ble_sm_io` como argumento de un Serial.print* es un fallo (banco, 10c).
+sin_cadenas="$(sed -E 's/"([^"\\]|\\.)*"/""/g' <<<"$sin_comentarios" | tr '\n' ' ')"
+if grep -E 'Serial[0-9]?\.print[^;]*([^[:alnum:]_]|^)(kClave|clave|VISIONARIA_CLAVE_ENLACE)([^[:alnum:]_]|$)|Serial[0-9]?\.print[^;]*passkey' <<<"$sin_cadenas" >/dev/null; then
   echo "FALLO: accesorio.ino imprime la clave de enlace" >&2
   fallo=1
 fi

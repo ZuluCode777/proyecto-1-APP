@@ -35,7 +35,7 @@ Los módulos portátiles **no incluyen `Arduino.h`**, no usan excepciones ni mem
 
 ```bash
 make -C firmware probar                 # EA-04 (1054) y EA-11 (626): vectores y parser
-bash firmware/pruebas/probar_enlace.sh  # EA-12: enlace (21 228), política BLE (585), radar (1 019 149) y guardia del sketch
+bash firmware/pruebas/probar_enlace.sh  # EA-12: enlace (21 228), política BLE (585), radar (1 019 837) y guardia del sketch
 python3 firmware/herramientas/analizar_captura.py --autoprueba
 ```
 

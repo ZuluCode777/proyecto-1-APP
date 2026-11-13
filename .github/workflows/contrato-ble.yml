@@ -157,6 +157,11 @@ jobs:
                 echo "::error::el binario contiene un mensaje que imprime la clave de emparejamiento"; exit 1
               fi
             done
+            # La petición de clave deja huella en el serie (banco, paso 10c); sin clave
+            # ni cadena de formato (los mensajes de arriba no deben estar).
+            if [ "$con_ble" = 1 ] && ! binario_contiene "$elf" "BLE: se pide la clave en el"; then
+              echo "::error::falta el aviso de la petición de clave en el binario"; exit 1
+            fi
             if [ -n "$clave_ejecucion" ] && binario_contiene "$elf" "$clave_ejecucion"; then
               echo "::error::la clave de la ejecución aparece como texto en el binario"; exit 1
             fi
