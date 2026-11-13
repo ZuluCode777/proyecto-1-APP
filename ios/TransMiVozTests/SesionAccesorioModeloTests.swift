@@ -354,6 +354,9 @@ final class SesionAccesorioModeloTests: XCTestCase {
         XCTAssertEqual(banco.modelo.estado, .desconectado)
         XCTAssertEqual(banco.salida.dicho, dicho, "lo del enlace anterior no se dice")
 
+        // «Desconectado» es un aviso: ya terminó cuando el accesorio vuelve. Si siguiera sonando, la rutina de la
+        // reconexión no lo cortaría (EA-20; lo cubre `AvisosSesionTests`).
+        banco.salida.terminarSola()
         banco.sincronizar(escenario)
         XCTAssertEqual(banco.modelo.estado, .sinDeteccion)
         XCTAssertEqual(Array(banco.salida.dicho.suffix(2)), ["Accesorio conectado. Calibrando. Aún sin avisos.", "Sin detección en este momento."])
