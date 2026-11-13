@@ -2,7 +2,8 @@ import Foundation
 
 extension AccionAgente {
     /// Límite de esta app ante la acción: la web abre una pantalla que el iPhone todavía no tiene. La app
-    /// no navega a ninguna; lo dice y deja el texto del servidor. `nil` si la acción no abre nada.
+    /// no navega sola; lo dice y deja el texto del servidor. `nil` si la acción no abre nada o si el iPhone
+    /// tiene la misma pantalla (la ruta ofrece su detalle con el mapa, EA-25).
     var limite: String? {
         switch self {
         case .ninguna:
@@ -12,9 +13,9 @@ extension AccionAgente {
         case .gps:
             return "Esta app no usa tu ubicación ni tiene GPS auditivo: no se abre ninguna guía. Para un viaje, escribe desde qué estación sales y a cuál vas."
         case .busqueda:
-            return "Esta app todavía no tiene la pantalla de la estación ni mapa: la respuesta escrita es todo lo disponible."
+            return "Esta app no tiene una pantalla propia de la estación."
         case .ruta:
-            return "Esta app todavía no tiene la pantalla de la ruta ni mapa: la respuesta escrita es todo lo disponible."
+            return nil
         case .viaje:
             return "Esta app no da órdenes de abordaje. El servidor devolvió un recorrido; se muestra solo como información, sin verificar paradas ni sentido."
         }

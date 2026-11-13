@@ -9,8 +9,8 @@ protocol ClienteAgente: Sendable {
     func consultar(texto: String) async throws -> RespuestaAgente
 }
 
-/// Rechaza toda redirección: `Authorization` no debe viajar a otro origen.
-private final class SinRedirecciones: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+/// Rechaza toda redirección: `Authorization` no debe viajar a otro origen. Lo comparte `ClientePlanificadorHTTP`.
+final class SinRedirecciones: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
@@ -107,19 +107,25 @@ struct ClienteAgenteHTTP: ClienteAgente {
 
     /// Traduce estado HTTP + cuerpo a respuesta o error. Función pura, probada sin red.
     static func interpretar(estado: Int, cabeceras: HTTPURLResponse?, datos: Data) throws -> RespuestaAgente {
-        switch estado {
-        case 200:
+        if estado == 200 {
             guard datos.count <= maximoBytesRespuesta else { throw ErrorConsulta.respuestaIncompatible }
             return try RespuestaAgente.decodificar(datos)
-        case 300...399: throw ErrorConsulta.redireccionNoPermitida
-        case 400: throw ErrorConsulta.peticionRechazada
-        case 401: throw ErrorConsulta.noAutorizado
-        case 413: throw ErrorConsulta.mensajeRechazadoPorLargo
+        }
+        throw errorDeEstado(estado, cabeceras: cabeceras)
+    }
+
+    /// Error de un estado HTTP que no es 200. Lo comparte `ClientePlanificadorHTTP`.
+    static func errorDeEstado(_ estado: Int, cabeceras: HTTPURLResponse?) -> ErrorConsulta {
+        switch estado {
+        case 300...399: return .redireccionNoPermitida
+        case 400: return .peticionRechazada
+        case 401: return .noAutorizado
+        case 413: return .mensajeRechazadoPorLargo
         case 429:
-            throw ErrorConsulta.demasiadasPeticiones(
+            return .demasiadasPeticiones(
                 reintentarEnSegundos: segundosDeReintento(cabeceras?.value(forHTTPHeaderField: "Retry-After")))
-        case 503: throw ErrorConsulta.servicioNoDisponible
-        default: throw ErrorConsulta.errorDelServidor(estado: estado)
+        case 503: return .servicioNoDisponible
+        default: return .errorDelServidor(estado: estado)
         }
     }
 
@@ -143,7 +149,7 @@ struct ClienteAgenteHTTP: ClienteAgente {
 }
 
 /// Ejecuta `operacion` con un plazo total. Al vencer cancela la operación y lanza `tiempoAgotado`.
-private func conPlazo<T: Sendable>(_ segundos: TimeInterval, _ operacion: @escaping @Sendable () async throws -> T) async throws -> T {
+func conPlazo<T: Sendable>(_ segundos: TimeInterval, _ operacion: @escaping @Sendable () async throws -> T) async throws -> T {
     try await withThrowingTaskGroup(of: T.self) { grupo in
         grupo.addTask { try await operacion() }
         grupo.addTask {

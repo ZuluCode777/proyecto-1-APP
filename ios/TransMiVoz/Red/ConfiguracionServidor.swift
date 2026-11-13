@@ -33,6 +33,11 @@ struct OrigenServidor: Equatable, Hashable, Sendable {
 
     private static let rutaAgente = "/api/agent"
 
+    /// URL de `POST /api/planificador`: el mismo origen validado que `urlAgente`, con otro endpoint.
+    var urlPlanificador: URL {
+        urlAgente.deletingLastPathComponent().appendingPathComponent("planificador")
+    }
+
     private init(esquemaYAutoridad: String, urlAgente: URL) {
         self.esquemaYAutoridad = esquemaYAutoridad
         self.urlAgente = urlAgente

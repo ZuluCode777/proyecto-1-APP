@@ -1,9 +1,9 @@
 import Foundation
 
-/// Textos de la pantalla Favoritas. El estado vacío dice lo que la app hace HOY: al llegar la pantalla de rutas, se actualiza aquí.
+/// Textos de la pantalla Favoritas. El estado vacío dice lo que la app hace HOY.
 enum TextoFavoritas {
     static let vacio = "Aún no tienes rutas favoritas."
-    static let comoSeAgregan = "Las rutas se guardan desde el detalle de cada ruta, con el botón «Guardar». En el iPhone esa pantalla todavía no está disponible, así que por ahora esta lista seguirá vacía."
+    static let comoSeAgregan = "Las rutas se guardan desde el detalle de cada ruta, con el botón «Guardar». Busca una ruta con el botón de rutas de la pestaña Consulta."
     static let dondeSeGuardan = "Las favoritas se guardan solo en este iPhone: no se envían al servidor ni se comparten con la web."
 
     static func resumen(_ cantidad: Int) -> String {

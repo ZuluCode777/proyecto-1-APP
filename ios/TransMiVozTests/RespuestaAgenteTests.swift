@@ -118,7 +118,9 @@ final class RespuestaAgenteTests: XCTestCase {
 
     func testCadaAccionQueLaWebAbreDeclaraSuLimiteSinOrdenarNada() {
         XCTAssertNil(AccionAgente.ninguna.limite)
-        let conPantalla: [AccionAgente] = [.frecuentes, .gps, .busqueda(estacion: "A"), .ruta(codigo: "Z99"), .viaje([])]
+        // La ruta ya no tiene límite: su detalle con el mapa existe en el iPhone (EA-25).
+        XCTAssertNil(AccionAgente.ruta(codigo: "Z99").limite)
+        let conPantalla: [AccionAgente] = [.frecuentes, .gps, .busqueda(estacion: "A"), .viaje([])]
         for accion in conPantalla {
             let limite = accion.limite ?? ""
             XCTAssertTrue(limite.hasPrefix("Esta app"), "\(accion)")
