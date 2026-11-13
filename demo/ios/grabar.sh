@@ -75,14 +75,23 @@ grabar() {
   rm -f "$eventos" "$video"
   rm -rf "$salida/$id.xcresult"
   echo "▶ $id ($prueba)"
+  local antes
+  antes="$(python3 -c 'import time; print(time.time())')"
   xcrun simctl io "$udid" recordVideo --codec=h264 --force "$video" > "$registro" 2>&1 &
   local pid=$!
+  # La hora de inicio alinea los subtítulos: es cuando simctl avisa que empezó a grabar.
+  local inicio=""
   for _ in $(seq 1 100); do
-    grep -q "Recording started" "$registro" 2>/dev/null && break
+    if grep -q "Recording started" "$registro" 2>/dev/null; then
+      inicio="$(python3 -c 'import time; print(time.time())')"
+      break
+    fi
     sleep 0.1
   done
-  local inicio
-  inicio="$(python3 -c 'import time; print(time.time())')"
+  if [ -z "$inicio" ]; then
+    echo "  (simctl no avisó del inicio; se estima un segundo después de lanzarlo)"
+    inicio="$(python3 -c "print($antes + 1.0)")"
+  fi
   local estado=0
   TEST_RUNNER_DEMO_EVENTOS="$eventos" TEST_RUNNER_DEMO_ORIGEN="$origen" TEST_RUNNER_DEMO_CLAVE="$clave" \
     xcodebuild test-without-building "${comunes[@]}" -parallel-testing-enabled NO \
