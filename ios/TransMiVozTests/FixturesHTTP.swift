@@ -60,7 +60,15 @@ enum FixturesHTTP {
     """#
     // FIXTURE-FIN
 
+    // FIXTURE-INICIO aclaracionDeOrigen
+    static let aclaracionDeOrigen = #"""
+    {"reply":"Entendí que sales de Estación Ejemplo Norte. ¿A qué estación quieres ir?","action":"none","steps":[],"engine":"reglas","aclaracion":{"origen":"Estación Ejemplo Norte"}}
+    """#
+    // FIXTURE-FIN
+
     // Respuestas que el cliente debe RECHAZAR (no son del contrato).
+    static let aclaracionSinOrigen = #"{"reply":"x","action":"none","steps":[],"engine":"reglas","aclaracion":{}}"#
+    static let aclaracionOrigenVacio = #"{"reply":"x","action":"none","steps":[],"engine":"reglas","aclaracion":{"origen":"  "}}"#
     static let catalogoSinAntiguedad = #"{"reply":"x","action":"route","routeCode":"Z99","steps":[],"engine":"reglas","catalogo":{"procedencia":"Datos de prueba."}}"#
     static let catalogoProcedenciaVacia = #"{"reply":"x","action":"route","routeCode":"Z99","steps":[],"engine":"reglas","catalogo":{"procedencia":"  ","antiguo":false}}"#
     static let accionDesconocida = #"{"reply":"x","action":"teleport","steps":[],"engine":"reglas"}"#

@@ -1472,3 +1472,148 @@ final class TransMiVozAjustesTextoGrandeUITests: AjustesUITestCase {
         XCTAssertTrue(elemento("favorita-Z99").exists)
     }
 }
+
+/// Dictado y aclaración entre turnos de la pantalla Consulta (EA-19) con un reconocedor SINTÉTICO que la pantalla rotula
+/// (`-PRUEBAS_UI_DICTADO_SINTETICO`, solo en depuración): sin micrófono, audio ni reconocimiento real, y con el cliente
+/// HTTP simulado. Demuestra la interfaz (estados del botón, permisos, texto como alternativa, origen pendiente, cancelar);
+/// no prueba el micrófono, el español, la privacidad del servicio de Apple ni VoiceOver real.
+final class TransMiVozDictadoUITests: XCTestCase {
+    private var app: XCUIApplication!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    private func lanzar(_ extra: [String] = [], categoria: String = "UICTContentSizeCategoryL") {
+        app = XCUIApplication()
+        app.launchArguments += ["-PRUEBAS_UI_SIMULADAS", "-PRUEBAS_UI_DICTADO_SINTETICO"] + extra + [
+            "-AppleLanguages", "(es)", "-AppleLocale", "es_CO", "-UIPreferredContentSizeCategoryName", categoria,
+        ]
+        app.launch()
+        addTeardownBlock { [app] in app?.terminate() }
+        let pestana = app.tabBars.buttons["Consulta"]
+        XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña Consulta")
+        pestana.tap()
+        esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña Consulta")
+    }
+
+    private func elemento(_ identificador: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identificador).firstMatch
+    }
+
+    /// Toca el botón del dictado, espera a que escuche, lo toca otra vez y espera a que el campo muestre lo dictado.
+    private func dictar(_ frase: String, file: StaticString = #filePath, line: UInt = #line) {
+        exponer("boton-dictar", en: app, file: file, line: line)
+        let boton = elemento("boton-dictar")
+        boton.tap()
+        esperar(boton, "value == %@", "escuchando", "El dictado no pasó a escuchar", file: file, line: line)
+        boton.tap()
+        esperar(elemento("campo-pregunta"), "value == %@", frase, "El campo no muestra lo dictado «\(frase)»", file: file, line: line)
+    }
+
+    private func enviar(file: StaticString = #filePath, line: UInt = #line) {
+        exponer("boton-enviar", en: app, file: file, line: line)
+        elemento("boton-enviar").tap()
+    }
+
+    private func esperarTexto(_ etiqueta: String, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(app.staticTexts[etiqueta].waitForExistence(timeout: 10), "No apareció «\(etiqueta)»", file: file, line: line)
+    }
+
+    func testDictarDosTurnosConservaElOrigenYLoCompletaConElDestino() throws {
+        lanzar()
+        XCTAssertTrue(elemento("aviso-dictado-sintetico").waitForExistence(timeout: 10), "debe rotular el dictado sintético")
+        XCTAssertEqual(
+            elemento("estado-dictado").label, "Dictado con el servicio de Apple, en español de Colombia: el audio se envía a Apple.",
+            "antes de pedir nada dice adónde va el audio")
+        XCTAssertEqual(elemento("boton-dictar").value as? String, "detenido")
+
+        dictar("salgo desde Ricaurte")
+        enviar()
+        esperarTexto("[SIMULADO] Entendí que sales de Ricaurte. ¿A qué estación quieres ir?")
+        XCTAssertTrue(elemento("origen-pendiente").waitForExistence(timeout: 10))
+        XCTAssertEqual(elemento("origen-pendiente").label, "Origen pendiente: Ricaurte")
+
+        dictar("Calle 72")
+        enviar()
+        esperarTexto("[SIMULADO] Viaje de Ricaurte a Calle 72, con el origen que dijiste antes.")
+        XCTAssertTrue(elemento("origen-pendiente").waitForNonExistence(timeout: 10), "un viaje completo no deja origen pendiente")
+    }
+
+    func testOlvidarElOrigenPendienteLoBorra() throws {
+        lanzar()
+        dictar("salgo desde Ricaurte")
+        enviar()
+        XCTAssertTrue(elemento("origen-pendiente").waitForExistence(timeout: 10))
+        exponer("boton-olvidar-origen", en: app)
+        elemento("boton-olvidar-origen").tap()
+        XCTAssertTrue(elemento("origen-pendiente").waitForNonExistence(timeout: 10))
+    }
+
+    func testCancelarUnaConsultaConOrigenPendienteBorraLaAclaracion() throws {
+        lanzar(["-PRUEBAS_UI_DICTADO_GUION", "salgo desde Ricaurte|lento"])
+        dictar("salgo desde Ricaurte")
+        enviar()
+        XCTAssertTrue(elemento("origen-pendiente").waitForExistence(timeout: 10))
+        dictar("lento")
+        enviar()
+        exponer("boton-cancelar", en: app)
+        elemento("boton-cancelar").tap()
+        esperarTexto("Consulta cancelada")
+        XCTAssertTrue(elemento("origen-pendiente").waitForNonExistence(timeout: 10), "cancelar borra la aclaración")
+        XCTAssertFalse(app.staticTexts["[SIMULADO] Respuesta lenta que no debería verse."].exists)
+    }
+
+    func testSinPermisoElTextoSigueDisponibleYElBotonDiceQueNoHayPermiso() throws {
+        lanzar(["-PRUEBAS_UI_DICTADO_PERMISO_DENEGADO"])
+        exponer("boton-dictar", en: app)
+        elemento("boton-dictar").tap()
+        esperar(elemento("boton-dictar"), "value == %@", "sin permiso", "El botón no dijo que falta el permiso")
+        XCTAssertEqual(
+            elemento("estado-dictado").label, "Sin permiso de micrófono o de reconocimiento de voz. Escribe tu pregunta.")
+        XCTAssertTrue(elemento("boton-abrir-ajustes-dictado").exists, "ofrece abrir Ajustes")
+
+        // Como `preguntar` de las otras pruebas: sin resultado en pantalla todo cabe a la vista y «Enviar» queda sobre el teclado.
+        let campo = elemento("campo-pregunta")
+        XCTAssertTrue(campo.waitForExistence(timeout: 10))
+        escribir("hola", en: campo, app: app)
+        elemento("boton-enviar").tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "El teclado debe cerrarse al enviar")
+        esperarTexto("[SIMULADO] Respuesta de prueba para: hola")
+    }
+
+    func testAuditoriaAccesibilidadDictadoEscuchando() throws {
+        lanzar()
+        exponer("boton-dictar", en: app)
+        let boton = elemento("boton-dictar")
+        boton.tap()
+        esperar(boton, "value == %@", "escuchando", "El dictado no pasó a escuchar")
+        XCTAssertEqual(boton.label, "Detener dictado")
+        try auditar(app, "consulta-dictado-escuchando", testCase: self)
+        boton.tap()  // suelta la captura sintética
+    }
+
+    func testAuditoriaAccesibilidadDictadoSinPermiso() throws {
+        lanzar(["-PRUEBAS_UI_DICTADO_PERMISO_DENEGADO"])
+        exponer("boton-dictar", en: app)
+        elemento("boton-dictar").tap()
+        XCTAssertTrue(elemento("boton-abrir-ajustes-dictado").waitForExistence(timeout: 10))
+        try auditar(app, "consulta-dictado-sin-permiso", testCase: self)
+    }
+
+    /// Con el texto más grande el botón y su mensaje siguen a la vista y el botón no baja de 44 pt. Sin la auditoría completa
+    /// de las otras pruebas de texto grande: la de la consulta usa fases diferidas muy ajustadas y esta fila no las toca.
+    func testDictadoConTextoMuyGrande() throws {
+        lanzar(categoria: "UICTContentSizeCategoryAccessibilityXXXL")
+        // Primero el botón de enviar, que la prueba de texto grande de la consulta ya alcanza; el dictado queda justo debajo.
+        exponer("boton-enviar", en: app)
+        exponer("boton-dictar", en: app)
+        let boton = elemento("boton-dictar")
+        XCTAssertTrue(boton.isHittable, "El botón del dictado no es tocable con el texto más grande")
+        XCTAssertGreaterThanOrEqual(boton.frame.height, 44, "El botón del dictado mide menos de 44 pt de alto")
+        XCTAssertGreaterThanOrEqual(boton.frame.width, 44, "El botón del dictado mide menos de 44 pt de ancho")
+        exponer("estado-dictado", en: app, completo: false)
+        XCTAssertTrue(elemento("estado-dictado").isHittable || elemento("estado-dictado").exists)
+        XCTAssertTrue(elemento("estado-dictado").label.hasPrefix("Dictado con el servicio de Apple"))
+    }
+}
