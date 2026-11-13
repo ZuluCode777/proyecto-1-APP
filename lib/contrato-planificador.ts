@@ -46,10 +46,12 @@ export const MAX_LUGARES = 500
 /**
  * Peticiones por minuto, con clave propia de cada tipo (no comparten cuota con `/api/agent`). `claveCliente()` es hoy una
  * sola clave para todos, así que son un techo GLOBAL. Planear recorre pares de rutas (`planTrip`, `planTripCandidato`,
- * `routesAlongBoth`): ~45 ms de CPU síncrona por petición medidos en la revisión, que detienen el bucle de eventos
- * compartido con `/api/agent` y la web; las otras tres operaciones cuestan menos de 1 ms.
+ * `routesAlongBoth`): unos 60 ms de CPU síncrona por petición (45,6 de promedio y 70,3 de pico medidos en la revisión),
+ * que detienen el bucle de eventos compartido con `/api/agent` y la web; las otras tres operaciones cuestan menos de 1 ms.
+ * 30 planes por minuto son unos 1,8 s de CPU por minuto (~3 % del bucle) y dejan margen a varias personas que planean a
+ * la vez en la feria.
  */
-export const LIMITE_PLANEAR = 10
+export const LIMITE_PLANEAR = 30
 export const LIMITE_CONSULTA = 60
 export const VENTANA_LIMITE_MS = 60_000
 
