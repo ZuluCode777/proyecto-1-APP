@@ -4,8 +4,10 @@ import UIKit
 /// Lupa de la cámara: imagen en vivo ampliada, con filtros de color y congelado. Solo amplía la imagen: no
 /// reconoce ni describe nada de lo que aparece en ella, y la imagen no se guarda ni se envía.
 ///
-/// La cámara solo está abierta con la pestaña a la vista y la escena activa: al salir o al pasar a segundo plano
-/// el modelo la suelta. `avisoSintetico` rotula la cámara sintética de las pruebas de interfaz.
+/// La cámara solo está abierta con la pantalla a la vista y la escena activa: al salir de ella (volver a Inicio o cambiar
+/// de pestaña) o al pasar a segundo plano el modelo la suelta. Se abre desde la baldosa «Lupa» de Inicio, que la empuja en
+/// su pila de navegación: por eso la pantalla no trae su propia `NavigationStack`. `avisoSintetico` rotula la cámara
+/// sintética de las pruebas de interfaz.
 struct LupaVista: View {
     let modelo: LupaModelo
     var avisoSintetico = false
@@ -15,32 +17,30 @@ struct LupaVista: View {
     @AccessibilityFocusState private var foco: ZonaFocoLupa?
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                // Pila ansiosa, como en el resto de pantallas: todos los elementos existen siempre, con su marco real.
-                VStack(alignment: .leading, spacing: 16) {
-                    if avisoSintetico {
-                        Label(TextoLupa.fuenteSintetica, systemImage: "testtube.2")
-                            .font(.footnote)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("aviso-camara-sintetica")
-                    }
-                    contenido
+        ScrollView {
+            // Pila ansiosa, como en el resto de pantallas: todos los elementos existen siempre, con su marco real.
+            VStack(alignment: .leading, spacing: 16) {
+                if avisoSintetico {
+                    Label(TextoLupa.fuenteSintetica, systemImage: "testtube.2")
+                        .font(.footnote)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("aviso-camara-sintetica")
                 }
-                .padding(16)
+                contenido
             }
-            .navigationTitle("Lupa")
-            .navigationBarTitleDisplayMode(.inline)
-            .bordeInferiorLegible()
-            // La explicación del permiso va en una hoja propia, justo antes del aviso del sistema (EA-02 §8).
-            .sheet(isPresented: Binding(
-                get: { modelo.estado == .permisoPorPedir },
-                set: { if !$0 { modelo.posponerPermiso() } })
-            ) {
-                HojaPermisoCamara(
-                    continuar: { modelo.continuarTrasExplicacion() },
-                    ahoraNo: { modelo.posponerPermiso() })
-            }
+            .padding(16)
+        }
+        .navigationTitle("Lupa")
+        .navigationBarTitleDisplayMode(.inline)
+        .bordeInferiorLegible()
+        // La explicación del permiso va en una hoja propia, justo antes del aviso del sistema (EA-02 §8).
+        .sheet(isPresented: Binding(
+            get: { modelo.estado == .permisoPorPedir },
+            set: { if !$0 { modelo.posponerPermiso() } })
+        ) {
+            HojaPermisoCamara(
+                continuar: { modelo.continuarTrasExplicacion() },
+                ahoraNo: { modelo.posponerPermiso() })
         }
         .onAppear {
             modelo.escenaActiva(faseEscena == .active)
