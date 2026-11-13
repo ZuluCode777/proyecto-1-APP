@@ -2141,3 +2141,245 @@ final class TransMiVozRutasTextoGrandeUITests: RutasUITestCase {
         comprobarEnteros(["estacion-3"], en: app)
     }
 }
+
+// MARK: Servidor REAL (Render) en un iPhone real: #51 rutas y viaje, #52 anuncios, #45 aclaración del origen
+
+/// Comprobaciones automáticas contra el servidor REAL de Render, solo en un iPhone real con el origen y la clave ya guardados
+/// en Ajustes (la clave nunca se escribe, se lee ni se registra aquí: estas pruebas no abren Ajustes). La app se lanza SIN
+/// argumentos `-PRUEBAS_UI_*`: clientes reales y ajustes guardados; solo se fijan el idioma y el tamaño de texto normal, como en
+/// las demás pruebas. Sin `PRUEBAS_RENDER_REAL=1` en el entorno de las pruebas (`TEST_RUNNER_PRUEBAS_RENDER_REAL=1` al invocar
+/// `xcodebuild`) se omiten, así que no cambian la CI ni las ejecuciones del Simulator. Cada respuesta del servidor espera hasta
+/// 30 s; si llega el plazo vencido (Render puede estar arrancando), se pulsa «Reintentar» una sola vez. Los identificadores y los
+/// pasos son los de las pruebas simuladas (`TransMiVozRutasUITests`, `TransMiVozAnunciosUITests`, `TransMiVozDictadoUITests`).
+/// No prueban el accesorio (#46).
+final class TransMiVozRenderRealUITests: XCTestCase {
+    private var app: XCUIApplication!
+    private let espera: TimeInterval = 30
+
+    override func setUpWithError() throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["PRUEBAS_RENDER_REAL"] == "1",
+            "Solo en un iPhone real con la clave guardada en Ajustes")
+        continueAfterFailure = false
+        app = XCUIApplication()
+        // Ningún argumento -PRUEBAS_UI_*: clientes reales y los ajustes que haya guardados.
+        app.launchArguments += [
+            "-AppleLanguages", "(es)", "-AppleLocale", "es_CO", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
+        ]
+        app.launch()
+        addTeardownBlock { [app] in app?.terminate() }
+    }
+
+    // MARK: Ayudas
+
+    private func elemento(_ identificador: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identificador).firstMatch
+    }
+
+    private func abrirPestana(_ nombre: String, file: StaticString = #filePath, line: UInt = #line) {
+        let pestana = app.tabBars.buttons[nombre]
+        XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña \(nombre)", file: file, line: line)
+        pestana.tap()
+        esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña \(nombre)", file: file, line: line)
+    }
+
+    /// Botón de retroceso de la barra de navegación (el primero de la barra).
+    private func volver() {
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+    }
+
+    /// Los mensajes de error o de estado que la app muestra ahora (consulta, rutas y anuncios), para que un fallo diga qué
+    /// respondió el servidor. Nunca incluye ajustes: no se abre esa pestaña.
+    private func mensajesVisibles() -> String {
+        let textos = ["mensaje-error", "mensaje-error-rutas", "anuncios-mensaje-0", "anuncios-mensaje-1"].compactMap { identificador -> String? in
+            let encontrado = elemento(identificador)
+            return encontrado.exists ? encontrado.label : nil
+        }
+        return textos.isEmpty ? "ninguno" : textos.joined(separator: " | ")
+    }
+
+    private func hayPlazoVencido() -> Bool {
+        app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "no respondió a tiempo")).firstMatch.exists
+    }
+
+    private func botonReintentar() -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label == %@", "Reintentar")).firstMatch
+    }
+
+    /// Espera hasta 30 s a que se cumpla `listo`. Si antes aparece el plazo vencido («El servidor no respondió a tiempo.», Render
+    /// puede estar arrancando), pulsa «Reintentar» UNA sola vez y espera otros 30 s por la nueva respuesta. Cualquier otro error
+    /// del servidor no se reintenta: la espera sigue hasta agotarse y el fallo dice qué mensaje se veía.
+    @discardableResult
+    private func esperarRespuesta(_ descripcion: String, file: StaticString = #filePath, line: UInt = #line, listo: () -> Bool) -> Bool {
+        var reintentado = false
+        var limite = Date().addingTimeInterval(espera)
+        while Date() < limite {
+            if listo() { return true }
+            if !reintentado, hayPlazoVencido() {
+                let boton = botonReintentar()
+                if boton.exists {
+                    boton.tap()
+                    reintentado = true
+                    limite = Date().addingTimeInterval(espera)
+                }
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        XCTFail(
+            "No llegó \(descripcion) en \(Int(espera)) s\(reintentado ? " (ya se pulsó «Reintentar» una vez)" : ""). Mensajes a la vista: \(mensajesVisibles())",
+            file: file, line: line)
+        return false
+    }
+
+    /// Baja la pantalla, con tope, hasta que exista el elemento (las estaciones van en un LazyVStack: no existen hasta llegar cerca).
+    private func bajarHasta(_ identificador: String, gestos maximo: Int = 12) -> Bool {
+        let objetivo = elemento(identificador)
+        let contenido = app.scrollViews.firstMatch.frame
+        let arriba = max(app.navigationBars.firstMatch.frame.maxY, contenido.minY)
+        let abajo = min(app.tabBars.firstMatch.frame.minY, contenido.maxY)
+        var gestos = 0
+        while !objetivo.exists && gestos < maximo {
+            arrastrarContenido(abajo - arriba - 40, en: app, arriba: arriba, abajo: abajo)
+            gestos += 1
+        }
+        return objetivo.exists
+    }
+
+    /// Abre la lista de lugares del selector, filtra por el nombre, elige la primera coincidencia y espera a que el selector cambie.
+    private func elegirLugarDelServidor(_ selector: String, _ nombre: String, file: StaticString = #filePath, line: UInt = #line) {
+        exponer(selector, en: app, file: file, line: line)
+        let fila = elemento(selector)
+        let antes = fila.label
+        fila.tap()
+        let filtro = elemento("filtro-lugares")
+        XCTAssertTrue(filtro.waitForExistence(timeout: 10), "No se abrió la lista de lugares de «\(selector)»", file: file, line: line)
+        escribir(nombre, en: filtro, app: app, file: file, line: line)
+        let lugar = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH 'lugar-' AND label CONTAINS[c] %@", nombre)).firstMatch
+        XCTAssertTrue(lugar.waitForExistence(timeout: 10), "El servidor no ofrece un lugar que contenga «\(nombre)»", file: file, line: line)
+        lugar.tap()
+        XCTAssertTrue(fila.waitForExistence(timeout: 10), "No volvió al viaje tras elegir «\(nombre)»", file: file, line: line)
+        esperar(fila, "label != %@", antes, "El selector no cambió tras elegir «\(nombre)»", file: file, line: line)
+    }
+
+    /// Escribe la pregunta en el campo de la consulta y la envía; enviar cierra el teclado.
+    private func enviarEscrito(_ texto: String, en campo: XCUIElement) {
+        escribir(texto, en: campo, app: app)
+        elemento("boton-enviar").tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "El teclado debe cerrarse al enviar")
+    }
+
+    /// Enviar conserva la pregunta en el campo: para el segundo turno se borra antes de escribir. Un toque a la derecha de la
+    /// primera línea deja el cursor al final del texto y las teclas de borrar lo vacían.
+    private func borrarPregunta(en campo: XCUIElement) {
+        esperar(campo, "isHittable == %@", true, "El campo no es tocable")
+        let actual = (campo.value as? String) ?? ""
+        campo.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.2)).tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10), "El teclado no apareció")
+        campo.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: actual.count + 5))
+        if !actual.isEmpty { esperar(campo, "NOT (value CONTAINS %@)", actual, "El campo no se vació") }
+    }
+
+    // MARK: #51: rutas, detalle y viaje con el servidor real
+
+    /// Consulta ▸ rutas ▸ buscar «Ricaurte» ▸ al menos una ruta ▸ abrir la primera ▸ su lista de estaciones ▸ volver; después el
+    /// viaje de «Ricaurte» a «Calle 72» muestra un estado de resultado (el servidor decide cuál; la app no lo recalcula).
+    func testRutasDeRicaurteSuDetalleYUnViajeACalle72() throws {
+        abrirPestana("Consulta")
+        let enlace = elemento("enlace-rutas")
+        XCTAssertTrue(enlace.waitForExistence(timeout: 10), "Consulta no ofrece el acceso a rutas")
+        enlace.tap()
+        let busqueda = elemento("campo-busqueda-rutas")
+        XCTAssertTrue(busqueda.waitForExistence(timeout: 10), "No se abrió la búsqueda de rutas")
+        escribir("Ricaurte", en: busqueda, app: app)
+        elemento("boton-buscar-rutas").tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "El teclado debe cerrarse al buscar")
+
+        // Las filas son «ruta-<código>»; «ruta-por-el-trazado-» y «ruta-candidata-» son del resultado del viaje.
+        let primera = app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH 'ruta-' AND NOT identifier BEGINSWITH 'ruta-por-el-trazado-' AND NOT identifier BEGINSWITH 'ruta-candidata-'"
+        )).firstMatch
+        esperarRespuesta("al menos una ruta para «Ricaurte»") { primera.exists }
+        let codigo = primera.identifier
+        exponer(codigo, en: app)
+        primera.tap()
+
+        let titulo = elemento("detalle-ruta-titulo")
+        esperarRespuesta("el detalle de la ruta \(codigo)") { titulo.exists }
+        XCTAssertFalse(titulo.label.isEmpty, "El detalle de la ruta \(codigo) no tiene título")
+        if !elemento("estacion-1").exists { _ = bajarHasta("estacion-1") }
+        XCTAssertTrue(
+            elemento("estacion-1").waitForExistence(timeout: 5), "El detalle de la ruta \(codigo) no lista estaciones («estacion-1»)")
+
+        volver()
+        XCTAssertTrue(elemento("campo-busqueda-rutas").waitForExistence(timeout: 10), "No volvió a la búsqueda de rutas")
+
+        // Con resultados a la vista, «enlace-viaje» puede quedar lejos: se vuelve a Consulta y se abre Rutas sin buscar,
+        // como en las pruebas simuladas.
+        volver()
+        XCTAssertTrue(elemento("enlace-rutas").waitForExistence(timeout: 10), "No volvió a la consulta")
+        elemento("enlace-rutas").tap()
+        XCTAssertTrue(elemento("campo-busqueda-rutas").waitForExistence(timeout: 10), "No se abrió la búsqueda de rutas por segunda vez")
+        exponer("enlace-viaje", en: app)
+        elemento("enlace-viaje").tap()
+        esperarRespuesta("la lista de lugares del viaje") { self.elemento("selector-origen").exists }
+
+        elegirLugarDelServidor("selector-origen", "Ricaurte")
+        elegirLugarDelServidor("selector-destino", "Calle 72")
+        exponer("boton-planear-viaje", en: app)
+        let planear = elemento("boton-planear-viaje")
+        XCTAssertTrue(planear.isEnabled, "con origen y destino se puede planear")
+        planear.tap()
+
+        let resultado = elemento("resultado-viaje-titulo")
+        esperarRespuesta("el resultado del viaje de Ricaurte a Calle 72") { resultado.exists }
+        XCTAssertFalse(resultado.label.isEmpty, "El resultado del viaje no tiene título")
+        XCTContext.runActivity(named: "Estado del viaje de Ricaurte a Calle 72: \(resultado.label)") { _ in }
+    }
+
+    // MARK: #52: anuncios con el servidor real
+
+    /// Avisos ▸ el estado de la fuente existe con texto y ningún mensaje de los anuncios afirma que no hay incidentes.
+    func testLosAnunciosDelServidorNoAfirmanQueNoHayIncidentes() throws {
+        abrirPestana("Avisos")
+        let estado = elemento("anuncios-estado")
+        XCTAssertTrue(estado.waitForExistence(timeout: espera), "La pestaña Avisos no muestra el estado de los anuncios")
+        // La sección pide los anuncios al aparecer: se espera a que termine la consulta y haya mensajes.
+        esperarRespuesta("el resultado de la consulta de anuncios") {
+            !self.elemento("anuncios-progreso").exists && self.elemento("anuncios-mensaje-0").exists
+        }
+        XCTAssertFalse(estado.label.isEmpty, "El estado de los anuncios no tiene texto")
+        let mensajes = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "anuncios-mensaje-")).allElementsBoundByIndex
+        for texto in [estado.label] + mensajes.map(\.label) {
+            for frase in ["sin incidentes", "no hay incidentes"] {
+                XCTAssertFalse(texto.localizedCaseInsensitiveContains(frase), "Un mensaje de los anuncios afirma «\(frase)»: \(texto)")
+            }
+        }
+        XCTContext.runActivity(named: "Estado de los anuncios: \(estado.label)") { _ in }
+    }
+
+    // MARK: #45: aclaración del origen, escrita (no dictada)
+
+    /// Consulta ▸ «Salgo desde Ricaurte» ▸ aparece el origen pendiente ▸ «Calle 72» ▸ llega una respuesta y el origen pendiente
+    /// desaparece.
+    func testLaAclaracionDelOrigenEscritaEnDosTurnosSeCompleta() throws {
+        abrirPestana("Consulta")
+        let campo = elemento("campo-pregunta")
+        XCTAssertTrue(campo.waitForExistence(timeout: 10), "No existe el campo de la pregunta")
+        enviarEscrito("Salgo desde Ricaurte", en: campo)
+
+        let pendiente = elemento("origen-pendiente")
+        esperarRespuesta("la aclaración «origen pendiente» tras «Salgo desde Ricaurte»") { pendiente.exists }
+        XCTAssertTrue(pendiente.label.localizedCaseInsensitiveContains("Ricaurte"), "El origen pendiente no dice Ricaurte: \(pendiente.label)")
+        let respuesta = elemento("texto-respuesta")
+        let primera = respuesta.exists ? respuesta.label : ""
+
+        borrarPregunta(en: campo)
+        enviarEscrito("Calle 72", en: campo)
+        esperarRespuesta("la respuesta al destino «Calle 72» y sin origen pendiente") {
+            !pendiente.exists && respuesta.exists && respuesta.label != primera
+        }
+        XCTAssertFalse(respuesta.label.isEmpty, "La respuesta al destino no tiene texto")
+        XCTContext.runActivity(named: "Respuesta al destino: \(respuesta.label)") { _ in }
+    }
+}
