@@ -22,6 +22,8 @@ enum ErrorConsulta: Error, Equatable, Sendable {
     case mensajeRechazadoPorLargo
     /// 400: el servidor no pudo leer la petición.
     case peticionRechazada
+    /// 404 del planificador: la ruta o el lugar pedidos ya no están en el catálogo del servidor.
+    case noEncontrado
     /// Sin conexión: red caída, host inalcanzable o sin datos móviles.
     case sinConexion
     case tiempoAgotado
@@ -54,6 +56,8 @@ enum ErrorConsulta: Error, Equatable, Sendable {
             return "El servidor rechazó el mensaje por largo (413)."
         case .peticionRechazada:
             return "El servidor no pudo leer la petición (400)."
+        case .noEncontrado:
+            return "El servidor no encontró lo que se pidió en su catálogo (404)."
         case .sinConexion:
             return "No hay conexión con el servidor."
         case .tiempoAgotado:
@@ -86,6 +90,8 @@ enum ErrorConsulta: Error, Equatable, Sendable {
             return "Espera y pulsa Reintentar."
         case .mensajeRechazadoPorLargo, .peticionRechazada:
             return "Acorta la pregunta y vuelve a enviar."
+        case .noEncontrado:
+            return "El catálogo pudo cambiar. Vuelve atrás y elígelo de nuevo."
         case .sinConexion:
             return "Revisa Wi-Fi o datos móviles y pulsa Reintentar. La sesión local sigue disponible."
         case .tiempoAgotado:
@@ -108,7 +114,7 @@ enum ErrorConsulta: Error, Equatable, Sendable {
              .respuestaIncompatible, .cancelada, .servicioNoDisponible:
             return true
         case .entradaInvalida, .servidorNoConfigurado, .noAutorizado, .mensajeRechazadoPorLargo,
-             .peticionRechazada, .conexionNoSegura, .redireccionNoPermitida:
+             .peticionRechazada, .noEncontrado, .conexionNoSegura, .redireccionNoPermitida:
             return false
         }
     }

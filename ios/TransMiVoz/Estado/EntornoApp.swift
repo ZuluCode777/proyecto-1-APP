@@ -5,7 +5,7 @@ import Foundation
 final class EntornoApp {
     let ajustes: AjustesServidorModelo
     let consulta: ConsultaModelo
-    /// Rutas favoritas, guardadas en este iPhone. La pantalla de rutas las agregará con `agregar`.
+    /// Rutas favoritas, guardadas en este iPhone. El detalle de una ruta las agrega y quita.
     let favoritas: FavoritasModelo
     /// Sesión SIMULADA: solo se muestra en las pruebas de interfaz (`modoPruebas`).
     let sesion: SesionLocalModelo
@@ -16,6 +16,8 @@ final class EntornoApp {
     private let monitorAudio: MonitorAudioSistema?
     /// Lupa de la cámara. En las pruebas de interfaz usa una cámara sintética rotulada.
     let lupa = EntornoApp.crearLupa()
+    /// Rutas, detalle y viaje entre dos lugares (EA-25): el cliente del planificador del servidor y las favoritas.
+    let serviciosRutas: ServiciosRutas
     /// `true` solo en las pruebas de interfaz (compilación de depuración).
     let modoPruebas: Bool
 
@@ -30,6 +32,18 @@ final class EntornoApp {
         self.accesorio = accesorio
         self.monitorAudio = monitorAudio
         self.modoPruebas = modoPruebas
+        #if DEBUG
+        // En las pruebas de interfaz el planificador es el simulado, rotulado, sin red.
+        let planificador: ClientePlanificador
+        if modoPruebas {
+            planificador = ClientePlanificadorSimulado()
+        } else {
+            planificador = ClientePlanificadorHTTP { await ajustes.configuracion }
+        }
+        #else
+        let planificador: ClientePlanificador = ClientePlanificadorHTTP { await ajustes.configuracion }
+        #endif
+        serviciosRutas = ServiciosRutas(cliente: planificador, favoritas: favoritas, modoPruebas: modoPruebas)
     }
 
     static func crear() -> EntornoApp {

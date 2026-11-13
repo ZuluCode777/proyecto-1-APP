@@ -88,6 +88,9 @@ struct ConsultaVista: View {
             }
             .navigationTitle("Consulta")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { EnlaceRutasConsulta() }
+            }
             .onChange(of: modelo.estado) { _, nuevo in
                 anunciar(nuevo)
             }
@@ -151,6 +154,25 @@ private struct BotonEscenario: View {
         .accessibilityValue(modelo.escenario.valorSelector)
         .accessibilityHint(modelo.escenario.pistaSelector)
         .accessibilityIdentifier("boton-escenario")
+    }
+}
+
+/// Acceso a la búsqueda de rutas y al viaje entre dos lugares (EA-25). Va en la barra de navegación, como el menú de
+/// Ajustes, y no dentro del contenido desplazable: ahí cambiaría hasta dónde se desplaza la pantalla con el texto más
+/// grande. Solo el icono es visible; su etiqueta para VoiceOver es el texto.
+private struct EnlaceRutasConsulta: View {
+    @Environment(\.serviciosRutas) private var servicios
+
+    var body: some View {
+        if let servicios {
+            NavigationLink {
+                RutasVista(servicios: servicios)
+            } label: {
+                Label(TextoRutas.titulo, systemImage: "map").labelStyle(.iconOnly)
+            }
+            .accessibilityHint("Busca rutas y planea un viaje entre dos lugares.")
+            .accessibilityIdentifier("enlace-rutas")
+        }
     }
 }
 
@@ -279,10 +301,47 @@ private struct RespuestaVista: View {
         case .ruta(let codigo): Text("Ruta: \(codigo)")
         case .ninguna, .frecuentes, .gps, .viaje: EmptyView()
         }
+        EnlaceDeAccion(accion: respuesta.accion)
         if let limite = respuesta.accion.limite {
             Text(limite)
                 .foregroundStyle(.textoSecundario)
                 .accessibilityIdentifier("limite-accion")
+        }
+    }
+
+    /// Lo que la web abre con esta acción y el iPhone también tiene (EA-25): el detalle de una ruta con su mapa, y las
+    /// rutas que pasan por una estación. Sin servicios de rutas en el entorno no se ofrece nada.
+    private struct EnlaceDeAccion: View {
+        let accion: AccionAgente
+        @Environment(\.serviciosRutas) private var servicios
+
+        var body: some View {
+            if let servicios {
+                switch accion {
+                case .ruta(let codigo):
+                    NavigationLink {
+                        DetalleRutaVista(servicios: servicios, codigo: codigo)
+                    } label: {
+                        Label("Ver la ruta \(codigo) y su mapa", systemImage: "map")
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .accessibilityIdentifier("enlace-ruta-detalle")
+                case .busqueda(let estacion):
+                    NavigationLink {
+                        RutasVista(servicios: servicios, consultaInicial: estacion)
+                    } label: {
+                        Label("Ver las rutas que pasan por la estación", systemImage: "list.bullet")
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .accessibilityIdentifier("enlace-rutas-estacion")
+                case .ninguna, .frecuentes, .gps, .viaje:
+                    EmptyView()
+                }
+            }
         }
     }
 

@@ -10,10 +10,10 @@ struct TransMiVozApp: App {
             if ProcessInfo.processInfo.arguments.contains("-PRUEBAS_UI_CONTRASTE_MALO") {
                 FixtureContrasteMalo()
             } else {
-                RaizVista(entorno: entorno)
+                RaizVista(entorno: entorno).environment(\.serviciosRutas, entorno.serviciosRutas)
             }
             #else
-            RaizVista(entorno: entorno)
+            RaizVista(entorno: entorno).environment(\.serviciosRutas, entorno.serviciosRutas)
             #endif
         }
     }
