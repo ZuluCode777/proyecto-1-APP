@@ -20,9 +20,13 @@ enum EstadoConsulta: Equatable, Sendable {
 @Observable
 final class ConsultaModelo {
     var texto = ""
+    /// Escenario de la PRÓXIMA consulta; el del resultado en pantalla es `escenarioEnviado`.
+    var escenario: EscenarioConsulta = .transporte
     private(set) var estado: EstadoConsulta = .inactiva
     /// Texto de la última consulta enviada, para «Reintentar».
     private(set) var ultimoTextoEnviado: String?
+    /// Escenario de la última consulta enviada: rotula su resultado y lo conserva «Reintentar».
+    private(set) var escenarioEnviado: EscenarioConsulta = .transporte
 
     @ObservationIgnored private let cliente: ClienteAgente
     @ObservationIgnored private var tarea: Task<Void, Never>?
@@ -35,7 +39,7 @@ final class ConsultaModelo {
     var estaEnviando: Bool { estado == .enviando }
 
     func enviar() {
-        switch EntradaConsulta.validar(texto) {
+        switch EntradaConsulta.validar(texto, maximo: escenario.maximoCaracteres) {
         case .failure(let error):
             // Una entrada inválida invalida también la consulta anterior: si no,
             // su respuesta tardía pisaría este error (el campo sigue activo y
@@ -50,6 +54,7 @@ final class ConsultaModelo {
     func reintentar() {
         guard let anterior = ultimoTextoEnviado else { return }
         texto = anterior
+        escenario = escenarioEnviado
         enviar()
     }
 
@@ -73,12 +78,20 @@ final class ConsultaModelo {
         let miGeneracion = generacion
         tarea?.cancel()
         ultimoTextoEnviado = limpio
+        let enviado = escenario
+        escenarioEnviado = enviado
         estado = .enviando
         tarea = Task { [cliente] in
             let resultado: EstadoConsulta
             do {
                 // Antes de publicarla, se retiran las órdenes de abordaje sin verificar.
-                resultado = .respuesta(try await cliente.consultar(texto: limpio).saneada())
+                let respuesta = try await cliente.consultar(texto: enviado.prefijo + limpio).saneada()
+                // En el escenario Metro el servidor solo informa (acción `none`): una ruta, una estación
+                // o un viaje de TransMilenio no se presentan como Metro.
+                guard enviado == .transporte || respuesta.accion == .ninguna else {
+                    throw ErrorConsulta.respuestaIncompatible
+                }
+                resultado = .respuesta(respuesta)
             } catch let error as ErrorConsulta {
                 resultado = .error(error)
             } catch is CancellationError {

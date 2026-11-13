@@ -89,7 +89,7 @@ enum ErrorConsulta: Error, Equatable, Sendable {
         case .sinConexion:
             return "Revisa Wi-Fi o datos móviles y pulsa Reintentar. La sesión local sigue disponible."
         case .tiempoAgotado:
-            return "Pulsa Reintentar. Si se repite, revisa la conexión."
+            return "El servidor puede estar arrancando. Espera unos segundos y pulsa Reintentar: tu pregunta se conserva. Si se repite, revisa la conexión."
         case .conexionNoSegura:
             return "Revisa la dirección del servidor y la fecha del iPhone."
         case .redireccionNoPermitida:

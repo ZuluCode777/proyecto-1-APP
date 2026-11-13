@@ -42,7 +42,27 @@ enum FixturesHTTP {
     """#
     // FIXTURE-FIN
 
+    // FIXTURE-INICIO rutaCopiaGuardada
+    static let rutaCopiaGuardada = #"""
+    {"reply":"La ruta Z99 es de prueba. Datos de una copia guardada de prueba.","action":"route","routeCode":"Z99","steps":[],"engine":"reglas","catalogo":{"procedencia":"Datos de una copia guardada de prueba.","antiguo":true}}
+    """#
+    // FIXTURE-FIN
+
+    // FIXTURE-INICIO viajeConProcedencia
+    static let viajeConProcedencia = #"""
+    {"reply":"Texto de viaje de prueba. Datos de prueba consultados el 1/1/2026.","action":"trip","trip":[{"routeCode":"Z99","board":"Estación Ejemplo Norte","alight":"Estación Ejemplo Sur","stationsRidden":3,"conteoVerificado":true}],"steps":[],"engine":"reglas","catalogo":{"procedencia":"Datos de prueba consultados el 1/1/2026.","antiguo":false}}
+    """#
+    // FIXTURE-FIN
+
+    // FIXTURE-INICIO metro
+    static let metro = #"""
+    {"reply":"Metro de prueba, Línea 9: en construcción y sin servicio comercial.","action":"none","steps":[{"label":"Consulté el catálogo de prueba del Metro","detail":"Información de consulta"}],"engine":"reglas"}
+    """#
+    // FIXTURE-FIN
+
     // Respuestas que el cliente debe RECHAZAR (no son del contrato).
+    static let catalogoSinAntiguedad = #"{"reply":"x","action":"route","routeCode":"Z99","steps":[],"engine":"reglas","catalogo":{"procedencia":"Datos de prueba."}}"#
+    static let catalogoProcedenciaVacia = #"{"reply":"x","action":"route","routeCode":"Z99","steps":[],"engine":"reglas","catalogo":{"procedencia":"  ","antiguo":false}}"#
     static let accionDesconocida = #"{"reply":"x","action":"teleport","steps":[],"engine":"reglas"}"#
     static let sinMotor = #"{"reply":"x","action":"none","steps":[]}"#
     static let motorDesconocido = #"{"reply":"x","action":"none","steps":[],"engine":"gpt"}"#

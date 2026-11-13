@@ -68,6 +68,15 @@ enum AccionAgente: Equatable, Sendable {
     case viaje([TramoViaje])
 }
 
+/// Procedencia del catálogo de una respuesta con datos (`catalogo` en el contrato). La frase y la
+/// antigüedad las decide el servidor: la app no calcula fechas ni vigencias.
+struct ProcedenciaCatalogo: Decodable, Equatable, Sendable {
+    /// Frase del servidor con la fuente y la fecha de los datos.
+    let procedencia: String
+    /// El servidor respondió con la copia guardada o con datos en vivo ya vencidos.
+    let antiguo: Bool
+}
+
 /// Respuesta de `POST /api/agent` (`AgentReplySchema` de `lib/local-agent.ts`).
 ///
 /// El decodificador es estricto en la frontera: una acción desconocida, un
@@ -79,11 +88,14 @@ struct RespuestaAgente: Decodable, Equatable, Sendable {
     static let maximoCaracteresTexto = 10_000
     static let maximoPasos = 50
     static let maximoTramos = 20
+    static let maximoCaracteresProcedencia = 500
 
     let texto: String
     let pasos: [PasoAgente]
     let motor: MotorAgente
     let accion: AccionAgente
+    /// Solo en respuestas con datos del catálogo; un servidor anterior a EA-17 no la envía.
+    let catalogo: ProcedenciaCatalogo?
 
     enum CodingKeys: String, CodingKey {
         case texto = "reply"
@@ -93,13 +105,18 @@ struct RespuestaAgente: Decodable, Equatable, Sendable {
         case estacion = "station"
         case codigoRuta = "routeCode"
         case viaje = "trip"
+        case catalogo
     }
 
-    init(texto: String, pasos: [PasoAgente] = [], motor: MotorAgente = .reglas, accion: AccionAgente = .ninguna) {
+    init(
+        texto: String, pasos: [PasoAgente] = [], motor: MotorAgente = .reglas, accion: AccionAgente = .ninguna,
+        catalogo: ProcedenciaCatalogo? = nil
+    ) {
         self.texto = texto
         self.pasos = pasos
         self.motor = motor
         self.accion = accion
+        self.catalogo = catalogo
     }
 
     init(from decoder: Decoder) throws {
@@ -118,6 +135,16 @@ struct RespuestaAgente: Decodable, Equatable, Sendable {
         self.texto = texto
         self.pasos = pasos
         self.motor = try contenedor.decode(MotorAgente.self, forKey: .motor)
+
+        let catalogo = try contenedor.decodeIfPresent(ProcedenciaCatalogo.self, forKey: .catalogo)
+        if let catalogo {
+            guard !catalogo.procedencia.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  catalogo.procedencia.count <= Self.maximoCaracteresProcedencia else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .catalogo, in: contenedor, debugDescription: "procedencia vacía o demasiado larga")
+            }
+        }
+        self.catalogo = catalogo
 
         let nombreAccion = try contenedor.decode(String.self, forKey: .accion)
         switch nombreAccion {

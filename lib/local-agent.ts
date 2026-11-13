@@ -22,7 +22,7 @@ import {
 import { interpretarMetro, responderMetro, type ConsultaMetro } from "@/lib/metro"
 import { RESPUESTA_SEGURIDAD_FISICA, esPreguntaSeguridadFisica } from "@/lib/seguridad-fisica"
 import { normalize } from "@/lib/text"
-import { procedenciaCatalogo } from "@/lib/transmilenio"
+import { catalogoAntiguo, procedenciaCatalogo } from "@/lib/transmilenio"
 
 /**
  * Asistente de TransMiVoz en dos pasos:
@@ -74,6 +74,13 @@ const ReplyBaseSchema = z.object({
   reply: z.string(),
   steps: z.array(AgentStepSchema),
   engine: z.enum(["reglas", "ollama"]),
+  /**
+   * Procedencia del catálogo de una respuesta con datos (EA-17, #43): la misma
+   * frase que cierra `reply` y si el catálogo es antiguo. La usa el cliente de
+   * iPhone, que no muestra el texto de un viaje y no tiene catálogo propio.
+   * Opcional: solo la llevan las acciones con datos.
+   */
+  catalogo: z.object({ procedencia: z.string(), antiguo: z.boolean() }).optional(),
 })
 
 /**
@@ -482,16 +489,17 @@ const ACCIONES_CON_DATOS: ReadonlySet<AgentAction> = new Set<AgentAction>(["rout
 /**
  * Añade la procedencia del catálogo (fuente y fecha) al final del texto de una
  * respuesta que presenta datos, para que el texto Y la voz digan de dónde salen
- * los datos. No la añade dos veces si ya está, ni a respuestas sin datos. La voz
+ * los datos, y la deja también en `catalogo`, con su antigüedad, para el cliente
+ * que no muestra ese texto. No la añade dos veces si ya está, ni a respuestas sin datos. La voz
  * de un VIAJE reconstruye su texto desde el resumen (`textoViajeDesdeResumen`),
  * que añade la procedencia por su cuenta; aquí se cubre el resto de acciones y
  * el texto inicial del viaje.
  */
-function conProcedencia(reply: AgentReply, data: TransmilenioData): AgentReply {
+function conProcedencia(reply: AgentReply, data: TransmilenioData, now: Date): AgentReply {
   if (!ACCIONES_CON_DATOS.has(reply.action)) return reply
   const aviso = procedenciaCatalogo(data)
-  if (reply.reply.includes(aviso)) return reply
-  return { ...reply, reply: `${reply.reply} ${aviso}` }
+  const catalogo = { procedencia: aviso, antiguo: catalogoAntiguo(data, now) }
+  return { ...reply, reply: reply.reply.includes(aviso) ? reply.reply : `${reply.reply} ${aviso}`, catalogo }
 }
 
 /**
@@ -502,7 +510,7 @@ export function runIntent(
   intent: Intent,
   opciones: { data: TransmilenioData; context?: AgentContext; engine?: AgentEngine },
 ): AgentReply {
-  return conProcedencia(resolverIntent(intent, opciones), opciones.data)
+  return conProcedencia(resolverIntent(intent, opciones), opciones.data, opciones.context?.now ?? new Date())
 }
 
 /** Núcleo de resolución, sin añadir la procedencia (la añade `runIntent`). */
