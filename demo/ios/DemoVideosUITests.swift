@@ -257,11 +257,24 @@ final class DemoVideosUITests: XCTestCase {
         let respuesta = elemento("texto-respuesta")
         let viaje = elemento("aviso-viaje")
         let error = elemento("mensaje-error")
-        let limite = Date().addingTimeInterval(25)
-        while Date() < limite, !respuesta.exists, !viaje.exists, !error.exists { pausa(0.3) }
-        // Una respuesta anterior puede seguir en pantalla un instante: se espera a que acabe «Consultando…».
-        _ = elemento("progreso-consulta").waitForNonExistence(timeout: 20)
-        pausa(0.5)
+        func esperarResultado() {
+            let limite = Date().addingTimeInterval(25)
+            while Date() < limite, !respuesta.exists, !viaje.exists, !error.exists { pausa(0.3) }
+            _ = elemento("progreso-consulta").waitForNonExistence(timeout: 20)
+            pausa(0.5)
+        }
+        esperarResultado()
+        // Si el servidor tarda más que el plazo de la app (12 s), la app conserva la pregunta y ofrece «Reintentar»:
+        // se muestra y se usa, como haría una persona. Una sola vez.
+        let reintentar = elemento("boton-reintentar")
+        if error.exists, reintentar.exists {
+            pantalla("No se pudo completar: \(error.label)")
+            nota("El servidor tardó más que el plazo de la app; la app conserva la pregunta y ofrece «Reintentar».")
+            pausa(3.0)
+            mostrar("boton-reintentar")
+            tocar(reintentar, "Toca «Reintentar»")
+            esperarResultado()
+        }
         if error.exists {
             pantalla("No se pudo completar: \(error.label)")
         } else if viaje.exists {
@@ -284,36 +297,78 @@ final class DemoVideosUITests: XCTestCase {
 
     // MARK: Recorridos
 
-    func testDemo01ConsultaServidorReal() throws {
-        lanzar([], titulo: "Consulta: rutas, horarios y viajes con el servidor real")
-        nota("App de depuración sin modos de prueba: las respuestas vienen del backend Next.js con datos reales.")
-        pausa(2.5)
-        asegurarServidor()
-        preguntar("recorrido de la B23")
-        preguntar("horario de la H54")
-        nota("Sin paradas verificadas, el servidor no da órdenes de abordaje.")
-        preguntar("quiero ir de Ricaurte a Calle 72")
-        terminar()
-    }
-
-    func testDemo02MetroFuturo() throws {
-        lanzar([], titulo: "Consulta: escenario Metro (futuro)")
+    /// Abre Consulta y, si el servidor aún no está configurado en este Simulator, lo configura antes.
+    private func abrirConsultaConServidor() {
+        abrirPestana("Consulta")
+        let resumen = elemento("resumen-servidor")
+        if resumen.waitForExistence(timeout: 10), resumen.label.contains("localhost:8443"), resumen.label.contains("con clave") {
+            pantalla(resumen.label)
+            pausa(2.0)
+            return
+        }
         asegurarServidor()
         abrirPestana("Consulta")
+    }
+
+    private func activarMetro() {
         let escenario = elemento("boton-escenario")
+        mostrar("boton-escenario", haciaAtras: true)
         tocar(escenario, "Toca «Metro (futuro)»")
         esperar(escenario, "value == %@", "activado", "No se activó el escenario Metro")
         pantalla(elemento("introduccion-consulta").label)
         pausa(3.0)
+    }
+
+    // Una pregunta por video, con la app recién abierta. Con letra grande de accesibilidad la Consulta crea sus
+    // controles al desplazarse, y tras la primera respuesta el campo a veces no abría el teclado o salía del árbol.
+
+    func testDemo01ConsultaRecorrido() throws {
+        lanzar([], titulo: "Consulta con el servidor real: recorrido de una ruta")
+        nota("App de depuración sin modos de prueba: las respuestas vienen del backend Next.js con datos reales.")
+        pausa(2.5)
+        asegurarServidor()
+        preguntar("recorrido de la B23")
+        terminar()
+    }
+
+    func testDemo02ConsultaHorario() throws {
+        lanzar([], titulo: "Consulta con el servidor real: horario de una ruta")
+        nota("Las respuestas vienen del backend Next.js con datos reales de TransMilenio.")
+        abrirConsultaConServidor()
+        preguntar("horario de la H54")
+        terminar()
+    }
+
+    func testDemo03ConsultaViaje() throws {
+        lanzar([], titulo: "Consulta con el servidor real: cómo llegar")
+        nota("Sin paradas verificadas, el servidor no da órdenes de abordaje: avisa y muestra las rutas que pasan cerca.")
+        abrirConsultaConServidor()
+        preguntar("quiero ir de Ricaurte a Calle 72")
+        terminar()
+    }
+
+    func testDemo04MetroEstaciones() throws {
+        lanzar([], titulo: "Consulta: escenario Metro (futuro), estaciones")
+        abrirConsultaConServidor()
+        activarMetro()
         preguntar("estaciones")
+        terminar()
+    }
+
+    func testDemo05MetroEstacion() throws {
+        lanzar([], titulo: "Consulta: escenario Metro (futuro), una estación")
+        abrirConsultaConServidor()
+        activarMetro()
         preguntar("Puente Aranda")
+        let escenario = elemento("boton-escenario")
+        mostrar("boton-escenario", haciaAtras: true)
         tocar(escenario, "Toca «Metro (futuro)» para volver al transporte de hoy")
         esperar(escenario, "value == %@", "desactivado", "No se desactivó el escenario Metro")
         pantalla(elemento("introduccion-consulta").label)
         terminar()
     }
 
-    func testDemo03SesionConAccesorio() throws {
+    func testDemo06SesionConAccesorio() throws {
         lanzar(["-PRUEBAS_UI_ACCESORIO_SINTETICO"], titulo: "Sesión con el accesorio (transporte sintético)")
         abrirPestana("Sesión")
         nota("El Simulator no tiene Bluetooth: la pantalla real del accesorio se maneja con un transporte sintético rotulado.")
@@ -362,7 +417,7 @@ final class DemoVideosUITests: XCTestCase {
         terminar()
     }
 
-    func testDemo04Lupa() throws {
+    func testDemo07Lupa() throws {
         lanzar(["-PRUEBAS_UI_SIMULADAS"], titulo: "Lupa: permiso, aumento, filtros y congelar")
         nota("El Simulator no tiene cámara: la lupa usa una imagen sintética rotulada y los filtros no la cambian.")
         let pestana = app.tabBars.buttons["Lupa"]
@@ -409,7 +464,7 @@ final class DemoVideosUITests: XCTestCase {
         terminar()
     }
 
-    func testDemo05Ajustes() throws {
+    func testDemo08Ajustes() throws {
         lanzar([], titulo: "Ajustes: servidor, preferencias, favoritas y ayuda")
         asegurarServidor()
         for seccion in ["Preferencias", "Favoritas", "Ayuda"] {

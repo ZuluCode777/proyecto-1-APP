@@ -37,11 +37,19 @@ En la web, un círculo rosa marca dónde se toca la pantalla.
 | `web-08-alto-contraste` | Tema Alto contraste en el inicio, las rutas frecuentes y un detalle |
 | `web-09-metro` | Metro de Bogotá como escenario futuro: estado, estaciones de la Línea 1 y fuentes |
 | `web-10-emergencia-y-avisos` | Emergencia (123, 156, 195) y los avisos del operador |
-| `iphone-01-consulta` | Ajustes del servidor y Consulta con el backend real: «recorrido de la B23», «horario de la H54», «quiero ir de Ricaurte a Calle 72» |
-| `iphone-02-metro` | Consulta con el selector «Metro (futuro)»: «estaciones» y «Puente Aranda» |
-| `iphone-03-sesion-accesorio` | Pestaña Sesión: buscar, permiso, elegir, iniciar, bloqueo por enlace no verificado, detener y reconectar |
-| `iphone-04-lupa` | Lupa: explicación del permiso, aumento, filtros y congelar |
-| `iphone-05-ajustes` | Ajustes: servidor, Preferencias, Favoritas y Ayuda |
+| `iphone-01-consulta-recorrido` | Ajustes del servidor y Consulta con el backend real: «recorrido de la B23» |
+| `iphone-02-consulta-horario` | Consulta con el backend real: «horario de la H54» |
+| `iphone-03-consulta-viaje` | Consulta con el backend real: «quiero ir de Ricaurte a Calle 72» (sin órdenes de abordaje) |
+| `iphone-04-metro-estaciones` | Consulta con el selector «Metro (futuro)»: «estaciones» |
+| `iphone-05-metro-estacion` | Consulta con el selector «Metro (futuro)»: «Puente Aranda», y volver al transporte de hoy |
+| `iphone-06-sesion-accesorio` | Pestaña Sesión: buscar, permiso, elegir, iniciar, bloqueo por enlace no verificado, detener y reconectar |
+| `iphone-07-lupa` | Lupa: explicación del permiso, aumento, filtros y congelar |
+| `iphone-08-ajustes` | Ajustes: servidor, Preferencias, Favoritas y Ayuda |
+
+En el iPhone cada pregunta va en su propio video, con la app recién abierta:
+con letra grande de accesibilidad, el campo de la Consulta no se dejaba
+reutilizar de forma fiable desde las pruebas de interfaz tras la primera
+respuesta.
 
 ## Qué es real y qué no
 
@@ -51,7 +59,7 @@ Real:
   `pnpm build` + `pnpm start`, con clave, como en producción.
 - Los datos de TransMilenio salen del servicio en vivo, o de la copia guardada
   si no responde. Las respuestas del asistente son las del código actual. En la
-  Consulta del iPhone (`iphone-01`, `iphone-02`, `iphone-05`) la app no usa
+  Consulta del iPhone (`iphone-01` a `iphone-05` y `iphone-08`) la app no usa
   ningún modo de prueba: habla con ese mismo backend por HTTPS.
 - El mapa usa OpenStreetMap en vivo.
 

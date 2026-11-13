@@ -151,11 +151,14 @@ EOF
   fi
 }
 
-grabar iphone-01-consulta testDemo01ConsultaServidorReal
-grabar iphone-02-metro testDemo02MetroFuturo
-grabar iphone-03-sesion-accesorio testDemo03SesionConAccesorio
-grabar iphone-04-lupa testDemo04Lupa
-grabar iphone-05-ajustes testDemo05Ajustes
+grabar iphone-01-consulta-recorrido testDemo01ConsultaRecorrido
+grabar iphone-02-consulta-horario testDemo02ConsultaHorario
+grabar iphone-03-consulta-viaje testDemo03ConsultaViaje
+grabar iphone-04-metro-estaciones testDemo04MetroEstaciones
+grabar iphone-05-metro-estacion testDemo05MetroEstacion
+grabar iphone-06-sesion-accesorio testDemo06SesionConAccesorio
+grabar iphone-07-lupa testDemo07Lupa
+grabar iphone-08-ajustes testDemo08Ajustes
 
 if [ "${#fallos[@]}" -gt 0 ]; then
   echo "Fallaron: ${fallos[*]}"
