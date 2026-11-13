@@ -9,7 +9,7 @@ final class TextoRutasTests: XCTestCase {
     private func todosLosPlanes() throws -> [PlanViaje] {
         try [
             FixturesPlanificador.viajeOperativo, FixturesPlanificador.viajeTransbordo, FixturesPlanificador.viajeCandidato,
-            FixturesPlanificador.viajeRecorrido, FixturesPlanificador.viajeSinRecorrido, FixturesPlanificador.viajeMismoLugar,
+            FixturesPlanificador.viajeCandidatoConTransbordo, FixturesPlanificador.viajeRecorrido, FixturesPlanificador.viajeSinRecorrido, FixturesPlanificador.viajeMismoLugar,
         ].map(plan)
     }
 
@@ -18,7 +18,8 @@ final class TextoRutasTests: XCTestCase {
         for plan in try todosLosPlanes() {
             textos.append(TextoRutas.tituloResultado(plan))
             textos += TextoRutas.notasResultado(plan)
-            for tramo in plan.tramos { textos += TextoRutas.filasTramo(tramo, resultado: plan.resultado) }
+            for tramo in plan.tramos { textos += TextoRutas.filasTramo(tramo) }
+            textos += plan.codigosCandidatos.map(TextoRutas.rutaCandidata)
         }
         textos.append(TextoRutas.notaTransbordo)
         for sentido in [SentidoRuta.confirmado, .contradictorio, .sinConfirmar] {
@@ -34,16 +35,19 @@ final class TextoRutasTests: XCTestCase {
         }
     }
 
-    func testElCandidatoNoUsaLasPalabrasDelAbordajeYElOperativoSi() throws {
+    func testElOperativoNombraAbordajeYDescensoYElCandidatoSoloLasRutas() throws {
         let operativo = try plan(FixturesPlanificador.viajeOperativo)
+        let filas = TextoRutas.filasTramo(operativo.tramos[0])
+        XCTAssertEqual(filas.first, "Abordaje: Estación Ejemplo Norte")
+        XCTAssertEqual(filas[1], "Descenso: Estación Ejemplo Sur")
+
         let candidato = try plan(FixturesPlanificador.viajeCandidato)
-        let filasOperativo = TextoRutas.filasTramo(operativo.tramos[0], resultado: operativo.resultado)
-        let filasCandidato = TextoRutas.filasTramo(candidato.tramos[0], resultado: candidato.resultado)
-        XCTAssertEqual(filasOperativo.first, "Abordaje: Estación Ejemplo Norte")
-        XCTAssertEqual(filasOperativo[1], "Descenso: Estación Ejemplo Sur")
-        XCTAssertEqual(filasCandidato.first, "Desde: Estación Ejemplo Norte")
-        XCTAssertEqual(filasCandidato[1], "Hasta: Estación Ejemplo Sur")
+        XCTAssertEqual(candidato.codigosCandidatos.map(TextoRutas.rutaCandidata), ["Ruta Z99"])
+        XCTAssertEqual(TextoRutas.tituloResultado(candidato), "Servicio candidato de Estación Ejemplo Norte a Estación Ejemplo Sur")
+        XCTAssertTrue(TextoRutas.notasResultado(candidato)[0].hasPrefix("Según la programación verificada, esta ruta conecta"))
         XCTAssertTrue(TextoRutas.notasResultado(candidato).contains { $0.contains("no se dan indicaciones de abordaje") })
+        let varias = try plan(FixturesPlanificador.viajeCandidatoConTransbordo)
+        XCTAssertTrue(TextoRutas.notasResultado(varias)[0].contains("estas rutas conectan"))
     }
 
     func testElRecorridoDiceQueNoHayParadasConfirmadas() throws {

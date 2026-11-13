@@ -4,7 +4,8 @@ import Foundation
 /// No vienen de un servidor real ni de ninguna ejecución: reproducen la FORMA de los esquemas de
 /// `lib/contrato-planificador.ts` para probar el cliente sin red ni secretos. Son simulaciones de contrato, no
 /// evidencia de que el backend real responda así. `lib/ea25-planificador.test.ts` lee los bloques FIXTURE y comprueba
-/// que cumplen esos esquemas; los de «Inválidas» son los que el cliente debe RECHAZAR y no se comprueban allí.
+/// que cumplen esos esquemas; los de «Inválidas» son los que el cliente debe RECHAZAR (o, el último, ignorar en lo
+/// que no debe usar) y no se comprueban allí.
 enum FixturesPlanificador {
     // FIXTURE-INICIO peticionBuscar
     static let peticionBuscar = #"""
@@ -80,7 +81,13 @@ enum FixturesPlanificador {
 
     // FIXTURE-INICIO viajeCandidato
     static let viajeCandidato = #"""
-    {"catalogo":{"antiguo":false,"procedencia":"Datos de prueba consultados el 1/1/2026."},"destino":"Estación Ejemplo Sur","origen":"Estación Ejemplo Norte","resultado":"candidato","rutasPorElTrazado":[],"tramos":[{"abordaje":{"coordenada":{"lat":4.7,"lng":-74.08},"nombre":"Estación Ejemplo Norte"},"codigoRuta":"Z99","conteoVerificado":false,"descenso":{"coordenada":{"lat":4.6,"lng":-74.09},"nombre":"Estación Ejemplo Sur"},"estacionesRecorridas":3,"trazado":[{"lat":4.7,"lng":-74.08},{"lat":4.65,"lng":-74.085},{"lat":4.6,"lng":-74.09}]}]}
+    {"catalogo":{"antiguo":false,"procedencia":"Datos de prueba consultados el 1/1/2026."},"destino":"Estación Ejemplo Sur","origen":"Estación Ejemplo Norte","resultado":"candidato","rutasPorElTrazado":[],"tramos":[{"codigoRuta":"Z99"}]}
+    """#
+    // FIXTURE-FIN
+
+    // FIXTURE-INICIO viajeCandidatoConTransbordo
+    static let viajeCandidatoConTransbordo = #"""
+    {"catalogo":{"antiguo":false,"procedencia":"Datos de prueba consultados el 1/1/2026."},"destino":"Estación Ejemplo Sur","origen":"Estación Ejemplo Norte","resultado":"candidato","rutasPorElTrazado":[],"tramos":[{"codigoRuta":"Z99"},{"codigoRuta":"Z98"}]}
     """#
     // FIXTURE-FIN
 
@@ -139,6 +146,10 @@ enum FixturesPlanificador {
     {"catalogo":{"antiguo":false,"procedencia":"Datos de prueba consultados el 1/1/2026."},"destino":"Estación Ejemplo Sur","origen":"Estación Ejemplo Norte","resultado":"operativo","rutasPorElTrazado":[],"tramos":[]}
     """#
 
+    static let viajeCandidatoSinRutas = #"""
+    {"catalogo":{"antiguo":false,"procedencia":"Datos de prueba consultados el 1/1/2026."},"destino":"Estación Ejemplo Sur","origen":"Estación Ejemplo Norte","resultado":"candidato","rutasPorElTrazado":[],"tramos":[]}
+    """#
+
     static let viajeRecorridoSinRutas = #"""
     {"catalogo":{"antiguo":false,"procedencia":"Datos de prueba consultados el 1/1/2026."},"destino":"Estación Ejemplo Sur","origen":"Estación Ejemplo Norte","resultado":"recorrido","rutasPorElTrazado":[],"tramos":[]}
     """#
@@ -153,6 +164,10 @@ enum FixturesPlanificador {
 
     static let viajeEstacionesNegativas = #"""
     {"catalogo":{"antiguo":false,"procedencia":"Datos de prueba consultados el 1/1/2026."},"destino":"Estación Ejemplo Sur","origen":"Estación Ejemplo Norte","resultado":"operativo","rutasPorElTrazado":[],"tramos":[{"abordaje":{"coordenada":{"lat":4.7,"lng":-74.08},"nombre":"Estación Ejemplo Norte"},"codigoRuta":"Z99","conteoVerificado":true,"descenso":{"coordenada":{"lat":4.6,"lng":-74.09},"nombre":"Estación Ejemplo Sur"},"estacionesRecorridas":-1,"trazado":[{"lat":4.7,"lng":-74.08},{"lat":4.6,"lng":-74.09}]}]}
+    """#
+
+    static let viajeCandidatoConParadasDeUnServidorAnterior = #"""
+    {"catalogo":{"antiguo":false,"procedencia":"Datos de prueba consultados el 1/1/2026."},"destino":"Estación Ejemplo Sur","origen":"Estación Ejemplo Norte","resultado":"candidato","rutasPorElTrazado":[],"tramos":[{"abordaje":{"coordenada":{"lat":4.7,"lng":-74.08},"nombre":"Estación Ejemplo Norte"},"codigoRuta":"Z99","conteoVerificado":true,"descenso":{"coordenada":{"lat":4.6,"lng":-74.09},"nombre":"Estación Ejemplo Sur"},"estacionesRecorridas":3,"trazado":[{"lat":4.7,"lng":-74.08},{"lat":4.65,"lng":-74.085},{"lat":4.6,"lng":-74.09}]}]}
     """#
 
     static func datos(_ json: String) -> Data { Data(json.utf8) }

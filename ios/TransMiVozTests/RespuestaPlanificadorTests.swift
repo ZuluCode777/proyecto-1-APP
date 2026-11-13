@@ -78,7 +78,10 @@ final class RespuestaPlanificadorTests: XCTestCase {
 
         let candidato: PlanViaje = try decodificarPlanificador(FixturesPlanificador.viajeCandidato)
         XCTAssertEqual(candidato.resultado, .candidato)
-        XCTAssertFalse(candidato.tramos[0].conteoVerificado)
+        XCTAssertEqual(candidato.codigosCandidatos, ["Z99"])
+        XCTAssertTrue(candidato.tramos.isEmpty, "un candidato no trae tramos con paradas")
+        let conTransbordo: PlanViaje = try decodificarPlanificador(FixturesPlanificador.viajeCandidatoConTransbordo)
+        XCTAssertEqual(conTransbordo.codigosCandidatos, ["Z99", "Z98"])
 
         let recorrido: PlanViaje = try decodificarPlanificador(FixturesPlanificador.viajeRecorrido)
         XCTAssertEqual(recorrido.resultado, .recorrido)
@@ -107,6 +110,7 @@ final class RespuestaPlanificadorTests: XCTestCase {
 
     func testUnEstadoDelViajeSoloVieneConLosDatosQueLeCorresponden() {
         esperarRechazo(PlanViaje.self, FixturesPlanificador.viajeOperativoSinTramos, "operativo sin tramos")
+        esperarRechazo(PlanViaje.self, FixturesPlanificador.viajeCandidatoSinRutas, "candidato sin rutas")
         esperarRechazo(PlanViaje.self, FixturesPlanificador.viajeRecorridoSinRutas, "recorrido sin rutas")
         esperarRechazo(PlanViaje.self, FixturesPlanificador.viajeMismoLugarConTramos, "mismo lugar con tramos")
         esperarRechazo(PlanViaje.self, FixturesPlanificador.viajeConTresTramos, "más de un transbordo")
@@ -123,6 +127,34 @@ final class RespuestaPlanificadorTests: XCTestCase {
         XCTAssertNil(decodificar("0", "-180.5"))
     }
 
+    // MARK: Un candidato no lleva paradas
+
+    /// Con la operación sin confirmar, las paradas, el conteo y el trazado serían órdenes de abordaje: ni el modelo, ni
+    /// el texto, ni el mapa de un candidato los llevan, ni siquiera si un servidor anterior los mandara.
+    func testUnCandidatoNoLlevaParadasNiMapaNiSiElServidorLasMandara() throws {
+        let centro = "Estación Ejemplo Centro" // una parada que no es ni el origen ni el destino
+        for json in [
+            FixturesPlanificador.viajeCandidato, FixturesPlanificador.viajeCandidatoConTransbordo,
+            FixturesPlanificador.viajeCandidatoConParadasDeUnServidorAnterior,
+        ] {
+            let plan: PlanViaje = try decodificarPlanificador(json)
+            XCTAssertEqual(plan.resultado, .candidato)
+            XCTAssertTrue(plan.tramos.isEmpty, "sin tramos con paradas")
+            XCTAssertFalse(plan.codigosCandidatos.isEmpty)
+            XCTAssertTrue(ElementosMapa.de(tramos: plan.tramos).estaVacio, "sin mapa")
+
+            let textos = [TextoRutas.tituloResultado(plan)] + TextoRutas.notasResultado(plan)
+                + plan.codigosCandidatos.map(TextoRutas.rutaCandidata)
+            for texto in textos {
+                XCTAssertFalse(texto.contains(centro), texto)
+                for palabra in ["Abordaje", "Descenso", "Desde:", "Hasta:", "estaciones (conteo"] {
+                    XCTAssertFalse(texto.contains(palabra), "\(palabra) en «\(texto)»")
+                }
+            }
+            XCTAssertTrue(textos.contains { $0.contains("no se dan indicaciones de abordaje") })
+        }
+    }
+
     // MARK: Mapa y listado del mismo tramo
 
     func testElMapaDelViajeDibujaLasMismasParadasYTramosQueElListado() throws {
@@ -135,7 +167,7 @@ final class RespuestaPlanificadorTests: XCTestCase {
         XCTAssertEqual(mapa.marcas.map(\.titulo), nombresDelListado)
         XCTAssertEqual(mapa.lineas, plan.tramos.map(\.trazado), "una línea por tramo, la misma que el servidor entregó")
         for tramo in plan.tramos {
-            XCTAssertTrue(TextoRutas.filasTramo(tramo, resultado: .operativo).contains("Abordaje: \(tramo.abordaje.nombre)"))
+            XCTAssertTrue(TextoRutas.filasTramo(tramo).contains("Abordaje: \(tramo.abordaje.nombre)"))
         }
         XCTAssertFalse(mapa.estaVacio)
     }

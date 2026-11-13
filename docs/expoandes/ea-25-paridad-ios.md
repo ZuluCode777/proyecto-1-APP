@@ -11,7 +11,7 @@ Todo lo escrito aquí es **software**: las pruebas de TypeScript corrieron en el
 - **Entrada.** Un botón con icono de mapa en la barra de Consulta («Rutas y viaje») abre la búsqueda. No hay pestaña nueva. Una respuesta de ruta en Consulta ofrece «Ver la ruta … y su mapa»; una respuesta de estación ofrece «Ver las rutas que pasan por la estación».
 - **Buscar rutas.** Código de ruta o nombre de estación; el servidor ejecuta el mismo `searchRoutes` que la web. Resultados con código, origen y destino, el total si se recortó a 50, la procedencia del catálogo y, si es antiguo, el aviso con «Volver a consultar».
 - **Detalle de una ruta.** Sentido (solo se afirma si una fuente vigente lo confirma), calendario de hoy, horario publicado, estaciones cercanas al trazado con «Parada verificada» solo donde el validador del servidor la acepta, mapa del mismo recorrido y «Guardar»/«Quitar» en las favoritas del iPhone (las de Ajustes ▸ Favoritas).
-- **Viaje entre dos lugares.** Origen y destino se eligen de la lista de lugares que entrega el servidor y viajan como **datos** al planificador; nunca se arma una frase. El servidor decide el estado y la pantalla lo dice: operativo, candidato sin operación confirmada, solo recorrido (rutas que pasan cerca de los dos lugares), sin recorrido o mismo lugar. Cada tramo se lista y el mapa dibuja los mismos tramos.
+- **Viaje entre dos lugares.** Origen y destino se eligen de la lista de lugares que entrega el servidor y viajan como **datos** al planificador; nunca se arma una frase. El servidor decide el estado y la pantalla lo dice: operativo (tramos con abordaje y descenso, y el mapa de los mismos tramos), candidato sin operación confirmada (**solo los códigos de las rutas**, sin paradas, sin conteo y sin mapa), solo recorrido (rutas que pasan cerca de los dos lugares), sin recorrido o mismo lugar.
 - **Sin ubicación.** No se pide ningún permiso nuevo; el origen se elige de la lista.
 
 ## Contrato `POST /api/planificador` (cambio de backend)
@@ -23,12 +23,14 @@ El backend es el único dueño de estaciones y planificación. Hasta ahora ning�
 | `buscar-rutas` | `consulta` (1–80) | `rutas[]` (`codigo`, `desde`, `hacia`; hasta 50), `total`, `catalogo` |
 | `detalle-ruta` | `codigo` (1–12), sin distinguir mayúsculas ni espacios | `codigo`, `etiqueta`, `desde`, `hacia`, `sentido`, `calendario`, `horario`, `estaciones[]` (`nombre`, `coordenada` o `null`, `paradaVerificada`), `trazado[]`, `catalogo` |
 | `listar-lugares` | nada más | `lugares[]` (nombres únicos, ordenados), `catalogo` |
-| `planear-viaje` | `origen` y `destino` (1–80), nombres exactos de `listar-lugares` | `origen`, `destino`, `resultado`, `tramos[]` (hasta 2), `rutasPorElTrazado[]`, `catalogo` |
+| `planear-viaje` | `origen` y `destino` (1–80), nombres exactos de `listar-lugares` | `origen`, `destino`, `resultado`, `tramos[]` (hasta 2; completos solo si `operativo`, y solo `{codigoRuta}` si `candidato`), `rutasPorElTrazado[]`, `catalogo` |
 
-- Valida con Zod (`strictObject`: un campo de más o una frase en lugar de datos da 400). Cuerpo de hasta 1.000 bytes, leído por stream. 404 `{"error":"no-encontrado"}` para una ruta o lugar que no existe; un nombre que no es exactamente un lugar (por ejemplo «de Ricaurte a Calle 72») no se interpreta: es 404.
+- Valida con Zod (`strictObject`: un campo de más o una frase en lugar de datos da 400). Cuerpo de hasta 1.000 bytes, comprobado en el manejador **después** de que el `proxy` lo almacene entero (Next lo carga antes de llamar al manejador; ver [EA-10](ea-10-recursos-autenticacion.md)): la cota limita lo que se procesa, no lo que se recibe. 404 `{"error":"no-encontrado"}` para una ruta o lugar que no existe; un nombre que no es exactamente un lugar (por ejemplo «de Ricaurte a Calle 72») no se interpreta: es 404.
 - Usa las funciones de la web: `searchRoutes`, `planTrip`, `planTripCandidato`, `routesAlongBoth`, `paradasPrescriptibles`, `sentidoConfirmado`, `estadoCalendarioEnFecha`. Solo se añadieron `listarLugares` y `lugarPorNombre` en `lib/routes.ts`.
 - Solo entrega las coordenadas que el catálogo tiene; si falta una, el campo es `null` y la app no dibuja ni sustituye ese punto.
-- Pasa por el `proxy` (HTTP Basic), como `/api/transmilenio`. **No lleva límite de peticiones propio**: no consulta ningún modelo ni servicio externo.
+- Pasa por el `proxy` (HTTP Basic), como `/api/transmilenio`; una prueba comprueba que `/api/planificador` sigue protegido.
+- **Límite de peticiones propio**, con dos cubos que no comparten cuota con `/api/agent`: `planear-viaje` 10 por minuto y las otras tres operaciones 60 por minuto, con 429 y `Retry-After`. Planear recorre pares de rutas y cuesta unos 45 ms de CPU síncrona (medidos en la revisión del PR), que bloquean el bucle de eventos compartido con `/api/agent` y la web; las otras operaciones cuestan menos de 1 ms. `claveCliente()` es hoy una sola clave para todos, así que son **techos globales**, no por persona.
+- Las respuestas tienen cotas en el esquema (`rutas` 50, `estaciones` 200, `trazado` 1.000 puntos, `lugares` 500) que el cliente hace cumplir; una prueba las compara con las constantes de `RespuestaPlanificador.swift` y comprueba que cada ruta del catálogo cabe.
 - Contrato en `lib/contrato-planificador.ts`, manejador en `app/api/planificador/route.ts`, pruebas en `lib/ea25-planificador.test.ts`. Una prueba lee los fixtures de `ios/TransMiVozTests/FixturesPlanificador.swift` y comprueba que cumplen los esquemas, y otra compara las cotas de `EntradaPlanificador.swift` con las del servidor.
 - **Render necesita un despliegue manual** para que el endpoint exista. Hasta entonces el iPhone recibe un 404 sin el cuerpo del planificador y lo muestra como falla del servidor (código 404), no como «no encontrado».
 
@@ -42,7 +44,8 @@ El backend es el único dueño de estaciones y planificación. Hasta ahora ning�
 | Detalle de una ruta (`RouteDetail`) | Sentido, calendario, horario, estaciones, paradas verificadas, mapa y Guardar | Cubierto; sin «Escuchar» ni lectura en voz propia (VoiceOver) |
 | Estado que se renueva | El detalle se consulta al abrirlo y con «Volver a consultar»; la web renueva cada 30 s | Diferencia |
 | Plan de viaje (`TripView`) desde una frase del asistente | Selección estructurada de dos lugares; el servidor planea | Distinto a propósito (criterio de #51) |
-| «Sube en» y «Bájate en» | El iPhone nombra «Abordaje» y «Descenso» solo en un viaje operativo y no da órdenes; el candidato dice «Desde» y «Hasta». No hay revalidación en el dispositivo (la web revalida cada 30 s) | Diferencia, conservadora |
+| «Sube en» y «Bájate en» (viaje operativo) | El iPhone nombra «Abordaje» y «Descenso» como datos, sin imperativo, y no revalida en el dispositivo (la web revalida cada 30 s) | Diferencia |
+| Servicio candidato, sin operación confirmada (`tripCandidatoReply`) | Igual que la web: solo los códigos de las rutas con el origen y el destino elegidos y «no se dan indicaciones de abordaje». **Sin paradas, sin conteo, sin transbordo y sin mapa**; el servidor ni siquiera los envía | Cubierto |
 | Alternativas del viaje («También te sirven…») | Solo el mejor plan | Diferencia |
 | Origen por GPS | No hay ubicación en el iPhone | Diferencia |
 | Mapa (`TransitMap`, Leaflet y OpenStreetMap) | MapKit; trazado del tramo entre abordaje y descenso, marcas con los nombres del listado; sin ubicación de la persona | Cubierto en código; **mapa sin verificar en Simulator ni iPhone** |
@@ -56,7 +59,7 @@ El backend es el único dueño de estaciones y planificación. Hasta ahora ning�
 
 | Criterio | Estado |
 | --- | --- |
-| Buscador, detalle y selección estructurada consumen el planificador compartido por un contrato validado; mapa y listado reflejan el mismo tramo; sin frase ni planificación en Swift | **Cubierto en software.** Backend: 25 pruebas nuevas, `tsc`, `pnpm test` y `pnpm build` en verde. Swift: pruebas escritas (decodificación estricta, cliente HTTP simulado, modelos, mapa y listado del mismo tramo) y **sin ejecutar donde se escribieron**; las ejecuta la CI del PR |
+| Buscador, detalle y selección estructurada consumen el planificador compartido por un contrato validado; mapa y listado reflejan el mismo tramo; sin frase ni planificación en Swift | **Cubierto en software.** Backend: 30 pruebas nuevas, `tsc`, `pnpm test` y `pnpm build` en verde. Swift: pruebas escritas (decodificación estricta, cliente HTTP simulado, modelos, mapa y listado del mismo tramo) y **sin ejecutar donde se escribieron**; las ejecuta la CI del PR |
 | Cámara nativa, zoom, filtros, congelado y liberación de recursos | Ya cubierto por #86 en software; **pendiente en iPhone** |
 | Favoritas, preferencias y ayuda con estados vacíos y errores | #80 en software; ahora «Guardar» y «Quitar» desde el detalle y el texto de Favoritas vacía actualizado; **pendiente revisar en iPhone** |
 | La lupa no promete OCR ni detección | Sin cambios (#86) |
@@ -79,3 +82,4 @@ El backend es el único dueño de estaciones y planificación. Hasta ahora ning�
 - Capa del Metro en el mapa del iPhone (contrato HTTP y verificación aparte).
 - Abrir el detalle desde las filas de Favoritas, y las alternativas del viaje, si se decide que cuentan para la paridad.
 - Auditorías de accesibilidad con el texto más grande (`AccessibilityXXXL`) para las pantallas nuevas: hoy solo se comprueba que lo esencial se alcanza entero y tocable al desplazar, como en Ajustes. La auditoría completa de tamaño normal cubre la búsqueda con resultados y la selección del viaje; el detalle y el resultado del viaje no se auditan porque se espera que midan más que el área visible (no se midió).
+- Deuda conocida de código (revisión 1, no corregida): la fila de resultado de búsqueda y la de rutas por el trazado repiten el mismo `NavigationLink`; las pantallas repiten el `switch` sobre `EstadoCarga`; algunos textos de las vistas (títulos de sección, etiquetas de enlaces de Consulta) no están en `TextoRutas`; el alcance real del botón de la barra de Consulta con una mano y con VoiceOver es una comprobación de dispositivo pendiente.

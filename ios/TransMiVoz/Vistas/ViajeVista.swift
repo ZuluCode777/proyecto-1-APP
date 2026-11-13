@@ -29,6 +29,7 @@ struct ViajeVista: View {
         .bordeInferiorLegible()
         .task { modelo.cargarLugaresSiHaceFalta() }
         .onChange(of: modelo.plan) { _, nuevo in anunciar(nuevo) }
+        .onChange(of: modelo.lugares) { _, nuevo in anunciarLugares(nuevo) }
     }
 
     @ViewBuilder private var selectores: some View {
@@ -90,6 +91,19 @@ struct ViajeVista: View {
         }
     }
 
+    /// La carga de la lista de lugares y su falla se anuncian como las de la búsqueda; el foco pasa al error.
+    private func anunciarLugares(_ lugares: EstadoCarga<ListaLugares>) {
+        let texto: String
+        switch lugares {
+        case .inactivo: return
+        case .cargando: texto = TextoRutas.cargandoLugares
+        case .listo: texto = TextoRutas.lugaresCargados
+        case .fallo(let error): texto = "\(error.mensaje) \(error.recuperacion)"
+        }
+        AccessibilityNotification.Announcement(texto).post()
+        if case .fallo = lugares { foco = .resultado }
+    }
+
     private func anunciar(_ plan: EstadoCarga<PlanViaje>) {
         let texto: String
         switch plan {
@@ -128,12 +142,19 @@ private struct PlanViajeVista: View {
         ForEach(Array(plan.tramos.enumerated()), id: \.offset) { indice, tramo in
             VStack(alignment: .leading, spacing: 4) {
                 Text(TextoRutas.tituloTramo(indice + 1, tramo.codigoRuta)).font(.headline)
-                ForEach(Array(TextoRutas.filasTramo(tramo, resultado: plan.resultado).enumerated()), id: \.offset) { _, fila in
+                ForEach(Array(TextoRutas.filasTramo(tramo).enumerated()), id: \.offset) { _, fila in
                     Text(fila)
                 }
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("tramo-\(indice + 1)")
+        }
+
+        // Un candidato solo trae los códigos de sus rutas: ni paradas ni mapa.
+        ForEach(Array(plan.codigosCandidatos.enumerated()), id: \.offset) { indice, codigo in
+            Text(TextoRutas.rutaCandidata(codigo))
+                .font(.headline)
+                .accessibilityIdentifier("ruta-candidata-\(indice + 1)")
         }
 
         if !plan.rutasPorElTrazado.isEmpty {

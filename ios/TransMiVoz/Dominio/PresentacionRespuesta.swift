@@ -13,7 +13,7 @@ extension AccionAgente {
         case .gps:
             return "Esta app no usa tu ubicación ni tiene GPS auditivo: no se abre ninguna guía. Para un viaje, escribe desde qué estación sales y a cuál vas."
         case .busqueda:
-            return "Esta app no tiene una pantalla propia de la estación: con el botón de abajo ves las rutas que pasan por ella."
+            return "Esta app no tiene una pantalla propia de la estación."
         case .ruta:
             return nil
         case .viaje:

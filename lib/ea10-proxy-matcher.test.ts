@@ -26,6 +26,7 @@ test("el resto conserva la protección: UI, otras APIs, variantes de /api/agent 
     "/diagnostico",
     "/api/transmilenio",
     "/api/anuncios",
+    "/api/planificador",
     "/api/agentx",
     "/api/agent/sub",
     "/_next/static/chunks/app.js",

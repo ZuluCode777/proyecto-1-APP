@@ -127,6 +127,7 @@ enum TextoRutas {
     static let tituloViaje = "Viaje entre dos lugares"
     static let introduccionViaje = "Elige el origen y el destino de la lista de lugares del servidor."
     static let cargandoLugares = "Cargando los lugares…"
+    static let lugaresCargados = "Lugares cargados. Elige el origen y el destino."
     static let origen = "Origen"
     static let destino = "Destino"
     static let sinElegir = "Sin elegir"
@@ -160,9 +161,10 @@ enum TextoRutas {
                 "Vuelve a planear el viaje si esperas antes de salir: esta pantalla no se actualiza sola.",
             ]
         case .candidato:
+            let varias = plan.codigosCandidatos.count > 1
             return [
-                "Según la programación verificada, hay un servicio que conecta los dos lugares.",
-                "Ahora no se puede confirmar que esté en servicio, así que no se dan indicaciones de abordaje.",
+                "Según la programación verificada, \(varias ? "estas rutas conectan" : "esta ruta conecta") \(plan.origen) con \(plan.destino).",
+                "Ahora no se puede confirmar que \(varias ? "estén" : "esté") en servicio, así que no se dan indicaciones de abordaje.",
                 "Confirma el horario con TransMilenio.",
             ]
         case .recorrido:
@@ -183,14 +185,13 @@ enum TextoRutas {
     static func tituloTramo(_ posicion: Int, _ codigo: String) -> String { "Tramo \(posicion): ruta \(codigo)" }
     static let notaTransbordo = "Hay un transbordo entre los dos tramos."
 
-    /// En un viaje operativo las paradas son de abordaje y descenso; en un candidato no se prescribe nada, y los
-    /// extremos del tramo se llaman «desde» y «hasta».
-    static func filasTramo(_ tramo: TramoPlan, resultado: ResultadoViaje) -> [String] {
-        let extremos = resultado == .operativo
-            ? ["Abordaje: \(tramo.abordaje.nombre)", "Descenso: \(tramo.descenso.nombre)"]
-            : ["Desde: \(tramo.abordaje.nombre)", "Hasta: \(tramo.descenso.nombre)"]
-        return extremos + [conteo(tramo)]
+    /// Un viaje operativo nombra el abordaje y el descenso de cada tramo. Un candidato no tiene tramos con paradas: la
+    /// operación no está confirmada y el servidor solo manda los códigos (`rutaCandidata`).
+    static func filasTramo(_ tramo: TramoPlan) -> [String] {
+        ["Abordaje: \(tramo.abordaje.nombre)", "Descenso: \(tramo.descenso.nombre)", conteo(tramo)]
     }
+
+    static func rutaCandidata(_ codigo: String) -> String { "Ruta \(codigo)" }
 
     static func conteo(_ tramo: TramoPlan) -> String {
         guard tramo.conteoVerificado else { return "Número de estaciones no verificado" }

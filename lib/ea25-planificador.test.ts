@@ -4,9 +4,14 @@ import test, { mock } from "node:test"
 import { pathToFileURL } from "node:url"
 import snapshot from "../data/transmilenio.json" with { type: "json" }
 import {
+  LIMITE_CONSULTA,
+  LIMITE_PLANEAR,
   MAX_CODIGO,
   MAX_CONSULTA,
+  MAX_ESTACIONES,
   MAX_LUGAR,
+  MAX_LUGARES,
+  MAX_PUNTOS_TRAZADO,
   MAX_RUTAS,
   MAXIMO_BYTES_CUERPO,
   PeticionPlanificadorSchema,
@@ -63,6 +68,23 @@ test("las cotas de la petición son las que repite el cliente de iPhone", () => 
   assert.equal(valor("maximoCodigo"), MAX_CODIGO)
   assert.equal(valor("maximoLugar"), MAX_LUGAR)
   assert.equal(valor("maximoBytesCuerpo"), MAXIMO_BYTES_CUERPO)
+})
+
+test("las cotas de las respuestas del servidor son las que hace cumplir el cliente de iPhone", () => {
+  const swift = readFileSync(new URL("../ios/TransMiVoz/Dominio/RespuestaPlanificador.swift", import.meta.url), "utf8")
+  const valor = (nombre: string) => Number(new RegExp(`static let ${nombre} = ([\\d_]+)`).exec(swift)?.[1].replaceAll("_", ""))
+  assert.equal(valor("maximoRutas"), MAX_RUTAS)
+  assert.equal(valor("maximoEstaciones"), MAX_ESTACIONES)
+  assert.equal(valor("maximoPuntosTrazado"), MAX_PUNTOS_TRAZADO)
+  assert.equal(valor("maximoLugares"), MAX_LUGARES)
+})
+
+test("cada ruta del catálogo cabe en las cotas de su respuesta de detalle", () => {
+  for (const ruta of copia.routes) {
+    const r = resolver({ operacion: "detalle-ruta", codigo: ruta.code })
+    assert.equal(r.estado, 200, ruta.code)
+    assert.ok(RespuestaDetalleRutaSchema.safeParse(r.cuerpo).success, ruta.code)
+  }
 })
 
 // ── buscar-rutas ──
@@ -188,11 +210,31 @@ test("planear-viaje con transbordo: dos tramos, y el descenso del primero es el 
   assert.equal(v.tramos[0].descenso.nombre, v.tramos[1].abordaje.nombre)
 })
 
-test("planear-viaje fuera de franja: un servicio candidato, sin presentarlo como operativo", () => {
-  const v = RespuestaViajeSchema.parse(planear("Alfa", "Eco", datosVerificadosDirecto(), madrugada).cuerpo)
+test("planear-viaje fuera de franja: un servicio candidato que trae solo el código de la ruta", () => {
+  const cuerpo = planear("Alfa", "Eco", datosVerificadosDirecto(), madrugada).cuerpo
+  const v = RespuestaViajeSchema.parse(cuerpo)
   assert.equal(v.resultado, "candidato")
-  assert.equal(v.tramos.length, 1)
-  assert.equal(v.tramos[0].codigoRuta, "V1")
+  assert.deepEqual(v.tramos, [{ codigoRuta: "V1" }])
+})
+
+test("regresión: un candidato (operación sin confirmar) no lleva paradas, conteo, trazado ni coordenadas", () => {
+  const estaciones = datosTransbordoVerificado().stations.map((e) => e.name)
+  // Con transbordo (P1 y Q1) las paradas intermedias y la del cambio serían órdenes de abordaje.
+  const cuerpo = planear("Alfa", "Eco", datosTransbordoVerificado(), madrugada).cuerpo as { origen: string; destino: string; tramos: unknown[] }
+  assert.equal(RespuestaViajeSchema.parse(cuerpo).resultado, "candidato")
+  assert.deepEqual(cuerpo.tramos, [{ codigoRuta: "P1" }, { codigoRuta: "Q1" }])
+  // Solo el origen y el destino que la persona eligió pueden nombrar estaciones.
+  const resto = JSON.stringify({ ...cuerpo, origen: "", destino: "" })
+  for (const nombre of estaciones) assert.equal(resto.includes(nombre), false, `el candidato no nombra «${nombre}»`)
+  for (const campo of ["abordaje", "descenso", "trazado", "coordenada", "estacionesRecorridas", "conteoVerificado", "lat", "lng"]) {
+    assert.equal(resto.includes(`"${campo}"`), false, `el candidato no trae «${campo}»`)
+  }
+  // El esquema tampoco admite un tramo candidato con paradas, y un operativo sí las trae.
+  const conParadas = { ...cuerpo, tramos: [{ codigoRuta: "P1", abordaje: { nombre: "Alfa", coordenada: null } }] }
+  assert.equal(RespuestaViajeSchema.safeParse(conParadas).success, false)
+  const operativo = RespuestaViajeSchema.parse(planear("Alfa", "Eco", datosTransbordoVerificado()).cuerpo)
+  assert.equal(operativo.resultado, "operativo")
+  assert.ok(JSON.stringify(operativo.tramos).includes("Charlie"), "el operativo sí nombra la parada del transbordo")
 })
 
 test("planear-viaje sin paradas verificadas: solo el recorrido, con las rutas que pasan cerca de los dos lugares", () => {
@@ -305,6 +347,38 @@ test("endpoint: una petición válida responde 200 con el contrato", async () =>
     const viaje = await e.POST(enviar(JSON.stringify({ operacion: "planear-viaje", origen: nombres[0], destino: nombres[1] })))
     assert.equal(viaje.status, 200)
     RespuestaViajeSchema.parse(await viaje.json())
+  } finally {
+    e.restaurar()
+  }
+})
+
+test("endpoint: planear tiene su propio límite estricto y no agota las demás operaciones", async () => {
+  const e = await conEndpoint()
+  try {
+    const { lugares } = RespuestaLugaresSchema.parse(await (await e.POST(enviar(JSON.stringify({ operacion: "listar-lugares" })))).json())
+    const planearViaje = () =>
+      e.POST(enviar(JSON.stringify({ operacion: "planear-viaje", origen: lugares[0], destino: lugares[1] })))
+    for (let i = 1; i <= LIMITE_PLANEAR; i++) assert.equal((await planearViaje()).status, 200, `petición ${i} dentro del límite`)
+    const rechazada = await planearViaje()
+    assert.equal(rechazada.status, 429)
+    assert.ok(Number(rechazada.headers.get("Retry-After")) >= 1, "incluye Retry-After")
+    assert.deepEqual(await rechazada.json(), { error: "demasiadas-peticiones" })
+    // Otro cubo: la búsqueda sigue respondiendo.
+    assert.equal((await e.POST(enviar(JSON.stringify({ operacion: "buscar-rutas", consulta: "B23" })))).status, 200)
+  } finally {
+    e.restaurar()
+  }
+})
+
+test("endpoint: las operaciones baratas tienen un límite mayor, también con 429 y Retry-After", async () => {
+  const e = await conEndpoint()
+  try {
+    const consultar = () => e.POST(enviar(JSON.stringify({ operacion: "buscar-rutas", consulta: "B23" })))
+    assert.ok(LIMITE_CONSULTA > LIMITE_PLANEAR)
+    for (let i = 1; i <= LIMITE_CONSULTA; i++) assert.equal((await consultar()).status, 200, `petición ${i} dentro del límite`)
+    const rechazada = await consultar()
+    assert.equal(rechazada.status, 429)
+    assert.ok(rechazada.headers.get("Retry-After"))
   } finally {
     e.restaurar()
   }

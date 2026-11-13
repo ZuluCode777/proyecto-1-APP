@@ -38,6 +38,20 @@ export const MAX_LUGAR = 80
 export const MAXIMO_BYTES_CUERPO = 1_000
 /** Rutas que devuelve una búsqueda; `total` dice cuántas había. */
 export const MAX_RUTAS = 50
+/** Cotas de las respuestas: el cliente de iPhone rechaza lo que las pase (`RespuestaPlanificador.swift`) y una prueba las compara. */
+export const MAX_ESTACIONES = 200
+export const MAX_PUNTOS_TRAZADO = 1_000
+export const MAX_LUGARES = 500
+
+/**
+ * Peticiones por minuto, con clave propia de cada tipo (no comparten cuota con `/api/agent`). `claveCliente()` es hoy una
+ * sola clave para todos, así que son un techo GLOBAL. Planear recorre pares de rutas (`planTrip`, `planTripCandidato`,
+ * `routesAlongBoth`): ~45 ms de CPU síncrona por petición medidos en la revisión, que detienen el bucle de eventos
+ * compartido con `/api/agent` y la web; las otras tres operaciones cuestan menos de 1 ms.
+ */
+export const LIMITE_PLANEAR = 10
+export const LIMITE_CONSULTA = 60
+export const VENTANA_LIMITE_MS = 60_000
 
 export const PeticionPlanificadorSchema = z.discriminatedUnion("operacion", [
   z.strictObject({ operacion: z.literal("buscar-rutas"), consulta: z.string().trim().min(1).max(MAX_CONSULTA) }),
@@ -77,12 +91,14 @@ export const RespuestaDetalleRutaSchema = z.object({
   /** Horario publicado por TransMilenio; vacío si no lo publica. No es un calendario verificado. */
   horario: z.object({ entreSemana: z.string(), sabado: z.string(), festivo: z.string() }),
   /** Estaciones CERCANAS AL TRAZADO, en orden. `paradaVerificada` solo si el validador compartido la acepta. */
-  estaciones: z.array(z.object({ nombre: z.string(), coordenada: CoordenadaSchema.nullable(), paradaVerificada: z.boolean() })),
-  trazado: z.array(CoordenadaSchema),
+  estaciones: z
+    .array(z.object({ nombre: z.string(), coordenada: CoordenadaSchema.nullable(), paradaVerificada: z.boolean() }))
+    .max(MAX_ESTACIONES),
+  trazado: z.array(CoordenadaSchema).max(MAX_PUNTOS_TRAZADO),
   catalogo: CatalogoSchema,
 })
 
-export const RespuestaLugaresSchema = z.object({ lugares: z.array(z.string()), catalogo: CatalogoSchema })
+export const RespuestaLugaresSchema = z.object({ lugares: z.array(z.string()).max(MAX_LUGARES), catalogo: CatalogoSchema })
 
 const TramoSchema = z.object({
   codigoRuta: z.string(),
@@ -92,24 +108,34 @@ const TramoSchema = z.object({
   /** Solo si es `true` puede decirse el número exacto de estaciones. */
   conteoVerificado: z.boolean(),
   /** Tramo del trazado entre abordaje y descenso; vacío si falta la coordenada de alguno. */
-  trazado: z.array(CoordenadaSchema),
+  trazado: z.array(CoordenadaSchema).max(MAX_PUNTOS_TRAZADO),
 })
 
 /**
- * `operativo`: paradas y sentido verificados y la hora actual dentro de la franja (`planTrip`).
- * `candidato`: paradas y sentido verificados, operación sin confirmar ahora (`planTripCandidato`).
+ * Tramo de un servicio CANDIDATO: solo el código de la ruta. Sin paradas, sin conteo y sin trazado, porque con la
+ * operación sin confirmar eso serían órdenes de subir o bajar (`tripCandidatoReply` en `lib/local-agent.ts` y
+ * `planTripCandidato` en `lib/routes.ts` no las dan). `strictObject`: una parada de más no pasa el esquema.
+ */
+const TramoCandidatoSchema = z.strictObject({ codigoRuta: z.string() })
+
+const BaseViaje = { origen: z.string(), destino: z.string(), catalogo: CatalogoSchema }
+const SinRutas = z.array(ResumenRutaSchema).max(0)
+
+/**
+ * `operativo`: paradas y sentido verificados y la hora actual dentro de la franja (`planTrip`); trae tramos completos.
+ * `candidato`: paradas y sentido verificados, operación sin confirmar ahora (`planTripCandidato`); trae SOLO los códigos
+ * de las rutas, sin paradas ni mapa.
  * `recorrido`: sin paradas verificadas; rutas cuyo trazado pasa cerca de los dos lugares (`routesAlongBoth`).
  * `sin-recorrido`: ninguna ruta del trazado conecta los dos lugares. `mismo-lugar`: origen y destino coinciden.
- * Solo `operativo` y `candidato` traen tramos; solo `recorrido` trae `rutasPorElTrazado`.
+ * Solo `recorrido` trae `rutasPorElTrazado`; los demás estados las traen vacías.
  */
-export const RespuestaViajeSchema = z.object({
-  origen: z.string(),
-  destino: z.string(),
-  resultado: z.enum(["operativo", "candidato", "recorrido", "sin-recorrido", "mismo-lugar"]),
-  tramos: z.array(TramoSchema).max(2),
-  rutasPorElTrazado: z.array(ResumenRutaSchema),
-  catalogo: CatalogoSchema,
-})
+export const RespuestaViajeSchema = z.discriminatedUnion("resultado", [
+  z.object({ ...BaseViaje, resultado: z.literal("operativo"), tramos: z.array(TramoSchema).min(1).max(2), rutasPorElTrazado: SinRutas }),
+  z.object({ ...BaseViaje, resultado: z.literal("candidato"), tramos: z.array(TramoCandidatoSchema).min(1).max(2), rutasPorElTrazado: SinRutas }),
+  z.object({ ...BaseViaje, resultado: z.literal("recorrido"), tramos: z.tuple([]), rutasPorElTrazado: z.array(ResumenRutaSchema).min(1).max(MAX_RUTAS) }),
+  z.object({ ...BaseViaje, resultado: z.literal("sin-recorrido"), tramos: z.tuple([]), rutasPorElTrazado: SinRutas }),
+  z.object({ ...BaseViaje, resultado: z.literal("mismo-lugar"), tramos: z.tuple([]), rutasPorElTrazado: SinRutas }),
+])
 
 export type Resolucion =
   | { estado: 200; cuerpo: unknown }
@@ -204,7 +230,8 @@ export function resolverPeticion(peticion: PeticionPlanificador, data: Transmile
       }
       const [candidato] = planTripCandidato({ origin: origen, destination: destino }, data, 1, ahora)
       if (candidato) {
-        return { estado: 200, cuerpo: { ...base, resultado: "candidato", tramos: candidato.map((l) => tramoDeViaje(l, data)), rutasPorElTrazado: [] } }
+        // Solo los códigos: con la operación sin confirmar, las paradas, el conteo y el trazado serían órdenes de abordaje.
+        return { estado: 200, cuerpo: { ...base, resultado: "candidato", tramos: candidato.map((l) => ({ codigoRuta: l.route.code })), rutasPorElTrazado: [] } }
       }
       const porElTrazado = routesAlongBoth(origen, destino, data).map(resumen)
       return {

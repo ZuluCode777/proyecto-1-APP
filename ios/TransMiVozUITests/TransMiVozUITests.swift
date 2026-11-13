@@ -1545,6 +1545,7 @@ class RutasUITestCase: XCTestCase {
 /// Las auditorías son de tamaño normal; con el texto más grande, ver `TransMiVozRutasTextoGrandeUITests`.
 final class TransMiVozRutasUITests: RutasUITestCase {
     private let norte = "Estación Ejemplo Norte"
+    private let centro = "Estación Ejemplo Centro"
     private let sur = "Estación Ejemplo Sur"
 
     func testBuscarUnaRutaYAbrirSuDetalleConListadoYMapa() throws {
@@ -1596,6 +1597,27 @@ final class TransMiVozRutasUITests: RutasUITestCase {
         XCTAssertTrue(tramo.contains("Descenso: \(sur)"), tramo)
         XCTAssertTrue(tramo.contains("3 estaciones (conteo verificado)"), tramo)
         XCTAssertTrue(elemento("mapa-recorrido").exists, "falta el mapa del mismo tramo")
+    }
+
+    /// Un servicio candidato (operación sin confirmar) solo lista el código de su ruta: ni paradas, ni conteo, ni mapa.
+    func testUnServicioCandidatoSoloListaLaRutaSinParadasNiMapa() throws {
+        lanzar()
+        abrirViaje()
+        elegirLugar("selector-origen", centro)
+        elegirLugar("selector-destino", sur)
+        elemento("boton-planear-viaje").tap()
+
+        let titulo = elemento("resultado-viaje-titulo")
+        XCTAssertTrue(titulo.waitForExistence(timeout: 10), "No apareció el resultado del viaje")
+        XCTAssertEqual(titulo.label, "Servicio candidato de \(centro) a \(sur)")
+        XCTAssertEqual(elemento("ruta-candidata-1").label, "Ruta Z99")
+        XCTAssertFalse(elemento("tramo-1").exists, "un candidato no lista tramos con paradas")
+        XCTAssertFalse(elemento("mapa-recorrido").exists, "un candidato no dibuja mapa")
+        for palabra in ["Abordaje", "Descenso"] {
+            XCTAssertFalse(
+                app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", palabra)).firstMatch.exists,
+                "un candidato no dice «\(palabra)»")
+        }
     }
 
     func testUnaRutaDeLaConsultaAbreSuDetalle() throws {
@@ -1689,7 +1711,19 @@ final class TransMiVozRutasTextoGrandeUITests: RutasUITestCase {
         elemento("ruta-por-el-trazado-Z98").tap()
         XCTAssertTrue(elemento("detalle-ruta-titulo").waitForExistence(timeout: 10), "No se abrió el detalle de la Z98")
         exponer("boton-favorita", en: app)
-        exponer("estacion-3", en: app)
+        // Las estaciones van en un LazyVStack: no existen hasta llegar cerca, y `exponer` da cuatro gestos como máximo,
+        // menos de lo que mide el detalle con este texto. Se baja, con tope, hasta que exista y luego se centra.
+        let ultima = elemento("estacion-3")
+        let contenido = app.scrollViews.firstMatch.frame
+        let arriba = max(app.navigationBars.firstMatch.frame.maxY, contenido.minY)
+        let abajo = min(app.tabBars.firstMatch.frame.minY, contenido.maxY)
+        var gestos = 0
+        while !ultima.exists && gestos < 12 {
+            arrastrarContenido(abajo - arriba - 40, en: app, arriba: arriba, abajo: abajo, velocidad: .slow)
+            gestos += 1
+        }
+        XCTAssertTrue(ultima.exists, "«estacion-3» no existe tras \(gestos) desplazamientos")
+        exponer("estacion-3", en: app, velocidad: .slow)
         comprobarEnteros(["estacion-3"], en: app)
     }
 }

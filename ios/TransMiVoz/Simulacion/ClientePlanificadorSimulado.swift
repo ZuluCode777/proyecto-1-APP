@@ -64,6 +64,11 @@ struct ClientePlanificadorSimulado: ClientePlanificador {
                 origen: origen, destino: destino, resultado: .operativo, tramos: [tramo], rutasPorElTrazado: [],
                 catalogo: Self.catalogo)
         }
+        if origen == Self.centro && destino == Self.sur {
+            // Operación sin confirmar: solo el código de la ruta, sin paradas ni mapa.
+            return PlanViaje(
+                origen: origen, destino: destino, resultado: .candidato, codigosCandidatos: ["Z99"], catalogo: Self.catalogo)
+        }
         return PlanViaje(
             origen: origen, destino: destino, resultado: .recorrido, tramos: [],
             rutasPorElTrazado: [ResumenRuta(codigo: "Z98", desde: Self.sur, hacia: Self.norte)],

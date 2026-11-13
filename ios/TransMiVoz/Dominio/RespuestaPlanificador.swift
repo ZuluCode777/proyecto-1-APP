@@ -163,7 +163,8 @@ struct TramoPlan: Decodable, Equatable, Sendable {
     }
 }
 
-/// Estado del viaje según el servidor. Solo `operativo` y `candidato` traen tramos; solo `recorrido` trae rutas.
+/// Estado del viaje según el servidor. Solo `operativo` trae tramos completos; `candidato` trae solo los códigos de
+/// las rutas; solo `recorrido` trae rutas por el trazado.
 enum ResultadoViaje: String, Decodable, Equatable, Sendable {
     case operativo
     case candidato
@@ -172,25 +173,71 @@ enum ResultadoViaje: String, Decodable, Equatable, Sendable {
     case mismoLugar = "mismo-lugar"
 }
 
-struct PlanViaje: RespuestaPlanificador, Equatable {
+/// Tramo de un servicio candidato en el contrato: solo el código. Cualquier otro campo que mande un servidor (paradas,
+/// conteo, trazado) no se decodifica: con la operación sin confirmar serían órdenes de abordaje y la app no los usa.
+private struct TramoCandidato: Decodable {
+    let codigoRuta: String
+}
+
+struct PlanViaje: Equatable, Sendable {
     /// Un viaje tiene como mucho un transbordo.
     static let maximoTramos = 2
 
     let origen: String
     let destino: String
     let resultado: ResultadoViaje
+    /// Tramos completos, con paradas, conteo y trazado: solo en un viaje `operativo`.
     let tramos: [TramoPlan]
+    /// Códigos de las rutas de un servicio `candidato`. Sin paradas ni mapa: la operación no está confirmada.
+    let codigosCandidatos: [String]
     let rutasPorElTrazado: [ResumenRuta]
     let catalogo: ProcedenciaCatalogo
 
+    init(
+        origen: String, destino: String, resultado: ResultadoViaje, tramos: [TramoPlan] = [],
+        codigosCandidatos: [String] = [], rutasPorElTrazado: [ResumenRuta] = [], catalogo: ProcedenciaCatalogo
+    ) {
+        self.origen = origen
+        self.destino = destino
+        self.resultado = resultado
+        self.tramos = tramos
+        self.codigosCandidatos = codigosCandidatos
+        self.rutasPorElTrazado = rutasPorElTrazado
+        self.catalogo = catalogo
+    }
+
     var esValida: Bool {
         guard origen.tieneTexto, destino.tieneTexto, catalogo.esValida, tramos.count <= Self.maximoTramos,
+              codigosCandidatos.count <= Self.maximoTramos, codigosCandidatos.allSatisfy(\.tieneTexto),
               rutasPorElTrazado.count <= ResultadoBusquedaRutas.maximoRutas,
               tramos.allSatisfy(\.esValido), rutasPorElTrazado.allSatisfy(\.esValido) else { return false }
         switch resultado {
-        case .operativo, .candidato: return !tramos.isEmpty && rutasPorElTrazado.isEmpty
-        case .recorrido: return tramos.isEmpty && !rutasPorElTrazado.isEmpty
-        case .sinRecorrido, .mismoLugar: return tramos.isEmpty && rutasPorElTrazado.isEmpty
+        case .operativo: return !tramos.isEmpty && codigosCandidatos.isEmpty && rutasPorElTrazado.isEmpty
+        case .candidato: return !codigosCandidatos.isEmpty && tramos.isEmpty && rutasPorElTrazado.isEmpty
+        case .recorrido: return tramos.isEmpty && codigosCandidatos.isEmpty && !rutasPorElTrazado.isEmpty
+        case .sinRecorrido, .mismoLugar: return tramos.isEmpty && codigosCandidatos.isEmpty && rutasPorElTrazado.isEmpty
         }
+    }
+}
+
+extension PlanViaje: RespuestaPlanificador {
+    private enum Claves: String, CodingKey {
+        case origen, destino, resultado, tramos, rutasPorElTrazado, catalogo
+    }
+
+    init(from decoder: Decoder) throws {
+        let contenedor = try decoder.container(keyedBy: Claves.self)
+        origen = try contenedor.decode(String.self, forKey: .origen)
+        destino = try contenedor.decode(String.self, forKey: .destino)
+        resultado = try contenedor.decode(ResultadoViaje.self, forKey: .resultado)
+        if resultado == .candidato {
+            tramos = []
+            codigosCandidatos = try contenedor.decode([TramoCandidato].self, forKey: .tramos).map(\.codigoRuta)
+        } else {
+            tramos = try contenedor.decode([TramoPlan].self, forKey: .tramos)
+            codigosCandidatos = []
+        }
+        rutasPorElTrazado = try contenedor.decode([ResumenRuta].self, forKey: .rutasPorElTrazado)
+        catalogo = try contenedor.decode(ProcedenciaCatalogo.self, forKey: .catalogo)
     }
 }

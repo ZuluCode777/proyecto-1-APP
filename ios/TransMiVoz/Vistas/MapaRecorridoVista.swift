@@ -5,6 +5,8 @@ import SwiftUI
 /// la pantalla, que se lee primero. Solo dibuja las coordenadas que el servidor entregó, no pide ubicación ni muestra
 /// la de la persona, y no se confía en el color ni en el ancho de la línea para distinguir tramos (el listado los numera).
 /// Sin conexión MapKit no baja las calles: queda el trazado sobre un fondo vacío y la nota que lo dice.
+/// No se mueve ni se acerca (`interactionModes: []`): es una ayuda visual, y así no atrapa el desplazamiento de la
+/// pantalla con una mano.
 struct MapaRecorridoVista: View {
     let elementos: ElementosMapa
     let etiqueta: String
@@ -33,7 +35,7 @@ struct MapaRecorridoVista: View {
 
     @ViewBuilder private var mapa: some View {
         if let encuadre = EncuadreMapa.ajustar(elementos.coordenadas) {
-            Map(initialPosition: .region(region(encuadre))) {
+            Map(initialPosition: .region(region(encuadre)), interactionModes: []) {
                 ForEach(Array(elementos.lineas.enumerated()), id: \.offset) { indice, linea in
                     MapPolyline(coordinates: linea.map(punto))
                         .stroke(indice == 0 ? Color.blue : Color.indigo, lineWidth: indice == 0 ? 6 : 4)
