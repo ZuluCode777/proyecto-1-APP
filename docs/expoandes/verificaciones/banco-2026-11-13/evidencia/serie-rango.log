@@ -1,0 +1,23 @@
+# captura iniciada 2026-11-13 11:44:51 en /dev/ttyACM0
+11:44:51     0.00 Accesorio Visionaria, firmware 0.1.0, contrato 1.0, modo real
+11:44:51     0.00 BLE: Visionaria listo, contrato 1.0, firmware 0.1.0, arranque 70116fed
+11:45:04    12.70 estado t=20003 radar=real salud=2 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+11:45:04    12.70 uart validas=13 parciales=1 largas=0 otras=3 ignoradas=10 errores=0 timeouts=0 descartados=0 perdidas=0 reintentos=0 rango_distinto=0
+11:45:11    20.00 Radar: sin latido o configuración fallida; se repite el arranque del radar (sin reescribir su flash si ya guardó la configuración y su ventana coincide)
+11:45:32    40.18 Radar: sin latido o configuración fallida; se repite el arranque del radar (sin reescribir su flash si ya guardó la configuración y su ventana coincide)
+11:45:52    60.36 Radar: sin latido o configuración fallida; se repite el arranque del radar (sin reescribir su flash si ya guardó la configuración y su ventana coincide)
+11:46:04    72.71 estado t=80008 radar=real salud=2 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+11:46:04    72.71 uart validas=25 parciales=4 largas=0 otras=12 ignoradas=36 errores=0 timeouts=0 descartados=17 perdidas=1 reintentos=3 rango_distinto=0
+11:46:12    80.54 Radar: sin latido o configuración fallida; se repite el arranque del radar (sin reescribir su flash si ya guardó la configuración y su ventana coincide)
+11:47:04   132.71 estado t=140010 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+11:47:04   132.71 uart validas=50 parciales=5 largas=0 otras=15 ignoradas=45 errores=0 timeouts=0 descartados=17 perdidas=1 reintentos=4 rango_distinto=0
+11:48:04   192.70 estado t=200010 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+11:48:04   192.70 uart validas=110 parciales=5 largas=1 otras=15 ignoradas=45 errores=0 timeouts=0 descartados=34 perdidas=2 reintentos=4 rango_distinto=0
+11:49:04   252.70 estado t=260010 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+11:49:04   252.70 uart validas=177 parciales=5 largas=1 otras=15 ignoradas=45 errores=0 timeouts=0 descartados=34 perdidas=2 reintentos=4 rango_distinto=0
+11:50:04   312.70 estado t=320010 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+11:50:04   312.70 uart validas=236 parciales=5 largas=2 otras=15 ignoradas=45 errores=0 timeouts=0 descartados=51 perdidas=3 reintentos=4 rango_distinto=0
+11:51:04   372.70 estado t=380010 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+11:51:04   372.70 uart validas=297 parciales=5 largas=2 otras=15 ignoradas=45 errores=0 timeouts=0 descartados=51 perdidas=3 reintentos=4 rango_distinto=0
+11:52:04   432.70 estado t=440010 radar=real salud=0 fase=2 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+11:52:04   432.70 uart validas=357 parciales=5 largas=2 otras=15 ignoradas=45 errores=0 timeouts=0 descartados=51 perdidas=3 reintentos=4 rango_distinto=0

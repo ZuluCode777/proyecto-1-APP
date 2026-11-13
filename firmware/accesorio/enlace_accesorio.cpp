@@ -140,6 +140,7 @@ void SesionEnlace::conectar(uint16_t id_conexion, uint32_t ahora_ms) {
   t_conexion_ = ahora_ms;
   proxima_ = ahora_ms;
   gracia_ms_ = kGraciaSeguridadMs;
+  corte_registrado_ = false;
 }
 
 void SesionEnlace::desconectar() {
@@ -191,6 +192,12 @@ void SesionEnlace::clave_pedida(uint32_t ahora_ms) {
 bool SesionEnlace::vencio_gracia(uint32_t ahora_ms) const {
   return conectada_ && !protegida_ &&
          static_cast<uint32_t>(ahora_ms - t_conexion_) >= gracia_ms_;
+}
+
+bool SesionEnlace::registrar_corte_por_gracia() {
+  if (!conectada_ || corte_registrado_) return false;
+  corte_registrado_ = true;
+  return true;
 }
 
 }  // namespace enlace

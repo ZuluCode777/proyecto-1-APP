@@ -7,7 +7,18 @@ namespace sen0395 {
 
 namespace {
 
-constexpr uint8_t kPasoGuardar = 3;  // saveCfg
+constexpr uint8_t kPasoParar = 0;     // sensorStop
+constexpr uint8_t kPasoRango = 1;     // detRangeCfg
+constexpr uint8_t kPasoGuardar = 3;   // saveCfg
+constexpr uint8_t kPasoArrancar = 4;  // sensorStart
+// getRange: solo en la recuperación ligera, con el radar parado, tras sensorStop.
+// Fuera de la cuenta 0..4 de la secuencia completa (kPasosConfiguracion).
+constexpr uint8_t kPasoVerificar = 6;
+
+// Tolerancia al comparar la ventana leída con la configurada. El radar responde
+// en metros con tres decimales (`0.450` para el índice 3); un índice son 150 mm,
+// así que 10 mm absorbe un redondeo y nunca confunde dos índices distintos.
+constexpr int32_t kToleranciaRangoMm = 10;
 
 const char kTramaPresencia[] = "$JYBSS,1, , , *";
 const char kTramaNadie[] = "$JYBSS,0, , , *";
@@ -31,6 +42,51 @@ uint32_t edad(uint32_t ahora, uint32_t marca) {
   const uint32_t d = ahora - marca;
   return d >= 0x80000000u ? 0xFFFFFFFFu : d;
 }
+
+// Metros decimales sin signo (`0.450`) a milímetros, con redondeo al mm. Estricto:
+// 1 a 3 cifras enteras y, si hay punto, 1 a 6 decimales; nada más. `*i` avanza.
+bool metros_a_mm(const uint8_t* a, size_t n, size_t* i, int32_t* mm) {
+  size_t k = *i;
+  int32_t entero = 0;
+  size_t cifras = 0;
+  while (k < n && a[k] >= '0' && a[k] <= '9' && cifras < 3) {
+    entero = entero * 10 + (a[k++] - '0');
+    ++cifras;
+  }
+  if (cifras == 0) return false;
+  int32_t frac = 0;  // milésimas
+  bool sube = false;
+  if (k < n && a[k] == '.') {
+    ++k;
+    size_t d = 0;
+    while (k < n && a[k] >= '0' && a[k] <= '9' && d < 6) {
+      const int32_t v = a[k++] - '0';
+      if (d < 3) frac = frac * 10 + v;
+      else if (d == 3) sube = v >= 5;
+      ++d;
+    }
+    if (d == 0) return false;
+    for (size_t r = d; r < 3; ++r) frac *= 10;
+  }
+  if (k < n && a[k] >= '0' && a[k] <= '9') return false;  // más cifras de las admitidas
+  *mm = entero * 1000 + frac + (sube ? 1 : 0);
+  *i = k;
+  return true;
+}
+
+// `Response <inicio> <fin>` (metros) de getRange; false si no es exactamente eso.
+bool leer_respuesta_rango(const uint8_t* l, size_t n, int32_t* inicio_mm, int32_t* fin_mm) {
+  const char kPrefijo[] = "Response ";
+  const size_t m = sizeof(kPrefijo) - 1;
+  if (n <= m || memcmp(l, kPrefijo, m) != 0) return false;
+  size_t i = m;
+  if (!metros_a_mm(l, n, &i, inicio_mm)) return false;
+  if (i >= n || l[i] != ' ') return false;
+  ++i;
+  return metros_a_mm(l, n, &i, fin_mm) && i == n;
+}
+
+int32_t abs_mm(int32_t v) { return v < 0 ? -v : v; }
 
 struct Escritor {
   Escritor(uint8_t* d, size_t c) : destino(d), capacidad(c) {}
@@ -77,9 +133,13 @@ Interprete::Interprete(const Configuracion& cfg) : cfg_(cfg) {
   cont_.reinicios = 0;  // la construcción no es un reinicio
 }
 
-void Interprete::reiniciar(bool guardar_en_flash) {
+void Interprete::reiniciar(bool completa) {
   ++cont_.reinicios;
-  guardar_ = guardar_en_flash;
+  // Sin configuración guardada por nosotros, el radar no puede arrancar sin pasar
+  // por detRangeCfg, outputLatency y saveCfg (banco 12/11, R2).
+  ligera_ = !completa && guardada_;
+  parado_ya_ = false;
+  rango_ok_ = false;
   // Una respuesta tardía de la orden vieja no debe confirmar la nueva. Con la
   // orden en vuelo, la purga empieza cuando venza su plazo (en avanzar()), como
   // tras un timeout: así dura >= 2 x respuesta_max_ms desde su envío.
@@ -102,10 +162,10 @@ size_t Interprete::construir_orden(uint8_t paso, uint8_t* destino, size_t capaci
   if (destino == nullptr) return 0;
   Escritor w(destino, capacidad);
   switch (paso) {
-    case 0:
+    case kPasoParar:
       w.texto("sensorStop");
       break;
-    case 1:
+    case kPasoRango:
       w.texto("detRangeCfg -1 ");
       w.numero(cfg_.ventana_inicio);
       w.texto(" ");
@@ -117,11 +177,14 @@ size_t Interprete::construir_orden(uint8_t paso, uint8_t* destino, size_t capaci
       w.texto(" ");
       w.numero(cfg_.latencia_desaparicion);
       break;
-    case 3:
+    case kPasoGuardar:
       w.texto("saveCfg 0x45670123 0xCDEF89AB 0x956128C6 0xDF54AC89");
       break;
-    case 4:
+    case kPasoArrancar:
       w.texto("sensorStart");
+      break;
+    case kPasoVerificar:
+      w.texto("getRange");
       break;
     default:
       return 0;
@@ -138,10 +201,40 @@ size_t Interprete::salida_pendiente(uint8_t* destino, size_t capacidad) const {
 void Interprete::salida_enviada(uint32_t ahora_ms) {
   if (fase_ != Fase::Configurando || esperando_ || purgando_) return;
   esperando_ = true;
+  parado_ya_ = false;
+  rango_ok_ = false;
   t_envio_ = ahora_ms;
   // Lo recibido antes de la orden no es su respuesta.
   largo_ = 0;
   descartando_ = false;
+}
+
+// La orden en curso quedó cumplida (su Done, o el Error aceptado de sensorStop).
+void Interprete::orden_confirmada(uint32_t ahora_ms) {
+  esperando_ = false;
+  parado_ya_ = false;
+  if (paso_ == kPasoVerificar) {
+    if (rango_ok_) {
+      paso_ = kPasoArrancar;  // la flash del radar tiene nuestra ventana: arranca sin tocar nada
+    } else {
+      // Otra ventana, ilegible o `Error`: no se sabe qué tiene el radar. Secuencia
+      // completa, con saveCfg (el radar sigue parado, así que acepta los parámetros).
+      ++cont_.rangos_distintos;
+      ligera_ = false;
+      paso_ = kPasoRango;
+    }
+    return;
+  }
+  // Recuperación ligera: del paro a comprobar la ventana, sin tocar parámetros.
+  if (ligera_ && paso_ == kPasoParar) {
+    paso_ = kPasoVerificar;
+    return;
+  }
+  ++paso_;
+  if (paso_ >= kPasosConfiguracion) {
+    fase_ = Fase::Estabilizando;
+    t_estab_ = ahora_ms;  // los 5 s cuentan desde el Done de sensorStart
+  }
 }
 
 void Interprete::fallar(MotivoFallo m, uint32_t ahora_ms) {
@@ -211,16 +304,36 @@ void Interprete::linea_completa(uint32_t ahora_ms, uint32_t sello_ms) {
       if (!esperando_) {
         ++cont_.lineas_ignoradas;  // respuesta sin orden en curso: nunca vale
       } else if (igual(l, n, "Done")) {
-        esperando_ = false;
-        ++paso_;
-        if (!guardar_ && paso_ == kPasoGuardar) ++paso_;
-        if (paso_ >= kPasosConfiguracion) {
-          fase_ = Fase::Estabilizando;
-          t_estab_ = ahora_ms;  // los 5 s cuentan desde el Done de sensorStart
-        }
+        if (paso_ == kPasoGuardar) guardada_ = true;
+        orden_confirmada(ahora_ms);
+      } else if (paso_ == kPasoParar && igual(l, n, "sensor stopped already")) {
+        // El SEN0395 contesta así a sensorStop con el radar ya parado, y la línea
+        // siguiente es `Error` (banco 12/11, R1; la wiki de DFRobot documenta ese
+        // Error: «the sensor is not in operating status»). Que ya esté parado es
+        // lo que se pedía: el Error que sigue se acepta solo en este paso.
+        parado_ya_ = true;
+        ++cont_.lineas_ignoradas;
+      } else if (paso_ == kPasoVerificar && n > 0 && l[0] == 'R') {
+        // La respuesta de getRange. Vale la última: una línea ilegible o de otra
+        // ventana la anula y el radar no se arranca con ella (ver orden_confirmada).
+        int32_t ini = 0, fin = 0;
+        rango_ok_ = leer_respuesta_rango(l, n, &ini, &fin) &&
+                    abs_mm(ini - cfg_.ventana_inicio * kPasoVentanaMm) <= kToleranciaRangoMm &&
+                    abs_mm(fin - cfg_.ventana_fin * kPasoVentanaMm) <= kToleranciaRangoMm;
       } else if (igual(l, n, "Error")) {
-        ++cont_.errores_radar;
-        fallar(MotivoFallo::RespuestaError, ahora_ms);
+        if (paso_ == kPasoVerificar) {
+          // getRange rechazado: no es un fallo, es no poder comprobar. Se cae a la completa.
+          rango_ok_ = false;
+          orden_confirmada(ahora_ms);
+        } else if (parado_ya_) {
+          orden_confirmada(ahora_ms);
+        } else {
+          ++cont_.errores_radar;
+          // Una recuperación ligera que acaba en Error no sabe qué tiene el radar
+          // en la flash: la siguiente repite la secuencia completa.
+          if (ligera_) guardada_ = false;
+          fallar(MotivoFallo::RespuestaError, ahora_ms);
+        }
       } else {
         ++cont_.lineas_ignoradas;  // eco de la orden, tramas de salida continua...
       }

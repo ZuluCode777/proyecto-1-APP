@@ -15,8 +15,8 @@ Datos de la [wiki de DFRobot](https://wiki.dfrobot.com/mmWave_Radar_Human_Presen
 | Alimentación | 3,6–5 V, 90 mA. La wiki no publica el nivel lógico de la UART. |
 | UART | 115200 baudios, 8 bits, sin paridad, 1 bit de parada. |
 | Salida | Trama ASCII `$JYBSS,1, , , *` (presencia) o `$JYBSS,0, , , *` (nadie), a 1 Hz por defecto. El pin GPIO2 del sensor sube con presencia. **No entrega distancia ni ángulo.** |
-| Ventana de detección | `detRangeCfg -1 <inicio> <fin> …`: hasta cuatro tramos, en pasos de 15 cm (índices 0–127). Por defecto `detRangeCfg -1 0 20`, de 0 a 3 m. Alcance declarado: 9 m. |
-| Retardos | `outputLatency -1 <al detectar> <al desaparecer>`, en unidades de 25 ms. Por defecto 2,5 s y 10 s. |
+| Ventana de detección | `detRangeCfg -1 <inicio> <fin> …`: hasta cuatro tramos, en pasos de 15 cm (índices 0–127). De fábrica `detRangeCfg -1 0 20`, de 0 a 3 m; **nuestro firmware usa `0 2` (0 a 30 cm)**, el ajuste que el equipo validó en el banco del 12/11/2026. Alcance declarado: 9 m. |
+| Retardos | `outputLatency -1 <al detectar> <al desaparecer>`, en unidades de 25 ms (wiki de DFRobot, [referencia](https://wiki.dfrobot.com/sen0395/docs/21398), consulta 13/11/2026). De fábrica 100 y 400 (2,5 s y 10 s); **nuestro firmware usa 0 y 8 (0 s al detectar, 0,2 s al despejar)**, validados en el banco. Tras `outputLatency -1 100 400`, `getLatency` respondió `0.025 10.000`: el 10 s cuadra y el 0,025 s no cuadra con los 2,5 s de la wiki; no se resolvió. |
 | Configuración | Solo con el sensor detenido (`sensorStop`). Después, `saveCfg 0x45670123 0xCDEF89AB 0x956128C6 0xDF54AC89` y `sensorStart`. Cada orden responde `Done` o `Error`. |
 | Haz | 100 × 40°. |
 | Blancos | Personas en movimiento, con micromovimiento o quietas, y «movimiento de todos los objetos» en su rango. No declara detección de objetos quietos que no sean personas. |
@@ -55,7 +55,7 @@ Si B4 y B5 fallan, G1 se registra en la feria como no lograda con este sensor; l
 
 **Recomendación: opción 1.** Mantiene la v1.0 sin tocar el iPhone y usa la señal más reciente que da el sensor. Si B2 muestra que el pin no cambia antes que la trama, la opción 2 tampoco mejora el aviso: solo haría aceptar datos más viejos, y el requisito de retardo queda incumplido con este sensor. Un pin quieto en bajo no distingue «nadie» de «sensor caído», así que la trama UART sigue como latido: sin trama válida en 2,5 s, salud `2` aunque el pin diga otra cosa.
 
-**Retardo de aviso.** Con el retardo por defecto de 2,5 s al detectar, la meta de p95 ≤ 300 ms del sensor al sonido no se cumple. El firmware baja `outputLatency` al mínimo que B2 muestre estable. Si ni así se cumple, el requisito queda incumplido y se declara.
+**Retardo de aviso.** Con el retardo de fábrica de 2,5 s al detectar (el firmware ya usa 0; ver arriba), la meta de p95 ≤ 300 ms del sensor al sonido no se cumple. El firmware baja `outputLatency` al mínimo que B2 muestre estable. Si ni así se cumple, el requisito queda incumplido y se declara.
 
 ## Conexión eléctrica
 
@@ -97,7 +97,7 @@ firmware/
 
 **Comportamiento:**
 
-1. **Arranque.** Genera un identificador de arranque aleatorio. Envía `sensorStop`, `detRangeCfg`, `outputLatency`, `saveCfg` y `sensorStart`, y exige `Done` en cada uno; si alguno falla, salud `4`. Mientras el sensor se estabiliza (al menos 5 s; B1 lo mide), salud `1`. Guardar la configuración en cada arranque escribe la flash del sensor; con decenas de arranques no importa.
+1. **Arranque.** Genera un identificador de arranque aleatorio. Envía `sensorStop`, `detRangeCfg`, `outputLatency`, `saveCfg` y `sensorStart`, y exige `Done` en cada uno (salvo `sensorStop` con el radar ya parado: `sensor stopped already` + `Error` cuenta como hecho); si alguno falla, salud `4`. Mientras el sensor se estabiliza (al menos 5 s; B1 lo mide), salud `1`. Guardar la configuración en cada arranque escribe la flash del sensor; con decenas de arranques no importa.
 2. **Lectura.** Lee la UART sin bloquear y acepta solo `$JYBSS,0, , , *` y `$JYBSS,1, , , *` completas. Trama parcial o desconocida: salud `3`. Sin trama válida durante 2,5 s: salud `2`. Tras un fallo nunca reutiliza el último resultado.
 3. **Emisión.** Cada 100 ms toma la presencia (del pin GPIO2 si EA-04 adopta la opción 1), codifica Medición y notifica, también sin presencia o con fallo, con secuencia, instante y edad del resultado. Información se fija al arrancar.
 4. **Enlace.** Servicio y UUID de §8.1. Lectura y suscripción solo con enlace cifrado. Alta con el botón BOOT (GPIO0, que puede leerse después del arranque) durante 60 s y clave fija del accesorio, según EA-12. Si la placa solo logra emparejamiento sin protección MITM, se declara ese límite.

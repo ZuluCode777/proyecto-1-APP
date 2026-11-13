@@ -192,6 +192,13 @@ class SesionEnlace {
   // llamador debe cortar la conexión (libera el único cupo).
   bool vencio_gracia(uint32_t ahora_ms) const;
 
+  // Para el aviso por el serie del corte de gracia. El loop pregunta vencio_gracia()
+  // en cada ciclo hasta que llega la desconexión (el corte se repite si el stack
+  // lo pierde), y el aviso salía una vez por ciclo (banco 12/11, H4). Devuelve
+  // true solo la primera vez en cada conexión; conectar() lo rearma. No cambia
+  // cuándo ni si se corta: eso sigue siendo vencio_gracia().
+  bool registrar_corte_por_gracia();
+
  private:
   bool conectada_ = false;
   bool protegida_ = false;
@@ -201,6 +208,7 @@ class SesionEnlace {
   uint32_t t_conexion_ = 0;
   uint32_t proxima_ = 0;
   uint32_t gracia_ms_ = kGraciaSeguridadMs;  // límite sin proteger, desde t_conexion_
+  bool corte_registrado_ = false;
 };
 
 }  // namespace enlace

@@ -1,0 +1,102 @@
+# captura iniciada 2026-11-13 09:28:48 en /dev/ttyACM0
+09:28:48     0.00 Accesorio Visionaria, firmware 0.1.0, contrato 1.0, modo SIMULACIÓN
+09:28:48     0.00 BLE: Visionaria-SIM listo, contrato 1.0, firmware 0.1.0, arranque b580882d
+09:28:48     0.00 ESP-ROM:esp32s3-20210327
+09:28:48     0.00 Build:Mar 27 2021
+09:28:48     0.00 rst:0x15 (USB_UART_CHIP_RESET),boot:0x28 (SPI_FAST_FLASH_BOOT)
+09:28:48     0.00 Saved PC:0x4037f5ae
+09:28:48     0.00 SPIWP:0xee
+09:28:48     0.00 mode:DIO, clock div:1
+09:28:48     0.00 load:0x3fce2820,len:0x10cc
+09:28:48     0.00 load:0x403c8700,len:0xc2c
+09:28:48     0.00 load:0x403cb700,len:0x30b0
+09:28:48     0.00 entry 0x403c88b8
+09:28:48     0.05 Accesorio Visionaria, firmware 0.1.0, contrato 1.0, modo SIMULACIÓN
+09:28:49     0.30 BLE: Visionaria-SIM listo, contrato 1.0, firmware 0.1.0, arranque 4dc369a5
+# captura iniciada 2026-11-13 09:29:00 en /dev/ttyACM0
+09:29:03     2.97 estado t=15001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:30:03    62.97 estado t=75001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:30:24    84.03 ESP-ROM:esp32s3-20210327
+09:30:24    84.03 Build:Mar 27 2021
+09:30:24    84.03 rst:0x15 (USB_UART_CHIP_RESET),boot:0x28 (SPI_FAST_FLASH_BOOT)
+09:30:24    84.03 Saved PC:0x4037f5ae
+09:30:24    84.03 SPIWP:0xee
+09:30:24    84.03 mode:DIO, clock div:1
+09:30:24    84.04 load:0x3fce2820,len:0x10cc
+09:30:24    84.04 load:0x403c8700,len:0xc2c
+09:30:24    84.04 load:0x403cb700,len:0x30b0
+09:30:24    84.05 entry 0x403c88b8
+09:30:25    84.18 Accesorio Visionaria, firmware 0.1.0, contrato 1.0, modo SIMULACIÓN
+09:30:25    84.43 BLE: Visionaria-SIM listo, contrato 1.0, firmware 0.1.0, arranque f828f76b
+09:30:49   108.52 BLE: CONNECT con status 26 (lectura de funciones remotas del par); se comprueba el enlace
+09:30:49   108.52 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+09:30:50   109.28 BLE: conexión terminada
+09:31:00   119.17 estado t=35001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:32:00   179.17 estado t=95001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:33:00   239.17 estado t=155001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:34:00   299.16 estado t=215001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:34:52   352.08 BLE: CONNECT con status 26 (lectura de funciones remotas del par); se comprueba el enlace
+09:34:52   352.08 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+09:35:00   359.16 estado t=275001 radar=simulado salud=0 fase=0 conectada=1 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:35:22   382.08 BLE: enlace sin proteger pasado el plazo; se corta
+09:35:22   382.08 BLE: enlace sin proteger pasado el plazo; se corta
+09:35:22   382.08 BLE: enlace sin proteger pasado el plazo; se corta
+09:35:22   382.09 BLE: enlace sin proteger pasado el plazo; se corta
+09:35:22   382.09 BLE: enlace sin proteger pasado el plazo; se corta
+09:35:22   382.09 BLE: enlace sin proteger pasado el plazo; se corta
+09:35:22   382.09 BLE: enlace sin proteger pasado el plazo; se corta
+09:35:22   382.09 BLE: enlace sin proteger pasado el plazo; se corta
+09:35:23   382.10 BLE: enlace sin proteger pasado el plazo; se corta
+09:35:23   382.10 BLE: conexión terminada
+09:35:33   392.50 BLE: CONNECT con status 26 (lectura de funciones remotas del par); se comprueba el enlace
+09:35:33   392.50 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+09:35:34   393.27 BLE: conexión terminada
+09:36:00   419.16 estado t=335001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:36:12   431.95 BLE: CONNECT con status 26 (lectura de funciones remotas del par); se comprueba el enlace
+09:36:12   431.95 BLE: conexión nueva; sesión limpia, sin suscripción ni datos previos
+09:36:13   432.34 BLE: emparejamiento rechazado (sin ventana de alta o acción no admitida)
+09:36:13   432.72 BLE: enlace sin protección suficiente; se corta
+09:36:13   432.72 BLE: conexión terminada
+09:37:00   479.16 estado t=395001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:38:00   539.16 estado t=455001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:39:00   599.16 estado t=515001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:40:00   659.16 estado t=575001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:41:00   719.15 estado t=635001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:42:00   779.15 estado t=695001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:43:00   839.15 estado t=755001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:44:00   899.15 estado t=815001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:45:00   959.15 estado t=875001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:46:00  1019.15 estado t=935001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:47:00  1079.14 estado t=995001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:48:00  1139.14 estado t=1055001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:49:00  1199.14 estado t=1115001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:50:00  1259.14 estado t=1175001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:51:00  1319.14 estado t=1235001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:52:00  1379.14 estado t=1295001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:53:00  1439.14 estado t=1355001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:54:00  1499.13 estado t=1415001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:55:00  1559.13 estado t=1475001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:56:00  1619.13 estado t=1535001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+09:57:00  1679.13 estado t=1595001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+# puerto perdido
+# captura iniciada 2026-11-13 10:10:42 en /dev/ttyACM0
+10:10:42     0.00 IÓN
+10:10:42     0.00 BLE: Visionaria-SIM listo, contrato 1.0, firmware 0.1.0, arranque c7705e59
+10:11:01    18.96 estado t=20001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:12:01    78.96 estado t=80001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:13:01   138.96 estado t=140001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:14:01   198.96 estado t=200001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+# puerto perdido
+# captura iniciada 2026-11-13 10:14:54 en /dev/ttyACM0
+10:14:54     0.00 IÓN
+10:14:54     0.00 BLE: Visionaria-SIM listo, contrato 1.0, firmware 0.1.0, arranque 3443f0f2
+10:15:03     9.15 estado t=10001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:16:03    69.15 estado t=70001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:17:03   129.15 estado t=130001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:18:03   189.15 estado t=190001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:19:03   249.14 estado t=250001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:20:03   309.14 estado t=310001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:21:03   369.14 estado t=370001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:22:03   429.14 estado t=430001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:23:03   489.14 estado t=490001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0
+10:24:03   549.14 estado t=550001 radar=simulado salud=0 fase=0 conectada=0 suscrita=0 alta=0 notif=0 lecturas=0 rechazados=0

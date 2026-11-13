@@ -235,6 +235,7 @@ void evento_notificar(ble_npl_event*) {
   }
   bool conectada;
   bool cortar_sesion;
+  bool avisar_corte = false;
   uint16_t conexion = 0;
   uint16_t id_sesion;
   {
@@ -242,9 +243,11 @@ void evento_notificar(ble_npl_event*) {
     conectada = g_puerta.sesion().conectada();
     id_sesion = g_puerta.sesion().id_conexion();
     cortar_sesion = g_puerta.gracia_vencida(millis(), &conexion);
+    // Se corta en cada ciclo hasta que llega la desconexión; el aviso, una vez por conexión.
+    if (cortar_sesion) avisar_corte = g_puerta.sesion().registrar_corte_por_gracia();
   }
   if (cortar_sesion) {
-    Serial.println("BLE: enlace sin proteger pasado el plazo; se corta");
+    if (avisar_corte) Serial.println("BLE: enlace sin proteger pasado el plazo; se corta");
     cortar(conexion);
   }
   if (conectada) {
@@ -307,7 +310,7 @@ void atender_radar() {
   if (!kRadarHabilitado) return;
   radar::atender_uart(g_radar, g_uart, g_uart_estado);
   if (g_supervisor.vigilar(g_radar, g_uart)) {
-    Serial.println("Radar: sin latido o configuración fallida; se reaplica la configuración (sin escribir su flash)");
+    Serial.println("Radar: sin latido o configuración fallida; se repite el arranque del radar (sin reescribir su flash si ya guardó la configuración y su ventana coincide)");
   }
 }
 
@@ -316,10 +319,17 @@ void iniciar_radar() {
   Serial1.begin(kBaudios, SERIAL_8N1, VISIONARIA_PIN_RADAR_RX, VISIONARIA_PIN_RADAR_TX);
   // Un desborde del controlador de la UART avisa a la lectura: lo perdido no se une con lo siguiente.
   Serial1.onReceiveError([](hardwareSerial_error_t) { g_perdida_uart.store(true); });
+  // Línea vacía antes de la primera orden: en el banco del 12/11 (R4) el radar
+  // perdió el primer byte de la primera orden una vez («ensorStop is not
+  // recognized»). Si el primer byte se pierde, que sea el de esta línea, que no
+  // significa nada; el radar contesta con su prompt y 100 ms bastan para que lo
+  // haga antes de que se vacíe el búfer.
+  Serial1.write("\r\n");
+  delay(100);
   // Nada que haya quedado en el búfer antes de arrancar vale como observación.
   while (Serial1.available() > 0) Serial1.read();
   g_perdida_uart.store(false);
-  g_radar.reiniciar(true);  // el arranque guarda la configuración (una vez); las recuperaciones, no
+  g_radar.reiniciar(true);  // el arranque guarda la configuración (una vez); las recuperaciones, no si ya se guardó
 #endif
 }
 
@@ -512,7 +522,11 @@ int evento_gap(ble_gap_event* ev, void*) {
         Cerrojo c;
         accion = g_puerta.al_pedir_clave(ev->passkey.params.action, conexion, millis(), &clave);
       }
+      // Estos mensajes no llevan la clave ni nada derivado de ella (la guardia de
+      // probar_enlace.sh lo comprueba): sirven para medir en el banco el tiempo
+      // entre «conexión nueva», la petición y el corte (ea-12-ble.md, paso 10c).
       if (accion == puerta::AccionClave::Inyectar) {
+        Serial.println("BLE: se pide la clave en el teléfono; plazo ampliado");
         ble_sm_io io;
         memset(&io, 0, sizeof(io));
         io.action = BLE_SM_IOACT_DISP;
@@ -520,9 +534,12 @@ int evento_gap(ble_gap_event* ev, void*) {
         const int rc = ble_sm_inject_io(conexion, &io);
         clave = 0;
         io.passkey = 0;
-        if (rc != 0) cortar(conexion);
+        if (rc != 0) {
+          Serial.printf("BLE: el stack no aceptó la clave (rc=%d); se corta\n", rc);
+          cortar(conexion);
+        }
       } else {
-        Serial.println("BLE: emparejamiento rechazado (sin ventana de alta o acción no admitida)");
+        Serial.println("BLE: se pide la clave y se rechaza (ventana de alta cerrada, otra conexión o acción no admitida); se corta");
         cortar(conexion);
       }
       return 0;
@@ -692,12 +709,13 @@ void imprimir_estado(uint32_t ahora) {
                 static_cast<unsigned long>(g_vinculos_rechazados.load()));
   if (kRadarHabilitado) {
     const sen0395::Contadores& k = g_radar.contadores();
-    Serial.printf("uart validas=%lu parciales=%lu largas=%lu otras=%lu ignoradas=%lu errores=%lu timeouts=%lu descartados=%lu perdidas=%lu reintentos=%lu\n",
+    Serial.printf("uart validas=%lu parciales=%lu largas=%lu otras=%lu ignoradas=%lu errores=%lu timeouts=%lu descartados=%lu perdidas=%lu reintentos=%lu rango_distinto=%lu\n",
                   static_cast<unsigned long>(k.tramas_validas), static_cast<unsigned long>(k.invalidas_parciales),
                   static_cast<unsigned long>(k.invalidas_largas), static_cast<unsigned long>(k.invalidas_otras),
                   static_cast<unsigned long>(k.lineas_ignoradas), static_cast<unsigned long>(k.errores_radar),
                   static_cast<unsigned long>(k.timeouts_orden), static_cast<unsigned long>(g_uart_estado.bytes_descartados),
-                  static_cast<unsigned long>(g_uart_estado.perdidas), static_cast<unsigned long>(g_supervisor.reintentos()));
+                  static_cast<unsigned long>(g_uart_estado.perdidas), static_cast<unsigned long>(g_supervisor.reintentos()),
+                  static_cast<unsigned long>(k.rangos_distintos));
   }
 }
 
