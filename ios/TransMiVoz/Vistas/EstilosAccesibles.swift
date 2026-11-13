@@ -49,6 +49,17 @@ extension View {
     /// El margen exterior evita que ScrollView extienda su marco bajo la barra de pestañas.
     func bordeInferiorLegible() -> some View { padding(.bottom) }
 
+    /// En iOS 26 el área desplazable desvanece y difumina bajo la barra de navegación lo que pasa por debajo (efecto de borde
+    /// «suave»). Con el estilo «duro» el corte es nítido y lineal: lo que queda bajo la barra se mide con su aspecto real.
+    /// Hipótesis de renderizado que valida la auditoría nativa de contraste. Con iOS 17–25 no existe ese efecto.
+    @ViewBuilder func bordeSuperiorNitido() -> some View {
+        if #available(iOS 26.0, *) {
+            scrollEdgeEffectStyle(.hard, for: .top)
+        } else {
+            self
+        }
+    }
+
     /// Estilo del sistema (relleno o contorno) si la acción está disponible; si no, `EstiloAccionInhabilitada`
     /// y `.disabled`. Estilo y bloqueo salen del mismo valor para que no se desacoplen.
     @ViewBuilder func accion(prominente: Bool, disponible: Bool) -> some View {

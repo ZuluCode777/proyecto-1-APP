@@ -33,6 +33,7 @@ struct AvisosVista: View {
             .navigationTitle(TextoAvisos.titulo)
             .navigationBarTitleDisplayMode(.inline)
             .bordeInferiorLegible()
+            .bordeSuperiorNitido()
             .onChange(of: centro.repeticiones) { _, _ in enResultado = true }
         }
     }
