@@ -91,5 +91,10 @@ Simulado, y los subtítulos lo dicen:
   pone en el lienzo de 1920 × 1080 con el panel de subtítulos (ASS con libass)
   y escribe una hoja de miniaturas por video y `indice.md`.
 
+Para volver a grabar solo una plataforma, el mensaje del commit puede llevar
+`[solo web]` o `[solo iphone]` (en cualquier parte del mensaje, así que no se
+mencionan los dos a la vez). Cada plataforma cancela solo su propia grabación
+anterior en curso.
+
 Para grabar en local hacen falta Chrome o Xcode, ffmpeg y la app compilada.
 Los comandos son los mismos del workflow.
