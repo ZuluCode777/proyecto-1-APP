@@ -35,6 +35,7 @@ Todo está en el bloque `env` del job y se vuelve a registrar en `ios/salida/her
 1. `herramientas`: registra y valida Xcode/SDK/runtimes.
 2. `compilar-simulador`: `xcodebuild build` Debug para el Simulator elegido.
 3. `pruebas-simulador`: `xcodebuild test` (unitarias + interfaz). Después `xcresulttool` verifica ≥ 50 pruebas ejecutadas, 0 fallidas y 0 omitidas.
+   En la CI (`CI=true`) este paso deja fuera, con `-skip-testing`, las dos auditorías lentas del accesorio con texto muy grande: `TransMiVozAccesorioTextoGrandeUITests/testAuditoriaConTextoMuyGrande` y `testAuditoriaPermisoDenegadoConTextoMuyGrande`. Juntas tardan unos 40 min y el job tiene 90. El log y `pruebas-simulador-omitidas.txt` dicen cuáles se omitieron. En un Mac, `comprobar-ios.sh` las ejecuta siempre; corre la suite completa en el Mac antes de fusionar un cambio que toque el accesorio (`ios/TransMiVoz/Accesorio/`, la pantalla de sesión o esas pruebas). `OMITIR_PRUEBAS=""` las ejecuta también en la CI.
 4. `compilar-dispositivo`: `xcodebuild build` Release para iPhone genérico sin firma.
 
 Los pasos 2 a 4 corren aunque uno anterior falle, para no ocultar fallos; el job falla si cualquiera falla. No hay `continue-on-error`, ni captura que sustituya a una prueba.
