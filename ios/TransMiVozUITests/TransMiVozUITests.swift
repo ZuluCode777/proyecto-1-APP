@@ -1608,13 +1608,17 @@ final class TransMiVozAnunciosUITests: AvisosUITestCase {
         abrirPestana("Avisos")
     }
 
-    func testLaListaMuestraCadaCampoDelAnuncioYSuMarcaDeSimulacion() throws {
+    /// El cliente simulado también envía un anuncio vencido y uno repetido: la app no muestra el primero y muestra una vez el segundo.
+    func testLaListaMuestraCadaCampoYSuMarcaDeSimulacionSinVencidosNiRepetidos() throws {
         abrirAvisos()
         let titulo = elemento("anuncio-SIM-001-titulo")
         XCTAssertTrue(titulo.waitForExistence(timeout: 10), "no apareció la lista de anuncios")
         XCTAssertEqual(elemento("anuncios-estado").label, "Fuente conectada")
         XCTAssertEqual(elemento("anuncios-confianza").label, "Confianza: media")
-        XCTAssertTrue(elemento("anuncios-mensaje-0").label.hasPrefix("[SIMULADO] Hay 2 anuncios vigentes"))
+        // El servidor simulado dice «Hay 2 anuncios vigentes», pero este iPhone oculta el vencido y el repetido: la tarjeta
+        // no repite el conteo del servidor.
+        XCTAssertEqual(elemento("anuncios-mensaje-0").label, "En este iPhone se ocultaron 2 anuncios que ya vencieron o estaban repetidos.")
+        XCTAssertEqual(elemento("anuncios-mensaje-1").label, "Esto no significa que no haya novedades en el servicio.")
 
         // Primero: con fecha de inicio, sin fecha de fin y con servicios.
         XCTAssertEqual(titulo.label, "Desvío de prueba en la ruta Z99")
@@ -1635,12 +1639,8 @@ final class TransMiVozAnunciosUITests: AvisosUITestCase {
         XCTAssertEqual(elemento("anuncio-SIM-002-vigencia").label, "Vigente hasta 31 de diciembre de 2099, 18:59")
         XCTAssertFalse(elemento("anuncio-SIM-002-servicios").exists)
         XCTAssertTrue(elemento("anuncios-independencia").exists)
-    }
 
-    /// El cliente simulado también envía un anuncio vencido y uno repetido: la app no muestra el primero y muestra una vez el segundo.
-    func testNoMuestraVencidosNiRepetidos() throws {
-        abrirAvisos()
-        XCTAssertTrue(elemento("anuncio-SIM-002-titulo").waitForExistence(timeout: 10))
+        // Vencido y repetido (el servidor no los enviaría): no se muestra el vencido y el repetido sale una vez.
         XCTAssertFalse(elemento("anuncio-SIM-VENCIDO-titulo").exists, "un anuncio vencido no se muestra")
         XCTAssertEqual(
             app.descendants(matching: .any).matching(identifier: "anuncio-SIM-001-titulo").count, 1, "un anuncio repetido se muestra una vez")
@@ -1650,6 +1650,7 @@ final class TransMiVozAnunciosUITests: AvisosUITestCase {
 
     func testSinFuenteNoMuestraAnunciosNiDiceQueNoHayIncidentes() throws {
         abrirAvisos(["-PRUEBAS_UI_ANUNCIOS_SIN_FUENTE"])
+        XCTAssertTrue(elemento("anuncios-estado").waitForExistence(timeout: 10))
         esperar(elemento("anuncios-mensaje-0"), "label == %@", "[SIMULADO] No hay una fuente de anuncios conectada.", "no llegó la respuesta sin fuente")
         XCTAssertEqual(elemento("anuncios-estado").label, "Sin fuente conectada")
         XCTAssertEqual(elemento("anuncios-confianza").label, "Confianza: ninguna")

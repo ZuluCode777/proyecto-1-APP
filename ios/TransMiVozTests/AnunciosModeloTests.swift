@@ -123,6 +123,26 @@ final class AnunciosModeloTests: XCTestCase {
         XCTAssertEqual(modelo.anuncios.map(\.id), ["oficial:A-1", "oficial:A-2", "simulado:A-1"])
     }
 
+    /// Si el reloj de este iPhone oculta lo que el servidor contó, la tarjeta no repite el conteo del servidor.
+    func testLosOcultosSeCuentanYLaTarjetaNoRepiteElConteoDelServidor() async {
+        XCTAssertEqual(modelo.anunciosOcultos, 0)
+        await actualizar(con: .success(respuesta(anuncios: [anuncio("vencido", hasta: -60), anuncio("A-1"), anuncio("A-1")])))
+        XCTAssertEqual(modelo.anuncios.map(\.identificador), ["A-1"])
+        XCTAssertEqual(modelo.anunciosOcultos, 2, "un vencido y un repetido")
+        let frases = TextoAnuncios.mensaje(respuesta: modelo.respuesta, fallo: modelo.fallo, ocultos: modelo.anunciosOcultos)
+        XCTAssertEqual(frases.first, "En este iPhone se ocultaron 2 anuncios que ya vencieron o estaban repetidos.")
+        XCTAssertFalse(frases.contains { $0.contains("Mensaje del servidor") })
+        XCTAssertTrue(frases.contains(TextoAnuncios.avisoSinGarantia))
+    }
+
+    func testSinOcultosOSinFuenteNoHayAjuste() async {
+        await actualizar(con: .success(respuesta(anuncios: [anuncio("A-1"), anuncio("A-2")])))
+        XCTAssertEqual(modelo.anunciosOcultos, 0)
+        // Un `sin-fuente` con anuncios (el servidor no lo enviaría) no muestra nada, y tampoco cuenta nada oculto.
+        await actualizar(con: .success(respuesta(.sinFuente, .ninguna, anuncios: [anuncio("A-1")])))
+        XCTAssertEqual(modelo.anunciosOcultos, 0)
+    }
+
     func testConservaElOrdenDelServidor() async {
         await actualizar(con: .success(respuesta(anuncios: [anuncio("C"), anuncio("A"), anuncio("B")])))
         XCTAssertEqual(modelo.anuncios.map(\.identificador), ["C", "A", "B"])

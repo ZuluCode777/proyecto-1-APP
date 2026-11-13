@@ -31,7 +31,8 @@ struct AnunciosSeccionVista: View {
         .onChange(of: modelo.consultando) { anterior, actual in
             guard anterior, !actual, visible else { return }
             AccessibilityNotification.Announcement(
-                TextoAnuncios.resultado(estado: modelo.estadoFuente, cantidad: modelo.anuncios.count, fallo: modelo.fallo != nil)
+                TextoAnuncios.resultado(
+                    estado: modelo.estadoFuente, cantidad: modelo.anuncios.count, ocultos: modelo.anunciosOcultos, fallo: modelo.fallo != nil)
             ).post()
         }
     }
@@ -51,7 +52,7 @@ private struct TarjetaFuenteAnuncios: View {
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("anuncios-estado")
 
-            ForEach(Array(TextoAnuncios.mensaje(respuesta: modelo.respuesta, fallo: modelo.fallo).enumerated()), id: \.offset) { indice, frase in
+            ForEach(Array(TextoAnuncios.mensaje(respuesta: modelo.respuesta, fallo: modelo.fallo, ocultos: modelo.anunciosOcultos).enumerated()), id: \.offset) { indice, frase in
                 Text(frase)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("anuncios-mensaje-\(indice)")

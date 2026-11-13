@@ -49,6 +49,13 @@ final class AnunciosModelo {
         }
     }
 
+    /// Cuántos anuncios de la última respuesta no se muestran (vencidos según el reloj de este iPhone o repetidos). El `mensaje`
+    /// del servidor cuenta los suyos: si aquí se ocultó alguno, ese conteo ya no coincide con las tarjetas.
+    var anunciosOcultos: Int {
+        guard let respuesta, estadoFuente != .sinFuente else { return 0 }
+        return respuesta.anuncios.count - anuncios.count
+    }
+
     /// Pide los anuncios. Una sola consulta a la vez; sin reintentos automáticos. Cancelarla (la pantalla dejó de
     /// verse) no cuenta como fallo: la respuesta y la confianza quedan como estaban.
     func actualizar() async {

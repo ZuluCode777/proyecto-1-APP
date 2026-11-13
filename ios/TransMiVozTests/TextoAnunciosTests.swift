@@ -123,6 +123,21 @@ final class TextoAnunciosTests: XCTestCase {
         XCTAssertEqual(TextoAnuncios.mensaje(respuesta: respuesta, fallo: nil), ["Primera frase.", "Segunda frase."])
     }
 
+    /// El `mensaje` del servidor cuenta «2 anuncios vigentes»; si aquí se ocultó alguno, ya no coincide con las tarjetas.
+    func testConAnunciosOcultosElMensajeEsElDeLaAppYNoElConteoDelServidor() {
+        let activa = AnunciosRespuesta(fuente: fuente(.activa), anuncios: [])
+        XCTAssertEqual(TextoAnuncios.mensaje(respuesta: activa, fallo: nil, ocultos: 0), ["Primera frase.", "Segunda frase."])
+        XCTAssertEqual(
+            TextoAnuncios.mensaje(respuesta: activa, fallo: nil, ocultos: 2),
+            ["En este iPhone se ocultaron 2 anuncios que ya vencieron o estaban repetidos.", TextoAnuncios.avisoSinGarantia])
+        XCTAssertEqual(
+            TextoAnuncios.mensaje(respuesta: activa, fallo: nil, ocultos: 1).first,
+            "En este iPhone se ocultó 1 anuncio que ya venció o estaba repetido.")
+        // Una fuente degradada no cuenta anuncios en su mensaje: se conserva tal cual.
+        let degradada = AnunciosRespuesta(fuente: fuente(.degradada), anuncios: [])
+        XCTAssertEqual(TextoAnuncios.mensaje(respuesta: degradada, fallo: nil, ocultos: 2), ["Primera frase.", "Segunda frase."])
+    }
+
     func testFalloConUltimaRespuestaBuenaCitaLaFechaDeLaFuente() {
         let respuesta = AnunciosRespuesta(
             fuente: fuente(.activa, consultadoEn: fecha(1_794_521_100), publicadoEn: fecha(1_794_488_400)), anuncios: [])
@@ -182,6 +197,12 @@ final class TextoAnunciosTests: XCTestCase {
         XCTAssertEqual(
             TextoAnuncios.resultado(estado: .activa, cantidad: 0, fallo: false),
             "Fuente conectada. No hay anuncios vigentes publicados. Esto no significa que no haya novedades en el servicio.")
+        // Si la fuente publicó y aquí se ocultó todo, no se dice que no haya anuncios publicados.
+        XCTAssertEqual(
+            TextoAnuncios.resultado(estado: .activa, cantidad: 0, ocultos: 2, fallo: false),
+            "Fuente conectada. No quedan anuncios vigentes en este iPhone. Esto no significa que no haya novedades en el servicio.")
+        XCTAssertEqual(
+            TextoAnuncios.resultado(estado: .activa, cantidad: 1, ocultos: 2, fallo: false), "Fuente conectada. Hay 1 anuncio vigente.")
         XCTAssertEqual(
             TextoAnuncios.resultado(estado: .sinFuente, cantidad: 0, fallo: false),
             "Sin fuente conectada. Esto no significa que no haya novedades en el servicio.")

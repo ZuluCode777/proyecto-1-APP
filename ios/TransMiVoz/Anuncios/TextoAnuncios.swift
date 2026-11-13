@@ -70,10 +70,13 @@ enum TextoAnuncios {
     }
 
     /// Lo que dice la tarjeta de la fuente, una frase por elemento. Con un fallo propio manda el fallo: el `mensaje` que el
-    /// servidor dio en la última respuesta buena (por ejemplo «hay 2 anuncios vigentes») ya no se puede afirmar.
-    static func mensaje(respuesta: AnunciosRespuesta?, fallo: ErrorConsulta?) -> [String] {
+    /// servidor dio en la última respuesta buena (por ejemplo «hay 2 anuncios vigentes») ya no se puede afirmar. Con la
+    /// fuente conectada y anuncios ocultos en este iPhone (`ocultos` > 0), el conteo del servidor contradiría las tarjetas:
+    /// manda el texto de la app.
+    static func mensaje(respuesta: AnunciosRespuesta?, fallo: ErrorConsulta?, ocultos: Int = 0) -> [String] {
         guard let fallo else {
             guard let respuesta else { return [sinConsultar, avisoSinGarantia] }
+            if ocultos > 0, respuesta.fuente.estado == .activa { return [anunciosOcultos(ocultos), avisoSinGarantia] }
             return frases(respuesta.fuente.mensaje)
         }
         let causa = [fallo.mensaje, recuperacion(fallo)]
@@ -83,6 +86,12 @@ enum TextoAnuncios {
         let conservado = fuente.publicadoEn.map { "Muestro lo que la fuente publicó el \(Self.fecha($0)); puede estar desactualizado." }
             ?? "Muestro lo último que recibí; puede estar desactualizado."
         return ["No pude actualizar los anuncios de TransMilenio."] + causa + [conservado, avisoSinGarantia]
+    }
+
+    static func anunciosOcultos(_ cantidad: Int) -> String {
+        cantidad == 1
+            ? "En este iPhone se ocultó 1 anuncio que ya venció o estaba repetido."
+            : "En este iPhone se ocultaron \(cantidad) anuncios que ya vencieron o estaban repetidos."
     }
 
     /// Quién es la fuente y las dos fechas que conserva. Sin consulta buena lo dice, no inventa una fecha.
@@ -135,11 +144,13 @@ enum TextoAnuncios {
     // MARK: Anuncio de accesibilidad
 
     /// Lo que se anuncia cuando termina una consulta: si falló, el estado de la fuente y cuántos anuncios hay.
-    static func resultado(estado: EstadoFuente, cantidad: Int, fallo: Bool) -> String {
+    static func resultado(estado: EstadoFuente, cantidad: Int, ocultos: Int = 0, fallo: Bool) -> String {
         let base = (fallo ? "No pude actualizar los anuncios. " : "") + "\(etiqueta(estado))."
         if estado == .sinFuente { return "\(base) \(avisoSinGarantia)" }
         switch cantidad {
-        case 0: return "\(base) No hay anuncios vigentes publicados. \(avisoSinGarantia)"
+        case 0:
+            // Si la fuente sí publicó y aquí se ocultaron, «no hay anuncios publicados» sería falso.
+            return "\(base) \(ocultos > 0 ? "No quedan anuncios vigentes en este iPhone." : "No hay anuncios vigentes publicados.") \(avisoSinGarantia)"
         case 1: return "\(base) Hay 1 anuncio vigente."
         default: return "\(base) Hay \(cantidad) anuncios vigentes."
         }
