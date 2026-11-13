@@ -470,6 +470,23 @@ export function nearestStations(from: LatLng, data: TransmilenioData, limit = 4)
 }
 
 /**
+ * Lugares del catálogo ordenados por nombre, para elegir origen y destino de una
+ * lista (EA-25, #51) en vez de escribirlos en una frase.
+ */
+export function listarLugares(data: TransmilenioData): Place[] {
+  return [...getIndex(data).groups.values()].sort((a, b) => a.name.localeCompare(b.name, "es"))
+}
+
+/**
+ * Lugar por su NOMBRE EXACTO, el que devuelve `listarLugares`. No interpreta
+ * frases: «de Ricaurte a Calle 72» no es un lugar. Devuelve el mismo objeto del
+ * índice, que es el que compara `samePlace`.
+ */
+export function lugarPorNombre(nombre: string, data: TransmilenioData): Place | undefined {
+  return getIndex(data).groups.get(normalize(nombre))
+}
+
+/**
  * Lugar al que pertenece una estación, agrupado por nombre corto: la estación
  * "Ricaurte - CL 13" pertenece al lugar "Ricaurte", igual que "Ricaurte - NQS".
  */
