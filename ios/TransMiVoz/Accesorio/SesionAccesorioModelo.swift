@@ -604,7 +604,7 @@ final class SesionAccesorioModelo {
     /// Aviso y prioridad (EA-20): pérdida de accesorio, dato vencido y proximidad son avisos y pasan por `centro`; el resto de
     /// estados (conectando, calibrando, sin detección) son mensajes de rutina. Un aviso de la sesión no caduca por tiempo:
     /// dura mientras dure su estado y aquí se cierra (`retirar`) al llegar un estado que no es aviso, aunque la voz ceda ese
-    /// latido. Un mensaje de rutina no corta ni calla un aviso que todavía suena: no se dice ni gasta nada y el próximo latido
+    /// latido; si el mismo aviso vuelve se dice otra vez (el límite de ritmo sigue valiendo). Un mensaje de rutina no corta ni calla un aviso que todavía suena: no se dice ni gasta nada y el próximo latido
     /// lo reintenta con el estado de entonces. Lo mismo ocurre con un aviso que el límite de ritmo aplazó (`.limitado`).
     ///
     /// La lista y «Repetir» llevan siempre «Enlace sin autenticar.» en los estados con reserva; la voz de ahora solo mientras
@@ -613,7 +613,9 @@ final class SesionAccesorioModelo {
     private func anunciar(repitiendo: Bool = false) -> Bool {
         guard activa, !suspendida else { return false }
         let tipo = TipoAviso.de(estado)
-        if tipo == nil { centro.retirar(fuente: .sesion) }
+        // El estado ya no es un aviso: se cierra el de la sesión y se olvida su locución, para que si el mismo aviso vuelve
+        // (el radar parpadea, el enlace cae justo tras reconectar) se emita de nuevo y no se dé por repetido.
+        if tipo == nil, centro.retirar(fuente: .sesion) { ultimaLocucion = nil }
         guard let locucion = TextoAccesorio.locucion(estado), locucion != ultimaLocucion else { return false }
         if voz.debeCeder(prioridad: tipo?.severidad ?? .rutina) { return false }
         let anterior = ultimaLocucion

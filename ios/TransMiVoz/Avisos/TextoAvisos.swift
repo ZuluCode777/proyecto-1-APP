@@ -44,7 +44,7 @@ enum TextoAvisos {
         "Los avisos siguen en esta lista y Repetir siempre intenta decirlos en voz alta.",
     ]
     /// La declaración de EA-15 en una oración: la fila de un aviso de la sesión la lleva mientras el enlace no es autenticado.
-    static let enlaceSinAutenticar = TextoAccesorio.parrafosAvisoEnlace[0]
+    static let enlaceSinAutenticar = TextoAccesorio.declaracionEnlaceSinAutenticar
 
     static let repitiendo = "Repitiendo el aviso."
     static let yaNoVigente = "Ese aviso ya no está vigente, así que no se repite."
