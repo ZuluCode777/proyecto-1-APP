@@ -1474,6 +1474,420 @@ final class TransMiVozAjustesTextoGrandeUITests: AjustesUITestCase {
     }
 }
 
+/// Base de las pruebas de la pestaña Avisos (EA-20, #46): lanza la app con entradas simuladas (`-PRUEBAS_UI_SIMULADAS`),
+/// abre la pestaña y hace una pregunta a la consulta simulada. La voz es de mentira y la ruta de audio no es privada.
+class AvisosUITestCase: AjustesUITestCase {
+    // `abrirPestana` y `preguntar` repiten a propósito los ayudantes de otras clases de este archivo: aquellos son privados
+    // de su archivo o de su clase y los ayudantes del banco de pruebas de interfaz no se tocan (tolerancias y grupos de
+    // auditoría incluidos). Si algún día se hacen compartidos, estas copias sobran.
+    func abrirPestana(_ nombre: String, file: StaticString = #filePath, line: UInt = #line) {
+        let pestana = app.tabBars.buttons[nombre]
+        XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña \(nombre)", file: file, line: line)
+        pestana.tap()
+        esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña \(nombre)", file: file, line: line)
+    }
+
+    func preguntar(_ texto: String) {
+        abrirPestana("Consulta")
+        let campo = elemento("campo-pregunta")
+        XCTAssertTrue(campo.waitForExistence(timeout: 10))
+        escribir(texto, en: campo, app: app)
+        elemento("boton-enviar").tap()
+        // Enviar cierra el teclado: si no, tapa el resultado y la barra de pestañas.
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "El teclado debe cerrarse al enviar")
+    }
+}
+
+/// La pestaña Avisos en el Simulator y sin red. Demuestran la interfaz con entradas simuladas; no prueban voz, auriculares
+/// ni VoiceOver reales (pendiente en un iPhone).
+final class TransMiVozAvisosUITests: AvisosUITestCase {
+    func testAvisosEsLaQuintaPestanaYSinFuenteOficialNoAfirmaQueNoHayIncidentes() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS", "-PRUEBAS_UI_ANUNCIOS_SIN_FUENTE"])
+        XCTAssertTrue(app.tabBars.buttons["Avisos"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.tabBars.buttons.count, 5, "las pestañas se mantienen en cinco")
+        abrirPestana("Avisos")
+        let oficial = elemento("anuncios-estado")
+        XCTAssertTrue(oficial.waitForExistence(timeout: 10))
+        XCTAssertEqual(oficial.label, "Sin fuente conectada")
+        esperar(elemento("anuncios-mensaje-0"), "label == %@", "[SIMULADO] No hay una fuente de anuncios conectada.", "no llegó la respuesta sin fuente")
+        XCTAssertTrue(elemento("anuncios-mensaje-1").label.contains("no significa que no haya novedades"))
+        XCTAssertTrue(elemento("avisos-propios-vacio").exists)
+        XCTAssertTrue(elemento("aviso-avisos-simulados").exists, "los avisos de esta ejecución se rotulan como simulados")
+        let afirmaSinIncidentes = app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] %@", "no hay incidentes")).firstMatch
+        XCTAssertFalse(afirmaSinIncidentes.exists, "sin fuente conectada la lista no puede afirmar que no hay incidentes")
+    }
+
+    func testLaRedCaidaDeLaConsultaApareceComoAvisoSimuladoYRepetirExplicaPorQueNoSeDijo() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS"])
+        preguntar("sinred")
+        XCTAssertTrue(app.staticTexts["No hay conexión con el servidor."].waitForExistence(timeout: 10))
+        abrirPestana("Avisos")
+        let texto = elemento("aviso-red-caida-texto")
+        XCTAssertTrue(texto.waitForExistence(timeout: 10), "la red caída debe constar en la lista")
+        XCTAssertEqual(texto.label, "No hay conexión con el servidor.")
+        XCTAssertEqual(elemento("aviso-red-caida-detalle").label, "Advertencia · Escenario simulado · Vigente")
+        XCTAssertFalse(elemento("avisos-propios-vacio").exists, "con un aviso la lista ya no está vacía")
+
+        let repetir = elemento("aviso-red-caida-repetir")
+        XCTAssertEqual(repetir.label, "Repetir el aviso: Red caída")
+        repetir.tap()
+        let resultado = elemento("resultado-repetir")
+        XCTAssertTrue(resultado.waitForExistence(timeout: 5))
+        XCTAssertEqual(resultado.label, "No se dijo en voz alta: no hay salida privada de audio.")
+        XCTAssertTrue(elemento("aviso-red-caida-texto").exists, "el aviso sigue en la lista")
+    }
+
+    func testLosDatosAntiguosSonUnAvisoYUnaRespuestaAlDiaLoCierra() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS"])
+        preguntar("antiguo")
+        XCTAssertTrue(elemento("aviso-catalogo-antiguo").waitForExistence(timeout: 10))
+        abrirPestana("Avisos")
+        XCTAssertEqual(elemento("aviso-datos-viejos-texto").label, "Los datos de TransMilenio no están actualizados.")
+        XCTAssertEqual(elemento("aviso-datos-viejos-detalle").label, "Advertencia · Escenario simulado · Vigente")
+
+        abrirPestana("Consulta")
+        elemento("boton-volver-a-consultar").tap()
+        XCTAssertTrue(app.staticTexts["[SIMULADO] La ruta Z99 es de prueba. [SIMULADO] Datos consultados hoy."].waitForExistence(timeout: 10))
+        abrirPestana("Avisos")
+        esperar(elemento("aviso-datos-viejos-detalle"), "label == %@", "Advertencia · Escenario simulado · Ya no vigente",
+                "una respuesta al día debe cerrar el aviso")
+        XCTAssertFalse(elemento("aviso-datos-viejos-repetir").exists, "lo que ya no está vigente no se repite")
+    }
+
+    /// La pantalla vacía recorrida de arriba abajo con la auditoría completa: cada posición se audita con todos los grupos y
+    /// lo recortado bajo las barras se mide entero al cerrar la fase (`FaseAuditada`).
+    func testAuditoriaAccesibilidadAvisos() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS", "-PRUEBAS_UI_ANUNCIOS_SIN_FUENTE"])
+        abrirPestana("Avisos")
+        XCTAssertTrue(elemento("encabezado-anuncios-oficiales").waitForExistence(timeout: 10))
+        // La maquetación no debe cambiar mientras se audita: se espera a que la consulta simulada termine.
+        esperar(elemento("anuncios-mensaje-0"), "label == %@", "[SIMULADO] No hay una fuente de anuncios conectada.", "no llegó la respuesta sin fuente")
+        let fase = FaseAuditada("avisos", app: app, caso: self)
+        for (id, contexto) in [
+            ("encabezado-anuncios-oficiales", "oficiales"), ("avisos-propios-vacio-1", "propios"),
+            ("interruptor-silenciar-advertencias", "voz"), ("escenario-simulado-2", "simulado"),
+        ] {
+            try fase.exponerPorEscalas(id)
+            try fase.auditar("avisos-\(contexto)")
+        }
+        try fase.cerrar()
+    }
+}
+
+/// La pestaña Avisos con el texto más grande de Dynamic Type de accesibilidad, de arriba abajo: cada frase queda entera a
+/// la vista y los interruptores, enteros y tocables. Nada de esto prueba VoiceOver real.
+final class TransMiVozAvisosTextoGrandeUITests: AvisosUITestCase {
+    override func lanzar(_ argumentos: [String], categoria: String = "UICTContentSizeCategoryAccessibilityXXXL") {
+        super.lanzar(argumentos, categoria: categoria)
+    }
+
+    func testAuditoriaConTextoMuyGrande() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS", "-PRUEBAS_UI_ANUNCIOS_SIN_FUENTE"])
+        abrirPestana("Avisos")
+        XCTAssertTrue(elemento("encabezado-anuncios-oficiales").waitForExistence(timeout: 10))
+        // La maquetación no debe cambiar mientras se audita: se espera a que la consulta simulada termine.
+        esperar(elemento("anuncios-mensaje-0"), "label == %@", "[SIMULADO] No hay una fuente de anuncios conectada.", "no llegó la respuesta sin fuente")
+        let fase = FaseAuditada("avisos-texto-muy-grande", app: app, caso: self, velocidad: .slow)
+        for (id, contexto) in [
+            ("encabezado-anuncios-oficiales", "oficiales"), ("anuncios-mensaje-1", "oficiales-sin-fuente"),
+            ("avisos-propios-vacio-1", "propios"),
+            ("interruptor-silenciar-advertencias", "voz-advertencias"), ("nota-silencio-avisos-2", "nota"),
+            ("escenario-simulado-2", "simulado"),
+        ] {
+            try fase.exponerPorEscalas(id)
+            try fase.auditar("texto-muy-grande-Avisos-\(contexto)")
+        }
+        try fase.cerrar()
+    }
+}
+
+/// Los anuncios oficiales (EA-26, #52) dentro de la pestaña Avisos, en el Simulator y sin red: el cliente simulado trae
+/// contenido inventado y rotulado «Simulado». Demuestran la interfaz; no prueban VoiceOver, el servidor real ni un iPhone.
+final class TransMiVozAnunciosUITests: AvisosUITestCase {
+    private func abrirAvisos(_ extra: [String] = []) {
+        lanzar(["-PRUEBAS_UI_SIMULADAS"] + extra)
+        abrirPestana("Avisos")
+    }
+
+    /// El cliente simulado también envía un anuncio vencido y uno repetido: la app no muestra el primero y muestra una vez el segundo.
+    func testLaListaMuestraCadaCampoYSuMarcaDeSimulacionSinVencidosNiRepetidos() throws {
+        abrirAvisos()
+        let titulo = elemento("anuncio-SIM-001-titulo")
+        XCTAssertTrue(titulo.waitForExistence(timeout: 10), "no apareció la lista de anuncios")
+        XCTAssertEqual(elemento("anuncios-estado").label, "Fuente conectada")
+        XCTAssertEqual(elemento("anuncios-confianza").label, "Confianza: media")
+        // El servidor simulado dice «Hay 2 anuncios vigentes», pero este iPhone oculta el vencido y el repetido: la tarjeta
+        // no repite el conteo del servidor.
+        XCTAssertEqual(elemento("anuncios-mensaje-0").label, "En este iPhone se ocultaron 2 anuncios que ya vencieron o estaban repetidos.")
+        XCTAssertEqual(elemento("anuncios-mensaje-1").label, "Esto no significa que no haya novedades en el servicio.")
+
+        // Primero: con fecha de inicio, sin fecha de fin y con servicios.
+        XCTAssertEqual(titulo.label, "Desvío de prueba en la ruta Z99")
+        XCTAssertEqual(elemento("anuncio-SIM-001-marca").label, "Anuncio simulado de demostración. No es un anuncio del operador.")
+        XCTAssertEqual(
+            elemento("anuncio-SIM-001-origen").label,
+            "Origen: contenido de demostración publicado por «Simulación de la app», sin ninguna fuente real.")
+        XCTAssertEqual(elemento("anuncio-SIM-001-descripcion").label, "Anuncio inventado para probar la pantalla.")
+        XCTAssertEqual(elemento("anuncio-SIM-001-afectacion").label, "Afectación: Desvío")
+        XCTAssertEqual(elemento("anuncio-SIM-001-servicios").label, "Servicios (identificador de la fuente): Z99")
+        XCTAssertEqual(elemento("anuncio-SIM-001-fecha").label, "Fecha: 12 de noviembre de 2026, 08:00")
+        XCTAssertEqual(elemento("anuncio-SIM-001-vigencia").label, "Sin fecha de fin publicada")
+        XCTAssertEqual(elemento("anuncio-SIM-001-identificador").label, "Identificador: SIM-001")
+
+        // Segundo: la fuente no publica el inicio, con fecha de fin y sin servicios (no se inventa ninguno).
+        XCTAssertEqual(elemento("anuncio-SIM-002-titulo").label, "Demoras de prueba en la ruta Z98")
+        XCTAssertEqual(elemento("anuncio-SIM-002-fecha").label, "Fecha: la fuente no la publica")
+        XCTAssertEqual(elemento("anuncio-SIM-002-vigencia").label, "Vigente hasta 31 de diciembre de 2099, 18:59")
+        XCTAssertFalse(elemento("anuncio-SIM-002-servicios").exists)
+        XCTAssertTrue(elemento("anuncios-independencia").exists)
+
+        // Vencido y repetido (el servidor no los enviaría): no se muestra el vencido y el repetido sale una vez.
+        XCTAssertFalse(elemento("anuncio-SIM-VENCIDO-titulo").exists, "un anuncio vencido no se muestra")
+        XCTAssertEqual(
+            app.descendants(matching: .any).matching(identifier: "anuncio-SIM-001-titulo").count, 1, "un anuncio repetido se muestra una vez")
+        XCTAssertEqual(
+            app.staticTexts.matching(NSPredicate(format: "identifier ENDSWITH %@", "-marca")).count, 2, "solo los dos anuncios vigentes")
+    }
+
+    func testSinFuenteNoMuestraAnunciosNiDiceQueNoHayIncidentes() throws {
+        abrirAvisos(["-PRUEBAS_UI_ANUNCIOS_SIN_FUENTE"])
+        XCTAssertTrue(elemento("anuncios-estado").waitForExistence(timeout: 10))
+        esperar(elemento("anuncios-mensaje-0"), "label == %@", "[SIMULADO] No hay una fuente de anuncios conectada.", "no llegó la respuesta sin fuente")
+        XCTAssertEqual(elemento("anuncios-estado").label, "Sin fuente conectada")
+        XCTAssertEqual(elemento("anuncios-confianza").label, "Confianza: ninguna")
+        XCTAssertEqual(elemento("anuncios-mensaje-1").label, "Esto no significa que no haya novedades en el servicio.")
+        XCTAssertEqual(elemento("anuncios-fuente-1").label, "Última consulta exitosa: ninguna", "sin consulta buena no se inventa una fecha")
+        XCTAssertEqual(
+            app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "anuncio-")).count, 0, "sin fuente no hay anuncios")
+        let afirmaSinIncidentes = app.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@", "no hay incidentes", "sin incidentes")).firstMatch
+        XCTAssertFalse(afirmaSinIncidentes.exists, "sin fuente no puede afirmar que no hay incidentes")
+    }
+
+    /// Tras un éxito, una consulta que falla conserva la lista y las dos fechas, baja la confianza y no toca nada más.
+    func testUnaConsultaCaidaConservaLaFechaYBajaLaConfianza() throws {
+        abrirAvisos(["-PRUEBAS_UI_ANUNCIOS_CAIDA"])
+        XCTAssertTrue(elemento("anuncio-SIM-001-titulo").waitForExistence(timeout: 10))
+        let estado = elemento("anuncios-estado")
+        XCTAssertEqual(estado.label, "Fuente conectada")
+        XCTAssertEqual(elemento("anuncios-confianza").label, "Confianza: media")
+        XCTAssertEqual(elemento("anuncios-fuente-1").label, "Publicado por la fuente: 12 de noviembre de 2026, 09:59")
+        XCTAssertEqual(elemento("anuncios-fuente-2").label, "Última consulta exitosa: 12 de noviembre de 2026, 10:00")
+        let boton = elemento("boton-actualizar-anuncios")
+        XCTAssertEqual(boton.label, "Actualizar")
+
+        boton.tap()
+        esperar(estado, "label == %@", "Fuente con problemas, confianza baja", "la consulta caída debe bajar la confianza")
+        XCTAssertEqual(elemento("anuncios-confianza").label, "Confianza: baja")
+        XCTAssertEqual(elemento("anuncios-mensaje-0").label, "No pude actualizar los anuncios de TransMilenio.")
+        XCTAssertEqual(elemento("anuncios-mensaje-1").label, "No hay conexión con el servidor.")
+        XCTAssertEqual(
+            elemento("anuncios-mensaje-3").label,
+            "Muestro lo que la fuente publicó el 12 de noviembre de 2026, 09:59; puede estar desactualizado.")
+        XCTAssertEqual(elemento("anuncios-mensaje-4").label, "Esto no significa que no haya novedades en el servicio.")
+        XCTAssertEqual(elemento("anuncios-fuente-1").label, "Publicado por la fuente: 12 de noviembre de 2026, 09:59", "conserva la fecha")
+        XCTAssertEqual(elemento("anuncios-fuente-2").label, "Última consulta exitosa: 12 de noviembre de 2026, 10:00", "conserva la fecha")
+        XCTAssertTrue(elemento("anuncio-SIM-001-titulo").exists, "sigue mostrando lo último que recibió")
+        XCTAssertTrue(elemento("anuncio-SIM-002-titulo").exists)
+        esperar(boton, "label == %@", "Reintentar", "tras un fallo el botón ofrece reintentar")
+
+        // La caída de los anuncios no toca los avisos propios ni la sesión.
+        XCTAssertTrue(elemento("avisos-propios-vacio").exists, "un fallo de los anuncios no es un aviso propio")
+        abrirPestana("Sesión")
+        let sesion = elemento("boton-sesion")
+        XCTAssertTrue(sesion.waitForExistence(timeout: 10))
+        XCTAssertEqual(sesion.label, "Iniciar sesión simulada")
+        sesion.tap()
+        XCTAssertEqual(sesion.label, "Detener sesión")
+        sesion.tap()
+    }
+
+    /// La pantalla con la lista, recorrida de arriba abajo con la auditoría completa (texto de tamaño normal).
+    func testAuditoriaAccesibilidadAnuncios() throws {
+        abrirAvisos()
+        XCTAssertTrue(elemento("anuncio-SIM-002-identificador").waitForExistence(timeout: 10))
+        let fase = FaseAuditada("anuncios", app: app, caso: self)
+        for (id, contexto) in [
+            ("anuncios-estado", "estado"), ("anuncio-SIM-001-titulo", "primero"), ("anuncio-SIM-002-identificador", "segundo"),
+        ] {
+            try fase.exponerPorEscalas(id)
+            try fase.auditar("anuncios-\(contexto)")
+        }
+        try fase.cerrar()
+    }
+}
+
+/// Los anuncios con el texto más grande de Dynamic Type de accesibilidad: no auditan (la lista mide varias pantallas);
+/// comprueban que el estado, el botón y lo último de cada anuncio se alcanzan al desplazar, sin recortes ni controles
+/// inalcanzables. Nada de esto prueba VoiceOver real.
+final class TransMiVozAnunciosTextoGrandeUITests: AvisosUITestCase {
+    override func lanzar(_ argumentos: [String], categoria: String = "UICTContentSizeCategoryAccessibilityXXXL") {
+        super.lanzar(argumentos, categoria: categoria)
+    }
+
+    func testLosAnunciosSonAlcanzablesConTextoMuyGrande() throws {
+        lanzar(["-PRUEBAS_UI_SIMULADAS"])
+        abrirPestana("Avisos")
+        XCTAssertTrue(elemento("anuncio-SIM-002-identificador").waitForExistence(timeout: 10))
+        let fase = FaseAuditada("anuncios-texto-muy-grande", app: app, caso: self, velocidad: .slow)
+        try fase.exponerPorEscalas("anuncios-estado")
+        try fase.exponerPorEscalas("boton-actualizar-anuncios")
+        comprobarEnteros(["boton-actualizar-anuncios"], en: app, tocables: true)
+        // Textos que pueden medir más que el área visible: basta que su comienzo quede a la vista.
+        for id in [
+            "anuncio-SIM-001-origen", "anuncio-SIM-001-titulo", "anuncio-SIM-001-vigencia", "anuncio-SIM-002-titulo",
+            "anuncio-SIM-002-identificador", "anuncios-independencia",
+        ] {
+            try fase.exponerPorEscalas(id, completo: false)
+        }
+    }
+}
+
+/// Dictado y aclaración entre turnos de la pantalla Consulta (EA-19) con un reconocedor SINTÉTICO que la pantalla rotula
+/// (`-PRUEBAS_UI_DICTADO_SINTETICO`, solo en depuración): sin micrófono, audio ni reconocimiento real, y con el cliente
+/// HTTP simulado. Demuestra la interfaz (estados del botón, permisos, texto como alternativa, origen pendiente, cancelar);
+/// no prueba el micrófono, el español, la privacidad del servicio de Apple ni VoiceOver real.
+final class TransMiVozDictadoUITests: XCTestCase {
+    private var app: XCUIApplication!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    private func lanzar(_ extra: [String] = [], categoria: String = "UICTContentSizeCategoryL") {
+        app = XCUIApplication()
+        app.launchArguments += ["-PRUEBAS_UI_SIMULADAS", "-PRUEBAS_UI_DICTADO_SINTETICO"] + extra + [
+            "-AppleLanguages", "(es)", "-AppleLocale", "es_CO", "-UIPreferredContentSizeCategoryName", categoria,
+        ]
+        app.launch()
+        addTeardownBlock { [app] in app?.terminate() }
+        let pestana = app.tabBars.buttons["Consulta"]
+        XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña Consulta")
+        pestana.tap()
+        esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña Consulta")
+    }
+
+    private func elemento(_ identificador: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identificador).firstMatch
+    }
+
+    /// Toca el botón del dictado, espera a que escuche, lo toca otra vez y espera a que el campo muestre lo dictado.
+    private func dictar(_ frase: String, file: StaticString = #filePath, line: UInt = #line) {
+        exponer("boton-dictar", en: app, file: file, line: line)
+        let boton = elemento("boton-dictar")
+        boton.tap()
+        esperar(boton, "value == %@", "escuchando", "El dictado no pasó a escuchar", file: file, line: line)
+        boton.tap()
+        esperar(elemento("campo-pregunta"), "value == %@", frase, "El campo no muestra lo dictado «\(frase)»", file: file, line: line)
+    }
+
+    private func enviar(file: StaticString = #filePath, line: UInt = #line) {
+        exponer("boton-enviar", en: app, file: file, line: line)
+        elemento("boton-enviar").tap()
+    }
+
+    private func esperarTexto(_ etiqueta: String, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(app.staticTexts[etiqueta].waitForExistence(timeout: 10), "No apareció «\(etiqueta)»", file: file, line: line)
+    }
+
+    func testDictarDosTurnosConservaElOrigenYLoCompletaConElDestino() throws {
+        lanzar()
+        XCTAssertTrue(elemento("aviso-dictado-sintetico").waitForExistence(timeout: 10), "debe rotular el dictado sintético")
+        XCTAssertEqual(
+            elemento("estado-dictado").label, "Dictado con el servicio de Apple, en español de Colombia: el audio se envía a Apple.",
+            "antes de pedir nada dice adónde va el audio")
+        XCTAssertEqual(elemento("boton-dictar").value as? String, "detenido")
+
+        dictar("salgo desde Ricaurte")
+        enviar()
+        esperarTexto("[SIMULADO] Entendí que sales de Ricaurte. ¿A qué estación quieres ir?")
+        XCTAssertTrue(elemento("origen-pendiente").waitForExistence(timeout: 10))
+        XCTAssertEqual(elemento("origen-pendiente").label, "Origen pendiente: Ricaurte")
+
+        dictar("Calle 72")
+        enviar()
+        esperarTexto("[SIMULADO] Viaje de Ricaurte a Calle 72, con el origen que dijiste antes.")
+        XCTAssertTrue(elemento("origen-pendiente").waitForNonExistence(timeout: 10), "un viaje completo no deja origen pendiente")
+    }
+
+    func testOlvidarElOrigenPendienteLoBorra() throws {
+        lanzar()
+        dictar("salgo desde Ricaurte")
+        enviar()
+        XCTAssertTrue(elemento("origen-pendiente").waitForExistence(timeout: 10))
+        exponer("boton-olvidar-origen", en: app)
+        elemento("boton-olvidar-origen").tap()
+        XCTAssertTrue(elemento("origen-pendiente").waitForNonExistence(timeout: 10))
+    }
+
+    func testCancelarUnaConsultaConOrigenPendienteBorraLaAclaracion() throws {
+        lanzar(["-PRUEBAS_UI_DICTADO_GUION", "salgo desde Ricaurte|lento"])
+        dictar("salgo desde Ricaurte")
+        enviar()
+        XCTAssertTrue(elemento("origen-pendiente").waitForExistence(timeout: 10))
+        dictar("lento")
+        enviar()
+        exponer("boton-cancelar", en: app)
+        elemento("boton-cancelar").tap()
+        esperarTexto("Consulta cancelada")
+        XCTAssertTrue(elemento("origen-pendiente").waitForNonExistence(timeout: 10), "cancelar borra la aclaración")
+        XCTAssertFalse(app.staticTexts["[SIMULADO] Respuesta lenta que no debería verse."].exists)
+    }
+
+    func testSinPermisoElTextoSigueDisponibleYElBotonDiceQueNoHayPermiso() throws {
+        lanzar(["-PRUEBAS_UI_DICTADO_PERMISO_DENEGADO"])
+        exponer("boton-dictar", en: app)
+        elemento("boton-dictar").tap()
+        esperar(elemento("boton-dictar"), "value == %@", "sin permiso", "El botón no dijo que falta el permiso")
+        XCTAssertEqual(
+            elemento("estado-dictado").label, "Sin permiso de micrófono o de reconocimiento de voz. Escribe tu pregunta.")
+        XCTAssertTrue(elemento("boton-abrir-ajustes-dictado").exists, "ofrece abrir Ajustes")
+
+        // Como `preguntar` de las otras pruebas: sin resultado en pantalla todo cabe a la vista y «Enviar» queda sobre el teclado.
+        let campo = elemento("campo-pregunta")
+        XCTAssertTrue(campo.waitForExistence(timeout: 10))
+        escribir("hola", en: campo, app: app)
+        elemento("boton-enviar").tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "El teclado debe cerrarse al enviar")
+        esperarTexto("[SIMULADO] Respuesta de prueba para: hola")
+    }
+
+    func testAuditoriaAccesibilidadDictadoEscuchando() throws {
+        lanzar()
+        exponer("boton-dictar", en: app)
+        let boton = elemento("boton-dictar")
+        boton.tap()
+        esperar(boton, "value == %@", "escuchando", "El dictado no pasó a escuchar")
+        XCTAssertEqual(boton.label, "Detener dictado")
+        try auditar(app, "consulta-dictado-escuchando", testCase: self)
+        boton.tap()  // suelta la captura sintética
+    }
+
+    func testAuditoriaAccesibilidadDictadoSinPermiso() throws {
+        lanzar(["-PRUEBAS_UI_DICTADO_PERMISO_DENEGADO"])
+        exponer("boton-dictar", en: app)
+        elemento("boton-dictar").tap()
+        XCTAssertTrue(elemento("boton-abrir-ajustes-dictado").waitForExistence(timeout: 10))
+        try auditar(app, "consulta-dictado-sin-permiso", testCase: self)
+    }
+
+    /// Con el texto más grande el botón y su mensaje siguen a la vista y el botón no baja de 44 pt. Sin la auditoría completa
+    /// de las otras pruebas de texto grande: la de la consulta usa fases diferidas muy ajustadas y esta fila no las toca.
+    func testDictadoConTextoMuyGrande() throws {
+        lanzar(categoria: "UICTContentSizeCategoryAccessibilityXXXL")
+        // Primero el botón de enviar, que la prueba de texto grande de la consulta ya alcanza; el dictado queda justo debajo.
+        exponer("boton-enviar", en: app)
+        exponer("boton-dictar", en: app)
+        let boton = elemento("boton-dictar")
+        XCTAssertTrue(boton.isHittable, "El botón del dictado no es tocable con el texto más grande")
+        XCTAssertGreaterThanOrEqual(boton.frame.height, 44, "El botón del dictado mide menos de 44 pt de alto")
+        XCTAssertGreaterThanOrEqual(boton.frame.width, 44, "El botón del dictado mide menos de 44 pt de ancho")
+        exponer("estado-dictado", en: app, completo: false)
+        XCTAssertTrue(elemento("estado-dictado").isHittable || elemento("estado-dictado").exists)
+        XCTAssertTrue(elemento("estado-dictado").label.hasPrefix("Dictado con el servicio de Apple"))
+    }
+}
+
 /// Base de las pruebas de rutas, detalle y viaje (EA-25): lanza la app con el planificador SIMULADO (`-PRUEBAS_UI_SIMULADAS`,
 /// datos inventados, sin red) y llega a ellas por el botón de rutas de la barra de Consulta. Con el planificador simulado
 /// el mapa no se dibuja (la pantalla lo dice); no prueban MapKit, VoiceOver ni el servidor real.

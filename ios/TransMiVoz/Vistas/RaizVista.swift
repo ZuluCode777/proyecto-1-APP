@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Cuatro pestañas: sesión local (sin red), consulta de transporte, lupa de la cámara y ajustes. La
+/// Cinco pestañas: sesión local (sin red), consulta de transporte, avisos locales, lupa de la cámara y ajustes. La
 /// sesión es la del accesorio real; solo las pruebas de interfaz muestran la simulada.
 struct RaizVista: View {
     let entorno: EntornoApp
@@ -21,6 +21,8 @@ struct RaizVista: View {
                 resumenServidor: entorno.modoPruebas ? "Modo de pruebas: sin servidor." : entorno.ajustes.resumen,
                 avisoModoPruebas: entorno.modoPruebas)
                 .tabItem { Label("Consulta", systemImage: "bubble.left.and.text.bubble.right") }
+            AvisosVista(centro: entorno.avisos, anuncios: entorno.anuncios)
+                .tabItem { Label("Avisos", systemImage: "bell") }
             LupaVista(modelo: entorno.lupa, avisoSintetico: entorno.modoPruebas)
                 .tabItem { Label("Lupa", systemImage: "magnifyingglass") }
             AjustesVista(entorno: entorno)
@@ -28,5 +30,7 @@ struct RaizVista: View {
         }
         // Solo en primer plano y activa: inactiva (bloqueo, centro de control) o en segundo plano se suspende.
         .onChange(of: faseEscena) { _, nueva in entorno.accesorio?.escenaActiva(nueva == .active) }
+        // Red caída y datos viejos nacen del resultado de la consulta; la consulta no sabe de avisos.
+        .onChange(of: entorno.consulta.estado) { _, nuevo in entorno.avisos.consultaCambio(nuevo) }
     }
 }

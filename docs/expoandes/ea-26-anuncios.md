@@ -1,15 +1,15 @@
 # EA-26 (#52): anuncios operativos verificados
 
-Rama `feat/ea26-anuncios`. Pruebas de red del **11 de noviembre de 2026**, entre las 17:05 y las 17:15 UTC (12:05–12:15 en Bogotá), con peticiones GET de solo lectura a fuentes oficiales, desde un portátil en Colombia. Este documento cubre la investigación, las decisiones y el contrato del endpoint; no hay código de iPhone (la lista en el iPhone es un PR posterior).
+Rama `feat/ea26-anuncios`. Pruebas de red del **11 de noviembre de 2026**, entre las 17:05 y las 17:15 UTC (12:05–12:15 en Bogotá), con peticiones GET de solo lectura a fuentes oficiales, desde un portátil en Colombia. Este documento cubre la investigación, las decisiones y el contrato del endpoint; la lista en el iPhone está en la sección [iOS](#ios-lista-de-anuncios-en-la-app) (PR posterior).
 
 ## Decisiones ya tomadas
 
 - **Sin push remoto APNs.** Exige el Apple Developer Program de pago y el equipo usa un Personal Team gratuito.
 - **Sin cron ni worker de pago.** Render Free se duerme, así que no es un programador fiable.
-- **Solo anuncios dentro de la app y notificaciones locales del sistema.** Las notificaciones locales (iOS) quedan fuera de este PR.
+- **Solo anuncios dentro de la app.** Sin notificaciones locales del sistema: la decisión y sus razones están en la sección [iOS](#ios-lista-de-anuncios-en-la-app).
 - **El modelo de lenguaje no participa.** Ningún anuncio, cierre, accidente o llegada pasa por Ollama ni se genera con él.
 
-Con eso, el criterio 4 de #52 queda así: *aviso en la app* (este PR), *notificación local del sistema* (PR de iPhone, sin permisos de segundo plano) y *push APNs* (no se integra, por la decisión de arriba).
+Con eso, el criterio 4 de #52 queda así: *aviso en la app* (este PR), *notificación local del sistema* (no se integra; ver la sección iOS) y *push APNs* (no se integra, por la decisión de arriba).
 
 ## Resultado de la investigación
 
@@ -130,4 +130,61 @@ Comprobado además contra el `alerts.pb` real descargado: el decodificador da la
 - **Los textos son los de la fuente**, incluidos sus códigos de paradas (`094B00_TM_…`) y errores de digitación; no se reescriben ni se interpretan con IA. Solo se decodifican entidades HTML, se normalizan espacios y se acorta el largo (120 el título, 300 la descripción, contando caracteres reales, sin partir un emoji y volviendo al último espacio si el corte cae a media palabra; lo quitado se marca con «…»).
 - **Afectación por identificadores de la fuente**, no por códigos comerciales de ruta.
 - La caché y el estado viven en la memoria del proceso: al reiniciar se pierde la última consulta buena y se vuelve a `sin-fuente` hasta la primera respuesta.
-- **Fuera de alcance:** lista en el iPhone, notificación local del sistema (con prueba física), APNs, cron o worker.
+- **Fuera de alcance:** notificación local del sistema, APNs, cron o worker. La lista en el iPhone se documenta en la sección iOS.
+
+## iOS: lista de anuncios en la app
+
+Rama `feat/ea26-anuncios-ios` (PR de iPhone, #52). El iPhone consume `GET /api/anuncios` **tal como está** —sin cambios en el servidor— con el mismo origen HTTPS, la misma clave HTTP Basic y las mismas reglas de red que `POST /api/agent` (`ClienteAnunciosHTTP`, de `ios/TransMiVoz/Anuncios/`): sin redirecciones, sin caché ni reintentos automáticos, plazo total de 12 s y respuesta de hasta 1 MB. Cualquier valor fuera del contrato (estado, confianza, efecto u origen desconocidos, fecha que no sea ISO 8601, `mensaje` en blanco) hace que toda la respuesta sea incompatible: es mejor decir «no pude leerlo» que mostrar a medias un aviso de servicio.
+
+### Qué muestra y cuándo
+
+La sección `AnunciosSeccionVista` va dentro del recuadro «Anuncios oficiales» de la pestaña Avisos (EA-20, #46), que conserva la separación entre anuncios oficiales, avisos propios y escenario simulado; en las pruebas de interfaz el contenido simulado sale ahí mismo, con su marca (como los avisos propios simulados de #46). Pide los anuncios al aparecer y con el botón «Actualizar» (o «Reintentar» si la última consulta falló). Muestra siempre el estado de la fuente **con texto** (no solo icono ni color) y la confianza:
+
+| Situación | Estado que ve la persona | Confianza | Lista |
+| --- | --- | --- | --- |
+| Aún no se consultó, o el servidor responde `sin-fuente` | «Sin fuente conectada» | ninguna | vacía; dice que eso no significa que no haya novedades |
+| El servidor responde `activa` | «Fuente conectada» | la del servidor (`media`) | los anuncios vigentes; la tarjeta muestra el `mensaje` del servidor (con lista vacía, el suyo), salvo que la app haya ocultado algún anuncio (vencido o repetido): entonces muestra su propio texto («En este iPhone se ocultaron N anuncios…») y la frase de seguridad |
+| El servidor responde `degradada` | «Fuente con problemas, confianza baja» | baja | los anuncios que el servidor aún da por vigentes |
+| La consulta del iPhone falla **después** de una respuesta buena (sin red, 401, plazo…) | «Fuente con problemas, confianza baja» | baja | los de la última respuesta que aún no hayan vencido; **conserva la fecha** que publicó la fuente y la de la última consulta exitosa; el texto lo pone la app (la causa, qué hacer y que lo mostrado puede estar desactualizado), no el `mensaje` viejo del servidor |
+| La consulta falla y **nunca** hubo una respuesta buena | «Sin fuente conectada» + «No pude consultar los anuncios…» | ninguna | vacía |
+
+Cada anuncio muestra entidad, identificador, fecha (inicio de la vigencia; «la fuente no la publica» si es `null`), vigencia (fin; «sin fecha de fin publicada» si es `null`), efecto y servicios afectados (identificadores de la fuente, no códigos comerciales). Nada de esto se inventa. Una frase por elemento de texto, sin alturas fijas, para que con el texto más grande no se recorte.
+
+Lo que la app repite del servidor es solo lo mínimo: descarta los anuncios con `vigenciaHasta` ya pasada según el reloj del iPhone (la respuesta conservada tras un fallo envejece y el servidor no puede quitarlos) y los repetidos por origen e identificador (la lista de SwiftUI exige identificadores únicos). Si con eso se oculta algún anuncio, el `mensaje` del servidor (que cuenta los suyos, p. ej. «Hay 2 anuncios vigentes») ya no coincidiría con las tarjetas: la app lo reemplaza por «En este iPhone se ocultaron N anuncios que ya vencieron o estaban repetidos» y la frase de seguridad, y el anuncio de VoiceOver dice «No quedan anuncios vigentes en este iPhone» en vez de «No hay anuncios vigentes publicados». El orden por gravedad es el del servidor. La vigencia real, la deduplicación por contenido, el estado de la fuente y el resto de las reglas del contrato siguen siendo del servidor (`lib/anuncios-servidor.ts`); no se reescriben en Swift.
+
+### Origen y marca de simulación
+
+El contrato solo emite `oficial`. El modelo de Swift admite además `simulado` (el contrato exige que el contenido de demostración lleve su propio origen): un anuncio simulado muestra «Simulado · no es un anuncio del operador», la línea «Origen: contenido de demostración publicado por «Simulación de la app», sin ninguna fuente real» (con su entidad) y la etiqueta de VoiceOver «Anuncio simulado de demostración. No es un anuncio del operador.». El único contenido simulado es el del cliente `ClienteAnunciosSimulado` (solo compilaciones de depuración; argumentos `-PRUEBAS_UI_SIMULADAS`, y `-PRUEBAS_UI_ANUNCIOS_SIN_FUENTE` o `-PRUEBAS_UI_ANUNCIOS_CAIDA`): ningún anuncio simulado sale del servidor ni llega a una compilación de lanzamiento.
+
+### Independencia de la sesión y de los avisos del radar
+
+`AnunciosModelo` no comparte estado, tarea ni red con la sesión del accesorio ni con sus avisos. Un fallo de la consulta, un 401 o un servidor caído solo cambian esta sección. Se comprueba por construcción (modelos separados) y con las pruebas del modelo; **no** se probó en un iPhone con el accesorio real.
+
+### Decisión: solo lista dentro de la app
+
+No se integra notificación local del sistema, ni push remoto (APNs), ni modos de segundo plano, ni cron o worker. Razones:
+
+- **APNs:** exige el Apple Developer Program de pago y el equipo usa un Personal Team gratuito (decisión previa de este documento).
+- **Cron o worker:** Render Free se duerme; no es un programador fiable y pagar uno no está autorizado.
+- **Notificación local:** para avisar con la app cerrada, algo tendría que consultar el servidor en segundo plano. Eso exige declarar un modo de segundo plano (`UIBackgroundModes` y una tarea de actualización en segundo plano), y es el sistema quien decide cuándo la ejecuta, sin hora garantizada. Con la app abierta, la lista ya está en pantalla y se anuncia por VoiceOver, así que una notificación sería redundante. Además pide un permiso nuevo al usuario y el criterio de #52 exige una prueba física de entrega que no cabe antes del congelamiento del iPhone (13/11/2026, 15:00 en Bogotá).
+- **La fuente no lo justifica todavía:** a la muestra del 11/11 tenía 0 anuncios vigentes, ningún anuncio se ha contrastado con la operación real y la licencia del recurso en tiempo real no está declarada (confianza `media`, nunca `alta`). Interrumpir a alguien con una notificación de un dato así sería peor que mostrarlo con sus reservas cuando abre la sección.
+
+Si se retoma, hace falta antes una autorización concreta para el modo de segundo plano y la prueba física de entrega. Sin promesa de servicio permanente.
+
+### Criterios de #52 en el iPhone
+
+| Criterio | Estado |
+| --- | --- |
+| 1. Fuente oficial, licencia; entidad, identificador, fecha, vigencia y afectación; sin fuente = estado «sin fuente», nunca ausencia de incidentes | Cubierto en software (decodificador, textos y modelo con pruebas unitarias); la investigación de fuente y licencia es la del PR web. **Pendiente** verlo con el servidor real desde un iPhone |
+| 2. No inventa anuncios; contenido de demostración con origen y marca de simulación accesible | Cubierto en software; la etiqueta de VoiceOver **no** se probó con VoiceOver real |
+| 3. Sin duplicados ni vencidos; un fallo conserva la fecha y baja la confianza sin bloquear la sesión | Cubierto con fixtures y cliente simulado (sin red real); **pendiente** en un iPhone con el accesorio |
+| 4. Separar aviso en la app, notificación local y push APNs; no añadir cron, cuenta APNs ni segundo plano sin autorización | Decisión documentada arriba: solo aviso en la app |
+| 5. Documentar la decisión de no integrar | Hecho arriba |
+
+### Pruebas y límites (iOS)
+
+- `AnunciosRespuestaTests` (8), `ClienteAnunciosHTTPTests` (14), `AnunciosModeloTests` (16) y `TextoAnunciosTests` (17): decodificación del contrato, cliente con red simulada, vigencia, deduplicación, fallo que conserva la fecha, recuperación, una consulta a la vez y textos. `lib/ea26-anuncios-ios.test.ts` comprueba que los fixtures JSON de `FixturesAnuncios.swift` cumplen el `AnunciosRespuestaSchema` real (zod), como ya hace EA-17 con `FixturesHTTP.swift`. Los fixtures son **simulaciones de contrato con valores inventados**, no respuestas del servidor real.
+- Las 55 pruebas unitarias se compilaron y pasaron en Linux (Swift 6.2, contenedor `swift:6.2`, un paquete de prueba con los archivos sin SwiftUI). Eso no acredita ejecución en Apple: la CI de iOS es la primera compilación de SwiftUI y de las pruebas de interfaz.
+- Pruebas de mutación a mano (se rompió el código, falló la prueba, se restauró): quitar el filtro de vencidos, la deduplicación, el ocultar la lista con `sin-fuente`, la degradación por fallo, la conservación de la última respuesta, la distinción cancelar/fallar, la consulta única, la frase de seguridad, el rechazo de `mensaje` en blanco, la zona horaria, el reemplazo del `mensaje` del servidor cuando se ocultan anuncios, el conteo de ocultos y el texto de VoiceOver con la lista vacía tras ocultar.
+- Pruebas de interfaz (`TransMiVozAnunciosUITests`, `TransMiVozAnunciosTextoGrandeUITests`; cliente simulado, sin red): la lista con cada campo y la marca de simulación, vencidos y repetidos ocultos, sin fuente, una consulta caída que conserva las dos fechas y baja la confianza sin tocar los avisos propios ni la sesión, auditoría de accesibilidad con texto normal y alcance de los elementos con `AccessibilityXXXL`. Las pruebas de #46 que recorrían la fila provisional ahora usan `-PRUEBAS_UI_ANUNCIOS_SIN_FUENTE`. **Escritas sin Xcode: la primera ejecución es la de la CI de macOS.**
+- **Pendiente:** VoiceOver, Dynamic Type y contraste en un iPhone real; la consulta contra el Render real; el comportamiento con el accesorio real.

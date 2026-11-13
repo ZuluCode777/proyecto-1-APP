@@ -81,6 +81,13 @@ const ReplyBaseSchema = z.object({
    * Opcional: solo la llevan las acciones con datos.
    */
   catalogo: z.object({ procedencia: z.string(), antiguo: z.boolean() }).optional(),
+  /**
+   * Aclaración pendiente (EA-19, #45): la persona dijo de dónde sale y falta el
+   * destino. El servidor no guarda nada entre turnos; el cliente de iPhone
+   * conserva este origen y lo reenvía como `pendiente` con la pregunta siguiente
+   * (ver `conOrigenPendiente`). Opcional: solo la lleva esa respuesta.
+   */
+  aclaracion: z.object({ origen: z.string() }).optional(),
 })
 
 /**
@@ -703,7 +710,7 @@ function resolverIntent(
     }
 
     case "trip_missing_destination":
-      return say(`Entendí que sales de ${intent.origin}. ¿A qué estación quieres ir?`)
+      return { ...say(`Entendí que sales de ${intent.origin}. ¿A qué estación quieres ir?`), aclaracion: { origen: intent.origin } }
 
     case "unknown":
       return say("No te entendí. Puedes decir, por ejemplo: cómo llego a Ricaurte, o información de la ruta B23.")

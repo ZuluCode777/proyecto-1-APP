@@ -6,10 +6,17 @@ import FoundationNetworking
 /// Cliente del asistente de transporte. Toda la planificación vive en el
 /// backend Next; la app solo envía el texto y valida la respuesta.
 protocol ClienteAgente: Sendable {
-    func consultar(texto: String) async throws -> RespuestaAgente
+    /// `origenPendiente`: el origen que la persona dijo en el turno anterior (aclaración, EA-19); el servidor no guarda historial.
+    func consultar(texto: String, origenPendiente: String?) async throws -> RespuestaAgente
 }
 
-/// Rechaza toda redirección: `Authorization` no debe viajar a otro origen. Lo comparte `ClientePlanificadorHTTP`.
+extension ClienteAgente {
+    func consultar(texto: String) async throws -> RespuestaAgente {
+        try await consultar(texto: texto, origenPendiente: nil)
+    }
+}
+
+/// Rechaza toda redirección: `Authorization` no debe viajar a otro origen. También la usan `ClienteAnunciosHTTP` y `ClientePlanificadorHTTP`.
 final class SinRedirecciones: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(
         _ session: URLSession,
@@ -65,7 +72,7 @@ struct ClienteAgenteHTTP: ClienteAgente {
         self.configuracion = configuracion
     }
 
-    func consultar(texto: String) async throws -> RespuestaAgente {
+    func consultar(texto: String, origenPendiente: String?) async throws -> RespuestaAgente {
         let limpio = try EntradaConsulta.validar(texto).get()
         guard let configuracion = await configuracion() else { throw ErrorConsulta.servidorNoConfigurado }
 
@@ -79,7 +86,7 @@ struct ClienteAgenteHTTP: ClienteAgente {
         if let clave = configuracion.clave {
             peticion.setValue(clave.cabeceraBasic, forHTTPHeaderField: "Authorization")
         }
-        let cuerpo = try JSONEncoder().encode(CuerpoPeticionAgente(message: limpio))
+        let cuerpo = try JSONEncoder().encode(CuerpoPeticionAgente(message: limpio, origenPendiente: origenPendiente))
         guard cuerpo.count <= EntradaConsulta.maximoBytesCuerpo else {
             throw ErrorConsulta.entradaInvalida(.demasiadoLarga(maximo: EntradaConsulta.maximoCaracteres))
         }

@@ -8,7 +8,7 @@ import Foundation
 struct ClienteAgenteSimulado: ClienteAgente {
     private let intentos = IntentosSimulados()
 
-    func consultar(texto: String) async throws -> RespuestaAgente {
+    func consultar(texto: String, origenPendiente: String?) async throws -> RespuestaAgente {
         let limpio = try EntradaConsulta.validar(texto).get()
         // Escenario Metro: la pregunta llega con su contexto delante (`EscenarioConsulta.prefijo`).
         if limpio.lowercased().hasPrefix("metro:") {
@@ -42,6 +42,10 @@ struct ClienteAgenteSimulado: ClienteAgente {
                 catalogo: ProcedenciaCatalogo(procedencia: procedencia, antiguo: antiguo))
         case "gps":
             return RespuestaAgente(texto: "[SIMULADO] Voy a abrir el GPS auditivo.", accion: .gps)
+        case "salgo desde ricaurte":
+            // Aclaración entre turnos (EA-19), como el servidor: sin destino pide completarlo y deja el origen pendiente.
+            return RespuestaAgente(
+                texto: "[SIMULADO] Entendí que sales de Ricaurte. ¿A qué estación quieres ir?", origenPendiente: "Ricaurte")
         case "orden":
             // Contenido que el servidor NO debería mandar: la app lo sustituye por un aviso.
             return RespuestaAgente(
@@ -49,6 +53,10 @@ struct ClienteAgenteSimulado: ClienteAgente {
                 pasos: [PasoAgente(etiqueta: "[SIMULADO] Sube en Calle 127", detalle: nil)],
                 accion: .busqueda(estacion: "Portal Usme"))
         default:
+            // Con el origen pendiente de la aclaración, la frase siguiente es el destino de ese viaje.
+            if let origenPendiente {
+                return RespuestaAgente(texto: "[SIMULADO] Viaje de \(origenPendiente) a \(limpio), con el origen que dijiste antes.")
+            }
             return RespuestaAgente(
                 texto: "[SIMULADO] Respuesta de prueba para: \(limpio)",
                 pasos: [PasoAgente(etiqueta: "Paso simulado", detalle: "sin servidor")])

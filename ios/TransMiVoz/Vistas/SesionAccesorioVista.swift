@@ -274,16 +274,3 @@ struct HojaPermisoBluetooth: View {
         }
     }
 }
-
-private extension View {
-    /// En iOS 26 el área desplazable desvanece y difumina bajo la barra de navegación lo que pasa por debajo (efecto de borde
-    /// «suave»). Con el estilo «duro» el corte es nítido y lineal: lo que queda bajo la barra se mide con su aspecto real.
-    /// Hipótesis de renderizado que valida la auditoría nativa de contraste. Con iOS 17–25 no existe ese efecto.
-    @ViewBuilder func bordeSuperiorNitido() -> some View {
-        if #available(iOS 26.0, *) {
-            scrollEdgeEffectStyle(.hard, for: .top)
-        } else {
-            self
-        }
-    }
-}

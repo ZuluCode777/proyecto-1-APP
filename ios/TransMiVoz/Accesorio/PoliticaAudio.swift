@@ -60,6 +60,25 @@ enum MotivoSilencio: Equatable {
     case audioNoDisponible
     /// La persona apagó la voz de la app, o VoiceOver está activo y no la encendió.
     case vozApagada
+    /// Suena un aviso más importante: un mensaje menor no lo corta ni lo calla, y se descarta (queda en pantalla).
+    case cedeAUnAviso
+    /// La persona silenció la voz de las advertencias en la lista de avisos (EA-20). El aviso queda en la lista.
+    case severidadSilenciada
+}
+
+/// Prioridad de una locución (EA-20). Una más alta corta a una más baja que esté sonando; una más baja NO corta ni calla a una
+/// más alta que todavía suena; con la misma, la nueva reemplaza a la anterior (la cola sigue siendo de uno). Tiene la misma
+/// escala que la severidad de un aviso (`CentroAvisos`). Toda voz de la app pasa por `ControlVoz.anunciar(_:prioridad:)`, también
+/// la respuesta hablada de la consulta (#45), que va como `.rutina`.
+enum PrioridadVoz: Int, Comparable {
+    /// Respuesta rutinaria o estado sin riesgo (conectando, calibrando, la respuesta de la consulta).
+    case rutina = 0
+    /// Calidad de la información: red caída, datos viejos, ubicación imprecisa.
+    case advertencia
+    /// El accesorio o su sensor: pérdida, dato vencido, proximidad.
+    case urgente
+
+    static func < (a: PrioridadVoz, b: PrioridadVoz) -> Bool { a.rawValue < b.rawValue }
 }
 
 /// Quién es dueño de la locución vigente. Sin AVFoundation, para poder probarlo.
@@ -108,6 +127,8 @@ struct TurnoLocucion<ID: Hashable> {
 /// - se habla solo si la voz de la app está permitida, la ruta es privada AHORA (se consulta en cada
 ///   locución y otra vez tras activar la sesión de audio) y no hay interrupción (llamada, Siri...);
 /// - si el sistema no deja activar la sesión de audio, NO se habla y queda `audioNoDisponible`;
+/// - una locución de más prioridad corta a una de menos que suene; una de menos prioridad no corta ni calla a una de más
+///   que todavía suena (se descarta, `cedeAUnAviso`); con la misma, la nueva reemplaza a la anterior;
 /// - cambio de ruta, pérdida de auriculares o interrupción cortan y descartan lo que suene;
 /// - nada se reproduce después: al recuperar el audio solo se avisa a la sesión
 ///   (`alRecuperarse`) para que diga el estado ACTUAL, no el que quedó pendiente.
@@ -133,13 +154,32 @@ final class ControlVoz {
     /// (`didFinish`) de forma asíncrona, así que una locución que acaba de terminar puede seguir contando como «sonando» y
     /// la reserva se repite una vez de más; la sesión limita las repeticiones (`maximoReservas`) y no es peor que callar.
     var ultimaSeOyoEntera: Bool { !ultimaLocucionCortada && !salida.hablando && !salida.cortadaPorElSistema }
+    /// Cuántas locuciones empezaron. Quien habla por esta vía (la consulta) lo anota para cortar solo la suya: si después
+    /// habló otro (un aviso del accesorio), la suya ya la cortó la cola de uno y no hay nada que cortar.
+    @ObservationIgnored private(set) var locuciones = 0
+    /// Se llama justo antes de que empiece una locución. El dictado suelta el micrófono aquí: nada suena sobre una captura
+    /// abierta, y un aviso no espera a que la persona termine de dictar.
+    @ObservationIgnored var alHablar: (@MainActor () -> Void)?
     /// Se llama cuando vuelve a ser posible hablar (auriculares de nuevo, fin de la interrupción, o un
     /// corte con la ruta privada intacta que dejó una locución a medias).
     @ObservationIgnored var alRecuperarse: (@MainActor () -> Void)?
     /// Se llama cuando se pierde una ruta que era privada (para el aviso accesible y la háptica).
     @ObservationIgnored var alPerderRuta: (@MainActor () -> Void)?
+    /// Hay una locución sonando o por sonar, de quien sea. Solo lectura: quien no es dueño de la que suena (la consulta ante
+    /// un aviso del accesorio) la compara con `locuciones` y no la corta. La prioridad de los avisos físicos sobre la lectura
+    /// de transporte está en arquitectura-y-experimentos.md, «Política de voz».
+    ///
+    /// Este candado (EA-19) y `debeCeder(prioridad:)` (EA-20) conviven. `debeCeder` solo protege a un aviso de MÁS prioridad que
+    /// quien habla. Este protege a CUALQUIER locución ajena, también una de rutina del accesorio, de la respuesta de la consulta
+    /// (`ConsultaModelo.hablar`) y del micrófono del dictado (`DictadoModelo.arrancar`), que no son avisos ni tienen prioridad.
+    /// Cada uno corta solo su locución (`locuciones`); la voz urgente no se silencia nunca, pues `advertenciasSilenciadas` solo
+    /// calla a las advertencias.
+    var hablando: Bool { salida.hablando }
     /// Si la voz propia está permitida (la sesión la fija: depende de VoiceOver y de la elección de la persona).
     @ObservationIgnored var permitida: @MainActor () -> Bool = { true }
+
+    /// Prioridad de la última locución empezada. Solo cuenta mientras `salida.hablando`.
+    @ObservationIgnored private var prioridadVigente: PrioridadVoz = .rutina
 
     @ObservationIgnored private let salida: SalidaVoz
     @ObservationIgnored private let consultarRuta: () -> RutaAudio
@@ -156,17 +196,26 @@ final class ControlVoz {
         salida.detener()
     }
 
+    /// Suena un aviso más importante que `prioridad`: hablar ahora lo cortaría, y no se debe. Quien produce el mensaje lo
+    /// reintenta cuando haya terminado. Ventana conocida: `hablando` sigue verdadero hasta que llega el fin asíncrono de la
+    /// locución, así que un mensaje menor justo después puede cederse una vez de más.
+    func debeCeder(prioridad: PrioridadVoz) -> Bool { salida.hablando && prioridad < prioridadVigente }
+
     @discardableResult
-    func anunciar(_ texto: String) -> Resultado {
+    func anunciar(_ texto: String, prioridad: PrioridadVoz = .rutina) -> Resultado {
         ruta = consultarRuta()
+        if debeCeder(prioridad: prioridad) { return .silenciado(.cedeAUnAviso) }
         cortar()
         if interrumpido { return .silenciado(.interrumpido) }
         guard permitida() else { return .silenciado(.vozApagada) }
         guard ruta == .privada else { return .silenciado(.rutaNoPrivada) }
+        alHablar?()
         switch salida.hablar(texto) {
         case .iniciada:
             audioNoDisponible = false
             ultimaLocucionCortada = false
+            prioridadVigente = prioridad
+            locuciones += 1
             return .hablado
         case .sesionNoDisponible:
             audioNoDisponible = true

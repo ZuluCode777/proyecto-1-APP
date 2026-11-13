@@ -32,6 +32,14 @@ struct OrigenServidor: Equatable, Hashable, Sendable {
     let urlAgente: URL
 
     private static let rutaAgente = "/api/agent"
+    private static let rutaAnuncios = "/api/anuncios"
+
+    /// URL de `GET /api/anuncios`: el mismo origen ya validado (host, puerto y esquema) con otra ruta.
+    var urlAnuncios: URL? {
+        guard var partes = URLComponents(url: urlAgente, resolvingAgainstBaseURL: false) else { return nil }
+        partes.path = Self.rutaAnuncios
+        return partes.url
+    }
 
     /// URL de `POST /api/planificador`: el mismo origen validado que `urlAgente`, con otro endpoint.
     var urlPlanificador: URL {
