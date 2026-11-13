@@ -17,6 +17,11 @@
 #   IOS_MAYOR_ESPERADO     versión mayor del runtime de iOS del Simulator (por defecto 26)
 #   SIMULADOR_NOMBRE       modelo de iPhone del Simulator (por defecto «iPhone 17»)
 #   PRUEBAS_MINIMAS        mínimo de pruebas que deben ejecutarse (por defecto 50)
+#   OMITIR_PRUEBAS         pruebas que `pruebas-simulador` no ejecuta (`-skip-testing:`), separadas
+#                          por espacios, en la forma Objetivo/Clase/prueba. En la CI (CI=true)
+#                          omite por defecto las dos auditorías lentas del accesorio con texto
+#                          muy grande (unos 40 min de los 90 que permite el job); en local no
+#                          omite ninguna. OMITIR_PRUEBAS="" las ejecuta también en la CI.
 #
 # Nunca se sustituye en silencio una herramienta o un destino por otro: si no
 # coincide con lo pedido, el script falla y dice qué encontró.
@@ -38,6 +43,12 @@ ESQUEMA="TransMiVoz"
 # Carpeta nueva por ejecución. Se exporta para que los pasos que `todo` lanza
 # como procesos hijos escriban en la MISMA carpeta.
 SALIDA="${SALIDA:-$RAIZ/ios/salida/$(date -u +%Y%m%dT%H%M%SZ)-$$}"
+# Sin dos puntos a propósito: OMITIR_PRUEBAS definida y vacía no omite nada.
+if [ "${CI:-}" = "true" ]; then
+  OMITIR_PRUEBAS="${OMITIR_PRUEBAS-TransMiVozUITests/TransMiVozAccesorioTextoGrandeUITests/testAuditoriaConTextoMuyGrande TransMiVozUITests/TransMiVozAccesorioTextoGrandeUITests/testAuditoriaPermisoDenegadoConTextoMuyGrande}"
+else
+  OMITIR_PRUEBAS="${OMITIR_PRUEBAS-}"
+fi
 export SALIDA
 IOS_MAYOR_ESPERADO="${IOS_MAYOR_ESPERADO:-26}"
 SIMULADOR_NOMBRE="${SIMULADOR_NOMBRE:-iPhone 17}"
@@ -176,14 +187,23 @@ paso_pruebas_simulador() {
   comprobar_proyecto
   preparar_salida
   sin_pisar "$SALIDA/pruebas-simulador.xcresult" "$SALIDA/xcodebuild-pruebas-simulador.log" \
-    "$SALIDA/simulador-udid-pruebas-simulador.txt" "$SALIDA/pruebas-simulador-resumen.json"
+    "$SALIDA/simulador-udid-pruebas-simulador.txt" "$SALIDA/pruebas-simulador-resumen.json" \
+    "$SALIDA/pruebas-simulador-omitidas.txt"
   local udid; udid="$(preparar_simulador pruebas-simulador)"
-  # Si xcodebuild falla, el script termina aquí (pipefail): no se oculta ninguna prueba ni auditoría.
+  local omitir=() prueba
+  for prueba in $OMITIR_PRUEBAS; do omitir+=("-skip-testing:$prueba"); done
+  if [ ${#omitir[@]} -gt 0 ]; then
+    echo "AVISO: esta ejecución NO corre estas pruebas (OMITIR_PRUEBAS): $OMITIR_PRUEBAS" \
+      | tee "$SALIDA/pruebas-simulador-omitidas.txt" >&2
+  fi
+  # Si xcodebuild falla, el script termina aquí (pipefail). Solo se dejan fuera las
+  # pruebas que OMITIR_PRUEBAS nombra, y el aviso de arriba lo deja escrito.
   xcodebuild test \
     -project "$PROYECTO" -scheme "$ESQUEMA" -configuration Debug \
     -destination "platform=iOS Simulator,id=$udid" \
     -derivedDataPath "$SALIDA/DerivedData" \
     -resultBundlePath "$SALIDA/pruebas-simulador.xcresult" \
+    ${omitir[@]+"${omitir[@]}"} \
     2>&1 | tee "$SALIDA/xcodebuild-pruebas-simulador.log"
   verificar_resultado "$SALIDA/pruebas-simulador.xcresult" pruebas-simulador
 }

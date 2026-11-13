@@ -50,6 +50,17 @@ fi
 usar_salida_fija() { [ "$(env SALIDA="$TEMPORAL/fija" bash -c 'source "$1" && echo "$SALIDA"' _ "$SCRIPT")" = "$TEMPORAL/fija" ]; }
 comprobar "una SALIDA explícita se respeta" usar_salida_fija
 
+# OMITIR_PRUEBAS: en la CI omite solo las dos auditorías lentas del accesorio; en local, nada;
+# definida y vacía, nada también en la CI.
+omitidas_con() { env -u OMITIR_PRUEBAS "$@" bash -c 'source "$1" && printf %s "$OMITIR_PRUEBAS"' _ "$SCRIPT"; }
+lentas="TransMiVozUITests/TransMiVozAccesorioTextoGrandeUITests/testAuditoriaConTextoMuyGrande TransMiVozUITests/TransMiVozAccesorioTextoGrandeUITests/testAuditoriaPermisoDenegadoConTextoMuyGrande"
+omite_lentas_en_ci() { [ "$(omitidas_con CI=true SALIDA="$TEMPORAL/fija")" = "$lentas" ]; }
+comprobar "en la CI se omiten solo las dos auditorías lentas del accesorio" omite_lentas_en_ci
+no_omite_en_local() { [ -z "$(omitidas_con -u CI SALIDA="$TEMPORAL/fija")" ]; }
+comprobar "en local no se omite ninguna prueba" no_omite_en_local
+vacia_no_omite() { [ -z "$(env CI=true OMITIR_PRUEBAS= SALIDA="$TEMPORAL/fija" bash -c 'source "$1" && printf %s "$OMITIR_PRUEBAS"' _ "$SCRIPT")" ]; }
+comprobar "OMITIR_PRUEBAS vacía no omite nada en la CI" vacia_no_omite
+
 # El uso (sin argumentos) sale con 2 y no crea carpetas.
 env SALIDA="$TEMPORAL/uso" "$SCRIPT" >/dev/null 2>&1; codigo=$?
 total=$((total + 1))
