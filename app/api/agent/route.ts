@@ -140,7 +140,7 @@ export async function POST(req: Request) {
   if (ollamaConfigured()) {
     if (!modeloListo()) {
       void warmUpOllama()
-    } else if (requiereModelo(intentDeReglas)) {
+    } else if (requiereModelo(intentDeReglas, origenPendiente)) {
       try {
         intentDelModelo = await parseIntentWithOllama(message, data)
       } catch (error) {

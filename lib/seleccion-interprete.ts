@@ -52,8 +52,15 @@ function soloReglas(intentDeReglas: Intent): boolean {
 /**
  * ¿Hay que consultar al modelo para esta frase (cuando está cargado)? Siempre,
  * salvo que las reglas hayan reconocido una intención que solo ellas expresan.
+ *
+ * Aclaración entre turnos (EA-19, #45): con un origen pendiente, un viaje que
+ * llega sin origen («Calle 72» tras «Salgo desde Ricaurte») es la respuesta a la
+ * pregunta anterior. El modelo no ve el pendiente y podría clasificarlo como
+ * otra cosa (una estación, una ruta): lo resuelven las reglas, como a
+ * `trip_missing_destination`. `conOrigenPendiente` lo completa después.
  */
-export function requiereModelo(intentDeReglas: Intent): boolean {
+export function requiereModelo(intentDeReglas: Intent, origenPendiente?: string): boolean {
+  if (origenPendiente && intentDeReglas.type === "trip" && intentDeReglas.origin === undefined) return false
   return !soloReglas(intentDeReglas)
 }
 

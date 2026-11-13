@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import snapshot from "../data/transmilenio.json" with { type: "json" }
 import { AgentReplySchema, parseIntent, runIntent } from "./local-agent"
-import { conOrigenPendiente } from "./seleccion-interprete"
+import { conOrigenPendiente, requiereModelo } from "./seleccion-interprete"
 import { TransmilenioDataSchema } from "./transmilenio"
 
 // EA-19 (#45): aclaración entre turnos. El servidor no guarda historial: el origen pendiente
@@ -58,4 +58,14 @@ test("un origen pendiente fuera del catálogo se pide aclarar, no se reemplaza",
   const { respuesta } = responder("Calle 72", "Narnia")
   assert.equal(respuesta.action, "none")
   assert.match(respuesta.reply, /No encontré la estación de origen Narnia/)
+})
+
+test("con origen pendiente, un viaje sin origen lo resuelven las reglas y no se consulta al modelo", () => {
+  const calle72 = parseIntent("Calle 72", datos)
+  assert.equal(calle72.type, "trip")
+  assert.equal(requiereModelo(calle72), true, "sin pendiente el modelo sigue consultándose")
+  assert.equal(requiereModelo(calle72, "Ricaurte"), false)
+  // Un origen dicho ahora y cualquier otra intención no cambian: siguen la política de siempre.
+  assert.equal(requiereModelo(parseIntent("de Portal Norte a Calle 72", datos), "Ricaurte"), true)
+  assert.equal(requiereModelo(parseIntent("información de la ruta B23", datos), "Ricaurte"), true)
 })
