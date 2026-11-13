@@ -235,6 +235,7 @@ void evento_notificar(ble_npl_event*) {
   }
   bool conectada;
   bool cortar_sesion;
+  bool avisar_corte = false;
   uint16_t conexion = 0;
   uint16_t id_sesion;
   {
@@ -242,9 +243,11 @@ void evento_notificar(ble_npl_event*) {
     conectada = g_puerta.sesion().conectada();
     id_sesion = g_puerta.sesion().id_conexion();
     cortar_sesion = g_puerta.gracia_vencida(millis(), &conexion);
+    // Se corta en cada ciclo hasta que llega la desconexión; el aviso, una vez por conexión.
+    if (cortar_sesion) avisar_corte = g_puerta.sesion().registrar_corte_por_gracia();
   }
   if (cortar_sesion) {
-    Serial.println("BLE: enlace sin proteger pasado el plazo; se corta");
+    if (avisar_corte) Serial.println("BLE: enlace sin proteger pasado el plazo; se corta");
     cortar(conexion);
   }
   if (conectada) {
@@ -307,7 +310,7 @@ void atender_radar() {
   if (!kRadarHabilitado) return;
   radar::atender_uart(g_radar, g_uart, g_uart_estado);
   if (g_supervisor.vigilar(g_radar, g_uart)) {
-    Serial.println("Radar: sin latido o configuración fallida; se reaplica la configuración (sin escribir su flash)");
+    Serial.println("Radar: sin latido o configuración fallida; se repite el arranque del radar (sin reescribir su flash si ya guardó la configuración)");
   }
 }
 
@@ -316,10 +319,17 @@ void iniciar_radar() {
   Serial1.begin(kBaudios, SERIAL_8N1, VISIONARIA_PIN_RADAR_RX, VISIONARIA_PIN_RADAR_TX);
   // Un desborde del controlador de la UART avisa a la lectura: lo perdido no se une con lo siguiente.
   Serial1.onReceiveError([](hardwareSerial_error_t) { g_perdida_uart.store(true); });
+  // Línea vacía antes de la primera orden: en el banco del 12/11 (R4) el radar
+  // perdió el primer byte de la primera orden una vez («ensorStop is not
+  // recognized»). Si el primer byte se pierde, que sea el de esta línea, que no
+  // significa nada; el radar contesta con su prompt y 100 ms bastan para que lo
+  // haga antes de que se vacíe el búfer.
+  Serial1.write("\r\n");
+  delay(100);
   // Nada que haya quedado en el búfer antes de arrancar vale como observación.
   while (Serial1.available() > 0) Serial1.read();
   g_perdida_uart.store(false);
-  g_radar.reiniciar(true);  // el arranque guarda la configuración (una vez); las recuperaciones, no
+  g_radar.reiniciar(true);  // el arranque guarda la configuración (una vez); las recuperaciones, no si ya se guardó
 #endif
 }
 

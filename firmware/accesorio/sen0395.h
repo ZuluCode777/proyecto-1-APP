@@ -60,18 +60,33 @@ constexpr uint32_t kPlazoMaxMs = 0x7FFFFFFFu;
 constexpr size_t kLongitudLineaMax = 64;       // más larga: línea inválida
 constexpr size_t kMaxBytesPorLlamada = 256;    // más que esto en una oferta: se descarta entera
 constexpr size_t kLongitudOrdenMax = 64;       // capacidad suficiente para salida_pendiente
-constexpr uint8_t kPasosConfiguracion = 5;     // stop, rango, latencia, guardar, start
+constexpr uint8_t kPasosConfiguracion = 5;     // stop, rango, latencia, guardar, start (la recuperación ligera solo envía stop y start)
 constexpr uint8_t kIndiceVentanaMax = 127;     // detRangeCfg: índices 0..127
 constexpr uint16_t kPasoVentanaMm = 150;       // 15 cm por índice
 
 struct Configuracion {
-  // Ventana de detección, en índices de 15 cm (0..127). Por defecto 0 a 3 m.
+  // Ventana de detección, en índices de 15 cm (0..127). Por defecto 0 a 30 cm
+  // (índices 0..2): el ajuste que el equipo validó en el banco del 12/11/2026 con
+  // el SEN0395 real. El de fábrica (0..20, 3 m) mantenía el radar en «presencia»
+  // casi siempre, y eso no sirve de aviso. Los 15 cm por índice son los de la
+  // documentación del fabricante y los comprobó el banco (`getRange` dio
+  // `0.000 0.450` con `detRangeCfg -1 0 3`).
   uint8_t ventana_inicio = 0;
-  uint8_t ventana_fin = 20;
-  // outputLatency, en unidades de 25 ms. Valores de fábrica (2,5 s / 10 s);
-  // B2 decide el mínimo estable. No se inventa uno sin medición.
-  uint16_t latencia_deteccion = 100;
-  uint16_t latencia_desaparicion = 400;
+  uint8_t ventana_fin = 2;
+  // outputLatency, en unidades de 25 ms. Por defecto 0 al detectar y 8 (0,2 s) al
+  // despejar, los valores que el equipo validó en el banco del 12/11/2026.
+  // Fuente de las unidades: DFRobot, «SEN0395 mmWave Radar Reference»
+  // (https://wiki.dfrobot.com/sen0395/docs/21398, consulta 13/11/2026): «Value
+  // range: 0~65535, unit: 25ms», con 100 y 400 de fábrica = 2,5 s y 10 s. NO son
+  // los «2,5 s / 10 s por defecto» del firmware anterior: eran los de fábrica.
+  // La documentación no describe `getLatency`, y el banco la contradice en un
+  // punto: tras `outputLatency -1 100 400` respondió `0.025 10.000`. El segundo
+  // número (10 s = 400 x 25 ms) cuadra con la documentación; el primero (0,025 s)
+  // no cuadra con los 2,5 s que ella da para 100. No se sabe cuál es el retardo
+  // real al detectar con valores distintos de 0; con 0, que es lo que se usa,
+  // la duda no importa. Si algún día se vuelve a subir, hay que medirlo.
+  uint16_t latencia_deteccion = 0;
+  uint16_t latencia_desaparicion = 8;
   uint32_t estabilizacion_ms = kEstabilizacionMinMs;
   // Plazo de cada orden desde que salida_enviada() la da por escrita.
   uint32_t respuesta_max_ms = 2000;
@@ -125,10 +140,23 @@ class Interprete {
   // recuperación exige una observación íntegra NUEVA tras la estabilización.
   // Úsalo tras reiniciar o desconectar el radar. Una configuración fallida no
   // se reintenta sola: quien reintenta es enlace_radar.h (SupervisorRadar), con
-  // espera creciente. `guardar_en_flash = false` omite saveCfg: aplica rango y
-  // latencia solo en la RAM del sensor, sin gastar ciclos de su flash. El
-  // arranque de la placa usa true (una escritura por arranque); toda recuperación
-  // posterior usa false.
+  // espera creciente.
+  //
+  // `completa = true` (el arranque de la placa): sensorStop, rango, latencia,
+  // saveCfg y sensorStart; una escritura de la flash del radar por arranque.
+  //
+  // `completa = false` (toda recuperación posterior): si el radar ya guardó
+  // NUESTRA configuración en esta ejecución (saveCfg con Done), solo envía
+  // sensorStop y sensorStart. Un SEN0395 que se reinició conserva su flash, y
+  // tocar el rango o la latencia otra vez, aunque sean los mismos valores, deja
+  // «parámetros sin guardar» y el radar rechaza sensorStart (`new parameter
+  // isn't save, can't startSensor`, banco 12/11, R2). Así la recuperación no
+  // escribe su flash y sí lo vuelve a arrancar. Si el radar no llegó a guardar la
+  // configuración (el arranque falló antes de saveCfg), o si una recuperación así
+  // acaba en `Error`, la siguiente repite la secuencia completa con saveCfg:
+  // es la única forma de arrancarlo, y cada escritura tiene detrás un intento
+  // fallido y la espera creciente del supervisor.
+  //
   // Purga: tras un fallo por timeout, o si se reinicia con una orden en vuelo,
   // la primera orden nueva se retiene hasta que pasen respuesta_max_ms desde que
   // venció el plazo de la orden vieja (en total, >= 2 x respuesta_max_ms desde
@@ -138,7 +166,7 @@ class Interprete {
   // de su orden no se distingue de la de la orden nueva; B1 mide la latencia
   // real de cada orden y fija un plazo que lo haga imposible. El llamador debe
   // además vaciar la UART al reiniciar.
-  void reiniciar(bool guardar_en_flash = true);
+  void reiniciar(bool completa = true);
 
   // --- Salida: órdenes hacia el radar ---------------------------------------
   // Copia la orden pendiente (con "\r\n") a destino y devuelve su longitud.
@@ -219,6 +247,7 @@ class Interprete {
   void avanzar(uint32_t ahora_ms);
   void linea_completa(uint32_t ahora_ms, uint32_t sello_ms);
   void marcar_malo(Malo m, CausaInvalida causa);
+  void orden_confirmada(uint32_t ahora_ms);
   void fallar(MotivoFallo m, uint32_t ahora_ms);
   size_t construir_orden(uint8_t paso, uint8_t* destino, size_t capacidad) const;
   uint8_t salud_actual(uint32_t ahora_ms) const;
@@ -226,7 +255,11 @@ class Interprete {
   Configuracion cfg_;
   Contadores cont_;
 
-  bool guardar_ = true;  // false: la configuración se aplica sin saveCfg (paso 3)
+  // El radar tiene guardada en su flash NUESTRA configuración (saveCfg con Done en
+  // esta ejecución): una recuperación puede arrancarlo sin tocar sus parámetros.
+  bool guardada_ = false;
+  bool ligera_ = false;     // la secuencia en curso solo envía sensorStop y sensorStart
+  bool parado_ya_ = false;  // sensorStop contestó `sensor stopped already`: su Error no es un fallo
   Fase fase_ = Fase::Configurando;
   MotivoFallo motivo_ = MotivoFallo::Ninguno;
   uint8_t paso_ = 0;

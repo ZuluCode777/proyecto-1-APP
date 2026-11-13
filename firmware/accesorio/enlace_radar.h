@@ -4,9 +4,9 @@
 // ENTREGA las órdenes pendientes; si se pierden bytes (más de un trozo esperando,
 // o un desborde del controlador) se lo dice con Interprete::perder_entrada() en
 // vez de dejar una línea a medias que se una con lo que llegue después.
-// (2) SupervisorRadar reinicia la configuración del radar, con espera creciente
-// y sin escribir su flash, cuando el radar se reinicia, calla o rechaza la
-// configuración.
+// (2) SupervisorRadar reinicia la secuencia de arranque del radar, con espera
+// creciente y sin volver a escribir su flash cuando ya guardó la configuración,
+// cuando el radar se reinicia, calla o rechaza una orden.
 //
 // Qué NO hace: no toca la UART de Arduino ni el reloj: usa PuertoUart, que
 // implementa accesorio.ino y que las pruebas sustituyen por un doble. No decide
@@ -77,12 +77,17 @@ void atender_uart(sen0395::Interprete& radar, PuertoUart& uart, EstadoUart& esta
 // el doble tras cada intento sin recuperación, tope kEsperaMaximaMs) y el
 // contador vuelve a cero cuando el radar lleva kSanoReseteaMs sano.
 //
-// Cada reintento hace reiniciar(false): aplica rango y latencia en la RAM del
-// sensor, sin saveCfg, así que ni un radar mudo ni uno que se reinicia sin
-// parar gastan su flash. Antes de reiniciar vacía la UART: lo que haya quedado
-// no vale como observación ni como respuesta a la orden nueva. El intérprete
-// exige luego su estabilización (>= 5 s) y una trama íntegra NUEVA. Si la
-// purga topa con kMaxDrenajePorCiclo y queda cola, el reinicio espera al ciclo
+// Cada reintento hace reiniciar(false). Si el radar ya guardó nuestra
+// configuración en esta ejecución, eso envía solo sensorStop y sensorStart: un
+// SEN0395 que se reinició conserva su flash, y volver a mandar rango y latencia
+// (aunque sean los mismos valores) lo deja con «parámetros sin guardar» y rechaza
+// sensorStart (banco 12/11, R2). Así ni un radar mudo ni uno que se reinicia sin
+// parar gastan su flash, y sí vuelve a arrancar. Si no la guardó, o si el intento
+// ligero acabó en Error, el siguiente repite la secuencia completa con saveCfg
+// (ver Interprete::reiniciar). Antes de reiniciar vacía la UART: lo que haya
+// quedado no vale como observación ni como respuesta a la orden nueva. El
+// intérprete exige luego su estabilización (>= 5 s) y una trama íntegra NUEVA. Si
+// la purga topa con kMaxDrenajePorCiclo y queda cola, el reinicio espera al ciclo
 // en que la UART quede vacía.
 //
 // Tiempos reales para quien documente el enlace (EA-12): el contrato fija solo el

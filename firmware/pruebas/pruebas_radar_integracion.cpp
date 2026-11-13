@@ -40,8 +40,19 @@ int g_fallos = 0;
   } while (0)
 
 // UART y radar simulados. Un ciclo (tick) son 2 ms, como el loop del sketch.
+// El radar simulado se comporta como el SEN0395 real del banco del 12/11/2026
+// (radar-ordenes.log) y de la wiki de DFRobot:
+//   - sensorStop con el radar parado: `sensor stopped already` + `Error` (R1);
+//   - detRangeCfg/outputLatency con el radar en marcha: `sensor is not stopped` + `Error`;
+//   - detRangeCfg/outputLatency aceptados dejan «parámetros sin guardar», aunque
+//     repitan los valores guardados;
+//   - sensorStart con parámetros sin guardar: `new parameter isn't save, can't
+//     startSensor` + `Error` (R2); con el radar en marcha: `sensor started already`;
+//   - saveCfg sin nada que guardar: `Error`; si no, escribe la flash;
+//   - tras reiniciarse, vuelve PARADO y con lo último que guardó.
 class SimUart : public radar::PuertoUart {
  public:
+  // ErrorAlGuardar: el primer saveCfg contesta Error (una escritura de la flash que falla).
   enum class Modo { Normal, Mudo, ErrorAlGuardar, ErrorSiempre };
 
   uint32_t t = 1000;
@@ -55,6 +66,9 @@ class SimUart : public radar::PuertoUart {
   bool marcha = false;  // el radar emite una trama por segundo
   uint32_t proxima_trama = 0;
   bool presencia = false;
+  bool sin_guardar = false;  // parámetros aplicados y no guardados en la flash del radar
+  int escrituras_flash = 0;  // saveCfg que sí escribieron la flash
+  bool sin_guardar_al_volver = false;  // el próximo reinicio del radar lo deja sin la configuración guardada
 
   uint32_t ahora() override { return t; }
   int disponibles() override { return static_cast<int>(rx.size()); }
@@ -101,6 +115,7 @@ class SimUart : public radar::PuertoUart {
   // El radar se reinicia: calla `mudo_ms` y vuelve SIN la configuración (no emite).
   void reiniciar_radar(uint32_t mudo_ms) {
     marcha = false;
+    sin_guardar = false;  // la flash conserva lo último que se guardó; lo aplicado y sin guardar se pierde
     modo = Modo::Mudo;
     vuelve_ = t + mudo_ms;
     respuestas_.clear();
@@ -109,6 +124,8 @@ class SimUart : public radar::PuertoUart {
     if (vuelve_ != 0 && t >= vuelve_) {
       vuelve_ = 0;
       modo = Modo::Normal;
+      sin_guardar = sin_guardar_al_volver;
+      sin_guardar_al_volver = false;
       poner("Done\r\nDone\r\n");  // eco de arranque que no responde a ninguna orden
     }
   }
@@ -126,17 +143,52 @@ class SimUart : public radar::PuertoUart {
     uint32_t vence;
     std::string texto;
   };
+  void responder(const char* texto) { respuestas_.push_back({t + 20, texto}); }
   void radar_recibe(const std::string& linea) {
     ordenes.push_back(linea);
     if (modo == Modo::Mudo) return;
-    const bool es_guardar = linea.rfind("saveCfg", 0) == 0;
-    const bool error = modo == Modo::ErrorSiempre || (modo == Modo::ErrorAlGuardar && es_guardar);
-    if (!error && linea == "sensorStart") {
-      marcha = true;
-      proxima_trama = t + 1000;
+    if (modo == Modo::ErrorSiempre) {
+      responder("Error\r\n");
+      return;
     }
-    if (linea == "sensorStop") marcha = false;
-    respuestas_.push_back({t + 20, error ? "Error\r\n" : "Done\r\n"});
+    if (linea == "sensorStop") {
+      if (!marcha) {
+        responder("sensor stopped already\r\nError\r\n");
+      } else {
+        marcha = false;
+        responder("Done\r\n");
+      }
+    } else if (linea.rfind("detRangeCfg", 0) == 0 || linea.rfind("outputLatency", 0) == 0) {
+      if (marcha) {
+        responder("sensor is not stopped\r\nError\r\n");
+      } else {
+        sin_guardar = true;
+        responder("Done\r\n");
+      }
+    } else if (linea.rfind("saveCfg", 0) == 0) {
+      if (modo == Modo::ErrorAlGuardar) {
+        modo = Modo::Normal;  // solo falla la primera vez
+        responder("Error\r\n");
+      } else if (!sin_guardar) {
+        responder("Error\r\n");  // nada que guardar
+      } else {
+        sin_guardar = false;
+        ++escrituras_flash;
+        responder("save cfg complete\r\nDone\r\n");
+      }
+    } else if (linea == "sensorStart") {
+      if (marcha) {
+        responder("sensor started already\r\nError\r\n");
+      } else if (sin_guardar) {
+        responder("new parameter isn't save, can't startSensor\r\nError\r\n");
+      } else {
+        marcha = true;
+        proxima_trama = t + 1000;
+        responder("Done\r\n");
+      }
+    } else {
+      responder("Error\r\n");
+    }
   }
   std::string escrito_;
   std::deque<Respuesta> respuestas_;
@@ -179,6 +231,16 @@ struct Banco {
 void poner_operando(Banco& b) {
   const int64_t ms = b.correr_hasta([&] { return b.salud() == sen0395::kSaludOk; }, 20000);
   EXIGIR(ms >= 0);
+}
+
+// El radar se reinicia solo (R3): espera a que la salud lo note y a que el
+// supervisor lo recupere. Devuelve los reintentos que hicieron falta, o -1.
+int reiniciar_radar_y_recuperar(Banco& b, uint32_t mudo_ms) {
+  const uint32_t reintentos0 = b.supervisor.reintentos();
+  b.uart.reiniciar_radar(mudo_ms);
+  if (b.correr_hasta([&] { return b.salud() != sen0395::kSaludOk; }, 5000) < 0) return -1;
+  if (b.correr_hasta([&] { return b.salud() == sen0395::kSaludOk; }, 240000) < 0) return -1;
+  return static_cast<int>(b.supervisor.reintentos() - reintentos0);
 }
 
 // Lógica de lectura ANTERIOR (accesorio.ino de f9f9fb0), solo para reproducir el
@@ -551,9 +613,15 @@ void prueba_arranque_con_radar_mudo_se_recupera() {
   const int64_t ms = b.correr_hasta([&] { return b.salud() == sen0395::kSaludOk; }, 60000);
   EXIGIR(ms >= 0);
   EXIGIR(b.supervisor.reintentos() >= 1);
-  // Ninguna orden de recuperación escribió la flash: solo hubo un intento de guardar
-  // (el del arranque, que no llegó a enviarse porque sensorStop no se contestó).
-  EXIGIR(b.uart.contar("saveCfg") == 0);
+  // El arranque nunca llegó a guardar nada (sensorStop no se contestó): el radar no
+  // tiene NUESTRA configuración y no arrancaría sin ella. La primera recuperación
+  // que contesta la guarda, una sola vez.
+  EXIGIR(b.uart.contar("saveCfg") == 1);
+  EXIGIR(b.uart.escrituras_flash == 1);
+  // Ya guardada, una segunda recuperación no vuelve a escribir la flash.
+  b.correr(sen0395::kEstabilizacionMinMs + 3000);
+  EXIGIR(reiniciar_radar_y_recuperar(b, 3000) == 1);
+  EXIGIR(b.uart.escrituras_flash == 1);
 }
 
 void prueba_radar_reinicia_y_pierde_la_configuracion() {
@@ -589,16 +657,19 @@ void prueba_radar_reinicia_y_pierde_la_configuracion() {
   EXIGIR(sano >= 0);
   // Estabilización de al menos 5 s antes de aceptar ninguna observación.
   EXIGIR(b.uart.t - t0 >= sen0395::kEstabilizacionMinMs);
-  // Las órdenes de la recuperación: sin saveCfg.
+  // Las órdenes de la recuperación: el radar conserva su flash y vuelve PARADO, así
+  // que basta pararlo (`sensor stopped already` + Error es lo esperado, R1) y
+  // arrancarlo. Mandar rango y latencia otra vez lo dejaría con parámetros sin
+  // guardar y rechazaría sensorStart (R2); sin saveCfg no gasta su flash.
   std::vector<std::string> nuevas(b.uart.ordenes.begin() + static_cast<long>(ordenes0), b.uart.ordenes.end());
-  EXIGIR(nuevas.size() == 4);
-  if (nuevas.size() == 4) {
+  EXIGIR(nuevas.size() == 2);
+  if (nuevas.size() == 2) {
     EXIGIR(nuevas[0] == "sensorStop");
-    EXIGIR(nuevas[1].rfind("detRangeCfg", 0) == 0);
-    EXIGIR(nuevas[2].rfind("outputLatency", 0) == 0);
-    EXIGIR(nuevas[3] == "sensorStart");
+    EXIGIR(nuevas[1] == "sensorStart");
   }
   EXIGIR(b.uart.contar("saveCfg") == 1);  // sigue siendo la del arranque
+  EXIGIR(b.uart.escrituras_flash == 1);
+  EXIGIR(b.radar.contadores().errores_radar == 0);  // el Error de «ya parado» no es un fallo
   // La observación que sostiene la salud es posterior al reinicio.
   EXIGIR(b.radar.entrada(b.uart.t).edad_ms <= 20);
 }
@@ -628,8 +699,9 @@ void prueba_el_reinicio_purga_la_uart() {
 }
 
 void prueba_error_al_guardar_no_deja_sin_radar() {
-  // El radar rechaza saveCfg: el arranque falla (salud 4). La recuperación aplica la
-  // configuración sin guardar y el radar queda operando.
+  // El radar rechaza el primer saveCfg: el arranque falla (salud 4) con la
+  // configuración aplicada y sin guardar. La recuperación repite la secuencia
+  // completa (sin guardar, sensorStart se rechazaría) y esta vez guarda.
   Banco b;
   b.uart.modo = SimUart::Modo::ErrorAlGuardar;
   const int64_t ms = b.correr_hasta([&] { return b.radar.fase() == Fase::Fallo; }, 5000);
@@ -638,8 +710,28 @@ void prueba_error_al_guardar_no_deja_sin_radar() {
   EXIGIR(b.salud() == sen0395::kSaludFalloRadar);
   const int64_t sano = b.correr_hasta([&] { return b.salud() == sen0395::kSaludOk; }, 120000);
   EXIGIR(sano >= 0);
-  EXIGIR(b.uart.contar("saveCfg") == 1);  // solo el intento del arranque
+  EXIGIR(b.uart.contar("saveCfg") == 2);  // el fallido del arranque y el de la recuperación
+  EXIGIR(b.uart.escrituras_flash == 1);
   EXIGIR(b.supervisor.reintentos() == 1);
+  // Ya guardada, una recuperación posterior no escribe más.
+  b.correr(5000);
+  EXIGIR(reiniciar_radar_y_recuperar(b, 3000) == 1);
+  EXIGIR(b.uart.escrituras_flash == 1);
+  EXIGIR(b.uart.contar("saveCfg") == 2);
+}
+
+void prueba_recuperacion_ligera_con_error_repite_la_secuencia_completa() {
+  // Defensa: si la flash del radar no conserva la configuración y sensorStart acaba
+  // en Error, el reintento siguiente repite la secuencia completa y guarda.
+  Banco b;
+  poner_operando(b);
+  EXIGIR(b.uart.escrituras_flash == 1);
+  b.correr(3000);
+  // Cuando el radar vuelve, lo hace con parámetros sin guardar: un sensorStart
+  // ligero lo rechaza (`new parameter isn't save`).
+  b.uart.sin_guardar_al_volver = true;
+  EXIGIR(reiniciar_radar_y_recuperar(b, 3000) == 2);
+  EXIGIR(b.uart.escrituras_flash == 2);  // una sola escritura más, en la secuencia completa
 }
 
 void prueba_reintentos_con_espera_creciente_y_acotados() {
@@ -730,48 +822,94 @@ void prueba_configuracion_invalida_no_se_reintenta() {
   EXIGIR(u.ordenes.empty());
 }
 
-void prueba_reiniciar_sin_guardar_en_el_interprete() {
-  Interprete r;
+// Envía la orden pendiente, comprueba que empieza por `esperada` y la confirma con `respuesta`.
+void paso_de_configuracion(Interprete& r, uint32_t* t, const char* esperada, const char* respuesta) {
   uint8_t orden[sen0395::kLongitudOrdenMax];
-  const char* con_guardar[] = {"sensorStop", "detRangeCfg", "outputLatency", "saveCfg", "sensorStart"};
-  const char* sin_guardar[] = {"sensorStop", "detRangeCfg", "outputLatency", "sensorStart"};
+  const size_t n = r.salida_pendiente(orden, sizeof(orden));
+  EXIGIR(n > 0 && strncmp(reinterpret_cast<const char*>(orden), esperada, strlen(esperada)) == 0);
+  r.salida_enviada(*t);
+  *t += 10;
+  r.procesar(reinterpret_cast<const uint8_t*>(respuesta), strlen(respuesta), *t);
+}
+
+void esperar_purga(Interprete& r, uint32_t* t) {
+  *t += r.configuracion().respuesta_max_ms * 3;  // la purga de la orden vieja
+  r.procesar(nullptr, 0, *t);
+}
+
+void prueba_reiniciar_ligero_en_el_interprete() {
+  // Tras guardar la configuración, reiniciar(false) solo para y arranca el radar.
+  Interprete r;
   uint32_t t = 100;
-  for (const char* esperada : con_guardar) {
-    const size_t n = r.salida_pendiente(orden, sizeof(orden));
-    EXIGIR(n > 0 && strncmp(reinterpret_cast<const char*>(orden), esperada, strlen(esperada)) == 0);
-    r.salida_enviada(t);
-    t += 10;
-    r.procesar(reinterpret_cast<const uint8_t*>("Done\r\n"), 6, t);
-  }
+  paso_de_configuracion(r, &t, "sensorStop", "Done\r\n");
+  paso_de_configuracion(r, &t, "detRangeCfg", "Done\r\n");
+  paso_de_configuracion(r, &t, "outputLatency", "Done\r\n");
+  paso_de_configuracion(r, &t, "saveCfg", "save cfg complete\r\nDone\r\n");
+  paso_de_configuracion(r, &t, "sensorStart", "Done\r\n");
   EXIGIR(r.fase() == Fase::Estabilizando);
   r.reiniciar(false);
-  t += r.configuracion().respuesta_max_ms * 3;  // la purga de la orden vieja
-  r.procesar(nullptr, 0, t);
-  for (const char* esperada : sin_guardar) {
-    const size_t n = r.salida_pendiente(orden, sizeof(orden));
-    EXIGIR(n > 0 && strncmp(reinterpret_cast<const char*>(orden), esperada, strlen(esperada)) == 0);
-    r.salida_enviada(t);
-    t += 10;
-    r.procesar(reinterpret_cast<const uint8_t*>("Done\r\n"), 6, t);
-  }
+  esperar_purga(r, &t);
+  paso_de_configuracion(r, &t, "sensorStop", "sensor stopped already\r\nError\r\n");
+  paso_de_configuracion(r, &t, "sensorStart", "Done\r\n");
   EXIGIR(r.fase() == Fase::Estabilizando);
-  // reiniciar() sin argumentos sigue guardando (el arranque).
+  EXIGIR(r.contadores().errores_radar == 0);
+  // reiniciar() sin argumentos es el arranque: secuencia completa, con saveCfg.
   r.reiniciar();
-  t += r.configuracion().respuesta_max_ms * 3;
-  r.procesar(nullptr, 0, t);
-  r.salida_enviada(t);  // sensorStop
-  t += 10;
-  r.procesar(reinterpret_cast<const uint8_t*>("Done\r\n"), 6, t);
-  r.salida_pendiente(orden, sizeof(orden));
-  r.salida_enviada(t);
-  t += 10;
-  r.procesar(reinterpret_cast<const uint8_t*>("Done\r\n"), 6, t);
-  r.salida_pendiente(orden, sizeof(orden));
-  r.salida_enviada(t);
-  t += 10;
-  r.procesar(reinterpret_cast<const uint8_t*>("Done\r\n"), 6, t);
-  const size_t n = r.salida_pendiente(orden, sizeof(orden));
-  EXIGIR(n > 0 && strncmp(reinterpret_cast<const char*>(orden), "saveCfg", 7) == 0);
+  esperar_purga(r, &t);
+  paso_de_configuracion(r, &t, "sensorStop", "Done\r\n");
+  paso_de_configuracion(r, &t, "detRangeCfg", "Done\r\n");
+  paso_de_configuracion(r, &t, "outputLatency", "Done\r\n");
+  paso_de_configuracion(r, &t, "saveCfg", "Done\r\n");
+  paso_de_configuracion(r, &t, "sensorStart", "Done\r\n");
+  EXIGIR(r.fase() == Fase::Estabilizando);
+}
+
+void prueba_reiniciar_ligero_sin_configuracion_guardada_es_completo() {
+  // El arranque no llegó a guardar (saveCfg dio Error): reiniciar(false) no puede
+  // arrancar el radar sin parámetros, así que repite la secuencia completa.
+  Interprete r;
+  uint32_t t = 100;
+  paso_de_configuracion(r, &t, "sensorStop", "Done\r\n");
+  paso_de_configuracion(r, &t, "detRangeCfg", "Done\r\n");
+  paso_de_configuracion(r, &t, "outputLatency", "Done\r\n");
+  paso_de_configuracion(r, &t, "saveCfg", "Error\r\n");
+  EXIGIR(r.fase() == Fase::Fallo);
+  r.reiniciar(false);
+  esperar_purga(r, &t);
+  paso_de_configuracion(r, &t, "sensorStop", "Done\r\n");
+  paso_de_configuracion(r, &t, "detRangeCfg", "Done\r\n");
+  paso_de_configuracion(r, &t, "outputLatency", "Done\r\n");
+  paso_de_configuracion(r, &t, "saveCfg", "Done\r\n");
+  paso_de_configuracion(r, &t, "sensorStart", "Done\r\n");
+  EXIGIR(r.fase() == Fase::Estabilizando);
+  // Y ahora sí, la recuperación es ligera.
+  r.reiniciar(false);
+  esperar_purga(r, &t);
+  paso_de_configuracion(r, &t, "sensorStop", "Done\r\n");
+  paso_de_configuracion(r, &t, "sensorStart", "Done\r\n");
+  EXIGIR(r.fase() == Fase::Estabilizando);
+}
+
+void prueba_error_en_recuperacion_ligera_olvida_lo_guardado() {
+  // sensorStart rechazado tras una recuperación ligera: el radar no tiene lo que
+  // se creía. La siguiente recuperación repite todo y guarda.
+  Interprete r;
+  uint32_t t = 100;
+  for (const char* o : {"sensorStop", "detRangeCfg", "outputLatency", "saveCfg", "sensorStart"})
+    paso_de_configuracion(r, &t, o, "Done\r\n");
+  r.reiniciar(false);
+  esperar_purga(r, &t);
+  paso_de_configuracion(r, &t, "sensorStop", "Done\r\n");
+  paso_de_configuracion(r, &t, "sensorStart", "new parameter isn't save, can't startSensor\r\nError\r\n");
+  EXIGIR(r.fase() == Fase::Fallo);
+  EXIGIR(r.motivo_fallo() == sen0395::MotivoFallo::RespuestaError);
+  EXIGIR(r.contadores().errores_radar == 1);
+  r.reiniciar(false);
+  esperar_purga(r, &t);
+  paso_de_configuracion(r, &t, "sensorStop", "Done\r\n");
+  paso_de_configuracion(r, &t, "detRangeCfg", "Done\r\n");
+  paso_de_configuracion(r, &t, "outputLatency", "Done\r\n");
+  paso_de_configuracion(r, &t, "saveCfg", "Done\r\n");
 }
 
 }  // namespace
@@ -797,7 +935,10 @@ int main() {
   prueba_radar_desconectado_tambien_acotado();
   prueba_el_contador_vuelve_a_cero_con_salud();
   prueba_configuracion_invalida_no_se_reintenta();
-  prueba_reiniciar_sin_guardar_en_el_interprete();
+  prueba_recuperacion_ligera_con_error_repite_la_secuencia_completa();
+  prueba_reiniciar_ligero_en_el_interprete();
+  prueba_reiniciar_ligero_sin_configuracion_guardada_es_completo();
+  prueba_error_en_recuperacion_ligera_olvida_lo_guardado();
   printf("%d comprobaciones, %d fallos\n", g_casos, g_fallos);
   return g_fallos == 0 ? 0 : 1;
 }

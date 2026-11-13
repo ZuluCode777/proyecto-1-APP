@@ -58,7 +58,7 @@ El SEN0395 entrega presencia dentro de una ventana, sin distancia ni ángulo. Su
 | --- | --- | --- |
 | capacidades | `0x0000` | Sin distancia, sin azimut. Batería solo si hay estimación calibrada (bit 2). |
 | perfil | `1` | Personas. |
-| distancia mínima / máxima | ventana configurada en mm, p. ej. `0` / `3000` | **Sin capacidad de distancia, estos dos campos describen la ventana de presencia, no un alcance medido.** El ejemplo `3000` sale de la ventana por defecto del fabricante (`detRangeCfg -1 0 20`), no de un ensayo. |
+| distancia mínima / máxima | ventana configurada en mm, p. ej. `0` / `300` | **Sin capacidad de distancia, estos dos campos describen la ventana de presencia, no un alcance medido.** El firmware con radar real publica `0` / `300`, su ventana por defecto (`detRangeCfg -1 0 2`, 0 a 30 cm), la que el equipo validó en el banco del 12/11/2026; la de fábrica del radar era `0 20`, 3 m. |
 | periodo / caducidad | `100` / `500` | |
 
 Vector: `info-sen0395` en [`vectores.txt`](../../contratos/ble/vectores.txt).
@@ -238,7 +238,7 @@ El SEN0395 emite `$JYBSS,0, , , *` o `$JYBSS,1, , , *` a **1 Hz** por la UART. L
 
 - La **opción 1** del [plan de firmware](plan-firmware.md#consecuencias-para-metas-y-contrato) — leer el pin GPIO2 cada 100 ms y definir `edad_radar` desde el último muestreo del pin, con la UART como latido y para órdenes — se conserva como **provisional**. Solo vale si B2 muestra que el pin cambia antes que la trama. Este trabajo **no tiene mediciones**: no confirma que lo haga.
 - Si B2 muestra que el pin no cambia antes, la opción 2 (v1.1 con otra caducidad) tampoco mejora el aviso: solo aceptaría datos más viejos. El requisito de retardo quedaría incumplido con este sensor y se declararía así.
-- El retardo `outputLatency` por defecto (2,5 s al detectar) ya incumple por sí solo p95 ≤ 300 ms; el firmware lo baja al mínimo que B2 muestre estable.
+- El retardo `outputLatency` de fábrica (2,5 s al detectar) ya incumple por sí solo p95 ≤ 300 ms; el firmware usa 0 al detectar (y 0,2 s al despejar), validado en el banco del 12/11/2026. B2 mide el retardo real de la trama.
 
 Definición de `edad_radar` para el emisor: tiempo desde la **última observación íntegra y validada de la fuente de presencia** hasta la emisión. Con la UART, desde la última trama `$JYBSS` completa; con el GPIO (si B2 lo adopta), desde el último muestreo del pin con latido UART vigente. Una repetición no renueva la edad.
 

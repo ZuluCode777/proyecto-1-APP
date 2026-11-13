@@ -85,10 +85,10 @@ void probar_ordenes() {
   r.salida_enviada(0);
   exigir(orden(r).empty(), "ordenes", "no hay orden nueva mientras se espera respuesta");
   dar(r, "Done\r\n", 10);
-  exigir(orden(r) == "detRangeCfg -1 0 20\r\n", "ordenes", "ventana por defecto");
+  exigir(orden(r) == "detRangeCfg -1 0 2\r\n", "ordenes", "ventana por defecto");
   r.salida_enviada(10);
   dar(r, "Done\r\n", 20);
-  exigir(orden(r) == "outputLatency -1 100 400\r\n", "ordenes", "latencias de fábrica");
+  exigir(orden(r) == "outputLatency -1 0 8\r\n", "ordenes", "latencias por defecto");
   r.salida_enviada(20);
   dar(r, "Done\r\n", 30);
   exigir(orden(r) == "saveCfg 0x45670123 0xCDEF89AB 0x956128C6 0xDF54AC89\r\n", "ordenes", "saveCfg");
@@ -115,7 +115,7 @@ void probar_ordenes() {
   exigir(p.ventana_minima_mm() == 300 && p.ventana_maxima_mm() == 19050, "ordenes", "ventana en mm");
 
   Interprete d;
-  exigir(d.ventana_minima_mm() == 0 && d.ventana_maxima_mm() == 3000, "ordenes", "ventana 0..3 m");
+  exigir(d.ventana_minima_mm() == 0 && d.ventana_maxima_mm() == 300, "ordenes", "ventana 0..30 cm");
   ble::Informacion info;
   info.perfil = 1;
   info.distancia_minima_mm = d.ventana_minima_mm();
@@ -186,7 +186,7 @@ void probar_estabilizacion_y_primer_latido() {
   exigir(s.fase() == Fase::Configurando && s.contadores().lineas_ignoradas == 2, "estab",
          "eco y tramas durante la configuración se ignoran");
   dar(s, "Done\r\n", 3);
-  exigir(orden(s) == "detRangeCfg -1 0 20\r\n", "estab", "el Done sí avanza");
+  exigir(orden(s) == "detRangeCfg -1 0 2\r\n", "estab", "el Done sí avanza");
 }
 
 void probar_presencia_y_edad() {
@@ -439,7 +439,7 @@ void probar_configuracion_con_respuestas() {
   Interprete a;
   a.salida_enviada(0);
   dar(a, "Done\r\n", 2000);
-  exigir(a.fase() == Fase::Configurando && orden(a) == "detRangeCfg -1 0 20\r\n", "config", "Done a 2000 ms vale");
+  exigir(a.fase() == Fase::Configurando && orden(a) == "detRangeCfg -1 0 2\r\n", "config", "Done a 2000 ms vale");
   Interprete b;
   b.salida_enviada(0);
   dar(b, "Done\r\n", 2001);
@@ -449,12 +449,12 @@ void probar_configuracion_con_respuestas() {
   Interprete d;
   d.salida_enviada(0);
   dar(d, "Done\r\nDone\r\nDone\r\n", 10);
-  exigir(orden(d) == "detRangeCfg -1 0 20\r\n" && d.fase() == Fase::Configurando, "config",
+  exigir(orden(d) == "detRangeCfg -1 0 2\r\n" && d.fase() == Fase::Configurando, "config",
          "los Done sobrantes no avanzan nada");
   d.salida_enviada(20);
   exigir(d.fase() == Fase::Configurando && orden(d).empty(), "config", "la orden 2 espera su propio Done");
   dar(d, "Done\r\n", 30);
-  exigir(orden(d) == "outputLatency -1 100 400\r\n", "config", "su Done sí la confirma");
+  exigir(orden(d) == "outputLatency -1 0 8\r\n", "config", "su Done sí la confirma");
   // Una línea parcial previa al envío no se mezcla con la respuesta.
   Interprete e;
   dar(e, "Do", 0);
@@ -468,6 +468,104 @@ void probar_configuracion_con_respuestas() {
   const uint32_t done = configurar(s, 0);
   dar(s, "Error\r\n", done + 100);
   exigir(s.fase() == Fase::Fallo && salud_de(s, done + 100) == kSaludFalloRadar, "config", "Error al estabilizar");
+}
+
+// R1 del banco del 12/11: con el radar ya parado, sensorStop contesta
+// `sensor stopped already` y, en la línea siguiente, `Error`. Es éxito, pero solo
+// para sensorStop y solo con esa línea exacta antes.
+void probar_sensor_ya_parado() {
+  const char* const ya = "sensor stopped already\r\n";
+
+  // La respuesta real del banco, con el eco y el prompt de la consola.
+  Interprete r;
+  r.salida_enviada(0);
+  dar(r, std::string("sensorStop\r\n") + ya + "Error\r\nleapMMW:/>", 20);
+  exigir(r.fase() == Fase::Configurando && orden(r) == "detRangeCfg -1 0 2\r\n", "parado", "avanza a detRangeCfg");
+  exigir(r.contadores().errores_radar == 0 && r.motivo_fallo() == MotivoFallo::Ninguno, "parado",
+         "no es un fallo ni cuenta como Error del radar");
+  exigir(salud_de(r, 20) == kSaludIniciando, "parado", "salud 1, no 4");
+
+  // Línea y Error en llamadas distintas.
+  Interprete p;
+  p.salida_enviada(0);
+  dar(p, ya, 10);
+  exigir(p.fase() == Fase::Configurando && orden(p).empty(), "parado", "la línea sola aún no confirma nada");
+  dar(p, "Error\r\n", 20);
+  exigir(p.fase() == Fase::Configurando && orden(p) == "detRangeCfg -1 0 2\r\n", "parado", "su Error la confirma");
+
+  // La secuencia entera llega a operar con ese Error en el primer paso.
+  Interprete c;
+  uint32_t t = 0;
+  for (int i = 0; i < kPasosConfiguracion; ++i) {
+    exigir(!orden(c).empty(), "parado", "orden pendiente");
+    c.salida_enviada(t);
+    t += 20;
+    dar(c, i == 0 ? std::string(ya) + "Error\r\n" : std::string("Done\r\n"), t);
+  }
+  exigir(c.fase() == Fase::Estabilizando, "parado", "secuencia completa");
+  const uint32_t fin = t + c.configuracion().estabilizacion_ms;
+  dar(c, kP, fin + 10);
+  exigir(salud_de(c, fin + 10) == kSaludOk && c.contadores().errores_radar == 0, "parado", "opera sin errores");
+
+  // Un Error suelto en sensorStop sigue siendo fallo (el radar no la entendió).
+  Interprete e;
+  e.salida_enviada(0);
+  dar(e, "Error\r\n", 10);
+  exigir(e.fase() == Fase::Fallo && e.contadores().errores_radar == 1, "parado", "Error sin la línea: fallo");
+  // Texto parecido no vale (R4: `ensorStop is not recognized as a CLI command`).
+  Interprete q;
+  q.salida_enviada(0);
+  dar(q, "ensorStop is not recognized as a CLI command\r\nError\r\n", 10);
+  exigir(q.fase() == Fase::Fallo, "parado", "comando no reconocido: fallo");
+  for (const char* parecida : {"leapMMW:/>sensor stopped already\r\n", "sensor stopped already.\r\n",
+                               "Sensor stopped already\r\n", "sensor started already\r\n"}) {
+    Interprete f;
+    f.salida_enviada(0);
+    dar(f, std::string(parecida) + "Error\r\n", 10);
+    exigir(f.fase() == Fase::Fallo, "parado", "solo la línea exacta");
+  }
+
+  // Solo en sensorStop: en los demás pasos esa línea + Error es un fallo.
+  for (int paso = 1; paso < kPasosConfiguracion; ++paso) {
+    Interprete o;
+    uint32_t u = 0;
+    for (int i = 0; i < paso; ++i) {
+      o.salida_enviada(u);
+      u += 20;
+      dar(o, "Done\r\n", u);
+    }
+    o.salida_enviada(u);
+    dar(o, std::string(ya) + "Error\r\n", u + 10);
+    exigir(o.fase() == Fase::Fallo && o.contadores().errores_radar == 1, "parado", "otro paso: fallo");
+  }
+
+  // El aviso no se arrastra: ni al reiniciar, ni a la orden siguiente.
+  Interprete a;
+  a.salida_enviada(0);
+  dar(a, ya, 10);
+  a.reiniciar();
+  const uint32_t plazo = a.configuracion().respuesta_max_ms;
+  a.procesar(nullptr, 0, 10 + plazo + 1);                // vence la orden vieja
+  a.procesar(nullptr, 0, 10 + plazo + 1 + plazo);        // y termina la purga
+  exigir(orden(a) == "sensorStop\r\n", "parado", "la purga terminó");
+  a.salida_enviada(10 + 2 * plazo + 1);
+  dar(a, "Error\r\n", 20 + 2 * plazo + 1);
+  exigir(a.fase() == Fase::Fallo, "parado", "tras reiniciar, la línea vieja no valida un Error");
+  Interprete b;
+  b.salida_enviada(0);
+  dar(b, "Done\r\n", 10);
+  b.salida_enviada(10);
+  dar(b, "Error\r\n", 20);
+  exigir(b.fase() == Fase::Fallo, "parado", "Error de detRangeCfg: fallo");
+  // Fuera de espera (sin orden en curso) ni la línea ni el Error valen.
+  Interprete g;
+  dar(g, std::string(ya) + "Error\r\n", 10);
+  exigir(g.fase() == Fase::Configurando && orden(g) == "sensorStop\r\n", "parado", "sin orden en curso no avanza");
+  // Durante la estabilización, un Error sigue siendo un fallo.
+  Interprete h;
+  const uint32_t done = configurar(h, 0);
+  dar(h, std::string(ya) + "Error\r\n", done + 100);
+  exigir(h.fase() == Fase::Fallo, "parado", "Error al estabilizar: fallo");
 }
 
 void probar_reinicio() {
@@ -485,7 +583,7 @@ void probar_reinicio() {
   dar(r, ", , , *\r\n", t0 + 41);  // el resto del fragmento viejo no forma una trama
   exigir(r.contadores().tramas_validas == 1, "reinicio", "el fragmento viejo no se completa");
   dar(r, "Done\r\n", t0 + 42);
-  exigir(orden(r) == "detRangeCfg -1 0 20\r\n", "reinicio", "avanza con su propio Done");
+  exigir(orden(r) == "detRangeCfg -1 0 2\r\n", "reinicio", "avanza con su propio Done");
 }
 
 void probar_reinicio_completo() {
@@ -524,7 +622,7 @@ void probar_purga_tras_timeout() {
   exigir(orden(r) == "sensorStop\r\n", "purga", "terminada la purga se reconfigura");
   r.salida_enviada(4100);
   dar(r, "Done\r\n", 4110);
-  exigir(orden(r) == "detRangeCfg -1 0 20\r\n", "purga", "ahora sí avanza");
+  exigir(orden(r) == "detRangeCfg -1 0 2\r\n", "purga", "ahora sí avanza");
 
   // Reiniciar mientras se espera una respuesta: también se purga.
   Interprete e;
@@ -543,7 +641,7 @@ void probar_purga_tras_timeout() {
   exigir(orden(e) == "sensorStop\r\n", "purga", "pasados 2 x plazo, sale sensorStop");
   e.salida_enviada(10 + 4001);
   dar(e, "Done\r\n", 10 + 4011);
-  exigir(orden(e) == "detRangeCfg -1 0 20\r\n", "purga", "después, su propio Done avanza");
+  exigir(orden(e) == "detRangeCfg -1 0 2\r\n", "purga", "después, su propio Done avanza");
 
   // Hallazgo 2: reinicio a los 20 ms con la 2.ª orden enviada a los 10 ms; la
   // respuesta vieja llega a los 2011 ms (2001 ms tras el envío).
@@ -734,7 +832,7 @@ void probar_oversize_rechazado() {
     q.salida_enviada(0);
     q.procesar(bytes_de(con_done), con_done.size(), 10);
     dar(q, "Done\r\n", 20);
-    exigir(orden(q) == "detRangeCfg -1 0 20\r\n", "oversize", "config: el Done íntegro posterior sí confirma");
+    exigir(orden(q) == "detRangeCfg -1 0 2\r\n", "oversize", "config: el Done íntegro posterior sí confirma");
   }
 }
 
@@ -957,6 +1055,7 @@ int main() {
   probar_caducidad_latido();
   probar_vuelta_de_reloj();
   probar_configuracion_con_respuestas();
+  probar_sensor_ya_parado();
   probar_reinicio();
   probar_reinicio_completo();
   probar_purga_tras_timeout();

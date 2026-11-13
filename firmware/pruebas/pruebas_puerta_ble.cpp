@@ -952,6 +952,34 @@ void prueba_gracia() {
   EXIGIR(!b.puerta.gracia_vencida(1000 + 10 * enlace::kGraciaSeguridadMs, &conn));
 }
 
+// H4: el sketch avisa por el serie con registrar_corte_por_gracia() de la sesión de
+// la puerta; el corte (gracia_vencida) se repite cada ciclo hasta la desconexión.
+void prueba_aviso_unico_del_corte_por_gracia() {
+  Banco b;
+  uint16_t conn = 0;
+  int cortes = 0;
+  int avisos = 0;
+  auto ciclo = [&](uint32_t t) {
+    if (b.puerta.gracia_vencida(t, &conn)) {
+      ++cortes;
+      if (b.puerta.sesion().registrar_corte_por_gracia()) ++avisos;
+    }
+  };
+  b.puerta.al_conectar(kConn, 1000);
+  for (int i = 0; i < 12; ++i) ciclo(1000 + enlace::kGraciaSeguridadMs + 7 * i);
+  EXIGIR(cortes == 12 && avisos == 1 && conn == kConn);
+  b.puerta.al_desconectar(kConn);
+  b.puerta.al_conectar(kConn, 200000);
+  for (int i = 0; i < 12; ++i) ciclo(200000 + enlace::kGraciaSeguridadMs + 7 * i);
+  EXIGIR(cortes == 24 && avisos == 2);
+  // Un enlace protegido a tiempo no corta ni avisa.
+  b.puerta.al_desconectar(kConn);
+  b.puerta.al_conectar(kConn, 400000);
+  b.puerta.al_cambiar_cifrado(kConn, 0, protegido());
+  for (int i = 0; i < 12; ++i) ciclo(400000 + enlace::kGraciaSeguridadMs + 7 * i);
+  EXIGIR(cortes == 24 && avisos == 2);
+}
+
 // Ordenes de eventos de un enlace vivo (H2/S2, banco 12/11). NimBLE entrega CONNECT
 // al terminar la lectura de funciones remotas del par, con un status que no dice
 // si el enlace vive, y a veces después de ENC_CHANGE. El sketch registra el enlace
@@ -1145,6 +1173,7 @@ int main() {
   prueba_persistencia_ligada_al_alta_de_la_conexion();
   prueba_un_solo_cliente();
   prueba_gracia();
+  prueba_aviso_unico_del_corte_por_gracia();
   prueba_enlace_vivo_se_registra_en_cualquier_evento();
   prueba_gracia_tras_pedir_la_clave();
   prueba_simulacion_y_sin_radar();

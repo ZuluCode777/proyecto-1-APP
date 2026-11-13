@@ -477,6 +477,34 @@ void prueba_gracia() {
   EXIGIR(!s.vencio_gracia(1000 + kGraciaSeguridadMs));
 }
 
+// H4 (banco 12/11): el loop pregunta por la gracia en cada ciclo hasta que llega la
+// desconexión y el aviso del serie salía una vez por ciclo (9 a 16 veces). El corte
+// no cambia (vencio_gracia sigue verdadero en cada ciclo); el aviso, una vez por conexión.
+void prueba_aviso_unico_del_corte_por_gracia() {
+  SesionEnlace s;
+  EXIGIR(!s.registrar_corte_por_gracia());  // sin conexión no hay nada que avisar
+  s.conectar(7, 1000);
+  int cortes = 0;
+  int avisos = 0;
+  for (uint32_t t = 1000; t < 1000 + kGraciaSeguridadMs + 200; t += 10) {
+    if (s.vencio_gracia(t)) {
+      ++cortes;
+      if (s.registrar_corte_por_gracia()) ++avisos;
+    }
+  }
+  EXIGIR(cortes == 20);  // de 30000 a 30190 ms tras conectar, cada 10 ms: el corte se repite
+  EXIGIR(avisos == 1);
+  EXIGIR(!s.registrar_corte_por_gracia());
+  // Otra conexión (aunque reutilice el manejador) vuelve a avisar, también una sola vez.
+  s.desconectar();
+  s.conectar(7, 100000);
+  EXIGIR(!s.vencio_gracia(100000));
+  EXIGIR(s.vencio_gracia(100000 + kGraciaSeguridadMs));
+  EXIGIR(s.registrar_corte_por_gracia());
+  EXIGIR(!s.registrar_corte_por_gracia());
+  EXIGIR(s.vencio_gracia(100000 + kGraciaSeguridadMs + 500));  // sigue cortando
+}
+
 // H3 (banco 12/11): tras la petición de la clave, la persona tiene kGraciaClaveMs
 // completos; el límite solo crece y nunca pasa de kGraciaMaximaMs desde la conexión.
 void prueba_gracia_tras_pedir_la_clave() {
@@ -589,7 +617,7 @@ void prueba_con_interprete_real() {
   CicloRadar c;
   Informacion info;
   informacion_sen0395(1, c.radar.ventana_minima_mm(), c.radar.ventana_maxima_mm(), &info);
-  EXIGIR(info.distancia_minima_mm == 0 && info.distancia_maxima_mm == 3000);
+  EXIGIR(info.distancia_minima_mm == 0 && info.distancia_maxima_mm == 300);
   EmisorSintetico em(info, false);
   uint8_t t[kLongitudTrama];
   Medicion m;
@@ -688,6 +716,7 @@ int main() {
   prueba_sesion();
   prueba_ritmo();
   prueba_gracia();
+  prueba_aviso_unico_del_corte_por_gracia();
   prueba_gracia_tras_pedir_la_clave();
   prueba_flujo_alta();
   prueba_con_interprete_real();
