@@ -52,7 +52,8 @@ def escapar(texto: str) -> str:
 
 def trozos(texto: str) -> list[str]:
     """Parte un texto largo en trozos de frases enteras, para que quepan en el panel."""
-    frases = re.split(r"(?<=[.!?…])\s+", texto.strip())
+    # Corta tras un punto final, pero no en abreviaturas: «p. m.», «C.C. Nuestro», «S. Tomás».
+    frases = re.split(r"(?<=[.!?…])(?<![A-Z]\.)\s+(?![a-zñáéíóú\-–])", texto.strip())
     piezas: list[str] = []
     for frase in frases:
         if len(frase) <= MAXIMO_POR_TROZO:
@@ -143,9 +144,9 @@ def subtitulos(datos: dict, total: float) -> str:
         estilo("Plataforma", 27, "&H00A0A0A0", 60),
         estilo("Titulo", 46, "&H00FFFFFF", 104, negrita=True),
         estilo("Accion", 42, "&H004DE1FF", 262, negrita=True),
+        estilo("Persona", 42, "&H00FFD38F", 262, negrita=True),
         estilo("Nota", 33, "&H00C8C8C8", 390, cursiva=True),
         estilo("Voz", 42, "&H00FFFFFF", 560),
-        estilo("Persona", 42, "&H00FFD38F", 560),
         "\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n",
     ]
 
@@ -159,25 +160,26 @@ def subtitulos(datos: dict, total: float) -> str:
     dialogo(fijo, fijo + total, "Titulo", escapar(datos.get("titulo", "")))
     dialogo(fijo, fijo + total, "Plataforma", escapar(f"{plataforma}{fecha}"))
 
-    def franja(tipos: tuple[str, ...], estilo_: str, maximo: float) -> None:
-        """Una línea a la vez: cada una dura hasta la siguiente del mismo tipo o `maximo` segundos."""
+    def franja(tipos: tuple[str, ...], maximo: float) -> None:
+        """Una línea a la vez: cada una dura hasta la siguiente de la misma franja o `maximo` segundos."""
         propios = [e for e in eventos if e["tipo"] in tipos]
         for i, e in enumerate(propios):
             hasta = e["t"] + maximo
             if i + 1 < len(propios):
                 hasta = min(hasta, propios[i + 1]["t"])
-            dialogo(e["t"], hasta, estilo_, escapar(e["texto"]))
+            if e["tipo"] == "persona":
+                # Lo que «dice» la persona en Ceguera total va donde va lo que se hace, y se queda mientras la app responde.
+                texto = "{\\fs28\\c&HA0A0A0&\\i1\\b0}La persona dice (voz simulada en la grabación):{\\r}\\N«" + escapar(e["texto"]) + "»"
+                dialogo(e["t"], hasta, "Persona", texto)
+            else:
+                dialogo(e["t"], hasta, "Accion" if e["tipo"] == "accion" else "Nota", escapar(e["texto"]))
 
-    franja(("accion",), "Accion", 8.0)
-    franja(("nota",), "Nota", 14.0)
+    franja(("accion", "persona"), 8.0)
+    franja(("nota",), 14.0)
 
-    # Lo que dice o muestra la app, o la frase de la persona; la última manda.
-    abajo = [e for e in eventos if e["tipo"] in ("voz", "pantalla", "persona") and e.get("texto", "").strip()]
-    rotulos = {
-        "voz": "La app dice en voz alta:",
-        "pantalla": "En pantalla:",
-        "persona": "La persona dice (voz simulada en la grabación):",
-    }
+    # Lo que dice o muestra la app; la última manda.
+    abajo = [e for e in eventos if e["tipo"] in ("voz", "pantalla") and e.get("texto", "").strip()]
+    rotulos = {"voz": "La app dice en voz alta:", "pantalla": "En pantalla:"}
     for i, e in enumerate(abajo):
         texto = e["texto"].strip()
         estimado = max(2.0, len(texto) / CARACTERES_POR_SEGUNDO)
@@ -186,14 +188,14 @@ def subtitulos(datos: dict, total: float) -> str:
         hasta = max(hasta, e["t"] + 1.8)
         if i + 1 < len(abajo):
             hasta = min(hasta, abajo[i + 1]["t"])
-        estilo_ = "Persona" if e["tipo"] == "persona" else "Voz"
+        estilo_ = "Voz"
         partes = trozos(texto)
         largo = sum(len(p) for p in partes) or 1
         desde = e["t"]
         for parte in partes:
             paso = (hasta - e["t"]) * len(parte) / largo
             rotulo = "{\\fs28\\c&HA0A0A0&\\i1}" + rotulos[e["tipo"]] + "{\\r}\\N"
-            cita = f"«{escapar(parte)}»" if e["tipo"] != "pantalla" else escapar(parte)
+            cita = f"«{escapar(parte)}»" if e["tipo"] == "voz" else escapar(parte)
             dialogo(desde, desde + paso, estilo_, rotulo + cita)
             desde += paso
     return "".join(lineas)

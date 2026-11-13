@@ -8,7 +8,9 @@
 # Para volver a grabar solo una plataforma, el mensaje del commit puede llevar
 # «[solo web]» o «[solo iphone]». Cada plataforma cancela solo su propia
 # grabación anterior en curso, así que un arreglo de la web no corta la del
-# iPhone.
+# iPhone. La composición usa la grabación cruda de esta ejecución y, para la
+# plataforma que no se grabó, la más reciente de esta rama que no haya vencido:
+# el artefacto final siempre trae los videos de las dos.
 name: Grabar videos de demostración
 
 on:
@@ -85,7 +87,7 @@ jobs:
           name: crudo-web
           path: demo/salida/crudo-web/
           if-no-files-found: warn
-          retention-days: 1
+          retention-days: 3
 
   iphone:
     name: Grabar la app del iPhone (Simulator)
@@ -144,7 +146,7 @@ jobs:
             demo/salida/crudo-iphone/*.jsonl
             demo/salida/crudo-iphone/*.log
           if-no-files-found: warn
-          retention-days: 1
+          retention-days: 3
 
   componer:
     name: Componer los videos con subtítulos
@@ -152,13 +154,32 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           pattern: crudo-*
           path: demo/salida
+
+      - name: Completar con la última grabación de la otra plataforma
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for nombre in crudo-web crudo-iphone; do
+            if [ -d "demo/salida/$nombre" ]; then echo "$nombre: de esta ejecución"; continue; fi
+            id="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$nombre&per_page=50" \
+              --jq "[.artifacts[] | select(.expired == false and .workflow_run.head_branch == \"$GITHUB_REF_NAME\")] | sort_by(.created_at) | last | .id // empty")"
+            if [ -z "$id" ]; then echo "$nombre: no hay una grabación anterior vigente"; continue; fi
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/$nombre.zip"
+            mkdir -p "demo/salida/$nombre"
+            unzip -q "$RUNNER_TEMP/$nombre.zip" -d "demo/salida/$nombre"
+            echo "$nombre: de una ejecución anterior (artefacto $id)"
+          done
 
       - name: ffmpeg
         run: |
