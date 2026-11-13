@@ -40,12 +40,15 @@ enum TipoAviso: String, Equatable, CaseIterable, Sendable {
         }
     }
 
-    /// Cuánto dura vigente un aviso si nadie lo cierra antes (la fuente cierra el suyo al cambiar la situación). Propuestas de
-    /// software, sin medir. Una medida envejece pronto; un estado (accesorio perdido, red caída) dura más.
-    var vigenciaMs: Milisegundos {
+    /// Cuánto dura vigente un aviso si nadie lo cierra antes, o `nil` si no caduca por tiempo. Los de la sesión no caducan: siguen
+    /// vigentes mientras dure su estado y la sesión los cierra con `CentroAvisos.retirar` cuando acaba (un temporizador los daría
+    /// por vencidos con el objeto todavía delante o el accesorio todavía perdido; la sesión ya baja a «sin datos» sola si dejan de
+    /// llegar tramas). Los de la consulta y la ubicación son resultados puntuales y sí envejecen. Propuestas de software, sin medir.
+    var vigenciaMs: Milisegundos? {
         switch self {
-        case .proximidad, .datoVencido, .gpsImpreciso: return 10_000
-        case .accesorioPerdido, .datosViejos, .redCaida: return 120_000
+        case .accesorioPerdido, .datoVencido, .proximidad: return nil
+        case .gpsImpreciso: return 10_000
+        case .datosViejos, .redCaida: return 120_000
         }
     }
 
@@ -74,15 +77,19 @@ enum OrigenAviso: Equatable, Sendable {
 struct Aviso: Identifiable, Equatable {
     var id: TipoAviso { tipo }
     let tipo: TipoAviso
-    /// Texto equivalente de lo que se dice y se lee. Es también la clave para no repetir.
+    /// Texto equivalente de lo que se lee en la lista. Es también la clave para no repetir.
     let texto: String
+    /// Lo que se dice al repetirlo: `texto` más la reserva «Enlace sin autenticar.» si el enlace con el accesorio no es autenticado.
+    let textoVoz: String
     let origen: OrigenAviso
-    /// Desde este instante (reloj monotónico) ya no está vigente.
-    var caducaMs: Milisegundos
+    /// Aviso de la sesión emitido con el enlace sin autenticar: la lista lo declara en su fila.
+    let enlaceSinAutenticar: Bool
+    /// Desde este instante (reloj monotónico) ya no está vigente. `nil`: no caduca por tiempo y lo cierra su fuente.
+    var caducaMs: Milisegundos?
     /// La voz se aplazó por el límite de ritmo: el productor lo reintentará con el estado de entonces.
     var pendienteDeVoz = false
 
-    func vigente(en ahora: Milisegundos) -> Bool { ahora < caducaMs }
+    func vigente(en ahora: Milisegundos) -> Bool { caducaMs.map { ahora < $0 } ?? true }
 }
 
 /// Qué pasó al emitir un aviso.

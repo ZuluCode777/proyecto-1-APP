@@ -150,7 +150,7 @@ final class SesionAccesorioModelo {
     ) {
         self.transporte = transporte
         self.voz = voz
-        self.centro = centro ?? CentroAvisos(voz: voz, avisos: avisos, reloj: reloj)
+        self.centro = centro ?? CentroAvisos(voz: voz, reloj: reloj)
         self.avisos = avisos
         self.reloj = reloj
         self.pausa = pausa
@@ -602,27 +602,35 @@ final class SesionAccesorioModelo {
     /// confía en que una sola (como «calibrando», que dura un instante) se oiga completa.
     ///
     /// Aviso y prioridad (EA-20): pérdida de accesorio, dato vencido y proximidad son avisos y pasan por `centro`; el resto de
-    /// estados (conectando, calibrando, sin detección) son mensajes de rutina. Un mensaje de rutina no corta ni calla un aviso
-    /// que todavía suena: no se dice ni gasta nada y el próximo latido lo reintenta con el estado de entonces. Lo mismo
-    /// ocurre con un aviso que el límite de ritmo aplazó (`.limitado`).
+    /// estados (conectando, calibrando, sin detección) son mensajes de rutina. Un aviso de la sesión no caduca por tiempo:
+    /// dura mientras dure su estado y aquí se cierra (`retirar`) al llegar un estado que no es aviso, aunque la voz ceda ese
+    /// latido. Un mensaje de rutina no corta ni calla un aviso que todavía suena: no se dice ni gasta nada y el próximo latido
+    /// lo reintenta con el estado de entonces. Lo mismo ocurre con un aviso que el límite de ritmo aplazó (`.limitado`).
+    ///
+    /// La lista y «Repetir» llevan siempre «Enlace sin autenticar.» en los estados con reserva; la voz de ahora solo mientras
+    /// la reserva tenga turno (`reserva`, `maximoReservas`).
     @discardableResult
     private func anunciar(repitiendo: Bool = false) -> Bool {
-        guard activa, !suspendida, let locucion = TextoAccesorio.locucion(estado),
-              locucion != ultimaLocucion else { return false }
+        guard activa, !suspendida else { return false }
         let tipo = TipoAviso.de(estado)
+        if tipo == nil { centro.retirar(fuente: .sesion) }
+        guard let locucion = TextoAccesorio.locucion(estado), locucion != ultimaLocucion else { return false }
         if voz.debeCeder(prioridad: tipo?.severidad ?? .rutina) { return false }
         let anterior = ultimaLocucion
         ultimaLocucion = locucion
         if reserva == .enCurso { reserva = voz.ultimaSeOyoEntera ? .oida : .pendiente }
-        let llevaReserva = !enlaceAutenticado && reserva == .pendiente && reservasDichas < Self.maximoReservas
-            && TextoAccesorio.lugarDeReserva(estado) != nil
-        let dicho = llevaReserva ? TextoAccesorio.conReserva(locucion.texto, para: estado) : locucion.texto
+        let conReserva = !enlaceAutenticado && TextoAccesorio.lugarDeReserva(estado) != nil
+        let textoConReserva = conReserva ? TextoAccesorio.conReserva(locucion.texto, para: estado) : locucion.texto
+        let llevaReserva = conReserva && reserva == .pendiente && reservasDichas < Self.maximoReservas
+        let dicho = llevaReserva ? textoConReserva : locucion.texto
         let resultado: ResultadoEmision
         if let tipo {
-            resultado = centro.emitir(tipo, locucion.texto, decir: dicho, repitiendo: repitiendo)
+            var distanciaMm: Int?
+            if case .objetivo(let distancia, _) = estado { distanciaMm = distancia }
+            resultado = centro.emitir(
+                tipo, locucion.texto, decir: dicho, textoVoz: textoConReserva, enlaceSinAutenticar: conReserva,
+                distanciaMm: distanciaMm, repitiendo: repitiendo)
         } else {
-            // Rutina: la situación ya no es un aviso, así que se cierran los avisos de la sesión.
-            centro.retirar(fuente: .sesion)
             switch voz.anunciar(dicho, prioridad: .rutina) {
             case .hablado: resultado = .hablado
             case .silenciado(let motivo): resultado = .silenciado(motivo)
