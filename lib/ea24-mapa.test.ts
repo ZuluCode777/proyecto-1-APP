@@ -51,7 +51,7 @@ function analizar(archivo: string) {
   return { importa, opaco, mapaConCapa }
 }
 
-test("la cartografía solo llega al listado del Metro; los mapas operativos no la dibujan", () => {
+test("la cartografía solo llega al listado del Metro y a su contrato HTTP; los mapas operativos no la dibujan", () => {
   // `scripts/` regenera el archivo de datos; `proxy.ts` e `instrumentation.ts` viven en la raíz.
   const archivos = ["lib", "components", "hooks", "app", "scripts"]
     .flatMap((dir) => readdirSync(`${raiz}/${dir}`, { recursive: true, encoding: "utf8" }).map((f) => `${dir}/${f.replaceAll("\\", "/")}`))
@@ -69,8 +69,10 @@ test("la cartografía solo llega al listado del Metro; los mapas operativos no l
   const importadores = Object.fromEntries(
     archivos.map((f) => [f, analisis.get(f)!.importa.filter((m) => m.includes("metro-cartografia")).sort()] as const).filter(([, m]) => m.length),
   )
+  // `lib/contrato-metro.ts` entrega al iPhone lo mismo que `MetroList` (EA-25); ningún otro contrato la toca.
   assert.deepEqual(importadores, {
     "components/metro-list.tsx": ["@/lib/metro-cartografia"],
+    "lib/contrato-metro.ts": ["@/lib/metro-cartografia"],
     "lib/metro-cartografia-fuente.ts": ["@/lib/metro-cartografia-validacion"],
     "lib/metro-cartografia.ts": ["@/data/metro-cartografia.json", "@/lib/metro-cartografia-validacion", "@/lib/metro-cartografia-validacion"],
     "scripts/analisis-metro-cartografia.ts": ["@/lib/metro-cartografia", "@/lib/metro-cartografia-fuente", "@/lib/metro-cartografia-validacion"],

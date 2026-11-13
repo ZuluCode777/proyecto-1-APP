@@ -6,6 +6,8 @@ import {
   findPlaceMentions,
   findPlaces,
   findRouteByCode,
+  MAX_PLANES_VIAJE,
+  alternativasDelViaje,
   nearestStations,
   placeOf,
   planTrip,
@@ -684,7 +686,7 @@ function resolverIntent(
       }
 
       const now = context.now ?? new Date()
-      const plans = planTrip({ origin, destination }, data, 3, now)
+      const plans = planTrip({ origin, destination }, data, MAX_PLANES_VIAJE, now)
       steps.push({
         label: `Revisé las ${data.routes.length} rutas troncales`,
         detail:
@@ -702,10 +704,10 @@ function resolverIntent(
         if (candidato) return tripCandidatoReply({ plan: candidato, origin, destination, steps, engine })
         return tripUncertainReply({ origin, destination, data, steps, engine })
       }
-      const [best, ...others] = plans
+      const [best] = plans
       steps.push({ label: "Elegí la opción con menos estaciones", detail: best.map((l) => l.route.code).join(" + ") })
-      const alternatives =
-        best.length === 1 && others.length > 0 ? ` También te sirven ${listCodes(others.map((p) => p[0].route.code))}.` : ""
+      const otras = alternativasDelViaje(plans)
+      const alternatives = otras.length > 0 ? ` También te sirven ${listCodes(otras)}.` : ""
       return { reply: `${describePlan(best)}${alternatives}`, action: "trip", trip: summarize(best), steps, engine }
     }
 

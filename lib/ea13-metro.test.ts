@@ -375,11 +375,14 @@ test("contrato iOS: toda respuesta de Metro es action none, con la forma de siem
 
 // --- Separación del catálogo ----------------------------------------------
 
-/** Solo estos archivos de producción pueden importar el catálogo: el agente que lo consulta y su listado. */
-const IMPORTADORES_PERMITIDOS = ["lib/local-agent.ts", "components/metro-list.tsx"]
+/**
+ * Solo estos archivos de producción pueden importar el catálogo: el agente que lo consulta, su listado y su contrato
+ * HTTP para el iPhone (EA-25), que entrega el mismo catálogo y nada más.
+ */
+const IMPORTADORES_PERMITIDOS = ["lib/local-agent.ts", "components/metro-list.tsx", "lib/contrato-metro.ts"]
 const OMITIDOS = ["lib/metro.ts", ...IMPORTADORES_PERMITIDOS]
 
-test("ningún código de producción fuera del agente y del listado importa el catálogo de Metro", () => {
+test("ningún código de producción fuera del agente, del listado y de su contrato HTTP importa el catálogo de Metro", () => {
   const raiz = process.cwd()
   // `scripts/` construye `data/transmilenio.json`; `proxy.ts` e `instrumentation.ts` viven en la raíz.
   const archivos = ["lib", "components", "hooks", "app", "scripts"]

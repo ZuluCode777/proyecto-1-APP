@@ -1,9 +1,14 @@
 import { z } from "zod"
+import { RESPUESTA_METRO } from "@/lib/contrato-metro"
 import { estadoCalendarioEnFecha, paradasPrescriptibles, sentidoConfirmado } from "@/lib/evidencia"
-import { pathBetween } from "@/lib/geo"
+import { pathBetween, spokenDistance } from "@/lib/geo"
 import {
+  MAX_ESTACIONES_CERCANAS,
+  MAX_PLANES_VIAJE,
+  alternativasDelViaje,
   listarLugares,
   lugarPorNombre,
+  nearestStations,
   planTrip,
   planTripCandidato,
   routesAlongBoth,
@@ -15,10 +20,15 @@ import {
 } from "@/lib/routes"
 import { normalize } from "@/lib/text"
 import { catalogoAntiguo, procedenciaCatalogo } from "@/lib/transmilenio"
+import { cardinalHacia, orientarHacia, ubicacionVigente, type LecturaRumbo, type LecturaUbicacion } from "@/lib/ubicacion"
+
+export { RespuestaMetroSchema } from "@/lib/contrato-metro"
 
 /**
  * Contrato de `POST /api/planificador` (EA-25, #51): buscar rutas, ver el detalle
- * de una ruta, listar lugares y planear un viaje entre dos lugares ELEGIDOS.
+ * de una ruta, listar lugares, planear un viaje entre dos lugares ELEGIDOS, y la
+ * paridad con la web: el Metro de la Línea 1 (`metro-linea-1`, `lib/contrato-metro.ts`)
+ * y las estaciones cercanas a una coordenada (`estaciones-cercanas`).
  *
  * Es la entrada ESTRUCTURADA del planificador compartido para el cliente de
  * iPhone: el origen y el destino llegan como nombres exactos de `listar-lugares`,
@@ -42,6 +52,11 @@ export const MAX_RUTAS = 50
 export const MAX_ESTACIONES = 200
 export const MAX_PUNTOS_TRAZADO = 1_000
 export const MAX_LUGARES = 500
+/** Alternativas de un viaje operativo: los planes que se piden menos el mejor. */
+export const MAX_ALTERNATIVAS = MAX_PLANES_VIAJE - 1
+/** Cotas de la petición `estaciones-cercanas`: radio de precisión y edad de las lecturas, en metros y milisegundos. */
+export const MAX_PRECISION_M = 100_000
+export const MAX_EDAD_LECTURA_MS = 600_000
 
 /**
  * Peticiones por minuto, con clave propia de cada tipo (no comparten cuota con `/api/agent`). `claveCliente()` es hoy una
@@ -63,6 +78,27 @@ export const PeticionPlanificadorSchema = z.discriminatedUnion("operacion", [
     operacion: z.literal("planear-viaje"),
     origen: z.string().trim().min(1).max(MAX_LUGAR),
     destino: z.string().trim().min(1).max(MAX_LUGAR),
+  }),
+  z.strictObject({ operacion: z.literal("metro-linea-1") }),
+  /**
+   * La lectura de posición del dispositivo: solo `lat` y `lng` son obligatorios. Sin `precision` (metros, el radio de
+   * confianza) la respuesta es solo cardinal y nunca un giro; sin `edadMs` (cuánto hace que se capturó) la lectura se
+   * toma como recién capturada. `rumbo` es el de la brújula respecto al norte, sin él nunca hay un giro: `calidad` es la
+   * cota de error en grados (negativa o ausente, no fiable) y `edadMs` cuánto hace que se midió.
+   */
+  z.strictObject({
+    operacion: z.literal("estaciones-cercanas"),
+    lat: z.number().min(-90).max(90),
+    lng: z.number().min(-180).max(180),
+    precision: z.number().min(0).max(MAX_PRECISION_M).optional(),
+    edadMs: z.number().int().min(0).max(MAX_EDAD_LECTURA_MS).optional(),
+    rumbo: z
+      .strictObject({
+        grados: z.number().min(0).max(360),
+        calidad: z.number().min(-1).max(360).optional(),
+        edadMs: z.number().int().min(0).max(MAX_EDAD_LECTURA_MS),
+      })
+      .optional(),
   }),
 ])
 export type PeticionPlanificador = z.infer<typeof PeticionPlanificadorSchema>
@@ -120,6 +156,12 @@ const TramoSchema = z.object({
  */
 const TramoCandidatoSchema = z.strictObject({ codigoRuta: z.string() })
 
+/**
+ * Otra ruta directa que también sirve al viaje: solo el código, como la web («También te sirven…»), porque la
+ * otra ruta puede abordarse en otra estación del mismo lugar y su parada no se garantiza aquí.
+ */
+const AlternativaSchema = z.strictObject({ codigoRuta: z.string() })
+
 const BaseViaje = { origen: z.string(), destino: z.string(), catalogo: CatalogoSchema }
 const SinRutas = z.array(ResumenRutaSchema).max(0)
 
@@ -130,13 +172,52 @@ const SinRutas = z.array(ResumenRutaSchema).max(0)
  * `recorrido`: sin paradas verificadas; rutas cuyo trazado pasa cerca de los dos lugares (`routesAlongBoth`).
  * `sin-recorrido`: ninguna ruta del trazado conecta los dos lugares. `mismo-lugar`: origen y destino coinciden.
  * Solo `recorrido` trae `rutasPorElTrazado`; los demás estados las traen vacías.
+ *
+ * `alternativas` es OPCIONAL y solo existe en un `operativo` directo (un tramo) cuando hay otras rutas directas: las
+ * mismas que la web dice con «También te sirven…», de menos a más estaciones. Ausente en el resto. Un cliente que no
+ * la conoce decodifica la respuesta igual que antes.
  */
 export const RespuestaViajeSchema = z.discriminatedUnion("resultado", [
-  z.object({ ...BaseViaje, resultado: z.literal("operativo"), tramos: z.array(TramoSchema).min(1).max(2), rutasPorElTrazado: SinRutas }),
+  z.object({
+    ...BaseViaje,
+    resultado: z.literal("operativo"),
+    tramos: z.array(TramoSchema).min(1).max(2),
+    rutasPorElTrazado: SinRutas,
+    alternativas: z.array(AlternativaSchema).min(1).max(MAX_ALTERNATIVAS).optional(),
+  }),
   z.object({ ...BaseViaje, resultado: z.literal("candidato"), tramos: z.array(TramoCandidatoSchema).min(1).max(2), rutasPorElTrazado: SinRutas }),
   z.object({ ...BaseViaje, resultado: z.literal("recorrido"), tramos: z.tuple([]), rutasPorElTrazado: z.array(ResumenRutaSchema).min(1).max(MAX_RUTAS) }),
   z.object({ ...BaseViaje, resultado: z.literal("sin-recorrido"), tramos: z.tuple([]), rutasPorElTrazado: SinRutas }),
   z.object({ ...BaseViaje, resultado: z.literal("mismo-lugar"), tramos: z.tuple([]), rutasPorElTrazado: SinRutas }),
+])
+
+const ModoOrientacionSchema = z.enum(["relativa", "cardinal-brujula", "cardinal-precision", "sin-direccion"])
+
+const EstacionCercanaSchema = z.object({
+  nombre: z.string(),
+  coordenada: CoordenadaSchema,
+  distanciaMetros: z.number().int().nonnegative(),
+  /** La distancia como la dice el GPS auditivo de la web («300 metros», «1,2 kilómetros»). */
+  distanciaHablada: z.string(),
+  orientacion: z.object({
+    modo: ModoOrientacionSchema,
+    /** Referencia cardinal estimada («al noreste»); `null` si la estación cae dentro del margen de error de la lectura. */
+    cardinal: z.string().nullable(),
+    /** Giro respecto a hacia dónde mira la persona; solo con el modo `relativa`. */
+    relativa: z.string().nullable(),
+    /** La frase que la web dice al orientar hacia la estación. */
+    indicacion: z.string(),
+  }),
+})
+
+/**
+ * `cercanas`: hasta 4 estaciones de TransMilenio, de más cerca a más lejos. `ubicacion-vencida`: la lectura tiene más
+ * de 60 s (`EDAD_MAXIMA_POSICION_MS`) y no se usa, como en la web: sin estaciones. La respuesta no repite la
+ * coordenada, la precisión ni el rumbo recibidos.
+ */
+export const RespuestaEstacionesCercanasSchema = z.discriminatedUnion("resultado", [
+  z.object({ resultado: z.literal("cercanas"), estaciones: z.array(EstacionCercanaSchema).max(MAX_ESTACIONES_CERCANAS), catalogo: CatalogoSchema }),
+  z.object({ resultado: z.literal("ubicacion-vencida"), estaciones: z.tuple([]), catalogo: CatalogoSchema }),
 ])
 
 export type Resolucion =
@@ -144,6 +225,9 @@ export type Resolucion =
   | { estado: 404; cuerpo: { error: "no-encontrado" } }
 
 const NO_ENCONTRADO: Resolucion = { estado: 404, cuerpo: { error: "no-encontrado" } }
+
+/** El Metro es un catálogo aparte (EA-13): su respuesta no depende del de TransMilenio ni de la hora. */
+export const RESOLUCION_METRO: Resolucion = { estado: 200, cuerpo: RESPUESTA_METRO }
 
 const resumen = (route: BusRoute) => ({ codigo: route.code, desde: route.from, hacia: route.to })
 
@@ -226,9 +310,21 @@ export function resolverPeticion(peticion: PeticionPlanificador, data: Transmile
       if (samePlace(origen, destino)) return { estado: 200, cuerpo: { ...base, resultado: "mismo-lugar", ...sinTramos } }
 
       // Mismo orden que el asistente: viaje operativo, candidato sin operación confirmada, y por último el recorrido.
-      const [operativo] = planTrip({ origin: origen, destination: destino }, data, 1, ahora)
+      // Los mismos planes que pide la web: el primero es el viaje y los demás, sus alternativas.
+      const planes = planTrip({ origin: origen, destination: destino }, data, MAX_PLANES_VIAJE, ahora)
+      const [operativo] = planes
       if (operativo) {
-        return { estado: 200, cuerpo: { ...base, resultado: "operativo", tramos: operativo.map((l) => tramoDeViaje(l, data)), rutasPorElTrazado: [] } }
+        const alternativas = alternativasDelViaje(planes).map((codigoRuta) => ({ codigoRuta }))
+        return {
+          estado: 200,
+          cuerpo: {
+            ...base,
+            resultado: "operativo",
+            tramos: operativo.map((l) => tramoDeViaje(l, data)),
+            rutasPorElTrazado: [],
+            ...(alternativas.length > 0 ? { alternativas } : {}),
+          },
+        }
       }
       const [candidato] = planTripCandidato({ origin: origen, destination: destino }, data, 1, ahora)
       if (candidato) {
@@ -240,6 +336,29 @@ export function resolverPeticion(peticion: PeticionPlanificador, data: Transmile
         estado: 200,
         cuerpo: { ...base, resultado: porElTrazado.length > 0 ? "recorrido" : "sin-recorrido", tramos: [], rutasPorElTrazado: porElTrazado },
       }
+    }
+
+    case "metro-linea-1":
+      return RESOLUCION_METRO
+
+    case "estaciones-cercanas": {
+      // La coordenada solo vive en esta función: se usa para ordenar y orientar y no se guarda, se registra ni se devuelve.
+      const instante = ahora.getTime()
+      const lectura: LecturaUbicacion = { lat: peticion.lat, lng: peticion.lng, precision: peticion.precision ?? null, hora: instante - (peticion.edadMs ?? 0) }
+      // Como la web: una lectura de más de 60 s no se usa.
+      if (!ubicacionVigente(lectura, instante)) return { estado: 200, cuerpo: { resultado: "ubicacion-vencida", estaciones: [], catalogo } }
+      // La brújula del iPhone mide respecto al norte, nunca relativa a un arranque arbitrario.
+      const rumbo: LecturaRumbo | null = peticion.rumbo
+        ? { grados: peticion.rumbo.grados, referencia: "absoluta", calidad: peticion.rumbo.calidad ?? null, hora: instante - peticion.rumbo.edadMs }
+        : null
+      const estaciones = nearestStations(lectura, data, MAX_ESTACIONES_CERCANAS).map((estacion) => ({
+        nombre: estacion.name,
+        coordenada: { lat: estacion.lat, lng: estacion.lng },
+        distanciaMetros: Math.round(estacion.distance),
+        distanciaHablada: spokenDistance(estacion.distance),
+        orientacion: { ...orientarHacia(estacion, lectura, rumbo, instante), cardinal: cardinalHacia(lectura, estacion) },
+      }))
+      return { estado: 200, cuerpo: { resultado: "cercanas", estaciones, catalogo } }
     }
   }
 }
