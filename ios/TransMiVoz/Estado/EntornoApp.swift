@@ -48,7 +48,7 @@ final class EntornoApp {
         let ajustes = AjustesServidorModelo(almacen: AlmacenClaveLlavero())
         let cliente = ClienteAgenteHTTP { await ajustes.configuracion }
         let voz = ControlVoz(salida: SintetizadorSistema(), consultarRuta: SintetizadorSistema.rutaActual)
-        let avisos = CentroAvisos(voz: voz, avisos: .sistema)
+        let avisos = CentroAvisos(voz: voz)
         return EntornoApp(
             ajustes: ajustes, consulta: ConsultaModelo(cliente: cliente),
             favoritas: FavoritasModelo(almacen: AlmacenFavoritasUserDefaults()), sesion: SesionLocalModelo(),

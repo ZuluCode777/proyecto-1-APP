@@ -7,7 +7,7 @@ import SwiftUI
 struct AvisosVista: View {
     let centro: CentroAvisos
 
-    /// Lleva el foco de VoiceOver al resultado de «Repetir».
+    /// Lleva el foco de VoiceOver al resultado de «Repetir»: es el único canal, `CentroAvisos` no lo anuncia además.
     @AccessibilityFocusState private var enResultado: Bool
 
     var body: some View {
@@ -68,8 +68,7 @@ struct AvisosVista: View {
 
     private var seccionVoz: some View {
         seccion(TextoAvisos.encabezadoVoz, id: "encabezado-voz-avisos") {
-            interruptor(.urgente, etiqueta: TextoAvisos.silenciarUrgentes, id: "urgentes")
-            interruptor(.advertencia, etiqueta: TextoAvisos.silenciarAdvertencias, id: "advertencias")
+            interruptorAdvertencias
             notas(TextoAvisos.notaSilencio, id: "nota-silencio-avisos")
         }
     }
@@ -117,21 +116,22 @@ struct AvisosVista: View {
         }
     }
 
-    /// El rótulo es un `Text` explícito con identificador propio, como los demás interruptores: la auditoría de contraste
-    /// reporta ese texto y no el interruptor.
-    private func interruptor(_ severidad: PrioridadVoz, etiqueta: String, id: String) -> some View {
+    /// Solo hay interruptor para las advertencias: lo urgente no se silencia. El rótulo es un `Text` explícito con
+    /// identificador propio, como los demás interruptores: la auditoría de contraste reporta ese texto y no el interruptor.
+    private var interruptorAdvertencias: some View {
         Toggle(isOn: Binding(
-            get: { centro.silenciada(severidad) },
-            set: { centro.silenciar(severidad, $0) })) {
-                Text(etiqueta)
-                    .accessibilityIdentifier("etiqueta-silenciar-\(id)")
+            get: { centro.advertenciasSilenciadas },
+            set: { centro.silenciarAdvertencias($0) })) {
+                Text(TextoAvisos.silenciarAdvertencias)
+                    .accessibilityIdentifier("etiqueta-silenciar-advertencias")
             }
             .frame(minHeight: 44)
-            .accessibilityIdentifier("interruptor-silenciar-\(id)")
+            .accessibilityIdentifier("interruptor-silenciar-advertencias")
     }
 
-    /// Un aviso: clase, texto, y una línea con severidad, origen y vigencia (nada depende solo del color). «Repetir» solo si
-    /// sigue vigente: repetir lo caducado diría como actual algo que ya no lo es.
+    /// Un aviso: clase, texto, una línea con severidad, origen y vigencia (nada depende solo del color) y, si el enlace con el
+    /// accesorio no es autenticado, esa reserva. «Repetir» solo si sigue vigente: repetir lo caducado diría como actual algo
+    /// que ya no lo es.
     private func fila(_ aviso: Aviso) -> some View {
         let id = "aviso-\(aviso.tipo.rawValue)"
         let titulo = TextoAvisos.tituloDe(aviso.tipo)
@@ -149,6 +149,13 @@ struct AvisosVista: View {
                 .foregroundStyle(.textoSecundario)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("\(id)-detalle")
+            if aviso.enlaceSinAutenticar {
+                Text(TextoAvisos.enlaceSinAutenticar)
+                    .font(.footnote)
+                    .foregroundStyle(.textoSecundario)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("\(id)-enlace")
+            }
             if vigente {
                 Button("Repetir") { centro.repetir(aviso.tipo) }
                     .buttonStyle(.bordered)

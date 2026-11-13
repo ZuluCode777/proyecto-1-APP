@@ -58,13 +58,12 @@ final class PrioridadVozTests: XCTestCase {
     }
 }
 
-/// Banco del módulo de avisos: voz, ruta, reloj y avisos accesibles falsos (simulación).
+/// Banco del módulo de avisos: voz, ruta y reloj falsos (simulación).
 @MainActor
 private struct BancoCentro {
     let salida = SalidaVozFalsa()
     let ruta = RutaFalsa(.privada)
     let reloj = RelojFalso()
-    let accesibles = AvisosFalsos()
     let voz: ControlVoz
     let centro: CentroAvisos
 
@@ -72,7 +71,7 @@ private struct BancoCentro {
         let rutaCapturada = ruta
         voz = ControlVoz(salida: salida, consultarRuta: { rutaCapturada.valor })
         let relojCapturado = reloj
-        centro = CentroAvisos(voz: voz, avisos: accesibles.avisos, reloj: { relojCapturado.ahora }, origen: origen)
+        centro = CentroAvisos(voz: voz, reloj: { relojCapturado.ahora }, origen: origen)
     }
 
     func vigentes() -> Set<TipoAviso> {
@@ -107,7 +106,17 @@ final class CentroAvisosTests: XCTestCase {
             XCTAssertEqual(tipo.severidad, .advertencia, "\(tipo)")
         }
         XCTAssertEqual(TipoAviso.allCases.count, 6)
-        XCTAssertTrue(TipoAviso.allCases.allSatisfy { $0.vigenciaMs > 0 })
+        XCTAssertTrue(TipoAviso.allCases.allSatisfy { ($0.vigenciaMs ?? 1) > 0 })
+    }
+
+    func testLosAvisosDeLaSesionNoCaducanPorTiempoYLosDeLaConsultaYLaUbicacionSi() {
+        for tipo in TipoAviso.allCases {
+            if tipo.fuente == .sesion {
+                XCTAssertNil(tipo.vigenciaMs, "\(tipo): dura mientras dure su estado y lo cierra la sesión")
+            } else {
+                XCTAssertNotNil(tipo.vigenciaMs, "\(tipo): es un resultado puntual y envejece")
+            }
+        }
     }
 
     // MARK: Deduplicación y caducidad
@@ -145,9 +154,9 @@ final class CentroAvisosTests: XCTestCase {
         XCTAssertEqual(b.centro.emitir(.proximidad, "Objeto a 1 metro."), .hablado)
     }
 
-    func testUnAvisoCaducaSeRenuevaMientrasSigueYAlReaparecerVuelveADecirse() {
+    func testUnAvisoCaducaSeRenuevaMientrasSigueYAlReaparecerVuelveADecirse() throws {
         let b = BancoCentro()
-        let vigencia = TipoAviso.redCaida.vigenciaMs
+        let vigencia = try XCTUnwrap(TipoAviso.redCaida.vigenciaMs)
         b.centro.emitir(.redCaida, TextoAvisos.redCaida)
         b.reloj.avanzar(vigencia - 1)
         XCTAssertTrue(b.centro.vigente(b.centro.avisos[0]))
@@ -162,6 +171,19 @@ final class CentroAvisosTests: XCTestCase {
         XCTAssertEqual(b.centro.emitir(.redCaida, TextoAvisos.redCaida), .hablado, "caducó: si reaparece, es nuevo")
         XCTAssertTrue(b.centro.vigente(b.centro.avisos[0]))
         XCTAssertEqual(b.centro.avisos.count, 1)
+    }
+
+    func testUnAvisoDeLaSesionSigueVigenteAunqueNadieLoRenueveHastaQueSuFuenteLoCierra() {
+        let b = BancoCentro()
+        b.centro.emitir(.proximidad, "Objeto a 1 metro.")
+        b.centro.emitir(.redCaida, TextoAvisos.redCaida)
+        b.reloj.avanzar(3_600_000)  // una hora: muy por encima de cualquier vigencia
+        XCTAssertEqual(b.vigentes(), [.proximidad], "la sesión no volvió a emitir: el objeto sigue delante y la red caída venció")
+        XCTAssertEqual(b.centro.emitir(.proximidad, "Objeto a 1 metro."), .duplicado)
+        XCTAssertEqual(b.salida.dicho, ["Objeto a 1 metro."], "seguir vigente no lo vuelve a decir (la red caída cedió al urgente)")
+
+        b.centro.retirar(fuente: .sesion)
+        XCTAssertEqual(b.vigentes(), [], "al acabar su estado la sesión lo cierra")
     }
 
     func testUnAvisoNuevoCierraElVigenteDeSuFuenteYNoElDeOtra() {
@@ -224,6 +246,21 @@ final class CentroAvisosTests: XCTestCase {
         XCTAssertEqual(b.centro.emitir(.proximidad, siguiente), .duplicado, "ya dicho: no se repite")
     }
 
+    func testUnaLecturaMasCercanaQueLaUltimaDichaNoLaFrenaElLimite() {
+        let b = BancoCentro()
+        for n in 1...CentroAvisos.maximoVocesPorVentana {
+            XCTAssertEqual(b.centro.emitir(.proximidad, "Objeto a \(n) metros.", distanciaMm: n * 1000), .hablado)
+            b.reloj.avanzar(100)
+        }
+        // Se agotó el cupo; la última dicha fue a 6 m.
+        XCTAssertEqual(b.centro.emitir(.proximidad, "Objeto a 7 metros.", distanciaMm: 7000), .limitado, "más lejos: espera")
+        XCTAssertEqual(b.centro.emitir(.proximidad, "Objeto a 5 metros.", distanciaMm: 5000), .hablado, "más cerca: se dice ya")
+        XCTAssertEqual(b.salida.dicho.last, "Objeto a 5 metros.")
+        XCTAssertEqual(b.centro.emitir(.proximidad, "Objeto a 5,5 metros.", distanciaMm: 5500), .limitado, "más lejos que la última dicha")
+        XCTAssertEqual(b.centro.emitir(.proximidad, "Presencia detectada."), .limitado, "sin medida no hay excepción")
+        XCTAssertEqual(b.centro.avisos[0].texto, "Presencia detectada.", "la lista tiene lo de ahora")
+    }
+
     func testElLimiteEsPorClaseYPedirloLoSalta() {
         let b = BancoCentro()
         for n in 1...CentroAvisos.maximoVocesPorVentana { b.centro.emitir(.proximidad, "Objeto a \(n) metros.") }
@@ -234,41 +271,69 @@ final class CentroAvisosTests: XCTestCase {
 
     // MARK: Silenciar según severidad y repetir
 
-    func testSilenciarLaVozDeUnaSeveridadNoLaOcultaDeLaListaNiCallaLasOtras() {
+    func testSilenciarLasAdvertenciasNoLasOcultaDeLaListaYNuncaCallaLoUrgente() {
         let b = BancoCentro()
-        b.centro.silenciar(.advertencia, true)
-        XCTAssertTrue(b.centro.silenciada(.advertencia))
-        XCTAssertEqual(b.centro.emitir(.redCaida, TextoAvisos.redCaida), .silenciado(.severidadSilenciada))
+        b.centro.silenciarAdvertencias(true)
+        XCTAssertTrue(b.centro.advertenciasSilenciadas)
+        for tipo in [TipoAviso.redCaida, .datosViejos, .gpsImpreciso] {
+            XCTAssertEqual(b.centro.emitir(tipo, "texto de \(tipo)"), .silenciado(.severidadSilenciada), "\(tipo)")
+        }
         XCTAssertTrue(b.salida.dicho.isEmpty)
-        XCTAssertEqual(b.centro.avisos.map(\.tipo), [.redCaida])
-        XCTAssertEqual(b.centro.emitir(.proximidad, "Objeto a 1 metro."), .hablado, "lo urgente sigue sonando")
+        XCTAssertEqual(Set(b.centro.avisos.map(\.tipo)), [.redCaida, .datosViejos, .gpsImpreciso], "siguen en la lista")
 
-        b.centro.silenciar(.advertencia, false)
-        XCTAssertFalse(b.centro.silenciada(.advertencia))
-        XCTAssertEqual(b.centro.emitir(.datosViejos, TextoAvisos.datosViejos), .silenciado(.cedeAUnAviso), "suena el urgente")
+        // Con las advertencias silenciadas, todo lo urgente suena: no hay forma de silenciarlo.
+        let urgentes: [(TipoAviso, String)] = [
+            (.proximidad, "Objeto a 1 metro."), (.datoVencido, "Sin datos del sensor."), (.accesorioPerdido, "Accesorio desconectado."),
+        ]
+        for (tipo, texto) in urgentes {
+            XCTAssertEqual(b.centro.emitir(tipo, texto), .hablado, "\(tipo)")
+            XCTAssertEqual(b.salida.dicho.last, texto)
+        }
+
+        b.centro.silenciarAdvertencias(false)
+        XCTAssertFalse(b.centro.advertenciasSilenciadas)
+        XCTAssertEqual(b.centro.emitir(.redCaida, "otro texto"), .silenciado(.cedeAUnAviso), "ya no está silenciada; ahora cede al urgente que suena")
     }
 
-    func testRepetirDiceElAvisoVigenteAunSilenciadoYExplicaPorQueNoSeDijo() {
+    func testRepetirDiceElTextoConLaReservaDelEnlaceSinAutenticarYLaFilaLaDeclara() {
         let b = BancoCentro()
-        b.centro.silenciar(.advertencia, true)
+        let conReserva = "Objeto a 1 metro. \(TextoAccesorio.reservaEnlace)"
+        b.centro.emitir(.proximidad, "Objeto a 1 metro.", textoVoz: conReserva, enlaceSinAutenticar: true)
+        XCTAssertEqual(b.salida.dicho, ["Objeto a 1 metro."], "la voz de ahora no llevaba la reserva (ya se oyó entera)")
+        let aviso = b.centro.avisos[0]
+        XCTAssertEqual(aviso.texto, "Objeto a 1 metro.", "la lista muestra la medida")
+        XCTAssertTrue(aviso.enlaceSinAutenticar, "y la fila declara el enlace")
+
+        b.centro.repetir(.proximidad)
+        XCTAssertEqual(b.salida.dicho.last, conReserva, "repetir dice lo mismo con la reserva")
+
+        // Un aviso sin reserva (consulta, enlace autenticado) se repite tal cual y no declara nada.
+        b.salida.terminarSola()
+        b.centro.emitir(.redCaida, TextoAvisos.redCaida)
+        XCTAssertFalse(b.centro.avisos[0].enlaceSinAutenticar)
+        b.centro.repetir(.redCaida)
+        XCTAssertEqual(b.salida.dicho.last, TextoAvisos.redCaida)
+    }
+
+    func testRepetirDiceElAvisoVigenteAunSilenciadoYExplicaPorQueNoSeDijo() throws {
+        let b = BancoCentro()
+        b.centro.silenciarAdvertencias(true)
         b.centro.emitir(.redCaida, TextoAvisos.redCaida)
         XCTAssertTrue(b.salida.dicho.isEmpty)
 
         b.centro.repetir(.redCaida)
         XCTAssertEqual(b.salida.dicho, [TextoAvisos.redCaida], "repetir es una orden: ignora el silencio")
         XCTAssertEqual(b.centro.resultadoRepeticion, TextoAvisos.repitiendo)
-        XCTAssertTrue(b.accesibles.anuncios.isEmpty, "ya suena: no se anuncia encima")
         XCTAssertEqual(b.centro.repeticiones, 1)
 
         b.ruta.valor = .noPrivada
         b.centro.repetir(.redCaida)
         XCTAssertEqual(b.salida.dicho.count, 1, "sin salida privada no se dice")
-        XCTAssertEqual(b.centro.resultadoRepeticion, TextoAvisos.noSeDijo(.rutaNoPrivada))
-        XCTAssertEqual(b.accesibles.anuncios, [TextoAvisos.noSeDijo(.rutaNoPrivada)], "se anuncia el motivo")
+        XCTAssertEqual(b.centro.resultadoRepeticion, TextoAvisos.noSeDijo(.rutaNoPrivada), "el motivo va a la pantalla, que lleva el foco")
         XCTAssertEqual(b.centro.repeticiones, 2)
 
         b.ruta.valor = .privada
-        b.reloj.avanzar(TipoAviso.redCaida.vigenciaMs + 1)
+        b.reloj.avanzar(try XCTUnwrap(TipoAviso.redCaida.vigenciaMs) + 1)
         b.centro.repetir(.redCaida)
         XCTAssertEqual(b.salida.dicho.count, 1, "un aviso caducado no se repite como si fuera actual")
         XCTAssertEqual(b.centro.resultadoRepeticion, TextoAvisos.yaNoVigente)
@@ -318,6 +383,20 @@ final class CentroAvisosTests: XCTestCase {
         XCTAssertEqual(b.vigentes(), [])
     }
 
+    func testElGpsImpreciosoSeEmiteComoAdvertenciaDeLaUbicacionConSuTexto() {
+        let b = BancoCentro()
+        XCTAssertEqual(b.centro.emitir(.gpsImpreciso, TextoAvisos.gpsImpreciso), .hablado)
+        XCTAssertEqual(b.salida.dicho, [TextoAvisos.gpsImpreciso])
+        XCTAssertEqual(b.centro.avisos.map(\.tipo), [.gpsImpreciso])
+        XCTAssertEqual(b.centro.avisos[0].tipo.severidad, .advertencia)
+        XCTAssertEqual(TextoAvisos.gpsImpreciso, "Tu ubicación es imprecisa.", "solo el hecho: la app no promete un comportamiento")
+
+        // Es un resultado puntual de la ubicación: envejece y no toca los avisos de otras fuentes.
+        b.centro.emitir(.proximidad, "Objeto a 1 metro.")
+        b.reloj.avanzar(10_001)
+        XCTAssertEqual(b.vigentes(), [.proximidad])
+    }
+
     func testLaRedCaidaNoImpideAvisosFisicos() {
         let b = BancoCentro()
         b.centro.consultaCambio(.error(.sinConexion))
@@ -358,6 +437,13 @@ final class CentroAvisosTests: XCTestCase {
             XCTAssertTrue(frase.hasSuffix("."), frase)
         }
     }
+
+    func testLaFilaDeUnAvisoConEnlaceSinAutenticarLoDeclaraEnUnaOracion() {
+        let nota = TextoAvisos.enlaceSinAutenticar
+        XCTAssertTrue(nota.hasPrefix("Enlace sin autenticar"), nota)
+        XCTAssertEqual(nota.filter { $0 == "." }.count, 1, "una oración por Text: \(nota)")
+        XCTAssertTrue(nota.hasSuffix("."), nota)
+    }
 }
 
 /// El módulo de avisos integrado con la sesión del accesorio (transporte y voz falsos: simulación, no hardware).
@@ -382,6 +468,59 @@ final class AvisosSesionTests: XCTestCase {
         XCTAssertEqual(aviso.texto, objeto)
         XCTAssertEqual(banco.salida.dicho.last, objeto, "lo que se lista es lo que se dijo")
         XCTAssertEqual(aviso.tipo.severidad, .urgente)
+        XCTAssertNil(aviso.caducaMs, "sin temporizador: dura mientras dure el objeto delante")
+        XCTAssertFalse(aviso.enlaceSinAutenticar, "enlace autenticado: la fila no declara nada")
+        XCTAssertEqual(aviso.textoVoz, objeto)
+    }
+
+    func testConEnlaceSinAutenticarLaFilaLoDeclaraYRepetirDiceLaReserva() throws {
+        let banco = BancoAccesorio(nivel: .cifradoSinAutenticar)
+        defer { banco.cerrar() }
+        _ = try conObjeto(banco)
+        let centro = banco.modelo.centro
+        let aviso = try XCTUnwrap(centro.avisos.first)
+        XCTAssertEqual(aviso.texto, objeto, "la lista muestra la medida")
+        XCTAssertTrue(aviso.enlaceSinAutenticar, "la fila declara que el enlace no es autenticado")
+        XCTAssertEqual(aviso.textoVoz, "\(objeto) \(TextoAccesorio.reservaEnlace)")
+
+        centro.repetir(.proximidad)
+        XCTAssertEqual(banco.salida.dicho.last, "\(objeto) \(TextoAccesorio.reservaEnlace)", "repetir no pierde la reserva")
+        XCTAssertEqual(centro.resultadoRepeticion, TextoAvisos.repitiendo)
+    }
+
+    func testUnAvisoDeLaSesionNoCaducaMientrasDuraSuEstadoYSeCierraAlAcabar() throws {
+        let banco = BancoAccesorio()
+        defer { banco.cerrar() }
+        banco.transporte.emitir(.disponibilidad(.apagado), token: tokenSinConexion)
+        banco.iniciar()
+        let estado = EstadoAccesorio.bluetoothNoDisponible(.apagado)
+        XCTAssertEqual(banco.modelo.estado, estado)
+        let centro = banco.modelo.centro
+        XCTAssertEqual(centro.avisos.first?.tipo, .accesorioPerdido)
+        let dicho = banco.salida.dicho
+
+        banco.reloj.avanzar(600_000)  // diez minutos: muy por encima de cualquier vigencia
+        banco.modelo.evaluar()
+        XCTAssertEqual(banco.modelo.estado, estado, "el estado no cambió")
+        XCTAssertTrue(centro.vigente(try XCTUnwrap(centro.avisos.first)), "sigue siendo verdad: sigue vigente y con «Repetir»")
+        XCTAssertEqual(banco.salida.dicho, dicho, "y no se repite solo")
+
+        banco.transporte.emitir(.disponibilidad(.disponible), token: tokenSinConexion)
+        banco.modelo.evaluar()
+        XCTAssertEqual(banco.modelo.estado, .conectando)
+        XCTAssertFalse(centro.vigente(try XCTUnwrap(centro.avisos.first)), "acabó su estado: la sesión lo cierra")
+    }
+
+    func testUnObjetoQueDejaDeLlegarCierraLaProximidadYAbreElDatoVencido() throws {
+        let banco = BancoAccesorio()
+        defer { banco.cerrar() }
+        let escenario = try conObjeto(banco)
+        banco.reloj.fijar(escenario.entregas[0].instante + 501)
+        banco.modelo.evaluar()
+        XCTAssertEqual(banco.modelo.estado, .sinDatos(.sinRecepcion))
+        let centro = banco.modelo.centro
+        let vigentes = centro.avisos.filter { centro.vigente($0) }.map(\.tipo)
+        XCTAssertEqual(vigentes, [.datoVencido], "la proximidad cerró y queda el dato vencido")
     }
 
     func testPerderElAccesorioHablandoCortaLaMedidaYDiceElAvisoUrgente() throws {
@@ -424,18 +563,15 @@ final class AvisosSesionTests: XCTestCase {
         XCTAssertFalse(centro.vigente(try XCTUnwrap(centro.avisos.first { $0.tipo == .accesorioPerdido })), "la rutina cierra el aviso")
     }
 
-    func testSilenciarLaVozUrgenteNoOcultaElAvisoYAlEncenderlaSeDiceElEstadoDeAhora() throws {
+    func testSilenciarLasAdvertenciasNoCallaLaVozUrgenteDeLaSesion() throws {
         let banco = BancoAccesorio()
         defer { banco.cerrar() }
-        banco.modelo.centro.silenciar(.urgente, true)
+        banco.modelo.centro.silenciarAdvertencias(true)
         _ = try conObjeto(banco)
-        XCTAssertFalse(banco.salida.dicho.contains(objeto), "silenciado: no suena")
-        XCTAssertEqual(banco.modelo.centro.avisos.first?.texto, objeto, "pero consta en la lista")
+        XCTAssertEqual(banco.salida.dicho.last, objeto, "lo urgente suena aunque las advertencias estén silenciadas")
 
-        banco.modelo.centro.silenciar(.urgente, false)
-        banco.modelo.fijarVozPropia(true)  // `reanunciar`: el estado de ahora
-        XCTAssertEqual(banco.salida.dicho.last, objeto)
-        XCTAssertEqual(banco.modelo.centro.avisos.count, 1, "repetir el estado no duplica la lista")
+        banco.transporte.emitir(.desconectado)
+        XCTAssertEqual(banco.salida.dicho.last, "Accesorio desconectado.", "perder el accesorio también")
     }
 
     func testSuspenderLaSesionCierraSusAvisos() throws {

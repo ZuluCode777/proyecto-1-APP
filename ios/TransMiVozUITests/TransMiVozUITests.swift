@@ -1476,6 +1476,9 @@ final class TransMiVozAjustesTextoGrandeUITests: AjustesUITestCase {
 /// Base de las pruebas de la pestaña Avisos (EA-20, #46): lanza la app con entradas simuladas (`-PRUEBAS_UI_SIMULADAS`),
 /// abre la pestaña y hace una pregunta a la consulta simulada. La voz es de mentira y la ruta de audio no es privada.
 class AvisosUITestCase: AjustesUITestCase {
+    // `abrirPestana` y `preguntar` repiten a propósito los ayudantes de otras clases de este archivo: aquellos son privados
+    // de su archivo o de su clase y los ayudantes del banco de pruebas de interfaz no se tocan (tolerancias y grupos de
+    // auditoría incluidos). Si algún día se hacen compartidos, estas copias sobran.
     func abrirPestana(_ nombre: String, file: StaticString = #filePath, line: UInt = #line) {
         let pestana = app.tabBars.buttons[nombre]
         XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña \(nombre)", file: file, line: line)
@@ -1581,7 +1584,7 @@ final class TransMiVozAvisosTextoGrandeUITests: AvisosUITestCase {
         let fase = FaseAuditada("avisos-texto-muy-grande", app: app, caso: self, velocidad: .slow)
         for (id, contexto) in [
             ("encabezado-anuncios-oficiales", "oficiales"), ("anuncios-oficiales-sin-fuente-1", "oficiales-sin-fuente"),
-            ("avisos-propios-vacio-1", "propios"), ("interruptor-silenciar-urgentes", "voz-urgentes"),
+            ("avisos-propios-vacio-1", "propios"),
             ("interruptor-silenciar-advertencias", "voz-advertencias"), ("nota-silencio-avisos-2", "nota"),
             ("escenario-simulado-2", "simulado"),
         ] {

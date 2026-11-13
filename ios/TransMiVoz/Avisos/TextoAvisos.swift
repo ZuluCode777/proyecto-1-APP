@@ -8,7 +8,7 @@ enum TextoAvisos {
     // Una oración corta cada una: es lo que se dice y lo que se lista, y con el texto más grande debe caber entera en pantalla.
     static let redCaida = "No hay conexión con el servidor."
     static let datosViejos = "Los datos de TransMilenio no están actualizados."
-    static let gpsImpreciso = "Tu ubicación es imprecisa, así que no se da ningún giro."
+    static let gpsImpreciso = "Tu ubicación es imprecisa."
 
     // MARK: Lista
 
@@ -35,13 +35,16 @@ enum TextoAvisos {
     ]
     static let avisoModoPruebas = "Modo de pruebas: los avisos de esta pantalla nacen de entradas simuladas."
 
-    static let silenciarUrgentes = "Silenciar avisos urgentes"
+    /// Solo las advertencias se pueden silenciar: la voz de lo urgente (accesorio, sensor, proximidad) nunca, porque no hay otra
+    /// forma no visual de enterarse.
     static let silenciarAdvertencias = "Silenciar avisos de advertencia"
     static let notaSilencio = [
-        "Silenciar apaga solo la voz de ese nivel.",
-        "Los avisos siguen en esta lista.",
-        "Repetir un aviso siempre intenta decirlo en voz alta.",
+        "Silenciar apaga solo la voz de la red caída, los datos viejos y el GPS impreciso.",
+        "Los avisos urgentes (accesorio, sensor y proximidad) no se pueden silenciar.",
+        "Los avisos siguen en esta lista y Repetir siempre intenta decirlos en voz alta.",
     ]
+    /// La declaración de EA-15 en una oración: la fila de un aviso de la sesión la lleva mientras el enlace no es autenticado.
+    static let enlaceSinAutenticar = TextoAccesorio.parrafosAvisoEnlace[0]
 
     static let repitiendo = "Repitiendo el aviso."
     static let yaNoVigente = "Ese aviso ya no está vigente, así que no se repite."
@@ -85,7 +88,7 @@ enum TextoAvisos {
         case .audioNoDisponible: return "No se dijo en voz alta: el sistema no dejó activar el audio."
         case .vozApagada: return "No se dijo en voz alta: la voz de la app está apagada."
         case .cedeAUnAviso: return "No se dijo en voz alta: suena otro aviso más importante."
-        case .severidadSilenciada: return "No se dijo en voz alta: la voz de este nivel está silenciada."
+        case .severidadSilenciada: return "No se dijo en voz alta: la voz de las advertencias está silenciada."
         }
     }
 }
