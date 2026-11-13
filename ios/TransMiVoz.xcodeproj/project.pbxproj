@@ -351,6 +351,7 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Info-TransMiVoz.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = TransMiVoz;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "TransMiVoz usa Bluetooth para conectarse al accesorio de proximidad que tú elijas. No lo usa para nada más.";
@@ -380,6 +381,7 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Info-TransMiVoz.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = TransMiVoz;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "TransMiVoz usa Bluetooth para conectarse al accesorio de proximidad que tú elijas. No lo usa para nada más.";
