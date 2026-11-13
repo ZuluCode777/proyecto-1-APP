@@ -72,7 +72,8 @@ jobs:
           DEMO_CAMARA: ${{ runner.temp }}/camara-letrero.mjpeg
         run: |
           bash demo/web/camara-letrero.sh "$DEMO_CAMARA" || echo "Sin imagen de letrero: se usará el patrón de Chrome."
-          node demo/web/grabar.mjs
+          node demo/web/sondear-ventana.mjs
+          DEMO_SOLO=web-04-rutas node demo/web/grabar.mjs
 
       - name: Registro del servidor
         if: ${{ always() }}
