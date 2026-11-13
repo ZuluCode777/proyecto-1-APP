@@ -145,6 +145,14 @@ queda PENDIENTE de EA-14/#40, antes de exponer.
 | ¿Puede un cliente inyectar saltos extra? | Que no muevan el salto de confianza |
 | `x-real-ip`: ¿lo escribe el proxy o el cliente? | No usarlo como identidad si lo puede escribir el cliente |
 
+**Sonda temporal (#40).** `GET /api/diagnostico-proxy` devuelve en JSON solo
+`x-forwarded-for`, `x-real-ip`, `cf-connecting-ip`, `true-client-ip`, `forwarded`,
+`x-forwarded-proto` y `x-forwarded-host`, tal como llegan (`null` si faltan): ni
+otras cabeceras, ni entorno, ni cuerpo, ni registro. Exige la clave HTTP Basic (la
+del `proxy` y la misma guardia en la ruta). Sirve para medir la cadena real de
+Render desde redes conocidas; se quita en cuanto #40 termine
+(`app/api/diagnostico-proxy/route.ts`, marcada «shortcut: sonda temporal de #40»).
+
 **Hallazgo medido en Next local (16.3.3, `next start` en loopback; NO es
 Render).** Next solo escribe `x-forwarded-for` cuando la petición no lo trae:
 sin la cabecera, el manejador la ve como `127.0.0.1` (la dirección del socket);
