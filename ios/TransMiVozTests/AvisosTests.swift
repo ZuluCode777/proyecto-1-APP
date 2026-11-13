@@ -186,6 +186,15 @@ final class CentroAvisosTests: XCTestCase {
         XCTAssertEqual(b.vigentes(), [], "al acabar su estado la sesión lo cierra")
     }
 
+    func testRetirarDiceSiCerroAlgo() {
+        let b = BancoCentro()
+        XCTAssertFalse(b.centro.retirar(fuente: .sesion), "no había nada abierto")
+        b.centro.emitir(.proximidad, "Objeto a 1 metro.")
+        XCTAssertFalse(b.centro.retirar(fuente: .consulta), "otra fuente")
+        XCTAssertTrue(b.centro.retirar(fuente: .sesion))
+        XCTAssertFalse(b.centro.retirar(fuente: .sesion), "ya estaba cerrado")
+    }
+
     func testUnAvisoNuevoCierraElVigenteDeSuFuenteYNoElDeOtra() {
         let b = BancoCentro()
         b.centro.emitir(.redCaida, TextoAvisos.redCaida)
@@ -437,6 +446,8 @@ final class CentroAvisosTests: XCTestCase {
 
     func testLaFilaDeUnAvisoConEnlaceSinAutenticarLoDeclaraEnUnaOracion() {
         let nota = TextoAvisos.enlaceSinAutenticar
+        XCTAssertEqual(nota, TextoAccesorio.declaracionEnlaceSinAutenticar)
+        XCTAssertEqual(TextoAccesorio.parrafosAvisoEnlace.first, nota, "es la primera oración del aviso fijo")
         XCTAssertTrue(nota.hasPrefix("Enlace sin autenticar"), nota)
         XCTAssertEqual(nota.filter { $0 == "." }.count, 1, "una oración por Text: \(nota)")
         XCTAssertTrue(nota.hasSuffix("."), nota)
@@ -506,6 +517,73 @@ final class AvisosSesionTests: XCTestCase {
         banco.modelo.evaluar()
         XCTAssertEqual(banco.modelo.estado, .conectando)
         XCTAssertFalse(centro.vigente(try XCTUnwrap(centro.avisos.first)), "acabó su estado: la sesión lo cierra")
+    }
+
+    func testUnAvisoQueVuelveTrasUnEstadoDeRutinaSigueVigenteYSeDiceDeNuevo() throws {
+        let banco = BancoAccesorio()
+        defer { banco.cerrar() }
+        banco.transporte.emitir(.disponibilidad(.apagado), token: tokenSinConexion)
+        banco.iniciar()
+        let centro = banco.modelo.centro
+        let apagado = EstadoAccesorio.bluetoothNoDisponible(.apagado)
+        XCTAssertEqual(banco.modelo.estado, apagado)
+        let dicho = "Bluetooth no disponible. Sin avisos."
+        XCTAssertEqual(banco.salida.dicho.last, dicho)
+
+        // Vuelve el Bluetooth (rutina: conectando) y se apaga otra vez: el mismo aviso es verdad de nuevo.
+        banco.salida.terminarSola()
+        banco.transporte.emitir(.disponibilidad(.disponible), token: tokenSinConexion)
+        banco.modelo.evaluar()
+        XCTAssertEqual(banco.modelo.estado, .conectando)
+        XCTAssertFalse(centro.vigente(try XCTUnwrap(centro.avisos.first)), "la rutina cerró el aviso")
+        for _ in 0..<3 { banco.modelo.evaluar() }
+        XCTAssertEqual(banco.salida.dicho.filter { $0 == "Conectando con el accesorio." }.count, 1, "la rutina no se repite cada latido")
+
+        banco.transporte.emitir(.disponibilidad(.apagado), token: tokenSinConexion)
+        XCTAssertEqual(banco.modelo.estado, apagado)
+        let aviso = try XCTUnwrap(centro.avisos.first)
+        XCTAssertEqual(aviso.tipo, .accesorioPerdido)
+        XCTAssertTrue(centro.vigente(aviso), "volvió a ser verdad: vigente y con «Repetir»")
+        XCTAssertEqual(banco.salida.dicho.last, dicho, "y se dice otra vez")
+        centro.repetir(.accesorioPerdido)
+        XCTAssertEqual(centro.resultadoRepeticion, TextoAvisos.repitiendo)
+
+        // Lo mismo si la rutina ni siquiera llegó a hablar porque el aviso todavía sonaba (cede) y el aviso vuelve enseguida.
+        banco.transporte.emitir(.disponibilidad(.disponible), token: tokenSinConexion)
+        XCTAssertEqual(banco.modelo.estado, .conectando)
+        XCTAssertFalse(banco.salida.dicho.suffix(1).contains("Conectando con el accesorio."), "la rutina cedió al aviso que suena")
+        XCTAssertFalse(centro.vigente(try XCTUnwrap(centro.avisos.first)))
+        banco.transporte.emitir(.disponibilidad(.apagado), token: tokenSinConexion)
+        XCTAssertTrue(centro.vigente(try XCTUnwrap(centro.avisos.first)), "volvió el mismo aviso: vigente otra vez")
+    }
+
+    func testLaPerdidaDelAccesorioJustoTrasReconectarSigueVigenteAunqueMedieUnEstadoSinLocucion() throws {
+        let banco = BancoAccesorio()
+        defer { banco.cerrar() }
+        let escenario = try conObjeto(banco)
+        let centro = banco.modelo.centro
+
+        banco.transporte.emitir(.desconectado)
+        XCTAssertEqual(banco.modelo.estado, .desconectado)
+        banco.salida.terminarSola()
+        // El accesorio vuelve pero aún no entrega la información: «conectado» no tiene locución.
+        banco.transporte.emitir(.conectado(id: banco.accesorio.id))
+        XCTAssertEqual(banco.modelo.estado, .conectado)
+        XCTAssertFalse(centro.vigente(try XCTUnwrap(centro.avisos.first { $0.tipo == .accesorioPerdido })), "ya no está perdido")
+
+        banco.transporte.emitir(.desconectado)
+        XCTAssertEqual(banco.modelo.estado, .desconectado)
+        let perdido = try XCTUnwrap(centro.avisos.first)
+        XCTAssertEqual(perdido.tipo, .accesorioPerdido)
+        XCTAssertTrue(centro.vigente(perdido), "se perdió otra vez: vigente y con «Repetir»")
+        XCTAssertEqual(banco.salida.dicho.filter { $0 == "Accesorio desconectado." }.count, 2, "se dice una vez más en la segunda caída")
+
+        // Y la misma pérdida tras una reconexión completa (estados de rutina de por medio).
+        banco.salida.terminarSola()
+        banco.sincronizar(escenario)
+        XCTAssertEqual(banco.modelo.estado, .sinDeteccion)
+        banco.transporte.emitir(.desconectado)
+        XCTAssertTrue(centro.vigente(try XCTUnwrap(centro.avisos.first)))
     }
 
     func testUnObjetoQueDejaDeLlegarCierraLaProximidadYAbreElDatoVencido() throws {

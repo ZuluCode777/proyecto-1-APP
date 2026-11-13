@@ -89,12 +89,18 @@ final class CentroAvisos {
     }
 
     /// Cierra los avisos vigentes de una fuente: la situación cambió o la fuente se detuvo. Siguen en la lista como anteriores.
-    func retirar(fuente: FuenteAviso) {
+    /// Devuelve si cerró alguno: quien emite lo usa para olvidar lo que ya dijo, porque si el mismo aviso vuelve tiene que
+    /// emitirse de nuevo y no darse por repetido.
+    @discardableResult
+    func retirar(fuente: FuenteAviso) -> Bool {
         let ahora = reloj()
+        var cerro = false
         for i in avisos.indices where avisos[i].tipo.fuente == fuente && avisos[i].vigente(en: ahora) {
             avisos[i].caducaMs = ahora
             avisos[i].pendienteDeVoz = false
+            cerro = true
         }
+        return cerro
     }
 
     /// La persona pide oír de nuevo un aviso vigente, con su reserva del enlace sin autenticar si la lleva. Es una orden

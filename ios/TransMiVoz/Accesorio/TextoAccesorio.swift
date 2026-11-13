@@ -186,6 +186,10 @@ enum TextoAccesorio {
         }
     }
 
+    /// La primera oración del aviso fijo, con nombre propio para quien la muestra sola (la fila de un aviso en la lista, EA-20):
+    /// así no depende del orden de `parrafosAvisoEnlace`.
+    static let declaracionEnlaceSinAutenticar = "Enlace sin autenticar: un aparato ajeno podría hacerse pasar por el accesorio."
+
     /// El aviso fijo de la pantalla mientras el enlace no se puede verificar, repartido en párrafos. Con el texto más grande
     /// de accesibilidad el aviso en un solo bloque medía 869 pt, más que el área visible (659 pt), y no había posición que
     /// lo mostrara entero. Se corta donde acaba la afirmación; la aclaración entre paréntesis queda con la frase que le sigue.
@@ -195,7 +199,7 @@ enum TextoAccesorio {
     /// sin detección no es camino libre. Cada párrafo mide como mucho lo que medía el más largo del texto anterior (84
     /// caracteres) más dos: no se agranda.
     static let parrafosAvisoEnlace = [
-        "Enlace sin autenticar: un aparato ajeno podría hacerse pasar por el accesorio.",
+        declaracionEnlaceSinAutenticar,
         "Los avisos se ven y se dicen con esa reserva. Sin detección no significa camino libre.",
     ]
 

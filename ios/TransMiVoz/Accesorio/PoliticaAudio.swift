@@ -62,7 +62,7 @@ enum MotivoSilencio: Equatable {
     case vozApagada
     /// Suena un aviso más importante: un mensaje menor no lo corta ni lo calla, y se descarta (queda en pantalla).
     case cedeAUnAviso
-    /// La persona silenció la voz de esa severidad en la lista de avisos (EA-20). El aviso queda en la lista.
+    /// La persona silenció la voz de las advertencias en la lista de avisos (EA-20). El aviso queda en la lista.
     case severidadSilenciada
 }
 
