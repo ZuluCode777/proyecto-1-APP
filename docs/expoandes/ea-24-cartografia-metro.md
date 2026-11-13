@@ -37,6 +37,8 @@ La pantalla «Metro de Bogotá» del modo baja visión tiene un mapa sobre el co
 
 El listado de 16 estaciones sigue completo y no depende del mapa. Los mapas de ruta, de viaje y del GPS no dibujan el Metro. Una prueba lee el árbol sintáctico de cada archivo y falla si alguno importa la cartografía o le pasa una capa a `TransitMap`, también con un alias, con `{...props}` o con un `import()`.
 
+El iPhone recibe el mismo contenido (16 estaciones con su huella, trazado, rótulo y atribución) por `POST /api/planificador`, operación `metro-linea-1` (`lib/contrato-metro.ts`; ver [EA-25](ea-25-paridad-ios.md)). Es el único consumidor de la cartografía además del listado: la prueba anterior lo admite por nombre y otra compara su texto con el de `MetroList`. Entrega huellas y trazado, nunca un punto por estación.
+
 ## Fuente y consulta
 
 Los datos son de la Empresa Metro de Bogotá, publicados en el servicio de Catastro e IDECA. `pnpm sync:metro-cartografia` hace cuatro consultas GET públicas y escribe `data/metro-cartografia.json`.

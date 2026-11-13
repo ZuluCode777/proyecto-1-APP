@@ -374,6 +374,19 @@ function buscarPlanes(
   return rank(transfers).slice(0, limit)
 }
 
+/** Planes que se piden a la vez: el primero es el mejor y los demás, sus alternativas. */
+export const MAX_PLANES_VIAJE = 3
+
+/**
+ * Códigos de las ALTERNATIVAS de un viaje operativo, las que la web dice con «También te sirven…»
+ * (`lib/local-agent.ts`): las demás rutas directas, de menos a más estaciones. Si el mejor plan lleva un
+ * transbordo no hay alternativas: ningún otro plan se ofrece como opción.
+ */
+export function alternativasDelViaje(planes: TripPlan[]): string[] {
+  const [mejor, ...otros] = planes
+  return mejor?.length === 1 ? otros.map((plan) => plan[0].route.code) : []
+}
+
 /**
  * Planea un VIAJE OPERATIVO de un lugar a otro usando solo PARADAS ATENDIDAS
  * verificadas y vigentes, con sentido confirmado y con la hora actual dentro de
@@ -396,7 +409,7 @@ function buscarPlanes(
 export function planTrip(
   places: { origin: Place; destination: Place },
   data: TransmilenioData,
-  limit = 3,
+  limit = MAX_PLANES_VIAJE,
   now: Date = new Date(),
 ): TripPlan[] {
   return buscarPlanes(places, data, limit, now, true)
@@ -461,8 +474,11 @@ function rank(plans: TripPlan[]): TripPlan[] {
   return plans.sort((a, b) => a.length - b.length || totalStations(a) - totalStations(b))
 }
 
+/** Estaciones cercanas que lista el GPS auditivo. */
+export const MAX_ESTACIONES_CERCANAS = 4
+
 /** Estaciones ordenadas por cercanía a una coordenada. */
-export function nearestStations(from: LatLng, data: TransmilenioData, limit = 4): StationWithDistance[] {
+export function nearestStations(from: LatLng, data: TransmilenioData, limit = MAX_ESTACIONES_CERCANAS): StationWithDistance[] {
   return data.stations
     .map((station) => ({ ...station, distance: distanceMeters(from, station) }))
     .sort((a, b) => a.distance - b.distance)

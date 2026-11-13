@@ -3,6 +3,7 @@ import {
   LIMITE_PLANEAR,
   MAXIMO_BYTES_CUERPO,
   PeticionPlanificadorSchema,
+  RESOLUCION_METRO,
   VENTANA_LIMITE_MS,
   resolverPeticion,
 } from "@/lib/contrato-planificador"
@@ -13,8 +14,13 @@ import { getTransmilenioData } from "@/lib/transmilenio-data"
 
 /**
  * Entrada estructurada del planificador para el iPhone (EA-25, #51): buscar rutas,
- * detalle de una ruta, lugares y viaje entre dos lugares elegidos. Contrato y
+ * detalle de una ruta, lugares y viaje entre dos lugares elegidos, más la paridad con
+ * la web: Metro de la Línea 1 y estaciones cercanas a una coordenada. Contrato y
  * decisiones en `lib/contrato-planificador.ts`; aquí solo se lee, valida y responde.
+ *
+ * Privacidad de `estaciones-cercanas`: la coordenada, la precisión y el rumbo llegan en el
+ * cuerpo (nunca en la URL), se usan para calcular la respuesta y no se escriben en ningún
+ * registro, no se guardan y no se devuelven. Este manejador no registra ninguna petición.
  *
  * Pasa por el `proxy` (HTTP Basic), como `/api/transmilenio`. Detrás del `proxy` Next
  * almacena el cuerpo entero antes de llamar al manejador (ver `docs/expoandes/ea-10-recursos-autenticacion.md`):
@@ -51,6 +57,10 @@ export async function POST(req: Request) {
     )
   }
 
-  const resolucion = resolverPeticion(peticion.data, await getTransmilenioData(), new Date())
+  // El Metro es un catálogo aparte: no espera ni carga el de TransMilenio.
+  const resolucion =
+    peticion.data.operacion === "metro-linea-1"
+      ? RESOLUCION_METRO
+      : resolverPeticion(peticion.data, await getTransmilenioData(), new Date())
   return Response.json(resolucion.cuerpo, { status: resolucion.estado })
 }

@@ -5,22 +5,16 @@ import { Navigation, MapPin, Volume2, Map, LocateFixed } from "lucide-react"
 import { useSpeech } from "@/hooks/use-speech"
 import { ScreenHeader } from "@/components/screen-header"
 import { TransitMap, type MapMarker } from "@/components/transit-map"
-import {
-  bearingDegrees,
-  cardinal,
-  distanceMeters,
-  relativeDirection,
-  spokenDistance,
-} from "@/lib/geo"
-import { nearestStations, type StationWithDistance, type TransmilenioData } from "@/lib/routes"
+import { distanceMeters, spokenDistance } from "@/lib/geo"
+import { MAX_ESTACIONES_CERCANAS, nearestStations, type StationWithDistance, type TransmilenioData } from "@/lib/routes"
 import {
   EDAD_MAXIMA_POSICION_MS,
+  cardinalHacia,
   decisionLlegada,
   horaDeEvento,
   leerPosicionNavegador,
-  modoOrientacion,
+  orientarHacia,
   ubicacionVigente,
-  validarRumbo,
   type LecturaRumbo,
   type LecturaUbicacion,
 } from "@/lib/ubicacion"
@@ -79,7 +73,7 @@ export function AuditoryGps({ data, onBack }: AuditoryGpsProps) {
 
   const ubicacionActual = ubicacionVigente(position) ?? null
   const nearby = useMemo(
-    () => (ubicacionActual ? nearestStations(ubicacionActual, data, 4) : []),
+    () => (ubicacionActual ? nearestStations(ubicacionActual, data, MAX_ESTACIONES_CERCANAS) : []),
     [ubicacionActual, data],
   )
 
@@ -101,31 +95,21 @@ export function AuditoryGps({ data, onBack }: AuditoryGpsProps) {
    * rumbo fiable hay un giro relativo. Con precisión desconocida o insuficiente,
    * o brújula no fiable, se da una referencia CARDINAL estimada con su límite;
    * si la estación cae dentro del margen de error de la ubicación no se da
-   * dirección alguna. Es orientación, no un itinerario peatonal accesible.
+   * dirección alguna. Es orientación, no un itinerario peatonal accesible. La
+   * decisión es `orientarHacia` (`lib/ubicacion.ts`), la misma que responde
+   * `POST /api/planificador` al iPhone.
    */
-  const instruction = useCallback((station: StationWithDistance, current: LecturaUbicacion): string => {
-    const dist = station.distance
-    const bearing = bearingDegrees(current, { lat: station.lat, lng: station.lng })
-    const rumbo = validarRumbo(sesionRef.current?.ultimoRumbo)
-    const modo = modoOrientacion(current, dist, rumbo)
-    const base = `${station.name} está a ${spokenDistance(dist)}`
-    switch (modo) {
-      case "sin-direccion":
-        return `${base} según tu ubicación estimada, pero esa ubicación tiene un margen de error de unos ${spokenDistance(current.precision ?? 0)}, así que no puedo decirte hacia dónde queda. Espera una lectura más precisa o acércate.`
-      case "cardinal-precision":
-        return `${base} ${cardinal(bearing)} (orientación aproximada respecto al norte; tu ubicación es imprecisa o sin precisión conocida, así que no te doy un giro).`
-      case "cardinal-brujula":
-        return `${base} ${cardinal(bearing)} (orientación aproximada respecto al norte; sin brújula fiable no sé hacia dónde miras).`
-      case "relativa":
-        return `${base} ${relativeDirection(rumbo.fiable ? rumbo.grados : 0, bearing)}.`
-    }
-  }, [])
+  const instruction = useCallback(
+    (station: StationWithDistance, current: LecturaUbicacion): string =>
+      orientarHacia(station, current, sesionRef.current?.ultimoRumbo).indicacion,
+    [],
+  )
 
   /** Dirección cardinal estimada para listas y anuncios; vacía si la estación cae dentro del margen de error. */
-  const cardinalEstimado = (lectura: LecturaUbicacion, est: StationWithDistance): string =>
-    modoOrientacion(lectura, est.distance, { fiable: false, motivo: "sin-dato" }) === "sin-direccion"
-      ? ""
-      : ` ${cardinal(bearingDegrees(lectura, { lat: est.lat, lng: est.lng }))}`
+  const cardinalEstimado = (lectura: LecturaUbicacion, est: StationWithDistance): string => {
+    const punto = cardinalHacia(lectura, est)
+    return punto ? ` ${punto}` : ""
+  }
 
   /**
    * Suscribe los oyentes de orientación UNA vez y GUARDA la última lectura cruda

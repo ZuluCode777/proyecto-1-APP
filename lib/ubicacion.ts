@@ -1,4 +1,4 @@
-import type { LatLng } from "@/lib/geo"
+import { bearingDegrees, cardinal, relativeDirection, spokenDistance, type LatLng } from "@/lib/geo"
 
 /**
  * Política PEQUEÑA y COMPARTIDA de ubicación para el issue #33 (EA-07): decide
@@ -305,4 +305,70 @@ export function modoOrientacion(
   if (esFinito(p) && distanciaM <= p) return "sin-direccion"
   if (!esFinito(p) || p > precisionMaximaM) return "cardinal-precision"
   return rumbo.fiable ? "relativa" : "cardinal-brujula"
+}
+
+/** Punto al que se orienta: nombre, coordenada y distancia en metros desde la lectura de posición. */
+export type PuntoDeOrientacion = LatLng & { name: string; distance: number }
+
+/**
+ * Referencia CARDINAL estimada hacia un punto («al noreste»), la que la lista del GPS auditivo pone junto a cada
+ * estación. `null` si el punto cae dentro del margen de error de la lectura: ni el norte es creíble. No depende del
+ * rumbo del dispositivo.
+ */
+export function cardinalHacia(lectura: Pick<LecturaUbicacion, "precision"> & LatLng, punto: PuntoDeOrientacion): string | null {
+  return modoOrientacion(lectura, punto.distance, { fiable: false, motivo: "sin-dato" }) === "sin-direccion"
+    ? null
+    : cardinal(bearingDegrees(lectura, punto))
+}
+
+export type Orientacion = {
+  modo: ModoOrientacion
+  /** Giro respecto a hacia dónde mira la persona («a tu derecha»); solo con el modo `relativa`. */
+  relativa: string | null
+  /** Frase que el GPS auditivo dice al orientar hacia el punto. */
+  indicacion: string
+}
+
+/**
+ * Indicación de ORIENTACIÓN hacia un punto. Todo se valida AQUÍ, al producir la dirección, con la lectura completa
+ * de posición (con su precisión) y de rumbo: solo con precisión suficiente Y rumbo fiable hay un giro relativo. Con
+ * precisión desconocida o insuficiente, o brújula no fiable, se da una referencia CARDINAL estimada con su límite;
+ * si el punto cae dentro del margen de error de la ubicación no se da dirección alguna. Es orientación, no un
+ * itinerario peatonal accesible. La usan por igual el GPS auditivo de la web y `POST /api/planificador`.
+ */
+export function orientarHacia(
+  punto: PuntoDeOrientacion,
+  lectura: LecturaUbicacion,
+  lecturaRumbo: LecturaRumbo | null | undefined,
+  ahora: number = Date.now(),
+): Orientacion {
+  const distancia = punto.distance
+  const bearing = bearingDegrees(lectura, punto)
+  const rumbo = validarRumbo(lecturaRumbo, ahora)
+  const modo = modoOrientacion(lectura, distancia, rumbo)
+  const base = `${punto.name} está a ${spokenDistance(distancia)}`
+  switch (modo) {
+    case "sin-direccion":
+      return {
+        modo,
+        relativa: null,
+        indicacion: `${base} según tu ubicación estimada, pero esa ubicación tiene un margen de error de unos ${spokenDistance(lectura.precision ?? 0)}, así que no puedo decirte hacia dónde queda. Espera una lectura más precisa o acércate.`,
+      }
+    case "cardinal-precision":
+      return {
+        modo,
+        relativa: null,
+        indicacion: `${base} ${cardinal(bearing)} (orientación aproximada respecto al norte; tu ubicación es imprecisa o sin precisión conocida, así que no te doy un giro).`,
+      }
+    case "cardinal-brujula":
+      return {
+        modo,
+        relativa: null,
+        indicacion: `${base} ${cardinal(bearing)} (orientación aproximada respecto al norte; sin brújula fiable no sé hacia dónde miras).`,
+      }
+    case "relativa": {
+      const giro = relativeDirection(rumbo.fiable ? rumbo.grados : 0, bearing)
+      return { modo, relativa: giro, indicacion: `${base} ${giro}.` }
+    }
+  }
 }

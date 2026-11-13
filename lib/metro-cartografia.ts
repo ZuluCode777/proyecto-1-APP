@@ -11,7 +11,8 @@ import { validarCartografiaMetro, type CartografiaMetro, type Posicion } from "@
  * están en `docs/expoandes/ea-24-cartografia-metro.md`.
  *
  * Es un módulo aparte del catálogo (`lib/metro.ts`) y de TransMilenio: no
- * importa ninguno de los dos y solo lo usa el listado del Metro. Una huella es
+ * importa ninguno de los dos y solo lo usan el listado del Metro y su contrato
+ * HTTP para el iPhone (`lib/contrato-metro.ts`, EA-25). Una huella es
  * infraestructura de un proyecto futuro: no es una entrada, una parada ni un
  * transbordo. La importación desde la fuente vive en
  * `lib/metro-cartografia-fuente.ts` y no llega al navegador.
