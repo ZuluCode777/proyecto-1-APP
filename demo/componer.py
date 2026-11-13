@@ -208,11 +208,20 @@ def subtitulos(datos: dict, total: float) -> str:
 def componer(json_path: Path, salida: Path) -> dict:
     datos = json.loads(json_path.read_text(encoding="utf-8"))
     carpeta = json_path.parent
-    if datos.get("plataforma") == "iphone":
-        datos = leer_iphone(datos, carpeta)
     video = carpeta / datos["video"]
     if not video.exists():
         raise FileNotFoundError(f"No existe {video}")
+    if datos.get("plataforma") == "iphone":
+        # simctl avisa «Recording started» antes del primer cuadro: el inicio real de los cuadros es la hora en que se
+        # detuvo la grabación menos la duración del video. Se usa si cae entre 0 y 10 s después del aviso.
+        fin_grabacion = datos.get("fin_grabacion_epoch")
+        if fin_grabacion:
+            real = float(fin_grabacion) - float(sondear(video, "format=duration", False))
+            retraso = real - float(datos["grabacion_epoch"])
+            if 0 <= retraso <= 10:
+                datos = dict(datos, grabacion_epoch=real)
+                print(f"  {datos['id']}: primer cuadro {retraso:.1f} s después del aviso de simctl")
+        datos = leer_iphone(datos, carpeta)
     ancho, alto = (int(x) for x in sondear(video, "stream=width,height", True).split(",")[:2])
     pantalla_ancho = int(round(ancho * PANTALLA_ALTO / alto / 2)) * 2
     largo = float(sondear(video, "format=duration", False))

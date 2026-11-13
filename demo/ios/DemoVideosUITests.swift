@@ -274,6 +274,12 @@ final class DemoVideosUITests: XCTestCase {
             mostrar("boton-reintentar")
             tocar(reintentar, "Toca «Reintentar»")
             esperarResultado()
+            // Si tampoco responde, el video no muestra la función: se marca como fallido para volver a grabarlo.
+            if error.exists {
+                pantalla("No se pudo completar: \(error.label)")
+                XCTFail("El servidor no respondió a «\(texto)» ni al reintentar")
+                return
+            }
         }
         if error.exists {
             pantalla("No se pudo completar: \(error.label)")

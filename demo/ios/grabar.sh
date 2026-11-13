@@ -92,7 +92,33 @@ if ! xcodebuild build-for-testing "${comunes[@]}" > "$salida/compilar.log" 2>&1;
 fi
 grep -E "\*\* TEST BUILD" "$salida/compilar.log" || true
 
+# En una grabación, las consultas de la app al backend no llegaban durante los primeros minutos tras arrancar el
+# Simulator (el registro del proxy no las vio) y luego sí. Antes de grabar se abre el backend en Safari del Simulator
+# hasta que el proxy registra la visita: así se sabe que el Simulator ya llega por HTTPS.
+registro_proxy="${DEMO_REGISTRO_PROXY:-${RUNNER_TEMP:-/tmp}/demo-https/proxy.log}"
+if [ -f "$registro_proxy" ]; then
+  echo "Comprobando que el Simulator llega al backend por HTTPS…"
+  desde="$(date +%s)"
+  listo=""
+  for intento in $(seq 1 40); do
+    xcrun simctl openurl "$udid" "$origen/?calentar=$intento" 2>/dev/null || true
+    for _ in $(seq 1 15); do
+      if grep -q "calentar=" "$registro_proxy"; then listo=si; break; fi
+      sleep 1
+    done
+    [ -n "$listo" ] && break
+  done
+  if [ -n "$listo" ]; then
+    echo "El Simulator llega al backend (tras $(( $(date +%s) - desde )) s)."
+  else
+    echo "El Simulator no llegó al backend en 10 minutos; se graba igual."
+  fi
+  xcrun simctl terminate "$udid" com.apple.mobilesafari 2>/dev/null || true
+  sleep 2
+fi
+
 fallos=()
+pendientes=()
 grabar() {
   local id="$1" prueba="$2"
   if [ -n "${DEMO_SOLO:-}" ] && [[ ",$DEMO_SOLO," != *",$id,"* ]]; then return 0; fi
@@ -124,26 +150,32 @@ grabar() {
       -only-testing:"TransMiVozUITests/DemoVideosUITests/$prueba" \
       -resultBundlePath "$salida/$id.xcresult" > "$salida/$id.xcodebuild.log" 2>&1 || estado=$?
   sleep 1
+  # La hora en que se detiene la grabación y la duración del video dan el inicio real de sus cuadros: simctl avisa
+  # «Recording started» unos segundos antes del primer cuadro, y sin esto los subtítulos van detrás de la imagen.
+  local fin_grabacion
+  fin_grabacion="$(python3 -c 'import time; print(time.time())')"
   kill -INT "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
   # Si el Simulator no dejó escribir el archivo, los eventos están también en el registro de xcodebuild.
   if [ ! -s "$eventos" ]; then
     grep -o 'DEMO_EVENTO {.*}' "$salida/$id.xcodebuild.log" | sed 's/^DEMO_EVENTO //' | awk '!visto[$0]++' > "$eventos" || true
   fi
-  python3 - "$salida/$id.json" "$id" "$inicio" "$estado" "$configuracion" <<'EOF'
+  python3 - "$salida/$id.json" "$id" "$inicio" "$estado" "$configuracion" "$fin_grabacion" <<'EOF'
 import json, sys
 ruta, ident, inicio, estado, configuracion = sys.argv[1], sys.argv[2], float(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
+fin_grabacion = float(sys.argv[6])
 from datetime import datetime, timedelta, timezone
 # Hora de Bogotá (UTC-5, sin horario de verano): de ella dependen el horario y el calendario que da el servidor.
 bogota = timezone(timedelta(hours=-5))
 json.dump({
     "id": ident, "plataforma": "iphone", "video": f"{ident}.mov", "eventos": f"{ident}.eventos.jsonl",
-    "grabacion_epoch": inicio, "estado": estado, "configuracion": configuracion,
+    "grabacion_epoch": inicio, "fin_grabacion_epoch": fin_grabacion, "estado": estado, "configuracion": configuracion,
     "grabado": datetime.fromtimestamp(inicio, bogota).isoformat(timespec="seconds"),
 }, open(ruta, "w"), ensure_ascii=False, indent=2)
 EOF
   if [ "$estado" -ne 0 ]; then
     fallos+=("$id")
+    pendientes+=("$id:$prueba")
     echo "  ✗ $id: xcodebuild terminó con $estado"
     grep -E "error:|failed|Fallo|XCTAssert" "$salida/$id.xcodebuild.log" | head -20 || true
   else
@@ -159,6 +191,15 @@ grabar iphone-05-metro-estacion testDemo05MetroEstacion
 grabar iphone-06-sesion-accesorio testDemo06SesionConAccesorio
 grabar iphone-07-lupa testDemo07Lupa
 grabar iphone-08-ajustes testDemo08Ajustes
+
+# Un segundo intento para cada recorrido que falló, al final, cuando ya pasaron unos minutos.
+if [ "${#pendientes[@]}" -gt 0 ]; then
+  echo "Segundo intento: ${fallos[*]}"
+  repetir=("${pendientes[@]}")
+  fallos=()
+  pendientes=()
+  for par in "${repetir[@]}"; do grabar "${par%%:*}" "${par#*:}"; done
+fi
 
 if [ "${#fallos[@]}" -gt 0 ]; then
   echo "Fallaron: ${fallos[*]}"
