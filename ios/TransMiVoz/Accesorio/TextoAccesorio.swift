@@ -9,6 +9,8 @@ enum EstadoAccesorio: Equatable {
     case detenido
     case bluetoothNoDisponible(DisponibilidadBluetooth)
     case conectando
+    /// Lectura protegida de comprobación en curso: iOS puede estar pidiendo la clave de emparejamiento.
+    case comprobandoEnlace
     case conectado
     case calibrando
     /// La seguridad del enlace no se puede verificar: ninguna medida cuenta.
@@ -47,6 +49,7 @@ enum TextoAccesorio {
         case .detenido: return "Detenido"
         case .bluetoothNoDisponible: return "Bluetooth no disponible"
         case .conectando: return "Conectando"
+        case .comprobandoEnlace: return "Comprobando el enlace"
         case .conectado: return "Conectado"
         case .calibrando: return "Calibrando"
         case .enlaceNoVerificado: return "Bloqueado: enlace no verificado"
@@ -66,6 +69,7 @@ enum TextoAccesorio {
         case .sinAccesorio, .detenido: return "pause.circle"
         case .bluetoothNoDisponible, .desconectado: return "wifi.slash"
         case .conectando, .conectado: return "dot.radiowaves.left.and.right"
+        case .comprobandoEnlace: return "key"
         case .calibrando: return "slider.horizontal.3"
         case .enlaceNoVerificado, .rechazado, .falla, .radarNoDisponible: return "exclamationmark.triangle"
         case .sinDeteccion, .sinDatos: return "questionmark.circle"
@@ -83,6 +87,8 @@ enum TextoAccesorio {
             return "\(bluetooth(d)) No hay medidas."
         case .conectando:
             return "Conectando con el accesorio elegido. No hay medidas."
+        case .comprobandoEnlace:
+            return frasesComprobandoEnlace.joined(separator: " ")
         case .conectado:
             return "Accesorio conectado. Leyendo su información. Aún no hay medidas."
         case .calibrando:
@@ -92,6 +98,7 @@ enum TextoAccesorio {
         case .rechazado(let motivo):
             return "Accesorio rechazado (\(motivo.etiqueta)). Sus datos no se usan y esto no es una detección."
         case .falla(let motivo):
+            if let frases = frasesFalloSeguro(motivo) { return frases.joined(separator: " ") }
             return "\(fallo(motivo)) No hay medidas. Usa Reconectar. \(recuperacionRepetida)"
         case .desconectado:
             return "Accesorio desconectado. Se intenta reconectar. No hay medidas."
@@ -121,20 +128,75 @@ enum TextoAccesorio {
     static let sinMedidaPorEnlace = "No se usa ninguna medida."
     static let noEsDeteccionNiCaminoLibre = "Esto no es una detección ni significa camino libre."
 
-    /// La descripción repartida en párrafos para la pantalla. Solo el bloqueo lleva más de uno: con el texto más grande
-    /// de accesibilidad su descripción en un solo bloque medía 869 pt, más que el área visible (659 pt), y no había
-    /// posición que la mostrara entera. Los demás estados conservan su descripción tal cual, en un único párrafo.
+    /// El gesto del botón que abre la ventana de emparejamiento. Pulsar 10 s o más borra los vínculos (ea-12-ble.md).
+    private static let pulsacionDeAlta = "de 3 a menos de 10 segundos"
+    private static let codigoDeSeisDigitos = "código de 6 dígitos"
+
+    /// Qué verá y qué hará la persona mientras se comprueba el enlace. Lo que iOS muestra (la solicitud de emparejamiento
+    /// que pide la clave de 6 dígitos) no se ha visto con la placa: está sin comprobar en banco. El accesorio no tiene
+    /// pantalla y no muestra la clave; el botón y los 60 s son los del firmware (ea-12-ble.md).
+    private static let frasesComprobandoEnlace = [
+        "Comprobando el enlace seguro con el accesorio. Aún no hay medidas.",
+        "Si iOS muestra una solicitud de emparejamiento, escribe el \(codigoDeSeisDigitos) de este accesorio.",
+        "El accesorio no tiene pantalla y no muestra el código.",
+        "Si es la primera vez, mantén pulsado su botón \(pulsacionDeAlta): solo acepta emparejar durante 60 segundos.",
+    ]
+
+    /// Emparejamiento cancelado, clave incorrecta, ventana de alta cerrada, corte o plazo vencido. No se sabe cuál de
+    /// ellos fue (un corte de radio llega igual que una cancelación), así que el texto no afirma ninguno y la
+    /// recuperación va de menos a más: reconectar, abrir la ventana y, solo si sigue, borrar los vínculos.
+    private static let frasesEnlaceSeguroFallido = [
+        fallo(.enlaceSeguroFallido),
+        "Pudo cancelarse el emparejamiento, ser incorrecto el código, estar cerrada la ventana del accesorio o cortarse la conexión.",
+        "Toca Reconectar y, si iOS pide un \(codigoDeSeisDigitos), escríbelo.",
+        "Si falla otra vez, mantén pulsado el botón del accesorio \(pulsacionDeAlta) y toca Reconectar.",
+        "Si sigue fallando, mantén el botón 10 segundos o más: borra los vínculos del accesorio.",
+        "Luego olvida el accesorio en Ajustes > Bluetooth del iPhone y empareja de nuevo.",
+        "No hay medidas.",
+    ]
+
+    /// El vínculo se borró en el accesorio y el iPhone aún lo conserva. El caso contrario (el iPhone lo olvidó y el
+    /// accesorio no) se presenta como emparejamiento fallido: lo cubre `frasesEnlaceSeguroFallido`.
+    private static let frasesVinculoBorrado = [
+        fallo(.vinculoBorradoEnAccesorio),
+        "En el iPhone abre Ajustes > Bluetooth, toca la «i» junto al accesorio y elige «Olvidar este dispositivo».",
+        "Luego mantén pulsado su botón \(pulsacionDeAlta), toca Reconectar y escribe el \(codigoDeSeisDigitos) que pida iOS.",
+        "No hay medidas.",
+    ]
+
+    /// Las frases de recuperación propias de los fallos del enlace seguro; nil si el fallo usa el texto general.
+    private static func frasesFalloSeguro(_ m: MotivoFalla) -> [String]? {
+        switch m {
+        case .enlaceSeguroFallido: return frasesEnlaceSeguroFallido
+        case .vinculoBorradoEnAccesorio: return frasesVinculoBorrado
+        default: return nil
+        }
+    }
+
+    /// La descripción repartida en párrafos para la pantalla. Llevan más de uno el bloqueo, la comprobación del enlace y
+    /// los fallos del enlace seguro: con el texto más grande de accesibilidad el bloqueo en un solo bloque medía 869 pt,
+    /// más que el área visible (659 pt), y no había posición que lo mostrara entero. Los demás estados conservan su
+    /// descripción tal cual, en un único párrafo.
     static func parrafos(_ e: EstadoAccesorio) -> [String] {
-        e == .enlaceNoVerificado ? frasesEnlaceNoVerificado : [descripcion(e)]
+        switch e {
+        case .enlaceNoVerificado: return frasesEnlaceNoVerificado
+        case .comprobandoEnlace: return frasesComprobandoEnlace
+        case .falla(let motivo): return frasesFalloSeguro(motivo) ?? [descripcion(e)]
+        default: return [descripcion(e)]
+        }
     }
 
     /// El aviso fijo de la pantalla mientras el enlace no se puede verificar, repartido en párrafos. Con el texto más grande
     /// de accesibilidad el aviso en un solo bloque medía 869 pt, más que el área visible (659 pt), y no había posición que
     /// lo mostrara entero. Se corta donde acaba la afirmación; la aclaración entre paréntesis queda con la frase que le sigue.
-    /// Unidos con un espacio dan exactamente el texto de siempre: las dos frases, en su orden y con su puntuación.
+    /// Con la política de demostración (contrato §6, A1 12/11/2026) el accesorio ya no está siempre bloqueado: los avisos
+    /// se ven y se dicen, pero el enlace NO está autenticado porque iOS no expone su nivel, y un aparato ajeno con los
+    /// mismos UUID pasaría la comprobación. El aviso lo dice sin presentar el enlace como autenticado y conserva que
+    /// sin detección no es camino libre. Cada párrafo mide como mucho lo que medía el más largo del texto anterior (84
+    /// caracteres) más dos: no se agranda.
     static let parrafosAvisoEnlace = [
-        "Esta versión todavía no puede verificar que el enlace sea cifrado y autenticado",
-        "(falta la prueba con la placa). Por eso bloquea las medidas y los avisos del sensor.",
+        "Enlace sin autenticar: un aparato ajeno podría hacerse pasar por el accesorio.",
+        "Los avisos se ven y se dicen con esa reserva. Sin detección no significa camino libre.",
     ]
 
     /// Estado del audio para la pantalla. El sistema no distingue unos auriculares Bluetooth de un
@@ -154,6 +216,46 @@ enum TextoAccesorio {
     /// con ese accesorio no puede tener éxito hasta reiniciar el Bluetooth o la app (límite sin probar con hardware).
     static let recuperacionRepetida = "Si vuelve a fallar, apaga y enciende el Bluetooth del iPhone o cierra y abre la app."
 
+    /// La reserva hablada del enlace sin autenticar (contrato §6). La sesión la añade a las locuciones del accesorio ya
+    /// aceptado (`lugarDeReserva`) hasta que se oye entera, con un tope de repeticiones por conexión.
+    static let reservaEnlace = "Enlace sin autenticar."
+
+    /// Dónde va la reserva en la locución de un estado: antes del texto o después.
+    enum LugarReserva: Equatable {
+        case antes
+        case despues
+    }
+
+    /// `nil`: el estado no lleva reserva (el accesorio aún no está aceptado o no hay avisos del sensor).
+    /// - Después de la medida (`objetivo`, `presencia`, `sinDatos`, `radarNoDisponible`): un aviso de seguridad nunca
+    ///   retrasa la medida; «Objeto a 2 metros. Enlace sin autenticar.» llega a la distancia en el mismo tiempo que sin
+    ///   reserva.
+    /// - Antes (`calibrando`, `sinDeteccion`): no hay medida ni obstáculo que retrasar, y son los estados con los que
+    ///   empieza cada conexión; al final de una locución que la siguiente corta casi de inmediato, la reserva no se
+    ///   oiría nunca. `sinDeteccion` no es una alerta de obstáculo y el aviso fijo lo declara sin camino libre.
+    /// Sin `default`: un estado nuevo obliga a decidir aquí si lleva reserva.
+    static func lugarDeReserva(_ e: EstadoAccesorio) -> LugarReserva? {
+        switch e {
+        case .calibrando, .sinDeteccion: return .antes
+        case .presencia, .objetivo, .sinDatos, .radarNoDisponible: return .despues
+        case .sinAccesorio, .detenido, .bluetoothNoDisponible, .conectando, .comprobandoEnlace, .conectado,
+             .enlaceNoVerificado, .rechazado, .falla, .desconectado:
+            return nil
+        }
+    }
+
+    /// El texto de la locución de `e` con la reserva en su lugar (sin ella si el estado no la lleva).
+    static func conReserva(_ texto: String, para e: EstadoAccesorio) -> String {
+        switch lugarDeReserva(e) {
+        case .antes?: return "\(reservaEnlace) \(texto)"
+        case .despues?: return "\(texto) \(reservaEnlace)"
+        case nil: return texto
+        }
+    }
+
+    /// Anuncio de VoiceOver al conectar con un enlace sin autenticar (una vez, en `.calibrando`).
+    private static let textoEnlaceSinAutenticar = "Accesorio conectado con enlace sin autenticar: un aparato ajeno podría hacerse pasar por él. Calibrando."
+
     static let audioNoDisponibleAviso = "Audio no disponible: no se pueden decir avisos en voz alta. El estado queda en pantalla."
     static let audioSinAuriculares = "Se perdió la salida privada de audio. Los avisos no se dicen por el altavoz; el estado queda en pantalla."
 
@@ -161,13 +263,21 @@ enum TextoAccesorio {
     /// fallo, desconexión, rechazo y Bluetooth. Las medidas y las alertas del sensor (objeto, presencia,
     /// sin detección, sin datos, radar) no se anuncian así: por VoiceOver el sonido puede salir por el
     /// altavoz; esas solo se dicen por la ruta privada de la voz propia y quedan en pantalla.
-    static func anuncioAccesible(_ e: EstadoAccesorio) -> String? {
+    ///
+    /// `enlaceAutenticado`: al conectar con un enlace sin autenticar (la política de demostración) se declara el límite
+    /// una vez, también por VoiceOver. Por defecto `false`: nunca se presenta como autenticado lo que no consta.
+    static func anuncioAccesible(_ e: EstadoAccesorio, enlaceAutenticado: Bool = false) -> String? {
         switch e {
+        case .calibrando where !enlaceAutenticado:
+            return textoEnlaceSinAutenticar
         case .enlaceNoVerificado:
             return "Avisos bloqueados: no se puede verificar la seguridad del enlace. Esto no es una detección."
         case .rechazado:
             return "Accesorio rechazado. Sin avisos."
+        case .comprobandoEnlace:
+            return "Comprobando el enlace seguro. Si iOS pide un \(codigoDeSeisDigitos), escríbelo."
         case .falla(let motivo):
+            if frasesFalloSeguro(motivo) != nil { return "\(fallo(motivo)) Sin avisos. La pantalla explica cómo reintentar." }
             return "\(fallo(motivo)) Sin avisos. Usa Reconectar. \(recuperacionRepetida)"
         case .desconectado:
             return "Accesorio desconectado. Se intenta reconectar."
@@ -196,6 +306,8 @@ enum TextoAccesorio {
         case .errorDeSuscripcion: return "Falló la suscripción a las medidas."
         case .tiempoAgotado: return "El accesorio no respondió a tiempo."
         case .referenciaNoValida: return "No se logró sincronizar con el accesorio."
+        case .enlaceSeguroFallido: return "No se pudo comprobar el enlace seguro con el accesorio."
+        case .vinculoBorradoEnAccesorio: return "El accesorio ya no reconoce el emparejamiento guardado en este iPhone."
         }
     }
 
@@ -207,6 +319,7 @@ enum TextoAccesorio {
         case .sinAccesorio, .detenido, .conectado: return nil
         case .bluetoothNoDisponible: return Locucion(texto: "Bluetooth no disponible. Sin avisos.")
         case .conectando: return Locucion(texto: "Conectando con el accesorio.")
+        case .comprobandoEnlace: return Locucion(texto: "Comprobando el enlace seguro. Si iOS pide un \(codigoDeSeisDigitos), escríbelo.")
         case .calibrando: return Locucion(texto: "Accesorio conectado. Calibrando. Aún sin avisos.")
         case .enlaceNoVerificado: return Locucion(texto: "Avisos bloqueados. No se puede verificar la seguridad del enlace.")
         case .rechazado: return Locucion(texto: "Accesorio rechazado. Sin avisos.")

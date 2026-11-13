@@ -8,8 +8,9 @@ extension RelojFalso {
     func fijar(_ instante: Milisegundos) { avanzar(instante - ahora) }
 }
 
-/// Doble del transporte: anota las llamadas y deja que la prueba emita eventos con cualquier token.
-/// Permite recorrer también la ruta AUTENTICADA, que el transporte real no puede afirmar todavía.
+/// Doble del transporte (simulado, no es un accesorio ni Core Bluetooth): anota las llamadas y deja que la prueba
+/// emita eventos con cualquier token. Permite recorrer también la ruta AUTENTICADA, que el transporte real no puede
+/// afirmar.
 @MainActor
 final class TransporteFalso: TransporteAccesorio {
     var receptor: (@MainActor (EventoTransporte, Int) -> Void)?
@@ -18,12 +19,19 @@ final class TransporteFalso: TransporteAccesorio {
     var permisoPorPreguntar = false
     private(set) var llamadas: [String] = []
     private(set) var tokenVigente = 0
+    /// Responde sola a la lectura protegida de comprobación, como si la lectura terminara bien al instante. Una prueba que
+    /// quiera controlar ese paso (emparejamiento pendiente, cancelado, fallido) la apaga y emite ella el evento.
+    var respondeComprobacion = true
 
     init(nivel: NivelEnlace) { nivelEnlace = nivel }
 
     func buscar() { llamadas.append("buscar") }
     func dejarDeBuscar() { llamadas.append("dejarDeBuscar") }
     func conectar(id: String, token: Int) { llamadas.append("conectar:\(id)"); tokenVigente = token }
+    func comprobarEnlace(token: Int) {
+        llamadas.append("comprobarEnlace")
+        if respondeComprobacion { receptor?(.lecturaProtegidaSuperada, token) }
+    }
     func leerInformacion(token: Int) { llamadas.append("leerInformacion") }
     func fijarNotificaciones(_ activas: Bool, token: Int) { llamadas.append("notificaciones:\(activas)") }
     func leerMedicion(token: Int) { llamadas.append("leerMedicion") }
@@ -37,6 +45,12 @@ final class TransporteFalso: TransporteAccesorio {
 final class SalidaVozFalsa: SalidaVoz {
     private(set) var llamadas: [String] = []
     private(set) var hablando = false
+    /// Las locuciones que el «sistema» cortó antes de terminar, y las que terminaron enteras, en orden.
+    private(set) var cortadas: [String] = []
+    private(set) var completas: [String] = []
+    private var sonando: String?
+    /// El «sistema» canceló la última locución sin que la app lo pidiera (Siri, una alarma).
+    private(set) var cortadaPorElSistema = false
     /// Lo que responde el «sistema» al intentar hablar (por ejemplo, la sesión de audio rechazada).
     var resultado: ResultadoHabla = .iniciada
     var dicho: [String] { llamadas.compactMap { $0.hasPrefix("hablar:") ? String($0.dropFirst(7)) : nil } }
@@ -44,12 +58,39 @@ final class SalidaVozFalsa: SalidaVoz {
     func hablar(_ texto: String) -> ResultadoHabla {
         guard resultado == .iniciada else { llamadas.append("intento:\(texto)"); return resultado }
         llamadas.append("hablar:\(texto)")
+        sonando = texto
         hablando = true
+        cortadaPorElSistema = false
         return .iniciada
     }
-    func detener() { llamadas.append("detener"); hablando = false }
-    /// La locución terminó sola (no la cortó nadie).
-    func terminarSola() { hablando = false }
+    /// Corta lo que suene: la locución a medias consta como cortada (no se oyó entera).
+    func detener() {
+        llamadas.append("detener")
+        if hablando, let texto = sonando { cortadas.append(texto) }
+        sonando = nil
+        hablando = false
+    }
+    /// La locución terminó sola (no la cortó nadie): consta como completa.
+    func terminarSola() {
+        if let texto = sonando { completas.append(texto) }
+        sonando = nil
+        hablando = false
+    }
+    /// La locución acabó de sonar, pero el aviso de fin (`didFinish`) llega después: hasta `llegaElFin` sigue
+    /// constando como «sonando» (`hablando`), igual que con `SintetizadorSistema`.
+    func terminarSolaConRetraso() {
+        if let texto = sonando { completas.append(texto) }
+        sonando = nil
+    }
+    /// Llega el aviso de fin que `terminarSolaConRetraso` dejó pendiente.
+    func llegaElFin() { hablando = false }
+    /// El sistema cancela la locución sin que la app lo pida: ya no suena y consta como cortada por el sistema.
+    func sistemaCancela() {
+        if let texto = sonando { cortadas.append(texto) }
+        sonando = nil
+        hablando = false
+        cortadaPorElSistema = true
+    }
 }
 
 /// Avisos accesibles falsos: anotan lo que la app anunciaría por VoiceOver y las vibraciones.

@@ -39,7 +39,7 @@ sesion.enlaceAutenticado, .esSimulada, .tramasPerdidas, .ultimaCotaEdadMs, .info
 
 - `Milisegundos` es `Int64` de un reloj **monotónico** del iPhone. La sesión no lee ningún reloj.
 - Los métodos `mutating` son `@discardableResult`. `etiqueta` de `EstadoSesion` y `ResultadoEvento` da el texto que usan los vectores.
-- `NivelEnlace` lo **afirma el transporte**; `.desconocido` se rechaza. Qué evidencia permite afirmar `.cifradoAutenticado` en iOS es trabajo de EA-12.
+- `NivelEnlace` lo **afirma el transporte**; `.desconocido` y `.sinCifrar` se rechazan con las dos políticas, y `.cifradoSinAutenticar` solo con `permitirAsociacionSinMITM` (demostración: la sesión queda no autenticada). En iOS la app no puede afirmar `.cifradoAutenticado` (no hay evidencia que rechace a un impostor sin protección): ver el [contrato §6](../../docs/expoandes/contrato-ble.md#6-autenticación-y-selección) y «Seguridad del enlace» en [ea-15-ios-ble-audio.md](../../docs/expoandes/ea-15-ios-ble-audio.md); la app de iOS usa la política de demostración desde la decisión de A1 del 12/11/2026, solo para la feria.
 - Orden del transporte, reglas de reloj y estados: [secciones 4 a 6 del contrato](../../docs/expoandes/contrato-ble.md#4-qué-significa-cada-estado-para-el-cliente).
 
 ## Probar

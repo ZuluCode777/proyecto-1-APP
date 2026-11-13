@@ -17,11 +17,24 @@ enum FaseConexion: Equatable {
 /// - la voz (`ControlVoz`) decide si se puede hablar.
 ///
 /// Reglas de esta capa:
-/// - Política de autenticación fija y cerrada (`.exigirAutenticado`). No hay ajuste, bandera ni
-///   preferencia que la cambie. Con el transporte de producción (`.desconocido`) la sesión
-///   queda rechazada en cuanto conecta y no se lee ni se suscribe nada (contrato §6).
+/// - Política de autenticación fija: `.permitirAsociacionSinMITM`, la política de demostración del contrato §6,
+///   aprobada por A1 el 12/11/2026 solo para la feria (H3 informado). No hay ajuste, bandera ni preferencia que la
+///   cambie. Condiciones del contrato: la sesión queda marcada NO autenticada (`enlaceAutenticado == false`), la
+///   interfaz no la presenta como autenticada y declara el límite (aviso fijo, línea «Enlace autenticado» y reserva
+///   hablada «Enlace sin autenticar.», que va después de la medida y se repite hasta oírse entera, con tope). Se acepta
+///   `.cifradoSinAutenticar` o `.cifradoAutenticado`; `.sinCifrar` y `.desconocido`
+///   se rechazan y no se lee ni se suscribe nada. Riesgo aceptado: Core Bluetooth no expone el nivel del enlace, así
+///   que un impostor sin protección con los mismos UUID supera la lectura de comprobación y se acepta igual.
+///   Ninguna medida cuenta antes de esa comprobación.
 /// - Cada conexión lleva un `token` nuevo. Todo evento con otro token se descarta: devoluciones
 ///   tardías de un periférico anterior, de una sesión detenida o de una reconexión.
+/// - Comprobación del enlace: tras `.conectado` y ANTES de abrir la sesión del contrato, una lectura protegida
+///   de comprobación (Información). Si el enlace no está protegido, iOS empareja por su cuenta y pide la clave a
+///   la persona; hasta que termine no se llama a `SesionProximidad.conectar(accesorio:enlace:)`, que recibe el
+///   nivel del transporte (`.desconocido`, o `.cifradoSinAutenticar` tras la lectura). Aclaración de plataforma
+///   aprobada por A1 el 12/11/2026 para la feria, H3 informado; ver contrato-ble.md §5.1 y §6. La escena puede
+///   quedar inactiva mientras iOS muestra la solicitud: en ese paso el resultado se procesa aunque la sesión esté
+///   suspendida y al volver no se reinicia la conexión, para no repetir la solicitud.
 /// - Orden de sincronización: Información → notificaciones apagadas y confirmadas → lectura
 ///   fresca de referencia → notificaciones encendidas. El contrato lista la suscripción antes
 ///   de la referencia (§5.1, pasos 6 y 7); aquí va al revés, como aclaración de plataforma: Core
@@ -33,6 +46,7 @@ enum FaseConexion: Equatable {
 /// - Plazos: la conexión (incluido el descubrimiento de servicio y características, que el transporte
 ///   cierra con `.conectado`) y cada paso de la sincronización vencen a los `plazoPasoMs`, contados
 ///   con el reloj monotónico inyectado. Vencer falla con «no respondió a tiempo»; no hay espera eterna.
+///   La comprobación del enlace tiene plazo propio (`plazoEmparejamientoMs`): la persona escribe una clave.
 ///   Esperar la respuesta del permiso o a que el Bluetooth esté disponible no cuenta como conexión.
 /// - Búsqueda: la INTENCIÓN de buscar (`busquedaPedida`) es de la persona y sobrevive a lo transitorio
 ///   (aviso de permiso del sistema que deja la escena inactiva, Bluetooth apagado); el escaneo real
@@ -47,11 +61,22 @@ final class SesionAccesorioModelo {
     /// Una respuesta que tarde más que esto se trata como fallo, no como espera eterna. Vale también
     /// para conectar y descubrir el servicio. Es una propuesta de software, sin medir (banco de EA-12).
     static let plazoPasoMs: Milisegundos = 5_000
+    /// Plazo de la comprobación del enlace, que puede incluir escribir la clave en la solicitud de iOS. Supera la
+    /// gracia de 30 s del firmware (`kGraciaSeguridadMs`) para que sea el accesorio quien corte primero. Propuesta de
+    /// software, sin medir (banco).
+    static let plazoEmparejamientoMs: Milisegundos = 35_000
     static let intentosMaximosReferencia = 3
+
+    /// Política de demostración del contrato §6 (A1, 12/11/2026, solo para la feria). Fija: no es un ajuste.
+    private static func sesionNueva(para accesorio: String) -> SesionProximidad {
+        SesionProximidad(accesorioElegido: accesorio, politica: .permitirAsociacionSinMITM, modo: .real)
+    }
 
     private enum Paso: Equatable {
         case ninguno
         case conectando
+        /// Lectura protegida de comprobación en curso; `id` es el accesorio que conectó.
+        case comprobandoEnlace(id: String)
         case leyendoInformacion
         case apagandoNotificaciones
         case leyendoReferencia(inicioMs: Milisegundos)
@@ -97,6 +122,19 @@ final class SesionAccesorioModelo {
     @ObservationIgnored private var escaneando = false
     @ObservationIgnored private var ultimoAvisoEstado: String?
     @ObservationIgnored private var avisadoAudioNoDisponible = false
+    /// Dónde va la reserva hablada del enlace sin autenticar: `pendiente` (la lleva la próxima locución que la admita),
+    /// `enCurso` (la última locución la llevaba y se sabrá si se oyó entera al llegar la siguiente) u `oida`.
+    private enum Reserva: Equatable {
+        case pendiente
+        case enCurso
+        case oida
+    }
+    @ObservationIgnored private var reserva: Reserva = .pendiente
+    /// Cuántas veces se dijo la reserva desde la última sincronización (conexión nueva, `reanunciar` o vuelta a primer plano).
+    @ObservationIgnored private var reservasDichas = 0
+    /// Tope de reservas habladas por sincronización: pasado, la reserva ya no retrasa nada y quedan el aviso fijo, la línea
+    /// «Enlace autenticado: no verificado» y el anuncio de VoiceOver.
+    static let maximoReservas = 3
 
     init(
         transporte: TransporteAccesorio,
@@ -126,8 +164,10 @@ final class SesionAccesorioModelo {
     /// persona puede encenderla. Sin VoiceOver empieza encendida.
     var vozPropiaActiva: Bool { eleccionVozPropia ?? !avisos.voiceOverActivo() }
 
-    /// Falso mientras el transporte no pueda afirmar un nivel de seguridad del enlace.
-    var enlaceVerificable: Bool { transporte.nivelEnlace != .desconocido }
+    /// Falso mientras el transporte no pueda afirmar un enlace cifrado Y autenticado. Un nivel menor tampoco lo
+    /// hace verificable: el aviso fijo de la pantalla sigue visible mientras sea falso (el transporte real nunca
+    /// afirma `.cifradoAutenticado`).
+    var enlaceVerificable: Bool { transporte.nivelEnlace == .cifradoAutenticado }
 
     var estado: EstadoAccesorio {
         guard activa else { return elegido == nil ? .sinAccesorio : .detenido }
@@ -140,7 +180,8 @@ final class SesionAccesorioModelo {
         case .falla(let motivo): return .falla(motivo)
         case .conectada:
             switch estadoSesion {
-            case .desconectada: return .conectando
+            case .desconectada:
+                return comprobandoEnlace ? .comprobandoEnlace : .conectando
             case .esperandoInformacion: return .conectado
             case .sincronizando: return .calibrando
             case .rechazada(.enlaceNoAutenticado): return .enlaceNoVerificado
@@ -148,8 +189,9 @@ final class SesionAccesorioModelo {
             case .sinDatos(let motivo): return .sinDatos(motivo)
             case .radarNoDisponible(let salud): return .radarNoDisponible(salud)
             case .sinBlanco, .presencia, .objetivo:
-                // Defensa extra: ninguna medida cuenta sin un enlace afirmado como autenticado.
-                guard enlaceAutenticado, nivelAfirmado == .cifradoAutenticado else { return .enlaceNoVerificado }
+                // Defensa extra: ninguna medida cuenta sin un enlace afirmado al menos cifrado, y la sesión solo
+                // consta autenticada si el nivel lo es.
+                guard enlaceCifradoAfirmado else { return .enlaceNoVerificado }
                 switch estadoSesion {
                 case .presencia: return .presencia
                 case .objetivo(let distanciaMm, let azimut):
@@ -238,6 +280,7 @@ final class SesionAccesorioModelo {
         ultimaLocucion = nil
         ultimoAvisoEstado = nil
         avisadoAudioNoDisponible = false
+        olvidarReserva()
     }
 
     func reconectar() {
@@ -272,11 +315,19 @@ final class SesionAccesorioModelo {
             suspendida = false
             // iOS puede no entregar el fin de una interrupción: se vuelve a mirar el audio de cero.
             voz.escenaVolvio()
+            olvidarReserva()  // se resincroniza: la reserva vuelve a decirse
             sincronizarEscaneo()
             guard activa else { return }
             if paso == .suscrito {
                 sesion?.reanudar()
                 empezarReferencia()
+            } else if esperandoALaPersona {
+                // Comprobación del enlace en curso, fallo del enlace seguro o sesión rechazada: no se reinicia. Un
+                // reinicio volvería a leer la característica protegida en cada vuelta a primer plano y, sin vínculo,
+                // a pedir la clave; reintentar es decisión de la persona (Reconectar).
+                // El latido no corrió con la escena suspendida: el plazo de la comprobación cuenta desde la vuelta,
+                // para no fallar de golpe con la persona aún en la solicitud de iOS.
+                if comprobandoEnlace { inicioPasoMs = reloj() }
             } else {
                 // Sincronización a medias o enlace perdido durante la suspensión: de cero.
                 conexion += 1
@@ -296,6 +347,8 @@ final class SesionAccesorioModelo {
         switch paso {
         case .conectando, .leyendoInformacion, .apagandoNotificaciones, .leyendoReferencia, .encendiendoNotificaciones:
             if ahora - inicioPasoMs > Self.plazoPasoMs { fallar(.tiempoAgotado) }
+        case .comprobandoEnlace:
+            if ahora - inicioPasoMs > Self.plazoEmparejamientoMs { fallar(.enlaceSeguroFallido) }
         case .suscrito:
             if sesion?.necesitaReferencia(ahoraMs: ahora) == true { empezarReferencia() }
         case .ninguno:
@@ -333,7 +386,7 @@ final class SesionAccesorioModelo {
                 // El sistema cortó todas las conexiones: lo que llegue de la anterior ya no vale.
                 conexion += 1
                 paso = .ninguno
-                sesion = sesion.map { SesionProximidad(accesorioElegido: $0.accesorioElegido, politica: .exigirAutenticado, modo: .real) }
+                sesion = sesion.map { Self.sesionNueva(para: $0.accesorioElegido) }
                 estadoSesion = .desconectada
                 voz.descartarTodo()
             }
@@ -345,15 +398,24 @@ final class SesionAccesorioModelo {
 
     private func procesarDeConexion(_ evento: EventoTransporte) {
         if suspendida {
-            if case .desconectado = evento { paso = .ninguno }
-            return
+            // La solicitud de emparejamiento de iOS puede dejar la escena inactiva: durante la comprobación del enlace
+            // el resultado (superada, fallo o corte) se procesa igual, para no perder un fallo ni quedarse esperando.
+            guard comprobandoEnlace else {
+                if case .desconectado = evento { paso = .ninguno }
+                return
+            }
         }
         switch evento {
         case .conectado(let id):
             guard paso == .conectando else { return }
+            // Todavía no se afirma ningún nivel: primero la lectura protegida de comprobación (puede pedir la clave).
+            fase = .conectada
+            esperar(.comprobandoEnlace(id: id))
+            transporte.comprobarEnlace(token: conexion)
+        case .lecturaProtegidaSuperada:
+            guard case .comprobandoEnlace(let id) = paso else { return }
             nivelAfirmado = transporte.nivelEnlace
             let resultado = sesion?.conectar(accesorio: id, enlace: nivelAfirmado)
-            fase = .conectada
             if case .rechazado? = resultado { cerrarPorRechazo(); return }
             esperar(.leyendoInformacion)
             transporte.leerInformacion(token: conexion)
@@ -384,9 +446,14 @@ final class SesionAccesorioModelo {
             default: break
             }
         case .desconectado:
-            perderEnlace()
+            // Un corte durante la comprobación puede ser una alta cerrada, una clave mala o una solicitud cancelada, y
+            // un corte de radio no se distingue de ellos: no se reconecta solo (cada intento volvería a pedir la
+            // clave) y el texto del fallo no afirma cuál fue.
+            if comprobandoEnlace { fallar(.enlaceSeguroFallido) } else { perderEnlace() }
         case .fallo(let motivo):
-            fallar(motivo)
+            // `didFailToConnect` durante la comprobación (con la escena suspendida o no) es un fallo de la comprobación:
+            // un reinicio al volver volvería a pedir la clave.
+            fallar(comprobandoEnlace && motivo == .conexionFallida ? .enlaceSeguroFallido : motivo)
         case .disponibilidad, .encontrado:
             break
         }
@@ -438,11 +505,12 @@ final class SesionAccesorioModelo {
     private func arrancarConexion(fase nueva: FaseConexion) {
         guard let elegido else { return }
         conexion += 1
-        sesion = SesionProximidad(accesorioElegido: elegido.id, politica: .exigirAutenticado, modo: .real)
+        sesion = Self.sesionNueva(para: elegido.id)
         estadoSesion = .desconectada
         tramasPerdidas = 0
         enlaceAutenticado = false
         nivelAfirmado = .desconocido
+        olvidarReserva()
         intentosReferencia = 0
         fase = nueva
         paso = disponibilidad == .disponible ? .conectando : .ninguno
@@ -475,6 +543,29 @@ final class SesionAccesorioModelo {
         arrancarConexion(fase: .perdida)
     }
 
+    /// El nivel afirmado permite medidas: cifrado, y autenticado solo si la sesión lo dice.
+    private var enlaceCifradoAfirmado: Bool {
+        switch nivelAfirmado {
+        case .cifradoAutenticado: return enlaceAutenticado
+        case .cifradoSinAutenticar: return !enlaceAutenticado
+        case .sinCifrar, .desconocido: return false
+        }
+    }
+
+    private var comprobandoEnlace: Bool {
+        if case .comprobandoEnlace = paso { return true }
+        return false
+    }
+
+    /// La conexión espera a la persona y no debe reiniciarse sola: comprobando el enlace, con un fallo del enlace
+    /// seguro en pantalla, o con la sesión rechazada (terminal hasta nueva conexión, contrato §4).
+    private var esperandoALaPersona: Bool {
+        if comprobandoEnlace { return true }
+        if case .rechazada = estadoSesion { return true }
+        if case .falla(let motivo) = fase { return motivo == .enlaceSeguroFallido || motivo == .vinculoBorradoEnAccesorio }
+        return false
+    }
+
     private func iniciarTemporizador() {
         temporizador?.cancel()
         temporizador = Task { [weak self] in
@@ -499,13 +590,29 @@ final class SesionAccesorioModelo {
         avisarEnPantalla(vozHablo: anunciar())
     }
 
-    /// Verdadero si la voz propia dijo algo ahora.
+    /// Verdadero si la voz propia dijo algo ahora. Con un enlace sin autenticar, las locuciones del accesorio ya aceptado
+    /// llevan «Enlace sin autenticar.» (después de la medida, `TextoAccesorio.lugarDeReserva`) hasta que esa frase se oye
+    /// entera, como mucho `maximoReservas` veces por sincronización: cada locución corta la anterior, así que no se
+    /// confía en que una sola (como «calibrando», que dura un instante) se oiga completa.
     @discardableResult
     private func anunciar() -> Bool {
         guard activa, !suspendida, let locucion = TextoAccesorio.locucion(estado),
               locucion != ultimaLocucion else { return false }
         ultimaLocucion = locucion
-        return voz.anunciar(locucion.texto) == .hablado
+        if reserva == .enCurso { reserva = voz.ultimaSeOyoEntera ? .oida : .pendiente }
+        let llevaReserva = !enlaceAutenticado && reserva == .pendiente && reservasDichas < Self.maximoReservas
+            && TextoAccesorio.lugarDeReserva(estado) != nil
+        let hablado = voz.anunciar(llevaReserva ? TextoAccesorio.conReserva(locucion.texto, para: estado) : locucion.texto) == .hablado
+        if llevaReserva && hablado {
+            reserva = .enCurso
+            reservasDichas += 1
+        }
+        return hablado
+    }
+
+    private func olvidarReserva() {
+        reserva = .pendiente
+        reservasDichas = 0
     }
 
     /// Vuelve el audio (auriculares de nuevo, fin de una llamada, corte que dejó una locución a medias):
@@ -517,6 +624,7 @@ final class SesionAccesorioModelo {
         sesion?.evaluar(ahoraMs: reloj())
         sincronizarDesdeSesion()
         ultimaLocucion = nil
+        olvidarReserva()  // cada vez que se repite el estado de ahora, también la reserva
         avisarEnPantalla(vozHablo: anunciar())
     }
 
@@ -532,13 +640,16 @@ final class SesionAccesorioModelo {
     /// Anuncios de estado que NO son medidas: bloqueo, fallo, desconexión, Bluetooth, audio no disponible.
     /// Ninguna medida ni alerta del sensor sale por aquí: por VoiceOver el sonido puede ir al altavoz
     /// y esas alertas solo se dicen por la ruta privada de la voz propia (ver `TextoAccesorio.anuncioAccesible`).
-    /// Si la voz propia acaba de decir ese estado no se repite por VoiceOver (no hablan dos veces).
+    /// Si la voz propia acaba de decir ese estado no se repite por VoiceOver (no hablan dos veces), salvo la declaración
+    /// del enlace sin autenticar: «calibrando» dura un instante y la siguiente locución puede cortarla, así que ese límite
+    /// se declara también por VoiceOver aunque la voz propia haya hablado.
     private func avisarEnPantalla(vozHablo: Bool) {
         guard activa, !suspendida else { return }
-        let texto = TextoAccesorio.anuncioAccesible(estado)
+        let texto = TextoAccesorio.anuncioAccesible(estado, enlaceAutenticado: enlaceAutenticado)
         if texto != ultimoAvisoEstado {
             ultimoAvisoEstado = texto
-            if let texto, !vozHablo { avisos.anunciar(texto, .urgente) }
+            let declaraElLimite = estado == .calibrando && !enlaceAutenticado
+            if let texto, !vozHablo || declaraElLimite { avisos.anunciar(texto, .urgente) }
         }
         // Con el audio no disponible la voz no puede avisar: el aviso va siempre por accesibilidad.
         if voz.audioNoDisponible != avisadoAudioNoDisponible {

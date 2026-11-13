@@ -194,8 +194,9 @@ struct SesionAccesorioVista: View {
             Label(TextoAccesorio.titulo(estado), systemImage: TextoAccesorio.icono(estado))
                 .font(.title3.weight(.semibold))
                 .accessibilityIdentifier("titulo-estado-accesorio")
-            // Un `Text` por párrafo, con la misma fuente, para que con el texto más grande cada párrafo del bloqueo quepa
-            // entero en el área visible. El primero conserva «estado-accesorio»; los demás añaden su posición.
+            // Un `Text` por párrafo, con la misma fuente, para que con el texto más grande cada párrafo (el bloqueo, la
+            // comprobación del enlace y los fallos del enlace seguro tienen varios) quepa entero en el área visible. El
+            // primero conserva «estado-accesorio»; los demás añaden su posición.
             ForEach(Array(TextoAccesorio.parrafos(estado).enumerated()), id: \.offset) { posicion, parrafo in
                 Text(parrafo)
                     .fixedSize(horizontal: false, vertical: true)
@@ -225,7 +226,7 @@ struct SesionAccesorioVista: View {
             Toggle(isOn: Binding(
                 get: { vozPropiaActiva },
                 set: { modelo.fijarVozPropia($0) })) {
-                    Text("Avisos hablados por la app")
+                    Text(TextoPreferencias.etiquetaVoz)
                         .accessibilityIdentifier("etiqueta-interruptor-voz-app")
                 }
                 .frame(minHeight: 44)
