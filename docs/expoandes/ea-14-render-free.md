@@ -198,7 +198,9 @@ la medición de Render son las filas de arriba.
 ### Límites que conviene tener presentes
 
 - **Cuota compartida.** `claveCliente()` no cambió y devuelve una sola clave, así
-  que los 20 POST por minuto de `/api/agent` son para todas las personas a la vez.
+  que los POST por minuto de `/api/agent` son para todas las personas a la vez.
+  Eran 20 en la medición de arriba; desde EA-28 (#75) son 90 (cálculo en
+  [`ea-10-recursos-autenticacion.md`](ea-10-recursos-autenticacion.md)).
   Con un público de feria es un tope de capacidad, no un límite por persona. La
   fila 5 ya midió la cadena de proxy de Render, pero usar esa medición para una
   identidad por cliente es otro cambio, con revisión y validación de la cabecera

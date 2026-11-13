@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test, { mock } from "node:test"
 import { pathToFileURL } from "node:url"
+import { LIMITE_ASISTENTE } from "./cuota-asistente"
 import { conEntorno } from "./ea10-entorno-pruebas"
 import { AgentReplySchema } from "./local-agent"
 
@@ -97,10 +98,11 @@ test("exceso de peticiones → 429 con Retry-After y contrato AgentReply (identi
   const e = await conEndpoint()
   try {
     // Sin proxy verificado, todas las peticiones comparten la clave acotada. El
-    // límite del endpoint es 20/min; la 21ª debe rechazarse.
+    // límite del endpoint es `LIMITE_ASISTENTE` por minuto (EA-28); la siguiente debe rechazarse.
     let ultima: Response | undefined
-    for (let i = 0; i < 21; i++) {
+    for (let i = 1; i <= LIMITE_ASISTENTE + 1; i++) {
       ultima = await e.POST(new Request("http://local/api/agent", { method: "POST", body: JSON.stringify({ message: "hola" }) }))
+      if (i <= LIMITE_ASISTENTE) assert.notEqual(ultima.status, 429, `petición ${i} dentro del límite`)
     }
     assert.ok(ultima)
     assert.equal(ultima.status, 429)
@@ -111,12 +113,12 @@ test("exceso de peticiones → 429 con Retry-After y contrato AgentReply (identi
   }
 })
 
-test("cabeceras reenviadas falsificadas no compran cuota propia: la 21ª sigue siendo 429", async () => {
+test("cabeceras reenviadas falsificadas no compran cuota propia: la siguiente al límite sigue siendo 429", async () => {
   await conEntorno({ nodeEnv: "production", clave: "secreta" }, async () => {
     const e = await conEndpoint()
     try {
       let ultima: Response | undefined
-      for (let i = 1; i <= 21; i++) {
+      for (let i = 1; i <= LIMITE_ASISTENTE + 1; i++) {
         ultima = await e.POST(
           new Request("http://local/api/agent", {
             method: "POST",
@@ -128,7 +130,7 @@ test("cabeceras reenviadas falsificadas no compran cuota propia: la 21ª sigue s
             },
           }),
         )
-        if (i <= 20) assert.notEqual(ultima.status, 429, `petición ${i} dentro del límite`)
+        if (i <= LIMITE_ASISTENTE) assert.notEqual(ultima.status, 429, `petición ${i} dentro del límite`)
       }
       assert.ok(ultima)
       assert.equal(ultima.status, 429, "una IP inventada por petición no abre cuota nueva")

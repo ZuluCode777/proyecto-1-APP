@@ -116,8 +116,10 @@ archivo no borra el servicio: se borra a mano en el panel.
    `latencia`, `despertar` y `limite` están descritos en la cabecera de
    `scripts/medir-render.mjs`. El tiempo de `despertar` solo cuenta como
    arranque en frío si el servicio llevaba más de 15 minutos sin tráfico; si
-   estaba despierto es una medición en caliente y no se anota como frío. `limite` gasta el cupo compartido de 20
-   peticiones por minuto: hazlo aparte y sin público.
+   estaba despierto es una medición en caliente y no se anota como frío. `limite` gasta el cupo compartido de
+   `/api/agent` (90 peticiones por minuto, `lib/cuota-asistente.ts`): hazlo aparte y sin
+   público, y con un servicio que responda en menos de 0,6 s por petición para que la
+   ráfaga quepa en el minuto.
 
 ## Activar el modelo (opcional)
 

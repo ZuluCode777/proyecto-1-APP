@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { decidirAccesoDeEntorno, respuestaDeDecision } from "@/lib/autenticacion"
+import { LIMITE_ASISTENTE, VENTANA_ASISTENTE_MS } from "@/lib/cuota-asistente"
 import { leerCuerpoLimitado } from "@/lib/cuerpo-peticion"
 import { claveCliente } from "@/lib/identidad-cliente"
 import { parseIntent, plainReply, runIntent, type AgentContext, type Intent } from "@/lib/local-agent"
@@ -19,11 +20,8 @@ export const maxDuration = 30
 const MAXIMO_BYTES_CUERPO = 4_000
 /** Longitud máxima de la frase que se interpreta. */
 const MAX_MESSAGE_CHARS = 300
-/** Peticiones por clave y por minuto. */
-const RATE_LIMIT = 20
-const RATE_WINDOW_MS = 60_000
-
-const rateLimit = createRateLimiter({ limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS })
+/** Peticiones por clave y por minuto: una sola clave para todos los teléfonos (EA-28, #75; cálculo en `lib/cuota-asistente.ts`). */
+const rateLimit = createRateLimiter({ limit: LIMITE_ASISTENTE, windowMs: VENTANA_ASISTENTE_MS })
 
 /**
  * Guardia de acceso HTTP Basic de la ruta. `/api/agent` se excluye del `proxy`
