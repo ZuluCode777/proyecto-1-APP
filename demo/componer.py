@@ -218,7 +218,9 @@ def componer(json_path: Path, salida: Path) -> dict:
     largo = float(sondear(video, "format=duration", False))
     inicio = min(float(datos.get("inicio") or 0.0), max(0.0, largo - 1))
     fin = datos.get("fin")
-    fin = min(float(fin) + 0.8, largo) if fin else largo
+    # En el iPhone, justo después del fin XCUITest cierra la app y se vería la pantalla de inicio: se corta antes.
+    margen_final = -0.5 if datos.get("plataforma") == "iphone" else 0.8
+    fin = min(float(fin) + margen_final, largo) if fin else largo
     total = max(1.0, fin - inicio)
     datos["inicio"] = inicio
 

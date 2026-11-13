@@ -107,14 +107,22 @@ final class DemoVideosUITests: XCTestCase {
         XCTAssertTrue(campo.waitForExistence(timeout: 15), "No apareció el campo")
         esperar(campo, "isHittable == %@", true, "El campo no es tocable")
         accion(descripcion ?? "Escribe: «\(texto)»")
-        // La consulta conserva la pregunta anterior: se toca al final del campo y se borra antes de escribir.
         let previo = (campo.value as? String) ?? ""
         let hayTexto = comprobar && !previo.isEmpty && previo != campo.placeholderValue
-        campo.coordinate(withNormalizedOffset: CGVector(dx: hayTexto ? 0.96 : 0.5, dy: 0.2)).tap()
+        campo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10), "El teclado no apareció")
         if hayTexto {
-            campo.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previo.count + 3))
-            pausa(0.4)
+            // La consulta conserva la pregunta anterior. El toque deja el cursor a mitad del texto y «borrar» solo quita lo
+            // de antes; lo que queda es más corto, así que el siguiente toque cae después de su final. Con letra grande,
+            // tocar cerca del borde derecho no abría el teclado.
+            for _ in 0..<5 {
+                let actual = (campo.value as? String) ?? ""
+                if actual.isEmpty || actual == campo.placeholderValue { break }
+                campo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
+                pausa(0.3)
+                campo.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: actual.count + 2))
+                pausa(0.3)
+            }
         }
         campo.typeText(texto)
         if comprobar { esperar(campo, "value == %@", texto, "El campo no muestra «\(texto)»") }
