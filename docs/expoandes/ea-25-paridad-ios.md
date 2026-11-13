@@ -16,7 +16,7 @@ Todo lo escrito aquí es **software**: las pruebas de TypeScript corrieron en el
 
 ## Contrato `POST /api/planificador` (cambio de backend)
 
-El backend es el único dueño de estaciones y planificación. Hasta ahora ningún endpoint aceptaba origen y destino como datos (`/api/agent` solo recibe una frase y `/api/transmilenio` entrega el catálogo entero, más de lo que la app puede recibir y con reglas de evidencia que no deben copiarse a Swift). Se añadió el contrato mínimo:
+El backend es el único dueño de estaciones y planificación. Hasta ahora ningún endpoint aceptaba origen y destino como datos (`/api/agent` solo recibe una frase y `/api/transmilenio` entrega el catálogo entero (unos 230 KB en la copia guardada) y obligaría a copiar a Swift las reglas de evidencia (`sentidoConfirmado`, `paradasPrescriptibles`, calendario), que no deben duplicarse). Se añadió el contrato mínimo:
 
 | Operación (`operacion`) | Petición | Respuesta 200 |
 | --- | --- | --- |
