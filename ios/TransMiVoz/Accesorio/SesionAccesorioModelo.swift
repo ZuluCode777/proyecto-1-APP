@@ -107,6 +107,8 @@ final class SesionAccesorioModelo {
     private(set) var nivelAfirmado: NivelEnlace = .desconocido
 
     let voz: ControlVoz
+    /// Módulo local de avisos (EA-20): pérdida de accesorio, dato vencido y proximidad pasan por él antes de la voz.
+    let centro: CentroAvisos
 
     @ObservationIgnored private let transporte: TransporteAccesorio
     @ObservationIgnored private let avisos: AvisosAccesibles
@@ -140,6 +142,7 @@ final class SesionAccesorioModelo {
         transporte: TransporteAccesorio,
         voz: ControlVoz,
         avisos: AvisosAccesibles = AvisosAccesibles(),
+        centro: CentroAvisos? = nil,
         reloj: @escaping RelojMonotonico = RelojDelSistema.ahora,
         pausa: @escaping @Sendable (Milisegundos) async -> Void = { ms in
             try? await Task.sleep(nanoseconds: UInt64(max(0, ms)) * 1_000_000)
@@ -147,6 +150,7 @@ final class SesionAccesorioModelo {
     ) {
         self.transporte = transporte
         self.voz = voz
+        self.centro = centro ?? CentroAvisos(voz: voz, avisos: avisos, reloj: reloj)
         self.avisos = avisos
         self.reloj = reloj
         self.pausa = pausa
@@ -269,6 +273,7 @@ final class SesionAccesorioModelo {
         temporizador?.cancel()
         temporizador = nil
         voz.descartarTodo()
+        centro.retirar(fuente: .sesion)
         activa = false
         paso = .ninguno
         sesion = nil
@@ -303,6 +308,7 @@ final class SesionAccesorioModelo {
             guard !suspendida else { return }
             suspendida = true
             voz.descartarTodo()
+            centro.retirar(fuente: .sesion)
             ultimaLocucion = nil
             ultimoAvisoEstado = nil
             temporizador?.cancel()
@@ -594,15 +600,39 @@ final class SesionAccesorioModelo {
     /// llevan «Enlace sin autenticar.» (después de la medida, `TextoAccesorio.lugarDeReserva`) hasta que esa frase se oye
     /// entera, como mucho `maximoReservas` veces por sincronización: cada locución corta la anterior, así que no se
     /// confía en que una sola (como «calibrando», que dura un instante) se oiga completa.
+    ///
+    /// Aviso y prioridad (EA-20): pérdida de accesorio, dato vencido y proximidad son avisos y pasan por `centro`; el resto de
+    /// estados (conectando, calibrando, sin detección) son mensajes de rutina. Un mensaje de rutina no corta ni calla un aviso
+    /// que todavía suena: no se dice ni gasta nada y el próximo latido lo reintenta con el estado de entonces. Lo mismo
+    /// ocurre con un aviso que el límite de ritmo aplazó (`.limitado`).
     @discardableResult
-    private func anunciar() -> Bool {
+    private func anunciar(repitiendo: Bool = false) -> Bool {
         guard activa, !suspendida, let locucion = TextoAccesorio.locucion(estado),
               locucion != ultimaLocucion else { return false }
+        let tipo = TipoAviso.de(estado)
+        if voz.debeCeder(prioridad: tipo?.severidad ?? .rutina) { return false }
+        let anterior = ultimaLocucion
         ultimaLocucion = locucion
         if reserva == .enCurso { reserva = voz.ultimaSeOyoEntera ? .oida : .pendiente }
         let llevaReserva = !enlaceAutenticado && reserva == .pendiente && reservasDichas < Self.maximoReservas
             && TextoAccesorio.lugarDeReserva(estado) != nil
-        let hablado = voz.anunciar(llevaReserva ? TextoAccesorio.conReserva(locucion.texto, para: estado) : locucion.texto) == .hablado
+        let dicho = llevaReserva ? TextoAccesorio.conReserva(locucion.texto, para: estado) : locucion.texto
+        let resultado: ResultadoEmision
+        if let tipo {
+            resultado = centro.emitir(tipo, locucion.texto, decir: dicho, repitiendo: repitiendo)
+        } else {
+            // Rutina: la situación ya no es un aviso, así que se cierran los avisos de la sesión.
+            centro.retirar(fuente: .sesion)
+            switch voz.anunciar(dicho, prioridad: .rutina) {
+            case .hablado: resultado = .hablado
+            case .silenciado(let motivo): resultado = .silenciado(motivo)
+            }
+        }
+        if resultado == .limitado {
+            ultimaLocucion = anterior
+            return false
+        }
+        let hablado = resultado == .hablado
         if llevaReserva && hablado {
             reserva = .enCurso
             reservasDichas += 1
@@ -625,7 +655,7 @@ final class SesionAccesorioModelo {
         sincronizarDesdeSesion()
         ultimaLocucion = nil
         olvidarReserva()  // cada vez que se repite el estado de ahora, también la reserva
-        avisarEnPantalla(vozHablo: anunciar())
+        avisarEnPantalla(vozHablo: anunciar(repitiendo: true))
     }
 
     /// Se perdió una ruta privada: aviso accesible y háptica (la voz ya no puede avisar por el altavoz).

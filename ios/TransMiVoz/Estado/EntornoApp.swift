@@ -14,6 +14,8 @@ final class EntornoApp {
     /// Sesión con el accesorio real por Bluetooth. `nil` solo en las pruebas de interfaz de la sesión simulada;
     /// las del accesorio usan la misma sesión con un transporte sintético rotulado.
     let accesorio: SesionAccesorioModelo?
+    /// Avisos locales (EA-20): el de la sesión con el accesorio y los del resultado de la consulta. Es el mismo de la sesión.
+    let avisos: CentroAvisos
     /// Mantiene vivos los avisos de ruta e interrupción de audio.
     private let monitorAudio: MonitorAudioSistema?
     /// Lupa de la cámara. En las pruebas de interfaz usa una cámara sintética rotulada.
@@ -23,14 +25,15 @@ final class EntornoApp {
 
     init(
         ajustes: AjustesServidorModelo, consulta: ConsultaModelo, anuncios: AnunciosModelo, favoritas: FavoritasModelo,
-        sesion: SesionLocalModelo, accesorio: SesionAccesorioModelo? = nil, monitorAudio: MonitorAudioSistema? = nil,
-        modoPruebas: Bool
+        sesion: SesionLocalModelo, avisos: CentroAvisos, accesorio: SesionAccesorioModelo? = nil,
+        monitorAudio: MonitorAudioSistema? = nil, modoPruebas: Bool
     ) {
         self.ajustes = ajustes
         self.consulta = consulta
         self.anuncios = anuncios
         self.favoritas = favoritas
         self.sesion = sesion
+        self.avisos = avisos
         self.accesorio = accesorio
         self.monitorAudio = monitorAudio
         self.modoPruebas = modoPruebas
@@ -49,11 +52,13 @@ final class EntornoApp {
         let ajustes = AjustesServidorModelo(almacen: AlmacenClaveLlavero())
         let cliente = ClienteAgenteHTTP { await ajustes.configuracion }
         let voz = ControlVoz(salida: SintetizadorSistema(), consultarRuta: SintetizadorSistema.rutaActual)
+        let avisos = CentroAvisos(voz: voz, avisos: .sistema)
         return EntornoApp(
             ajustes: ajustes, consulta: ConsultaModelo(cliente: cliente),
             anuncios: AnunciosModelo(cliente: ClienteAnunciosHTTP { await ajustes.configuracion }),
             favoritas: FavoritasModelo(almacen: AlmacenFavoritasUserDefaults()), sesion: SesionLocalModelo(),
-            accesorio: SesionAccesorioModelo(transporte: TransporteCoreBluetooth(), voz: voz, avisos: .sistema),
+            avisos: avisos,
+            accesorio: SesionAccesorioModelo(transporte: TransporteCoreBluetooth(), voz: voz, avisos: .sistema, centro: avisos),
             monitorAudio: MonitorAudioSistema(control: voz), modoPruebas: false)
     }
 
@@ -76,11 +81,13 @@ final class EntornoApp {
         let preferencias = UserDefaults(suiteName: nombre) ?? .standard
         preferencias.removePersistentDomain(forName: nombre)
         let ajustes = AjustesServidorModelo(almacen: AlmacenClaveEnMemoria(), preferencias: preferencias)
+        // Sin sesión con el accesorio, los avisos de la consulta se listan igual; la voz es de mentira y no sale por altavoz.
+        let voz = ControlVoz(salida: SalidaVozSintetica(), consultarRuta: { .noPrivada })
         return EntornoApp(
             ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado()),
             anuncios: anunciosDePruebas(argumentos),
             favoritas: favoritasDePruebas(preferencias, argumentos: argumentos),
-            sesion: SesionLocalModelo(), modoPruebas: true)
+            sesion: SesionLocalModelo(), avisos: CentroAvisos(voz: voz, origen: .simulado), modoPruebas: true)
     }
 
     /// Cámara de la lupa en las pruebas de interfaz: sin cámara real ni aviso de permiso del sistema. Sin más
@@ -105,11 +112,13 @@ final class EntornoApp {
         preferencias.removePersistentDomain(forName: nombre)
         let ajustes = AjustesServidorModelo(almacen: AlmacenClaveEnMemoria(), preferencias: preferencias)
         let voz = ControlVoz(salida: SalidaVozSintetica(), consultarRuta: { .noPrivada })
+        let avisos = CentroAvisos(voz: voz, origen: .simulado)
         return EntornoApp(
             ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado()),
             anuncios: anunciosDePruebas(argumentos),
             favoritas: favoritasDePruebas(preferencias, argumentos: argumentos), sesion: SesionLocalModelo(),
-            accesorio: SesionAccesorioModelo(transporte: TransporteSintetico(permiso: permiso), voz: voz),
+            avisos: avisos,
+            accesorio: SesionAccesorioModelo(transporte: TransporteSintetico(permiso: permiso), voz: voz, centro: avisos),
             modoPruebas: true)
     }
 
