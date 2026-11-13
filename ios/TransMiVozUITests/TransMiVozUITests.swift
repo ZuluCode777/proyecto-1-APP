@@ -423,6 +423,15 @@ private func exponerAlFinal(visibles: [String], en app: XCUIApplication, file: S
     comprobarEnteros(visibles, en: app, file: file, line: line)
 }
 
+/// Abre la pestaña Sesión. La app arranca en Inicio (la primera pestaña, ya no la sesión): las pruebas de la pantalla del
+/// accesorio, que antes partían de ella sin tocar ninguna pestaña, la abren primero con esto.
+private func abrirSesion(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+    let pestana = app.tabBars.buttons["Sesión"]
+    XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña Sesión", file: file, line: line)
+    pestana.tap()
+    esperar(pestana, "isSelected == %@", true, "No se seleccionó la pestaña Sesión", file: file, line: line)
+}
+
 /// Recorridos de interfaz en el Simulator, SIN red ni servidor: la app se lanza
 /// con `-PRUEBAS_UI_SIMULADAS` (solo existe en compilaciones de depuración) y
 /// responde con un cliente simulado. Demuestran el comportamiento de la
@@ -759,6 +768,7 @@ final class TransMiVozAccesorioUITests: XCTestCase {
         app.launch()
         // Ciclo de vida acotado: cada prueba cierra su app y la siguiente arranca limpia.
         addTeardownBlock { [app] in app?.terminate() }
+        abrirSesion(app)
     }
 
     private func elemento(_ identificador: String) -> XCUIElement {
@@ -973,6 +983,7 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         ]
         app.launch()
         addTeardownBlock { app.terminate() }
+        abrirSesion(app)
         func elemento(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
 
         // Directo desde arriba, «Buscar» consume los cuatro gestos: se pasa antes por el aviso de seguridad.
@@ -998,6 +1009,7 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         ]
         app.launch()
         addTeardownBlock { app.terminate() }
+        abrirSesion(app)
         func elemento(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
 
         XCTAssertTrue(elemento("aviso-transporte-sintetico").waitForExistence(timeout: 10))
@@ -1096,6 +1108,7 @@ final class TransMiVozAccesorioTextoGrandeUITests: XCTestCase {
         ]
         app.launch()
         addTeardownBlock { app.terminate() }
+        abrirSesion(app)
         func elemento(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
 
         XCTAssertTrue(elemento("aviso-transporte-sintetico").waitForExistence(timeout: 10))
@@ -1173,11 +1186,13 @@ final class TransMiVozLupaUITests: XCTestCase {
         ]
         app.launch()
         addTeardownBlock { [app] in app?.terminate() }
-        // Sin esperar el rasgo «seleccionado»: con el permiso por pedir, la hoja de la explicación tapa la barra de pestañas
-        // nada más abrir la lupa. Cada prueba espera lo que le toca.
-        let pestana = app.tabBars.buttons["Lupa"]
-        XCTAssertTrue(pestana.waitForExistence(timeout: 10), "No existe la pestaña Lupa")
-        pestana.tap()
+        // La lupa ya no tiene pestaña: se abre desde la baldosa «Lupa» de Inicio y queda empujada en su pila.
+        // Sin esperar nada más: con el permiso por pedir, la hoja de la explicación tapa la barra de pestañas nada más
+        // abrir la lupa. Cada prueba espera lo que le toca.
+        let baldosa = elemento("inicio-lupa")
+        XCTAssertTrue(baldosa.waitForExistence(timeout: 10), "No existe la baldosa Lupa en Inicio")
+        exponer("inicio-lupa", en: app)
+        baldosa.tap()
     }
 
     private func elemento(_ identificador: String) -> XCUIElement {
@@ -1240,7 +1255,8 @@ final class TransMiVozLupaUITests: XCTestCase {
 
         abrirPestana("Consulta")
         XCTAssertTrue(elemento("campo-pregunta").waitForExistence(timeout: 10))
-        abrirPestana("Lupa")
+        // Volver a la lupa es volver a la pestaña Inicio: su pila conserva la lupa abierta.
+        abrirPestana("Inicio")
         let visor = elemento("visor-lupa")
         XCTAssertTrue(visor.waitForExistence(timeout: 10))
         esperar(visor, "value == %@", "Imagen en vivo", "Al volver, la lupa debe reabrir en vivo y sin congelar")
@@ -1262,7 +1278,8 @@ final class TransMiVozLupaUITests: XCTestCase {
         // Rechazar nunca bloquea el resto de la app.
         abrirPestana("Consulta")
         XCTAssertTrue(elemento("campo-pregunta").waitForExistence(timeout: 10))
-        abrirPestana("Lupa")
+        // Volver a la lupa es volver a la pestaña Inicio: su pila conserva la lupa abierta.
+        abrirPestana("Inicio")
         // «Activar la lupa» vuelve a explicar el permiso.
         let activarOtraVez = elemento("boton-activar-lupa")
         XCTAssertTrue(activarOtraVez.waitForExistence(timeout: 10), "al volver sigue sin explicar solo")
@@ -2139,5 +2156,209 @@ final class TransMiVozRutasTextoGrandeUITests: RutasUITestCase {
         XCTAssertTrue(ultima.exists, "«estacion-3» no existe tras \(gestos) desplazamientos")
         exponer("estacion-3", en: app, velocidad: .slow)
         comprobarEnteros(["estacion-3"], en: app)
+    }
+}
+
+/// El Inicio de la app (la base visual de la web): cabecera, seis baldosas, menú de modo y la barra de pestañas. Corre con las
+/// respuestas simuladas (`-PRUEBAS_UI_SIMULADAS`): sin red ni servidor. Demuestra la interfaz; no prueba VoiceOver ni un iPhone.
+final class TransMiVozInicioUITests: XCTestCase {
+    private var app: XCUIApplication!
+
+    /// Las seis baldosas de `components/partial-home.tsx`, en su orden: identificador y título.
+    private let baldosas: [(id: String, titulo: String)] = [
+        ("inicio-asistente", "Asistente"), ("inicio-rutas", "Rutas"), ("inicio-gps", "Mapa y GPS"),
+        ("inicio-metro", "Metro de Bogotá"), ("inicio-lupa", "Lupa"), ("inicio-emergencia", "Emergencia"),
+    ]
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+        app = XCUIApplication()
+        app.launchArguments += [
+            "-PRUEBAS_UI_SIMULADAS", "-AppleLanguages", "(es)", "-AppleLocale", "es_CO",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
+        ]
+        app.launch()
+        addTeardownBlock { [app] in app?.terminate() }
+        XCTAssertTrue(elemento("inicio-titulo").waitForExistence(timeout: 10), "Inicio no apareció al arrancar")
+    }
+
+    private func elemento(_ identificador: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identificador).firstMatch
+    }
+
+    /// Toca una baldosa y espera a que aparezca la barra de navegación de la pantalla que abre.
+    private func abrirBaldosa(_ id: String, barra: String, file: StaticString = #filePath, line: UInt = #line) {
+        exponer(id, en: app, file: file, line: line)
+        elemento(id).tap()
+        XCTAssertTrue(app.navigationBars[barra].waitForExistence(timeout: 10), "No se abrió «\(barra)»", file: file, line: line)
+    }
+
+    /// El botón «atrás» de la barra del sistema (el «Volver» de la web) y la espera de Inicio.
+    private func volverAInicio(file: StaticString = #filePath, line: UInt = #line) {
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(elemento("inicio-titulo").waitForExistence(timeout: 10), "No se volvió a Inicio", file: file, line: line)
+    }
+
+    // MARK: Pestañas y cabecera
+
+    func testInicioEsLaPrimeraPestanaYLaLupaYaNoTieneLaSuya() throws {
+        let inicio = app.tabBars.buttons["Inicio"]
+        XCTAssertTrue(inicio.waitForExistence(timeout: 10))
+        XCTAssertTrue(inicio.isSelected, "Inicio es la pestaña de partida")
+        XCTAssertEqual(app.tabBars.buttons.count, 5, "cinco pestañas: Inicio, Sesión, Consulta, Avisos y Ajustes")
+        for nombre in ["Sesión", "Consulta", "Avisos", "Ajustes"] {
+            XCTAssertTrue(app.tabBars.buttons[nombre].exists, "falta la pestaña \(nombre)")
+        }
+        XCTAssertFalse(app.tabBars.buttons["Lupa"].exists, "la lupa se abre desde Inicio, no tiene pestaña")
+    }
+
+    func testLaCabeceraTieneElNombreElMenuYLaCampana() throws {
+        XCTAssertTrue(elemento("titulo-app").waitForExistence(timeout: 10))
+        XCTAssertEqual(elemento("titulo-app").label, "TransMiVoz")
+        let menu = elemento("boton-menu-modo")
+        XCTAssertEqual(menu.label, "Abrir menú de accesibilidad")
+        XCTAssertGreaterThanOrEqual(menu.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(menu.frame.height, 44)
+        let campana = elemento("boton-avisos-campana")
+        XCTAssertEqual(campana.label, "Avisos y anuncios")
+        XCTAssertGreaterThanOrEqual(campana.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(campana.frame.height, 44)
+    }
+
+    func testLaCampanaAbreLaPestanaAvisos() throws {
+        elemento("boton-avisos-campana").tap()
+        let avisos = app.tabBars.buttons["Avisos"]
+        esperar(avisos, "isSelected == %@", true, "La campana no abrió la pestaña Avisos")
+        XCTAssertTrue(elemento("encabezado-anuncios-oficiales").waitForExistence(timeout: 10), "No se ve la pantalla de Avisos")
+    }
+
+    // MARK: Baldosas
+
+    func testLasSeisBaldosasExistenEnOrdenTocablesYConSuTitulo() throws {
+        XCTAssertEqual(elemento("inicio-titulo").label, "¿Qué necesitas?")
+        var yAnterior = elemento("inicio-titulo").frame.minY
+        for baldosa in baldosas {
+            exponer(baldosa.id, en: app)
+            let elementoBaldosa = elemento(baldosa.id)
+            XCTAssertEqual(elementoBaldosa.label, baldosa.titulo, "«\(baldosa.id)»")
+            XCTAssertTrue(elementoBaldosa.isHittable, "«\(baldosa.id)» no es tocable")
+            XCTAssertGreaterThanOrEqual(elementoBaldosa.frame.height, 44, "«\(baldosa.id)» mide menos de 44 pt de alto")
+            XCTAssertGreaterThanOrEqual(elementoBaldosa.frame.width, 44, "«\(baldosa.id)» mide menos de 44 pt de ancho")
+            XCTAssertGreaterThan(elementoBaldosa.frame.minY, yAnterior, "«\(baldosa.id)» no sigue el orden de la web")
+            yAnterior = elementoBaldosa.frame.minY
+        }
+    }
+
+    func testAsistenteAbreLaPestanaConsulta() throws {
+        exponer("inicio-asistente", en: app)
+        elemento("inicio-asistente").tap()
+        esperar(app.tabBars.buttons["Consulta"], "isSelected == %@", true, "El Asistente no abrió la pestaña Consulta")
+        XCTAssertTrue(elemento("campo-pregunta").waitForExistence(timeout: 10))
+    }
+
+    func testRutasAbreLaBusquedaDeRutas() throws {
+        abrirBaldosa("inicio-rutas", barra: "Rutas y viaje")
+        XCTAssertTrue(elemento("campo-busqueda-rutas").waitForExistence(timeout: 10), "No se abrió la búsqueda de rutas")
+        XCTAssertTrue(app.tabBars.buttons["Inicio"].isSelected, "la búsqueda se abre dentro de Inicio")
+        volverAInicio()
+    }
+
+    func testLupaSeAbreDesdeInicioConSuExplicacionDelPermiso() throws {
+        abrirBaldosa("inicio-lupa", barra: "Lupa")
+        XCTAssertTrue(elemento("texto-permiso-camara").waitForExistence(timeout: 10), "la explicación va antes del permiso")
+        let ahoraNo = elemento("boton-permiso-camara-ahora-no")
+        XCTAssertTrue(ahoraNo.waitForExistence(timeout: 10))
+        ahoraNo.tap()
+        XCTAssertTrue(ahoraNo.waitForNonExistence(timeout: 10), "La hoja del permiso no se cerró")
+        volverAInicio()
+    }
+
+    func testMapaMetroYEmergenciaAbrenSuPantalla() throws {
+        for (id, barra) in [("inicio-gps", "Mapa y GPS"), ("inicio-metro", "Metro de Bogotá"), ("inicio-emergencia", "Emergencia")] {
+            abrirBaldosa(id, barra: barra)
+            volverAInicio()
+        }
+    }
+
+    // MARK: Modo
+
+    func testElMenuDeModoCambiaElInicioYSeCierra() throws {
+        elemento("boton-menu-modo").tap()
+        let parcial = elemento("modo-parcial")
+        let total = elemento("modo-total")
+        XCTAssertTrue(parcial.waitForExistence(timeout: 10), "No se abrió el menú de modo")
+        XCTAssertTrue(parcial.label.contains("Baja visión"))
+        XCTAssertTrue(total.label.contains("Ceguera total"))
+        XCTAssertTrue(parcial.isSelected, "Baja visión es el modo de partida")
+        XCTAssertFalse(total.isSelected)
+
+        // Ceguera total: sin baldosas, con el gancho del Inicio de voz.
+        total.tap()
+        XCTAssertTrue(total.waitForNonExistence(timeout: 10), "El menú no se cerró al elegir un modo")
+        XCTAssertTrue(elemento("provisional-agente-total").waitForExistence(timeout: 10), "Ceguera total no muestra su Inicio")
+        XCTAssertFalse(elemento("inicio-lupa").exists, "Ceguera total no muestra las baldosas")
+        XCTAssertTrue(elemento("boton-menu-modo").exists, "la cabecera sigue en Ceguera total")
+
+        // De vuelta a Baja visión: el menú marca el modo activo y las baldosas regresan.
+        elemento("boton-menu-modo").tap()
+        XCTAssertTrue(total.waitForExistence(timeout: 10))
+        XCTAssertTrue(total.isSelected, "el menú debe marcar Ceguera total como activo")
+        parcial.tap()
+        XCTAssertTrue(parcial.waitForNonExistence(timeout: 10), "El menú no se cerró al elegir un modo")
+        XCTAssertTrue(elemento("inicio-lupa").waitForExistence(timeout: 10), "Baja visión no devolvió las baldosas")
+
+        // El botón «Cerrar menú» cierra sin cambiar nada.
+        elemento("boton-menu-modo").tap()
+        let cerrar = elemento("boton-cerrar-menu-modo")
+        XCTAssertTrue(cerrar.waitForExistence(timeout: 10))
+        cerrar.tap()
+        XCTAssertTrue(cerrar.waitForNonExistence(timeout: 10), "El menú no se cerró")
+        XCTAssertTrue(elemento("inicio-lupa").exists)
+    }
+
+    // MARK: Auditoría automática de accesibilidad (falla el test si hay problemas)
+
+    /// Inicio de arriba abajo con la auditoría completa: cada posición con todos los grupos y, lo recortado bajo las barras,
+    /// medido entero al cerrar la fase (`FaseAuditada`).
+    func testAuditoriaAccesibilidadInicio() throws {
+        let fase = FaseAuditada("inicio", app: app, caso: self)
+        for (id, contexto) in [("inicio-titulo", "arriba"), ("inicio-emergencia", "abajo")] {
+            try fase.exponerPorEscalas(id)
+            try fase.auditar("inicio-\(contexto)")
+        }
+        try fase.cerrar()
+    }
+
+    func testAuditoriaAccesibilidadDelMenuDeModo() throws {
+        elemento("boton-menu-modo").tap()
+        XCTAssertTrue(elemento("modo-parcial").waitForExistence(timeout: 10))
+        try auditar(app, "inicio-menu-modo", testCase: self)
+    }
+}
+
+/// Inicio con el texto más grande de Dynamic Type de accesibilidad, de arriba abajo: cada baldosa queda entera a la vista y
+/// tocable, y se audita en su posición. Nada de esto prueba VoiceOver real.
+final class TransMiVozInicioTextoGrandeUITests: XCTestCase {
+    func testAuditoriaDeInicioConTextoMuyGrande() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-PRUEBAS_UI_SIMULADAS", "-AppleLanguages", "(es)", "-AppleLocale", "es_CO",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL",
+        ]
+        app.launch()
+        addTeardownBlock { app.terminate() }
+        func elemento(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
+        XCTAssertTrue(elemento("inicio-titulo").waitForExistence(timeout: 10), "Inicio no apareció al arrancar")
+        // La cabecera sigue a la vista y tocable con el texto más grande.
+        for id in ["boton-menu-modo", "boton-avisos-campana"] {
+            XCTAssertTrue(elemento(id).isHittable, "«\(id)» no es tocable con el texto más grande")
+        }
+        let fase = FaseAuditada("inicio-texto-muy-grande", app: app, caso: self, velocidad: .slow)
+        for id in ["inicio-titulo", "inicio-asistente", "inicio-rutas", "inicio-gps", "inicio-metro", "inicio-lupa", "inicio-emergencia"] {
+            try fase.exponerPorEscalas(id)
+            try fase.auditar("texto-muy-grande-Inicio-\(id)")
+        }
+        try fase.cerrar()
     }
 }
