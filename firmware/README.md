@@ -70,7 +70,7 @@ using namespace visionaria::ble;
 Informacion info;                 // SEN0395: capacidades 0, perfil 1, ventana en mm
 info.id_arranque = /* aleatorio por arranque */;
 info.perfil = 1;
-info.distancia_maxima_mm = 3000;
+info.distancia_maxima_mm = 450;      // 0 a 45 cm: la ventana por defecto del radar (sen0395::Configuracion)
 uint8_t trama[kLongitudTrama];
 if (codificar_informacion(info, trama) != Error::Ninguno) { /* no publicar */ }
 

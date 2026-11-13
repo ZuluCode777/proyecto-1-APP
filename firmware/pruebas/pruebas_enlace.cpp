@@ -589,7 +589,7 @@ void prueba_con_interprete_real() {
   CicloRadar c;
   Informacion info;
   informacion_sen0395(1, c.radar.ventana_minima_mm(), c.radar.ventana_maxima_mm(), &info);
-  EXIGIR(info.distancia_minima_mm == 0 && info.distancia_maxima_mm == 3000);
+  EXIGIR(info.distancia_minima_mm == 0 && info.distancia_maxima_mm == 450);
   EmisorSintetico em(info, false);
   uint8_t t[kLongitudTrama];
   Medicion m;

@@ -65,11 +65,19 @@ constexpr uint8_t kIndiceVentanaMax = 127;     // detRangeCfg: índices 0..127
 constexpr uint16_t kPasoVentanaMm = 150;       // 15 cm por índice
 
 struct Configuracion {
-  // Ventana de detección, en índices de 15 cm (0..127). Por defecto 0 a 3 m.
+  // Ventana de detección, en índices de 15 cm (0..127). Por defecto 0 a 45 cm
+  // (índice 3: `getRange` responde `0.000 0.450` en el banco del 12/11), la
+  // ventana de ~40 cm que usa el equipo. La de fábrica (índice 20, 3 m) dejaba el
+  // radar en «presencia» casi siempre.
   uint8_t ventana_inicio = 0;
-  uint8_t ventana_fin = 20;
-  // outputLatency, en unidades de 25 ms. Valores de fábrica (2,5 s / 10 s);
-  // B2 decide el mínimo estable. No se inventa uno sin medición.
+  uint8_t ventana_fin = 3;
+  // outputLatency (primero detectar, luego desaparecer). Valores de fábrica, SIN
+  // cambiar: B2 decide el mínimo estable y no se inventa uno sin medición.
+  // Medido el 12/11: tras `outputLatency -1 100 400`, `getLatency` responde
+  // `0.025 10.000` (s): 0,025 s al detectar y 10 s al desaparecer, no 2,5 s / 10 s.
+  // `latencia_desaparicion` va en pasos de 25 ms (400 x 25 ms = 10 s). Con
+  // `latencia_deteccion` = 100 el radar informa 0,025 s, no los 2,5 s que darían
+  // 100 x 25 ms: su unidad no es de 25 ms (un solo punto medido; no se extrapola).
   uint16_t latencia_deteccion = 100;
   uint16_t latencia_desaparicion = 400;
   uint32_t estabilizacion_ms = kEstabilizacionMinMs;

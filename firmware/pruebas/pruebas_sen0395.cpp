@@ -85,7 +85,7 @@ void probar_ordenes() {
   r.salida_enviada(0);
   exigir(orden(r).empty(), "ordenes", "no hay orden nueva mientras se espera respuesta");
   dar(r, "Done\r\n", 10);
-  exigir(orden(r) == "detRangeCfg -1 0 20\r\n", "ordenes", "ventana por defecto");
+  exigir(orden(r) == "detRangeCfg -1 0 3\r\n", "ordenes", "ventana por defecto");
   r.salida_enviada(10);
   dar(r, "Done\r\n", 20);
   exigir(orden(r) == "outputLatency -1 100 400\r\n", "ordenes", "latencias de fábrica");
@@ -115,7 +115,7 @@ void probar_ordenes() {
   exigir(p.ventana_minima_mm() == 300 && p.ventana_maxima_mm() == 19050, "ordenes", "ventana en mm");
 
   Interprete d;
-  exigir(d.ventana_minima_mm() == 0 && d.ventana_maxima_mm() == 3000, "ordenes", "ventana 0..3 m");
+  exigir(d.ventana_minima_mm() == 0 && d.ventana_maxima_mm() == 450, "ordenes", "ventana 0..45 cm");
   ble::Informacion info;
   info.perfil = 1;
   info.distancia_minima_mm = d.ventana_minima_mm();
@@ -186,7 +186,7 @@ void probar_estabilizacion_y_primer_latido() {
   exigir(s.fase() == Fase::Configurando && s.contadores().lineas_ignoradas == 2, "estab",
          "eco y tramas durante la configuración se ignoran");
   dar(s, "Done\r\n", 3);
-  exigir(orden(s) == "detRangeCfg -1 0 20\r\n", "estab", "el Done sí avanza");
+  exigir(orden(s) == "detRangeCfg -1 0 3\r\n", "estab", "el Done sí avanza");
 }
 
 void probar_presencia_y_edad() {
@@ -439,7 +439,7 @@ void probar_configuracion_con_respuestas() {
   Interprete a;
   a.salida_enviada(0);
   dar(a, "Done\r\n", 2000);
-  exigir(a.fase() == Fase::Configurando && orden(a) == "detRangeCfg -1 0 20\r\n", "config", "Done a 2000 ms vale");
+  exigir(a.fase() == Fase::Configurando && orden(a) == "detRangeCfg -1 0 3\r\n", "config", "Done a 2000 ms vale");
   Interprete b;
   b.salida_enviada(0);
   dar(b, "Done\r\n", 2001);
@@ -449,7 +449,7 @@ void probar_configuracion_con_respuestas() {
   Interprete d;
   d.salida_enviada(0);
   dar(d, "Done\r\nDone\r\nDone\r\n", 10);
-  exigir(orden(d) == "detRangeCfg -1 0 20\r\n" && d.fase() == Fase::Configurando, "config",
+  exigir(orden(d) == "detRangeCfg -1 0 3\r\n" && d.fase() == Fase::Configurando, "config",
          "los Done sobrantes no avanzan nada");
   d.salida_enviada(20);
   exigir(d.fase() == Fase::Configurando && orden(d).empty(), "config", "la orden 2 espera su propio Done");
@@ -485,7 +485,7 @@ void probar_reinicio() {
   dar(r, ", , , *\r\n", t0 + 41);  // el resto del fragmento viejo no forma una trama
   exigir(r.contadores().tramas_validas == 1, "reinicio", "el fragmento viejo no se completa");
   dar(r, "Done\r\n", t0 + 42);
-  exigir(orden(r) == "detRangeCfg -1 0 20\r\n", "reinicio", "avanza con su propio Done");
+  exigir(orden(r) == "detRangeCfg -1 0 3\r\n", "reinicio", "avanza con su propio Done");
 }
 
 void probar_reinicio_completo() {
@@ -524,7 +524,7 @@ void probar_purga_tras_timeout() {
   exigir(orden(r) == "sensorStop\r\n", "purga", "terminada la purga se reconfigura");
   r.salida_enviada(4100);
   dar(r, "Done\r\n", 4110);
-  exigir(orden(r) == "detRangeCfg -1 0 20\r\n", "purga", "ahora sí avanza");
+  exigir(orden(r) == "detRangeCfg -1 0 3\r\n", "purga", "ahora sí avanza");
 
   // Reiniciar mientras se espera una respuesta: también se purga.
   Interprete e;
@@ -543,7 +543,7 @@ void probar_purga_tras_timeout() {
   exigir(orden(e) == "sensorStop\r\n", "purga", "pasados 2 x plazo, sale sensorStop");
   e.salida_enviada(10 + 4001);
   dar(e, "Done\r\n", 10 + 4011);
-  exigir(orden(e) == "detRangeCfg -1 0 20\r\n", "purga", "después, su propio Done avanza");
+  exigir(orden(e) == "detRangeCfg -1 0 3\r\n", "purga", "después, su propio Done avanza");
 
   // Hallazgo 2: reinicio a los 20 ms con la 2.ª orden enviada a los 10 ms; la
   // respuesta vieja llega a los 2011 ms (2001 ms tras el envío).
@@ -734,7 +734,7 @@ void probar_oversize_rechazado() {
     q.salida_enviada(0);
     q.procesar(bytes_de(con_done), con_done.size(), 10);
     dar(q, "Done\r\n", 20);
-    exigir(orden(q) == "detRangeCfg -1 0 20\r\n", "oversize", "config: el Done íntegro posterior sí confirma");
+    exigir(orden(q) == "detRangeCfg -1 0 3\r\n", "oversize", "config: el Done íntegro posterior sí confirma");
   }
 }
 

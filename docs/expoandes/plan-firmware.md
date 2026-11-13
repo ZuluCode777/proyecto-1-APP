@@ -15,8 +15,8 @@ Datos de la [wiki de DFRobot](https://wiki.dfrobot.com/mmWave_Radar_Human_Presen
 | Alimentación | 3,6–5 V, 90 mA. La wiki no publica el nivel lógico de la UART. |
 | UART | 115200 baudios, 8 bits, sin paridad, 1 bit de parada. |
 | Salida | Trama ASCII `$JYBSS,1, , , *` (presencia) o `$JYBSS,0, , , *` (nadie), a 1 Hz por defecto. El pin GPIO2 del sensor sube con presencia. **No entrega distancia ni ángulo.** |
-| Ventana de detección | `detRangeCfg -1 <inicio> <fin> …`: hasta cuatro tramos, en pasos de 15 cm (índices 0–127). Por defecto `detRangeCfg -1 0 20`, de 0 a 3 m. Alcance declarado: 9 m. |
-| Retardos | `outputLatency -1 <al detectar> <al desaparecer>`, en unidades de 25 ms. Por defecto 2,5 s y 10 s. |
+| Ventana de detección | `detRangeCfg -1 <inicio> <fin> …`: hasta cuatro tramos, en pasos de 15 cm (índices 0–127). De fábrica, `detRangeCfg -1 0 20`, de 0 a 3 m; esa ventana dejó el radar en «presencia» casi siempre (banco del 12/11), así que el firmware fija por defecto `detRangeCfg -1 0 3` (0 a 45 cm, la de ~40 cm del equipo; `getRange` responde `0.000 0.450`). Alcance declarado: 9 m. |
+| Retardos | `outputLatency -1 <al detectar> <al desaparecer>`; el segundo va en unidades de 25 ms. La wiki da por defecto 2,5 s y 10 s, pero en el banco del 12/11 `getLatency` respondió `0.025 10.000` tras `outputLatency -1 100 400`: 0,025 s al detectar y 10 s al desaparecer. El primer valor no va en unidades de 25 ms (un solo punto medido). El firmware conserva `100 400`. |
 | Configuración | Solo con el sensor detenido (`sensorStop`). Después, `saveCfg 0x45670123 0xCDEF89AB 0x956128C6 0xDF54AC89` y `sensorStart`. Cada orden responde `Done` o `Error`. |
 | Haz | 100 × 40°. |
 | Blancos | Personas en movimiento, con micromovimiento o quietas, y «movimiento de todos los objetos» en su rango. No declara detección de objetos quietos que no sean personas. |
@@ -55,7 +55,7 @@ Si B4 y B5 fallan, G1 se registra en la feria como no lograda con este sensor; l
 
 **Recomendación: opción 1.** Mantiene la v1.0 sin tocar el iPhone y usa la señal más reciente que da el sensor. Si B2 muestra que el pin no cambia antes que la trama, la opción 2 tampoco mejora el aviso: solo haría aceptar datos más viejos, y el requisito de retardo queda incumplido con este sensor. Un pin quieto en bajo no distingue «nadie» de «sensor caído», así que la trama UART sigue como latido: sin trama válida en 2,5 s, salud `2` aunque el pin diga otra cosa.
 
-**Retardo de aviso.** Con el retardo por defecto de 2,5 s al detectar, la meta de p95 ≤ 300 ms del sensor al sonido no se cumple. El firmware baja `outputLatency` al mínimo que B2 muestre estable. Si ni así se cumple, el requisito queda incumplido y se declara.
+**Retardo de aviso.** Con el retardo por defecto medido de 0,025 s al detectar, el retardo configurado ya no impide por sí solo la meta de p95 ≤ 300 ms del sensor al sonido; el retardo real de la trama (a 1 Hz) no se midió y lo mide B2. El firmware baja `outputLatency` al mínimo que B2 muestre estable. Si no se cumple, el requisito queda incumplido y se declara.
 
 ## Conexión eléctrica
 
