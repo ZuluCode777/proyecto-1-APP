@@ -114,6 +114,28 @@ final class SintetizadorSistema: NSObject, SalidaVoz, AVSpeechSynthesizerDelegat
     }
 }
 
+// MARK: Captura para el dictado (EA-19)
+
+extension SintetizadorSistema {
+    /// Sesión de audio del dictado. Sigue siendo esta clase la dueña de `AVAudioSession`: el reconocedor no la toca.
+    /// `.playAndRecord` y no `.record`: con `.record` la sesión no tiene salidas, `rutaActual` daría «desconocida» y
+    /// `ControlVoz` callaría los avisos del accesorio mientras se dicta. Quien llama detiene antes la voz
+    /// (`ControlVoz.descartarTodo`): la captura no se abre con una locución sonando. `.allowBluetooth` deja usar el
+    /// micrófono de unos auriculares Bluetooth (perfil de manos libres).
+    nonisolated static func abrirCaptura() throws {
+        let sesion = AVAudioSession.sharedInstance()
+        try sesion.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .duckOthers])
+        try sesion.setActive(true)
+    }
+
+    /// Suelta el micrófono y deja la sesión como la espera la voz (`.playback`, sin activar): la próxima locución y la
+    /// consulta de la ruta no se encuentran con la categoría del dictado.
+    nonisolated static func cerrarCaptura() {
+        liberar()
+        try? configurar(AVAudioSession.sharedInstance())
+    }
+}
+
 /// Traduce los avisos del sistema (cambio de ruta, interrupción, reinicio de los servicios de
 /// medios) a la política de `ControlVoz`. Cualquier duda corta la voz: nunca se reanuda sola.
 /// Vive tanto como la app (lo guarda `EntornoApp`), por eso no quita los observadores.

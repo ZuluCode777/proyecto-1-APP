@@ -16,6 +16,12 @@ enum EstadoConsulta: Equatable, Sendable {
 /// consulta cancelada o reemplazada NO cambia el
 /// estado. Se garantiza con una generación: solo el resultado de la última
 /// generación vigente se aplica, aunque el cliente ignore la cancelación.
+///
+/// Conversación con aclaración (EA-19): si la respuesta pide completar un viaje («Salgo desde Ricaurte» → «¿A qué
+/// estación quieres ir?»), el origen queda en `origenPendiente` y viaja con la pregunta siguiente. Vive solo en este
+/// iPhone y en memoria: el servidor no guarda historial. Cancelar la consulta en curso lo borra; una respuesta que no
+/// pide nada más lo sustituye. La pregunta se puede dictar (`dictado`): el texto va al campo, la persona revisa y
+/// envía, y una pregunta dictada se contesta también en voz alta, por la misma vía que los avisos del accesorio.
 @MainActor
 @Observable
 final class ConsultaModelo {
@@ -27,13 +33,25 @@ final class ConsultaModelo {
     private(set) var ultimoTextoEnviado: String?
     /// Escenario de la última consulta enviada: rotula su resultado y lo conserva «Reintentar».
     private(set) var escenarioEnviado: EscenarioConsulta = .transporte
+    /// Origen que la persona dijo y al que falta el destino. Se envía con la próxima consulta de transporte.
+    private(set) var origenPendiente: String?
+    /// Dictado de la pregunta; `nil` si esta pantalla no lo ofrece.
+    let dictado: DictadoModelo?
 
     @ObservationIgnored private let cliente: ClienteAgente
+    @ObservationIgnored private let voz: ControlVoz?
     @ObservationIgnored private var tarea: Task<Void, Never>?
     @ObservationIgnored private var generacion = 0
+    /// Origen pendiente con que salió la última consulta: «Reintentar» repite lo enviado, también si entre tanto se canceló.
+    @ObservationIgnored private var origenEnviado: String?
+    /// `ControlVoz.locuciones` al empezar la última respuesta hablada de esta pantalla; `nil` si no hay ninguna que cortar.
+    @ObservationIgnored private var locucionPropia: Int?
 
-    init(cliente: ClienteAgente) {
+    init(cliente: ClienteAgente, dictado: DictadoModelo? = nil, voz: ControlVoz? = nil) {
         self.cliente = cliente
+        self.dictado = dictado
+        self.voz = voz
+        dictado?.alTexto = { [weak self] texto in self?.texto = texto }
     }
 
     var estaEnviando: Bool { estado == .enviando }
@@ -55,37 +73,73 @@ final class ConsultaModelo {
         guard let anterior = ultimoTextoEnviado else { return }
         texto = anterior
         escenario = escenarioEnviado
+        origenPendiente = origenEnviado
         enviar()
     }
 
-    /// Cancela la consulta en curso. No hay efectos tardíos aunque el servidor responda después.
-    /// También la usa la pantalla al dejar de verse (arquitectura §7).
+    /// Cancela la consulta en curso y, con ella, la aclaración pendiente y el dictado. No hay efectos tardíos aunque el
+    /// servidor responda después.
     func cancelar() {
+        dictado?.cancelar()
         guard estaEnviando else { return }
         invalidarConsultaEnCurso()
+        origenPendiente = nil
         estado = .cancelada
     }
 
-    /// Descarta la generación vigente: su resultado, si llega, no se aplica.
+    /// La pantalla dejó de verse (arquitectura §7): invalida la captura, la consulta en curso y la voz de la respuesta.
+    /// Una aclaración pendiente que no estaba en curso se conserva y la pantalla la muestra al volver.
+    func salir() {
+        cancelar()
+        detenerHabla()
+    }
+
+    /// «Olvidar origen»: la persona descarta la aclaración pendiente.
+    func olvidarOrigenPendiente() {
+        origenPendiente = nil
+    }
+
+    /// Descarta la generación vigente: su resultado, si llega, no se aplica. También corta la respuesta que sonara.
     private func invalidarConsultaEnCurso() {
         generacion += 1
         tarea?.cancel()
         tarea = nil
+        detenerHabla()
+    }
+
+    /// Corta la respuesta hablada de esta pantalla, y solo esa: si después habló otro (un aviso del accesorio), la cola de
+    /// uno ya la cortó y lo que suena no es nuestro.
+    private func detenerHabla() {
+        guard let voz, let propia = locucionPropia else { return }
+        locucionPropia = nil
+        if voz.locuciones == propia { voz.descartarTodo() }
+    }
+
+    /// Lee la respuesta por la voz de la app. Con la captura abierta no se habla (la voz sonaría sobre el micrófono).
+    private func hablar(_ respuesta: RespuestaAgente, escenario: EscenarioConsulta) {
+        guard let voz, dictado?.capturando != true else { return }
+        let partes = [escenario.anuncioResultado, respuesta.textoHablado].compactMap { $0 }
+        if voz.anunciar(partes.joined(separator: " ")) == .hablado { locucionPropia = voz.locuciones }
     }
 
     private func iniciar(con limpio: String) {
         generacion += 1
         let miGeneracion = generacion
         tarea?.cancel()
+        detenerHabla()
         ultimoTextoEnviado = limpio
         let enviado = escenario
         escenarioEnviado = enviado
+        // La aclaración solo completa un viaje de transporte: en el escenario Metro no viaja.
+        let pendiente = enviado == .transporte ? origenPendiente : nil
+        origenEnviado = pendiente
+        let dictada = dictado?.ultimoDictado == limpio
         estado = .enviando
         tarea = Task { [cliente] in
             let resultado: EstadoConsulta
             do {
                 // Antes de publicarla, se retiran las órdenes de abordaje sin verificar.
-                let respuesta = try await cliente.consultar(texto: enviado.prefijo + limpio).saneada()
+                let respuesta = try await cliente.consultar(texto: enviado.prefijo + limpio, origenPendiente: pendiente).saneada()
                 // En el escenario Metro el servidor solo informa (acción `none`): una ruta, una estación
                 // o un viaje de TransMilenio no se presentan como Metro.
                 guard enviado == .transporte || respuesta.accion == .ninguna else {
@@ -103,6 +157,11 @@ final class ConsultaModelo {
             guard miGeneracion == self.generacion, !Task.isCancelled else { return }
             self.tarea = nil
             self.estado = resultado == .error(.cancelada) ? .cancelada : resultado
+            // Un error conserva la aclaración (hay «Reintentar»); una respuesta la sustituye por la que traiga.
+            if case .respuesta(let respuesta) = resultado {
+                self.origenPendiente = respuesta.origenPendiente
+                if dictada { self.hablar(respuesta, escenario: enviado) }
+            }
         }
     }
 }

@@ -133,6 +133,12 @@ final class ControlVoz {
     /// (`didFinish`) de forma asíncrona, así que una locución que acaba de terminar puede seguir contando como «sonando» y
     /// la reserva se repite una vez de más; la sesión limita las repeticiones (`maximoReservas`) y no es peor que callar.
     var ultimaSeOyoEntera: Bool { !ultimaLocucionCortada && !salida.hablando && !salida.cortadaPorElSistema }
+    /// Cuántas locuciones empezaron. Quien habla por esta vía (la consulta) lo anota para cortar solo la suya: si después
+    /// habló otro (un aviso del accesorio), la suya ya la cortó la cola de uno y no hay nada que cortar.
+    @ObservationIgnored private(set) var locuciones = 0
+    /// Se llama justo antes de que empiece una locución. El dictado suelta el micrófono aquí: nada suena sobre una captura
+    /// abierta, y un aviso no espera a que la persona termine de dictar.
+    @ObservationIgnored var alHablar: (@MainActor () -> Void)?
     /// Se llama cuando vuelve a ser posible hablar (auriculares de nuevo, fin de la interrupción, o un
     /// corte con la ruta privada intacta que dejó una locución a medias).
     @ObservationIgnored var alRecuperarse: (@MainActor () -> Void)?
@@ -163,10 +169,12 @@ final class ControlVoz {
         if interrumpido { return .silenciado(.interrumpido) }
         guard permitida() else { return .silenciado(.vozApagada) }
         guard ruta == .privada else { return .silenciado(.rutaNoPrivada) }
+        alHablar?()
         switch salida.hablar(texto) {
         case .iniciada:
             audioNoDisponible = false
             ultimaLocucionCortada = false
+            locuciones += 1
             return .hablado
         case .sesionNoDisponible:
             audioNoDisponible = true

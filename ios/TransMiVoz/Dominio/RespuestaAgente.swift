@@ -77,6 +77,12 @@ struct ProcedenciaCatalogo: Decodable, Equatable, Sendable {
     let antiguo: Bool
 }
 
+/// Aclaración pendiente de una respuesta (`aclaracion` en el contrato, EA-19): el origen que la persona dijo y al que falta
+/// el destino. El servidor no guarda nada entre turnos; la app lo conserva y lo reenvía con la pregunta siguiente.
+private struct AclaracionAgente: Decodable {
+    let origen: String
+}
+
 /// Respuesta de `POST /api/agent` (`AgentReplySchema` de `lib/local-agent.ts`).
 ///
 /// El decodificador es estricto en la frontera: una acción desconocida, un
@@ -89,6 +95,7 @@ struct RespuestaAgente: Decodable, Equatable, Sendable {
     static let maximoPasos = 50
     static let maximoTramos = 20
     static let maximoCaracteresProcedencia = 500
+    static let maximoCaracteresOrigen = EntradaConsulta.maximoCaracteres
 
     let texto: String
     let pasos: [PasoAgente]
@@ -96,6 +103,8 @@ struct RespuestaAgente: Decodable, Equatable, Sendable {
     let accion: AccionAgente
     /// Solo en respuestas con datos del catálogo; un servidor anterior a EA-17 no la envía.
     let catalogo: ProcedenciaCatalogo?
+    /// Origen que falta completar con un destino (`aclaracion.origen`); `nil` en toda otra respuesta.
+    let origenPendiente: String?
 
     enum CodingKeys: String, CodingKey {
         case texto = "reply"
@@ -106,17 +115,19 @@ struct RespuestaAgente: Decodable, Equatable, Sendable {
         case codigoRuta = "routeCode"
         case viaje = "trip"
         case catalogo
+        case aclaracion
     }
 
     init(
         texto: String, pasos: [PasoAgente] = [], motor: MotorAgente = .reglas, accion: AccionAgente = .ninguna,
-        catalogo: ProcedenciaCatalogo? = nil
+        catalogo: ProcedenciaCatalogo? = nil, origenPendiente: String? = nil
     ) {
         self.texto = texto
         self.pasos = pasos
         self.motor = motor
         self.accion = accion
         self.catalogo = catalogo
+        self.origenPendiente = origenPendiente
     }
 
     init(from decoder: Decoder) throws {
@@ -145,6 +156,16 @@ struct RespuestaAgente: Decodable, Equatable, Sendable {
             }
         }
         self.catalogo = catalogo
+
+        let aclaracion = try contenedor.decodeIfPresent(AclaracionAgente.self, forKey: .aclaracion)
+        if let aclaracion {
+            guard !aclaracion.origen.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  aclaracion.origen.utf16.count <= Self.maximoCaracteresOrigen else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .aclaracion, in: contenedor, debugDescription: "origen vacío o demasiado largo")
+            }
+        }
+        origenPendiente = aclaracion?.origen
 
         let nombreAccion = try contenedor.decode(String.self, forKey: .accion)
         switch nombreAccion {

@@ -30,3 +30,15 @@ extension RespuestaAgente {
         return texto.contains(catalogo.procedencia) ? nil : catalogo.procedencia
     }
 }
+
+extension RespuestaAgente {
+    /// Lo que se lee en voz alta: lo mismo que la pantalla presenta como respuesta, sin los pasos. Un viaje no lee el texto
+    /// del servidor (la pantalla tampoco lo muestra: puede traer órdenes de abordaje sin verificar) sino el aviso de la app.
+    var textoHablado: String {
+        var partes: [String] = []
+        if case .viaje = accion { partes.append(accion.limite ?? "") } else { partes.append(texto) }
+        if let procedencia = procedenciaAparte { partes.append(procedencia) }
+        if catalogo?.antiguo == true { partes.append("Los datos de TransMilenio son antiguos.") }
+        return partes.joined(separator: " ")
+    }
+}
