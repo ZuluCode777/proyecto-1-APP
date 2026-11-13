@@ -53,8 +53,10 @@ final class EntornoApp {
         let cliente = ClienteAgenteHTTP { await ajustes.configuracion }
         let voz = ControlVoz(salida: SintetizadorSistema(), consultarRuta: SintetizadorSistema.rutaActual)
         let avisos = CentroAvisos(voz: voz)
+        // La voz del accesorio y la de la consulta son la misma `ControlVoz`: un solo dueño de la sesión de audio y de la cola de uno.
+        let dictado = DictadoModelo(reconocedor: ReconocedorSFSpeech(), voz: voz, avisos: .sistema)
         return EntornoApp(
-            ajustes: ajustes, consulta: ConsultaModelo(cliente: cliente),
+            ajustes: ajustes, consulta: ConsultaModelo(cliente: cliente, dictado: dictado, voz: voz),
             anuncios: AnunciosModelo(cliente: ClienteAnunciosHTTP { await ajustes.configuracion }),
             favoritas: FavoritasModelo(almacen: AlmacenFavoritasUserDefaults()), sesion: SesionLocalModelo(),
             avisos: avisos,
@@ -84,10 +86,26 @@ final class EntornoApp {
         // Sin sesión con el accesorio, los avisos de la consulta se listan igual; la voz es de mentira y no sale por altavoz.
         let voz = ControlVoz(salida: SalidaVozSintetica(), consultarRuta: { .noPrivada })
         return EntornoApp(
-            ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado()),
+            ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado(), dictado: dictadoDePruebas(argumentos)),
             anuncios: anunciosDePruebas(argumentos),
             favoritas: favoritasDePruebas(preferencias, argumentos: argumentos),
             sesion: SesionLocalModelo(), avisos: CentroAvisos(voz: voz, origen: .simulado), modoPruebas: true)
+    }
+
+    /// Dictado de las pruebas de interfaz: solo con `-PRUEBAS_UI_DICTADO_SINTETICO`, con un reconocedor sintético que la
+    /// pantalla rotula (sin micrófono, audio ni reconocimiento real). Sin más argumentos el permiso está por preguntar y el
+    /// «sistema» concede. Variantes: `-PRUEBAS_UI_DICTADO_PERMISO_CONCEDIDO` y `-PRUEBAS_UI_DICTADO_PERMISO_DENEGADO`.
+    /// `-PRUEBAS_UI_DICTADO_GUION` seguido de las frases que «oye» cada dictado, separadas por `|`.
+    private static func dictadoDePruebas(_ argumentos: [String]) -> DictadoModelo? {
+        guard argumentos.contains("-PRUEBAS_UI_DICTADO_SINTETICO") else { return nil }
+        let permiso: ReconocedorSintetico.Permiso =
+            argumentos.contains("-PRUEBAS_UI_DICTADO_PERMISO_CONCEDIDO") ? .concedido
+            : argumentos.contains("-PRUEBAS_UI_DICTADO_PERMISO_DENEGADO") ? .porPreguntarYDenegar : .porPreguntar
+        var guion = ReconocedorSintetico.guionPorDefecto
+        if let clave = argumentos.firstIndex(of: "-PRUEBAS_UI_DICTADO_GUION"), argumentos.indices.contains(clave + 1) {
+            guion = argumentos[clave + 1].split(separator: "|").map(String.init)
+        }
+        return DictadoModelo(reconocedor: ReconocedorSintetico(permiso: permiso, guion: guion))
     }
 
     /// Cámara de la lupa en las pruebas de interfaz: sin cámara real ni aviso de permiso del sistema. Sin más
@@ -114,7 +132,7 @@ final class EntornoApp {
         let voz = ControlVoz(salida: SalidaVozSintetica(), consultarRuta: { .noPrivada })
         let avisos = CentroAvisos(voz: voz, origen: .simulado)
         return EntornoApp(
-            ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado()),
+            ajustes: ajustes, consulta: ConsultaModelo(cliente: ClienteAgenteSimulado(), dictado: dictadoDePruebas(argumentos)),
             anuncios: anunciosDePruebas(argumentos),
             favoritas: favoritasDePruebas(preferencias, argumentos: argumentos), sesion: SesionLocalModelo(),
             avisos: avisos,

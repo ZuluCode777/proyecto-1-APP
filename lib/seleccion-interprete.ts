@@ -52,8 +52,15 @@ function soloReglas(intentDeReglas: Intent): boolean {
 /**
  * ¿Hay que consultar al modelo para esta frase (cuando está cargado)? Siempre,
  * salvo que las reglas hayan reconocido una intención que solo ellas expresan.
+ *
+ * Aclaración entre turnos (EA-19, #45): con un origen pendiente, un viaje que
+ * llega sin origen («Calle 72» tras «Salgo desde Ricaurte») es la respuesta a la
+ * pregunta anterior. El modelo no ve el pendiente y podría clasificarlo como
+ * otra cosa (una estación, una ruta): lo resuelven las reglas, como a
+ * `trip_missing_destination`. `conOrigenPendiente` lo completa después.
  */
-export function requiereModelo(intentDeReglas: Intent): boolean {
+export function requiereModelo(intentDeReglas: Intent, origenPendiente?: string): boolean {
+  if (origenPendiente && intentDeReglas.type === "trip" && intentDeReglas.origin === undefined) return false
   return !soloReglas(intentDeReglas)
 }
 
@@ -89,4 +96,18 @@ export function intencionUsaUbicacion(intent: Intent): boolean {
   if (intent.type === "gps") return true
   if (intent.type === "trip") return intent.origin === undefined
   return false
+}
+
+/**
+ * Aclaración entre turnos (EA-19, #45). «Salgo desde Ricaurte» deja el origen
+ * pendiente en el cliente (`aclaracion` de la respuesta); la pregunta siguiente
+ * («Calle 72») lo trae de vuelta como `pendiente`. Solo completa un viaje que
+ * llega SIN origen: un origen que la persona dijo ahora no se sustituye, y
+ * cualquier otra intención (cancelar, ayuda, una ruta) ignora el pendiente. Como
+ * el viaje ya trae origen, `runIntent` no usa el GPS. El servidor no guarda
+ * historial: el pendiente viaja en la petición y se descarta al responder.
+ */
+export function conOrigenPendiente(intent: Intent, origenPendiente: string | undefined): Intent {
+  if (origenPendiente && intent.type === "trip" && intent.origin === undefined) return { ...intent, origin: origenPendiente }
+  return intent
 }

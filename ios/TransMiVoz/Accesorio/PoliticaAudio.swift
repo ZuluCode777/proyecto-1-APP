@@ -154,11 +154,27 @@ final class ControlVoz {
     /// (`didFinish`) de forma asíncrona, así que una locución que acaba de terminar puede seguir contando como «sonando» y
     /// la reserva se repite una vez de más; la sesión limita las repeticiones (`maximoReservas`) y no es peor que callar.
     var ultimaSeOyoEntera: Bool { !ultimaLocucionCortada && !salida.hablando && !salida.cortadaPorElSistema }
+    /// Cuántas locuciones empezaron. Quien habla por esta vía (la consulta) lo anota para cortar solo la suya: si después
+    /// habló otro (un aviso del accesorio), la suya ya la cortó la cola de uno y no hay nada que cortar.
+    @ObservationIgnored private(set) var locuciones = 0
+    /// Se llama justo antes de que empiece una locución. El dictado suelta el micrófono aquí: nada suena sobre una captura
+    /// abierta, y un aviso no espera a que la persona termine de dictar.
+    @ObservationIgnored var alHablar: (@MainActor () -> Void)?
     /// Se llama cuando vuelve a ser posible hablar (auriculares de nuevo, fin de la interrupción, o un
     /// corte con la ruta privada intacta que dejó una locución a medias).
     @ObservationIgnored var alRecuperarse: (@MainActor () -> Void)?
     /// Se llama cuando se pierde una ruta que era privada (para el aviso accesible y la háptica).
     @ObservationIgnored var alPerderRuta: (@MainActor () -> Void)?
+    /// Hay una locución sonando o por sonar, de quien sea. Solo lectura: quien no es dueño de la que suena (la consulta ante
+    /// un aviso del accesorio) la compara con `locuciones` y no la corta. La prioridad de los avisos físicos sobre la lectura
+    /// de transporte está en arquitectura-y-experimentos.md, «Política de voz».
+    ///
+    /// Este candado (EA-19) y `debeCeder(prioridad:)` (EA-20) conviven. `debeCeder` solo protege a un aviso de MÁS prioridad que
+    /// quien habla. Este protege a CUALQUIER locución ajena, también una de rutina del accesorio, de la respuesta de la consulta
+    /// (`ConsultaModelo.hablar`) y del micrófono del dictado (`DictadoModelo.arrancar`), que no son avisos ni tienen prioridad.
+    /// Cada uno corta solo su locución (`locuciones`); la voz urgente no se silencia nunca, pues `advertenciasSilenciadas` solo
+    /// calla a las advertencias.
+    var hablando: Bool { salida.hablando }
     /// Si la voz propia está permitida (la sesión la fija: depende de VoiceOver y de la elección de la persona).
     @ObservationIgnored var permitida: @MainActor () -> Bool = { true }
 
@@ -193,11 +209,13 @@ final class ControlVoz {
         if interrumpido { return .silenciado(.interrumpido) }
         guard permitida() else { return .silenciado(.vozApagada) }
         guard ruta == .privada else { return .silenciado(.rutaNoPrivada) }
+        alHablar?()
         switch salida.hablar(texto) {
         case .iniciada:
             audioNoDisponible = false
             ultimaLocucionCortada = false
             prioridadVigente = prioridad
+            locuciones += 1
             return .hablado
         case .sesionNoDisponible:
             audioNoDisponible = true

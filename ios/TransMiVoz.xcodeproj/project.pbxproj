@@ -355,6 +355,8 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "TransMiVoz usa Bluetooth para conectarse al accesorio de proximidad que tú elijas. No lo usa para nada más.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "TransMiVoz usa la cámara solo para mostrarte la imagen ampliada en vivo (lupa). La imagen no se guarda ni se envía.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "TransMiVoz usa el micrófono solo mientras dictas una pregunta. La app no guarda el audio.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "TransMiVoz usa el reconocimiento de voz de iOS para convertir tu dictado en texto. Según tu iPhone, el audio se reconoce en él o se envía a Apple. Siempre puedes escribir la pregunta.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -382,6 +384,8 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "TransMiVoz usa Bluetooth para conectarse al accesorio de proximidad que tú elijas. No lo usa para nada más.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "TransMiVoz usa la cámara solo para mostrarte la imagen ampliada en vivo (lupa). La imagen no se guarda ni se envía.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "TransMiVoz usa el micrófono solo mientras dictas una pregunta. La app no guarda el audio.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "TransMiVoz usa el reconocimiento de voz de iOS para convertir tu dictado en texto. Según tu iPhone, el audio se reconoce en él o se envía a Apple. Siempre puedes escribir la pregunta.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

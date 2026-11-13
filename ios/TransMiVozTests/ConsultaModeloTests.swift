@@ -7,14 +7,18 @@ final class ClienteControlable: ClienteAgente, @unchecked Sendable {
     private let candado = NSLock()
     private var pendientes: [CheckedContinuation<RespuestaAgente, Error>] = []
     private var textos: [String] = []
+    private var origenes: [String?] = []
 
     var textosRecibidos: [String] { candado.lock(); defer { candado.unlock() }; return textos }
+    /// El origen pendiente que llevó cada consulta (`nil`: ninguno), en el mismo orden que `textosRecibidos`.
+    var origenesRecibidos: [String?] { candado.lock(); defer { candado.unlock() }; return origenes }
 
-    func consultar(texto: String) async throws -> RespuestaAgente {
+    func consultar(texto: String, origenPendiente: String?) async throws -> RespuestaAgente {
         try await withCheckedThrowingContinuation { continuacion in
             candado.lock()
             pendientes.append(continuacion)
             textos.append(texto)
+            origenes.append(origenPendiente)
             candado.unlock()
         }
     }

@@ -21,8 +21,19 @@ enum EntradaConsulta {
     }
 }
 
-/// Cuerpo JSON de `POST /api/agent`. Solo `message`: esta primera versión no
-/// envía ubicación (`position` es opcional en el contrato).
+/// Cuerpo JSON de `POST /api/agent`. `message` y, solo en el turno que completa una aclaración, el origen pendiente
+/// (`pendiente.origen`, EA-19): esta versión no envía ubicación (`position` es opcional en el contrato).
 struct CuerpoPeticionAgente: Encodable, Equatable {
+    struct Pendiente: Encodable, Equatable {
+        let origen: String
+    }
+
     let message: String
+    /// `nil` no se escribe en el JSON: la petición es la de siempre.
+    let pendiente: Pendiente?
+
+    init(message: String, origenPendiente: String? = nil) {
+        self.message = message
+        pendiente = origenPendiente.map(Pendiente.init)
+    }
 }
