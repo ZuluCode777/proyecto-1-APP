@@ -477,6 +477,53 @@ void prueba_gracia() {
   EXIGIR(!s.vencio_gracia(1000 + kGraciaSeguridadMs));
 }
 
+// H3 (banco 12/11): tras la petición de la clave, la persona tiene kGraciaClaveMs
+// completos; el límite solo crece y nunca pasa de kGraciaMaximaMs desde la conexión.
+void prueba_gracia_tras_pedir_la_clave() {
+  SesionEnlace s;
+  s.clave_pedida(5000);  // sin conexión: nada
+  EXIGIR(!s.vencio_gracia(100000));
+  s.conectar(1, 1000);
+  // Petición a los 24,5 s (el caso del banco): corta a los 54,5 s, no a los 30 s.
+  s.clave_pedida(1000 + 24500);
+  EXIGIR(!s.vencio_gracia(1000 + kGraciaSeguridadMs));
+  EXIGIR(!s.vencio_gracia(1000 + 24500 + kGraciaClaveMs - 1));
+  EXIGIR(s.vencio_gracia(1000 + 24500 + kGraciaClaveMs));
+  // Una petición más temprana (reloj atrás) no acorta el límite ya alcanzado.
+  s.clave_pedida(1000 + 10000);
+  EXIGIR(!s.vencio_gracia(1000 + 24500 + kGraciaClaveMs - 1));
+  // El tope cuenta desde la conexión, pida cuantas veces pida.
+  s.clave_pedida(1000 + 40000);
+  EXIGIR(!s.vencio_gracia(1000 + kGraciaMaximaMs - 1));
+  EXIGIR(s.vencio_gracia(1000 + kGraciaMaximaMs));
+  EXIGIR(s.vencio_gracia(1000 + 5 * kGraciaMaximaMs));
+  // Ya protegida: no se corta, haya pedido la clave o no.
+  s.marcar_protegida(true);
+  EXIGIR(!s.vencio_gracia(1000 + 5 * kGraciaMaximaMs));
+  // Una petición muy temprana alarga solo lo que dura la clave.
+  SesionEnlace t;
+  t.conectar(1, 1000);
+  t.clave_pedida(1000 + 100);
+  EXIGIR(!t.vencio_gracia(1000 + 100 + kGraciaClaveMs - 1));
+  EXIGIR(t.vencio_gracia(1000 + 100 + kGraciaClaveMs));
+  // Una conexión nueva vuelve a la gracia base.
+  t.conectar(2, 200000);
+  EXIGIR(t.vencio_gracia(200000 + kGraciaSeguridadMs));
+  // Vuelta del reloj de 32 bits: las restas son módulo 2^32.
+  SesionEnlace v;
+  const uint32_t ini = 0xFFFFFFFFu - 10000;
+  v.conectar(1, ini);
+  v.clave_pedida(ini + 24500);
+  EXIGIR(!v.vencio_gracia(ini + kGraciaSeguridadMs));
+  EXIGIR(!v.vencio_gracia(ini + 24500 + kGraciaClaveMs - 1));
+  EXIGIR(v.vencio_gracia(ini + 24500 + kGraciaClaveMs));
+  // Un reloj que avanza casi 2^32 desde la conexión no alarga nada: falla cerrada.
+  SesionEnlace w;
+  w.conectar(1, 1000);
+  w.clave_pedida(1000 - 1000);  // 2^32 - 1000 ms «después»: la suma da la vuelta
+  EXIGIR(w.vencio_gracia(1000 + kGraciaSeguridadMs));
+}
+
 // El alta cierra la ventana al emparejar y no queda abierta tras un borrado.
 void prueba_flujo_alta() {
   VentanaAlta v;
@@ -641,6 +688,7 @@ int main() {
   prueba_sesion();
   prueba_ritmo();
   prueba_gracia();
+  prueba_gracia_tras_pedir_la_clave();
   prueba_flujo_alta();
   prueba_con_interprete_real();
   prueba_estancamiento_del_ciclo();

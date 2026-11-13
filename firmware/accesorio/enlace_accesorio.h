@@ -36,7 +36,10 @@ constexpr uint32_t kPeriodoNotificacionMs = 100;  // periodo nominal de Informac
 constexpr uint32_t kPulsacionAltaMs = 3000;       // pulsación para abrir el alta
 constexpr uint32_t kPulsacionBorradoMs = 10000;   // pulsación para borrar vínculos
 constexpr uint32_t kRebotesMs = 50;               // un soltado más corto no cuenta
-constexpr uint32_t kGraciaSeguridadMs = 30000;    // plazo para proteger el enlace
+constexpr uint32_t kGraciaSeguridadMs = 30000;    // plazo para proteger el enlace, desde la conexión
+constexpr uint32_t kGraciaClaveMs = 30000;        // plazo desde que se muestra la clave (la persona la teclea)
+constexpr uint32_t kGraciaMaximaMs = 60000;       // tope desde la conexión: ningún enlace sin proteger lo supera
+static_assert(kGraciaSeguridadMs <= kGraciaMaximaMs && kGraciaClaveMs <= kGraciaMaximaMs, "la gracia base y la de la clave caben en el tope");
 
 constexpr uint32_t kClaveMaxima = 999999;
 constexpr uint8_t kTamanoClaveMinimo = 16;  // bytes de la clave de enlace (LESC)
@@ -178,7 +181,14 @@ class SesionEnlace {
   // hueco largo no recupera lo perdido en ráfaga.
   bool debe_notificar(uint32_t ahora_ms);
 
-  // true si el enlace sigue sin protegerse pasado kGraciaSeguridadMs; el
+  // El stack pidió mostrar la clave: la persona necesita kGraciaClaveMs para
+  // teclearla, aunque la conexión ya haya gastado casi toda su gracia base. El
+  // límite solo crece y nunca pasa de kGraciaMaximaMs desde la conexión, así que
+  // pedir la clave una y otra vez no mantiene abierto un enlace sin proteger.
+  void clave_pedida(uint32_t ahora_ms);
+
+  // true si el enlace sigue sin protegerse pasado su límite (kGraciaSeguridadMs
+  // desde la conexión, o más si se pidió la clave; ver clave_pedida); el
   // llamador debe cortar la conexión (libera el único cupo).
   bool vencio_gracia(uint32_t ahora_ms) const;
 
@@ -190,6 +200,7 @@ class SesionEnlace {
   uint16_t id_ = 0;
   uint32_t t_conexion_ = 0;
   uint32_t proxima_ = 0;
+  uint32_t gracia_ms_ = kGraciaSeguridadMs;  // límite sin proteger, desde t_conexion_
 };
 
 }  // namespace enlace

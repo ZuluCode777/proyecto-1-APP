@@ -52,12 +52,24 @@ done
 for requerido in ble_gatts_notify_custom BLE_GATT_CHR_F_READ_AUTHEN BLE_GATT_CHR_F_NOTIFY_INDICATE_AUTHEN \
                  store_write_cb BLE_GAP_EVENT_PASSKEY_ACTION BLE_GAP_EVENT_REPEAT_PAIRING sm_oob_data_flag \
                  al_pedir_clave leer_medicion atender_notificacion atender_borrado persistir_vinculo \
-                 nimble_port_get_dflt_eventq ble_npl_eventq_put atender_uart; do
+                 nimble_port_get_dflt_eventq ble_npl_eventq_put atender_uart BLE_OWN_ADDR_PUBLIC registrar_enlace; do
   if ! grep -qF -- "$requerido" <<<"$sin_comentarios"; then
     echo "FALLO: accesorio.ino ya no usa '$requerido'" >&2
     fallo=1
   fi
 done
+# ble_hs_id_infer_auto() prefiere la dirección aleatoria que BLEDevice::init() genera en cada
+# arranque: el vínculo de iOS no sobrevive a un reinicio de la placa (banco 12/11, H1).
+if grep -qF -- ble_hs_id_infer_auto <<<"$sin_comentarios"; then
+  echo "FALLO: accesorio.ino elige la dirección propia con ble_hs_id_infer_auto; debe anunciar con BLE_OWN_ADDR_PUBLIC" >&2
+  fallo=1
+fi
+# CONNECT trae el status crudo de la lectura de funciones remotas del par, no el del
+# enlace (banco 12/11, H2): descartarlo por el status deja enlaces vivos sin sesión.
+if grep -E 'connect\.status[^;]*\)[[:space:]]*return' <<<"$sin_comentarios" >/dev/null; then
+  echo "FALLO: accesorio.ino descarta BLE_GAP_EVENT_CONNECT por su status; ver registrar_enlace" >&2
+  fallo=1
+fi
 # La clave de enlace nunca sale por el puerto serie.
 if grep -E 'Serial[0-9]?\.print[^;]*(kClave|VISIONARIA_CLAVE_ENLACE|clave\))' <<<"$sin_comentarios" >/dev/null; then
   echo "FALLO: accesorio.ino imprime la clave de enlace" >&2

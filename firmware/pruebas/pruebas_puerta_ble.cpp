@@ -14,6 +14,10 @@
 //     tras una notificación) y solo con el enlace protegido EN VIVO;
 //   - lectura y notificación no comparten ningún valor;
 //   - una conexión nueva no recibe nada de la anterior;
+//   - todo enlace vivo tiene sesión (CONNECT con status ≠ 0, CONNECT tras ENC_CHANGE)
+//     y un fallo de conexión o un enlace caído nunca la crea (H2, banco 12/11);
+//   - la gracia sin proteger da a la persona el plazo completo tras la petición de la
+//     clave, con un tope desde la conexión (H3, banco 12/11);
 //   - la notificación es UNA operación (enlace en vivo, sesión, ritmo, trama y envío)
 //     y se detiene ante un cambio de cifrado, una desconexión con manejador
 //     reutilizado o una revocación, con acciones inyectadas en cada frontera;
@@ -926,9 +930,15 @@ void prueba_un_solo_cliente() {
   EXIGIR(b.puerta.leer_medicion(kConn + 1, true, protegido(), 1101, trama) == puerta::kAttInesperado);
   EXIGIR(!b.puerta.al_desconectar(kConn + 1));  // su caída no cierra la sesión de la primera
   EXIGIR(b.puerta.sesion().conectada());
-  // La misma conexión repetida (evento duplicado) vuelve a empezar limpia.
+  // La misma conexión repetida (CONNECT que llega después de ENC_CHANGE o dos veces)
+  // no reinicia lo ya registrado: ni protección, ni suscripción, ni el instante de
+  // la conexión que fija el plazo. Cambió con H2 (banco 12/11): antes la reiniciaba.
   EXIGIR(b.puerta.al_conectar(kConn, 1200));
-  EXIGIR(!b.puerta.sesion().suscrita() && !b.puerta.sesion().protegida());
+  EXIGIR(b.puerta.sesion().suscrita() && b.puerta.sesion().protegida() && b.puerta.sesion().t_conexion_ms() == 1000);
+  // Nada se hereda de una conexión que terminó, aunque reutilice el manejador.
+  EXIGIR(b.puerta.al_desconectar(kConn));
+  EXIGIR(b.puerta.al_conectar(kConn, 1300));
+  EXIGIR(!b.puerta.sesion().suscrita() && !b.puerta.sesion().protegida() && b.puerta.sesion().t_conexion_ms() == 1300);
 }
 
 void prueba_gracia() {
@@ -940,6 +950,147 @@ void prueba_gracia() {
   EXIGIR(conn == kConn);
   b.puerta.al_cambiar_cifrado(kConn, 0, protegido());
   EXIGIR(!b.puerta.gracia_vencida(1000 + 10 * enlace::kGraciaSeguridadMs, &conn));
+}
+
+// Ordenes de eventos de un enlace vivo (H2/S2, banco 12/11). NimBLE entrega CONNECT
+// al terminar la lectura de funciones remotas del par, con un status que no dice
+// si el enlace vive, y a veces después de ENC_CHANGE. El sketch registra el enlace
+// en cada uno de esos eventos con registrar_enlace(), y lo vivo lo dice el stack.
+void prueba_enlace_vivo_se_registra_en_cualquier_evento() {
+  using puerta::Registro;
+  // Portátil con BlueZ: CONNECT con status 26 en un enlace vivo. El enlace se
+  // registra y la gracia lo corta aunque no llegue nada más (antes: sin sesión,
+  // abierto más de 40 s).
+  {
+    Banco b;
+    uint16_t conn = 0;
+    EXIGIR(b.puerta.registrar_enlace(kConn, true, 1000) == Registro::Nuevo);
+    EXIGIR(b.puerta.sesion().conectada() && b.puerta.sesion().id_conexion() == kConn);
+    EXIGIR(!b.puerta.gracia_vencida(1000 + enlace::kGraciaSeguridadMs - 1, &conn));
+    EXIGIR(b.puerta.gracia_vencida(1000 + enlace::kGraciaSeguridadMs, &conn) && conn == kConn);
+    // Sin protección no hay datos: ni lectura ni notificación.
+    uint8_t trama[ble::kLongitudTrama];
+    EXIGIR(b.puerta.leer_medicion(kConn, true, EstadoSeguridad(), 1100, trama) == puerta::kAttAutenticacionInsuficiente);
+    EXIGIR(!b.puerta.al_suscribir(kConn, true, EstadoSeguridad()) && !b.puerta.sesion().suscrita());
+  }
+  // iPhone: ENC_CHANGE llega ANTES que CONNECT. El primero registra el enlace; el
+  // CONNECT tardío (status 0, 22 o 19) no deshace lo decidido.
+  {
+    Banco b;
+    EXIGIR(b.puerta.registrar_enlace(kConn, true, 1000) == Registro::Nuevo);  // por ENC_CHANGE
+    EXIGIR(b.puerta.al_cambiar_cifrado(kConn, 0, protegido()) == AccionGap::Nada);
+    EXIGIR(b.puerta.al_suscribir(kConn, true, protegido()));
+    EXIGIR(b.puerta.registrar_enlace(kConn, true, 1400) == Registro::Conocido);  // el CONNECT tardío
+    EXIGIR(b.puerta.sesion().protegida() && b.puerta.sesion().suscrita() && b.puerta.sesion().t_conexion_ms() == 1000);
+    uint16_t conn = 0;
+    EXIGIR(!b.puerta.gracia_vencida(1000 + 10 * enlace::kGraciaSeguridadMs, &conn));
+    ble::Medicion m;
+    EXIGIR(b.leer(kConn, 1500, &m));
+  }
+  // El cifrado con éxito antes de CONNECT, sin sesión previa: es la misma ruta, y
+  // sin registrar el enlace antes se cortaría un enlace legítimo.
+  {
+    Banco b;
+    EXIGIR(b.puerta.al_cambiar_cifrado(kConn, 0, protegido()) == AccionGap::Cortar);  // lo que ocurría sin registrar
+    Banco c;
+    c.puerta.registrar_enlace(kConn, true, 1000);
+    EXIGIR(c.puerta.al_cambiar_cifrado(kConn, 0, protegido()) == AccionGap::Nada);
+  }
+  // CONNECT de un enlace que ya no existe (status 22 o 19, tras DISCONNECT), o un
+  // fallo de conexión sin manejador: nunca crea sesión.
+  {
+    Banco b;
+    EXIGIR(b.puerta.registrar_enlace(kConn, false, 1000) == Registro::Ninguno);
+    EXIGIR(b.puerta.registrar_enlace(puerta::kSinConexion, true, 1000) == Registro::Ninguno);
+    EXIGIR(b.puerta.registrar_enlace(puerta::kSinConexion, false, 1000) == Registro::Ninguno);
+    EXIGIR(!b.puerta.sesion().conectada());
+    uint16_t conn = 0;
+    EXIGIR(!b.puerta.gracia_vencida(1000 + 10 * enlace::kGraciaSeguridadMs, &conn));
+    // Ni deja ocupado el cupo: el siguiente enlace vivo entra.
+    EXIGIR(b.puerta.registrar_enlace(kConn + 1, true, 2000) == Registro::Nuevo);
+  }
+  // Un solo cliente: el segundo enlace vivo se rechaza (el sketch lo corta) sin
+  // tocar la sesión del primero, y el primero sigue siendo conocido.
+  {
+    Banco b;
+    EXIGIR(b.puerta.registrar_enlace(kConn, true, 1000) == Registro::Nuevo);
+    EXIGIR(b.puerta.registrar_enlace(kConn + 1, true, 1100) == Registro::Rechazado);
+    EXIGIR(b.puerta.sesion().id_conexion() == kConn);
+    EXIGIR(b.puerta.registrar_enlace(kConn, true, 1200) == Registro::Conocido);
+  }
+  // Borrado de vínculos pendiente o sesión revocada: se rechaza, no se reinicia.
+  {
+    Banco b;
+    b.conectar_suscrita(kConn, 1000);
+    b.puerta.revocar_sesion();
+    EXIGIR(b.puerta.registrar_enlace(kConn, true, 1100) == Registro::Rechazado);
+    EXIGIR(!b.puerta.sesion().protegida());
+  }
+}
+
+// H3 (banco 12/11): la gracia de 30 s contaba desde la conexión y cortó mientras la
+// persona tecleaba la clave (petición a los 24,5 s). Ahora la petición de clave da
+// kGraciaClaveMs completos, con tope de kGraciaMaximaMs desde la conexión.
+void prueba_gracia_tras_pedir_la_clave() {
+  uint16_t conn = 0;
+  // El caso del banco: petición a los 24,5 s de la conexión.
+  {
+    Banco b;
+    b.puerta.al_conectar(kConn, 1000);
+    b.puerta.ventana().abrir(1000);
+    uint32_t clave = 0;
+    EXIGIR(b.puerta.al_pedir_clave(kAccDisp, kConn, 1000 + 24500, &clave) == AccionClave::Inyectar);
+    // Con la gracia vieja (30 s) esto cortaba a los 30 s, a 5,5 s de la petición.
+    EXIGIR(!b.puerta.gracia_vencida(1000 + enlace::kGraciaSeguridadMs, &conn));
+    EXIGIR(!b.puerta.gracia_vencida(1000 + 24500 + enlace::kGraciaClaveMs - 1, &conn));
+    EXIGIR(b.puerta.gracia_vencida(1000 + 24500 + enlace::kGraciaClaveMs, &conn) && conn == kConn);
+    // Emparejar a tiempo cancela el corte.
+    b.puerta.al_cambiar_cifrado(kConn, 0, protegido());
+    EXIGIR(!b.puerta.gracia_vencida(1000 + 10 * enlace::kGraciaSeguridadMs, &conn));
+  }
+  // Sin petición de clave el plazo es el de siempre (portátil sin autenticar).
+  {
+    Banco b;
+    b.puerta.al_conectar(kConn, 1000);
+    EXIGIR(b.puerta.gracia_vencida(1000 + enlace::kGraciaSeguridadMs, &conn));
+  }
+  // Pedir la clave una y otra vez no mantiene abierto un enlace sin proteger: el
+  // tope cuenta desde la conexión.
+  {
+    Banco b;
+    b.puerta.al_conectar(kConn, 1000);
+    b.puerta.ventana().abrir(1000);
+    uint32_t clave = 0;
+    for (uint32_t t = 5000; t < enlace::kGraciaMaximaMs; t += 5000) {
+      EXIGIR(b.puerta.al_pedir_clave(kAccDisp, kConn, 1000 + t, &clave) == AccionClave::Inyectar);
+      EXIGIR(!b.puerta.gracia_vencida(1000 + t, &conn));
+    }
+    EXIGIR(!b.puerta.gracia_vencida(1000 + enlace::kGraciaMaximaMs - 1, &conn));
+    EXIGIR(b.puerta.gracia_vencida(1000 + enlace::kGraciaMaximaMs, &conn));
+    EXIGIR(b.puerta.gracia_vencida(1000 + 10 * enlace::kGraciaMaximaMs, &conn));
+  }
+  // Una petición rechazada (ventana cerrada, otra conexión) no alarga nada.
+  {
+    Banco b;
+    b.puerta.al_conectar(kConn, 1000);
+    uint32_t clave = 0;
+    EXIGIR(b.puerta.al_pedir_clave(kAccDisp, kConn, 1000 + 24500, &clave) == AccionClave::Cortar);  // ventana cerrada
+    b.puerta.ventana().abrir(1000);
+    EXIGIR(b.puerta.al_pedir_clave(kAccDisp, kConn + 1, 1000 + 24500, &clave) == AccionClave::Cortar);  // conexión ajena
+    EXIGIR(b.puerta.al_pedir_clave(kAccDisp + 1, kConn, 1000 + 24500, &clave) == AccionClave::Cortar);  // acción no admitida
+    EXIGIR(b.puerta.gracia_vencida(1000 + enlace::kGraciaSeguridadMs, &conn));
+  }
+  // La conexión siguiente empieza con la gracia base, no con la alargada.
+  {
+    Banco b;
+    b.puerta.al_conectar(kConn, 1000);
+    b.puerta.ventana().abrir(1000);
+    uint32_t clave = 0;
+    b.puerta.al_pedir_clave(kAccDisp, kConn, 1000 + 24500, &clave);
+    b.puerta.al_desconectar(kConn);
+    b.puerta.al_conectar(kConn, 100000);
+    EXIGIR(b.puerta.gracia_vencida(100000 + enlace::kGraciaSeguridadMs, &conn));
+  }
 }
 
 void prueba_simulacion_y_sin_radar() {
@@ -994,6 +1145,8 @@ int main() {
   prueba_persistencia_ligada_al_alta_de_la_conexion();
   prueba_un_solo_cliente();
   prueba_gracia();
+  prueba_enlace_vivo_se_registra_en_cualquier_evento();
+  prueba_gracia_tras_pedir_la_clave();
   prueba_simulacion_y_sin_radar();
   printf("%d comprobaciones, %d fallos\n", g_casos, g_fallos);
   return g_fallos == 0 ? 0 : 1;
