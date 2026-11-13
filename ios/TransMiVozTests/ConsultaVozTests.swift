@@ -223,7 +223,7 @@ final class ConsultaVozTests: XCTestCase {
         let cortes = banco.salida.cortes
         banco.dictado.alternar()
         XCTAssertEqual(banco.dictado.estado, .vozOcupada, "el micrófono no se abre sobre un aviso")
-        XCTAssertEqual(banco.reconocedor.veces("iniciar"), 0)
+        XCTAssertEqual(banco.reconocedor.veces("iniciar"), 1, "solo el dictado de «hola»: sobre el aviso el micrófono no se vuelve a abrir")
         XCTAssertTrue(banco.salida.hablando, "el aviso sigue sonando")
         XCTAssertEqual(banco.salida.cortes, cortes)
         XCTAssertEqual(banco.salida.dicho, ["Respuesta de prueba", "aviso de proximidad"])
