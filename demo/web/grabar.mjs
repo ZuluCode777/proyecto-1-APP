@@ -50,13 +50,14 @@ const ESCALA = 2
 mkdirSync(SALIDA, { recursive: true })
 
 // La grabación de Playwright toma los cuadros en píxeles CSS: con `deviceScaleFactor: 2` saldrían a 390 × 844 con
-// relleno gris. Con la densidad fijada en el propio Chrome y sin viewport emulado, los cuadros salen a 780 × 1688.
+// relleno gris. Por eso la densidad se fija en el propio Chrome y el tamaño de 390 × 844 se emula por CDP con la
+// densidad nativa (`deviceScaleFactor: 0`): así los cuadros salen a 780 × 1688. La ventana sola no basta, porque Chrome
+// sin ventana la limita a su pantalla virtual (500 × 757 medidos en el runner).
 const browser = await chromium.launch({
   channel: process.env.DEMO_CANAL ?? "chrome",
   headless: true,
   args: [
     `--force-device-scale-factor=${ESCALA}`,
-    `--window-size=${ANCHO},${ALTO}`,
     "--use-fake-ui-for-media-stream",
     "--use-fake-device-for-media-stream",
     ...(CAMARA ? [`--use-file-for-fake-video-capture=${CAMARA}`] : []),
@@ -120,6 +121,9 @@ async function grabarUno(id, titulo, recorrido, { reconocimientoSimulado = false
 
   t0 = Date.now()
   const page = await contexto.newPage()
+  // La sesión CDP tiene que seguir viva: si se cierra, Chrome quita la emulación.
+  const cdp = await contexto.newCDPSession(page)
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width: ANCHO, height: ALTO, deviceScaleFactor: 0, mobile: true })
   page.setDefaultTimeout(20_000)
   page.on("pageerror", (error) => console.log(`  [error en la página] ${error.message}`))
 
@@ -137,6 +141,9 @@ async function grabarUno(id, titulo, recorrido, { reconocimientoSimulado = false
     await d.pausa(800).catch(() => undefined)
   }
   estado.fin = ahora()
+  const ventana = await page
+    .evaluate(() => `${innerWidth}×${innerHeight} a ${devicePixelRatio}x`)
+    .catch(() => "sin medir")
 
   const video = page.video()
   await contexto.close()
@@ -162,7 +169,7 @@ async function grabarUno(id, titulo, recorrido, { reconocimientoSimulado = false
       2,
     ),
   )
-  console.log(`  ✓ ${id}.webm (${(estado.fin - estado.inicio).toFixed(1)} s, ${eventos.length} subtítulos)`)
+  console.log(`  ✓ ${id}.webm (${(estado.fin - estado.inicio).toFixed(1)} s, ${eventos.length} subtítulos, ventana ${ventana})`)
 }
 
 function crearAyudas({ page, contexto, eventos, ahora, estado }) {
