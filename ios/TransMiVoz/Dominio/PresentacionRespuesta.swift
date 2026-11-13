@@ -34,9 +34,11 @@ extension RespuestaAgente {
 extension RespuestaAgente {
     /// Lo que se lee en voz alta: lo mismo que la pantalla presenta como respuesta, sin los pasos. Un viaje no lee el texto
     /// del servidor (la pantalla tampoco lo muestra: puede traer órdenes de abordaje sin verificar) sino el aviso de la app.
+    /// El límite de la acción se lee siempre que lo hay: «Voy a abrir el GPS auditivo» sin él prometería lo que esta app no hace.
     var textoHablado: String {
         var partes: [String] = []
-        if case .viaje = accion { partes.append(accion.limite ?? "") } else { partes.append(texto) }
+        if case .viaje = accion {} else { partes.append(texto) }
+        if let limite = accion.limite { partes.append(limite) }
         if let procedencia = procedenciaAparte { partes.append(procedencia) }
         if catalogo?.antiguo == true { partes.append("Los datos de TransMilenio son antiguos.") }
         return partes.joined(separator: " ")

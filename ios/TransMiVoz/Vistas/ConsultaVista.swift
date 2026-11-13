@@ -15,6 +15,8 @@ struct ConsultaVista: View {
     @Environment(\.scenePhase) private var faseEscena
     /// Se fija al crear la vista y no cambia si el usuario cambia el tamaño de texto con la app abierta.
     @State private var creacionDiferida = UIApplication.shared.preferredContentSizeCategory.isAccessibilityCategory
+    /// Estado de la consulta cuyo anuncio y foco esperan a que se cierre el micrófono: VoiceOver sonaría sobre la captura.
+    @State private var anuncioDiferido: EstadoConsulta?
 
     var body: some View {
         NavigationStack {
@@ -53,7 +55,8 @@ struct ConsultaVista: View {
                                 OrigenPendienteVista(origen: origen, alOlvidar: { modelo.olvidarOrigenPendiente() })
                             }
 
-                            TextField("Pregunta", text: $modelo.texto, axis: .vertical)
+                            // Por `editarTexto`: una edición de la persona deja de contar como «lo dictado».
+                            TextField("Pregunta", text: Binding(get: { modelo.texto }, set: { modelo.editarTexto($0) }), axis: .vertical)
                                 .lineLimit(1...5)
                                 .textFieldStyle(.roundedBorder)
                                 .frame(minHeight: 44)
@@ -98,7 +101,14 @@ struct ConsultaVista: View {
             .navigationTitle("Consulta")
             .navigationBarTitleDisplayMode(.inline)
             .onChange(of: modelo.estado) { _, nuevo in
-                anunciar(nuevo)
+                // Con el micrófono abierto no se anuncia ni se mueve el foco: se hace al cerrarlo, con el estado de entonces.
+                if modelo.dictado?.capturando == true { anuncioDiferido = nuevo } else { anuncioDiferido = nil; anunciar(nuevo) }
+            }
+            .onChange(of: modelo.dictado?.capturando) { _, capturando in
+                if capturando != true, let pendiente = anuncioDiferido {
+                    anuncioDiferido = nil
+                    anunciar(pendiente)
+                }
             }
             // Un dictado que no puede seguir lleva el foco a su mensaje; lo anuncia el propio modelo.
             .onChange(of: modelo.dictado?.estado) { _, nuevo in
@@ -216,7 +226,7 @@ private struct ControlDictadoVista: View {
             .controlSize(.large)
             .frame(minHeight: 44)
             .accessibilityValue(TextoDictado.valor(dictado.estado))
-            .accessibilityHint(TextoDictado.pista(dictado.estado))
+            .accessibilityHint(TextoDictado.pista(dictado.estado, capacidad: dictado.capacidad))
             .accessibilityIdentifier("boton-dictar")
 
             Text(TextoDictado.descripcion(dictado.estado, capacidad: dictado.capacidad))
@@ -272,7 +282,8 @@ private struct ResultadoConsultaVista: View {
                 .accessibilityIdentifier("progreso-consulta")
         case .respuesta(let respuesta):
             RespuestaVista(
-                respuesta: respuesta, escenario: modelo.escenarioEnviado, foco: foco, alReintentar: alReintentar)
+                respuesta: respuesta, escenario: modelo.escenarioEnviado, etiquetaVolver: modelo.etiquetaDeRepetir("Volver a consultar"),
+                foco: foco, alReintentar: alReintentar)
         case .error(let error):
             VStack(alignment: .leading, spacing: 8) {
                 Label("No se pudo completar", systemImage: "exclamationmark.triangle")
@@ -282,7 +293,7 @@ private struct ResultadoConsultaVista: View {
                 Text(error.mensaje).accessibilityIdentifier("mensaje-error")
                 Text(error.recuperacion).foregroundStyle(.textoSecundario)
                 if error.admiteReintento && modelo.ultimoTextoEnviado != nil {
-                    Button("Reintentar") { alReintentar() }
+                    Button(modelo.etiquetaDeRepetir("Reintentar")) { alReintentar() }
                         .buttonStyle(.bordered)
                         .controlSize(.large)
                         .frame(minHeight: 44)
@@ -297,7 +308,7 @@ private struct ResultadoConsultaVista: View {
                     .accessibilityFocused(foco, equals: .resultado)
                 Text("No se mostrará ninguna respuesta de esa pregunta.")
                 if modelo.ultimoTextoEnviado != nil {
-                    Button("Reintentar") { alReintentar() }
+                    Button(modelo.etiquetaDeRepetir("Reintentar")) { alReintentar() }
                         .buttonStyle(.bordered)
                         .controlSize(.large)
                         .frame(minHeight: 44)
@@ -312,6 +323,8 @@ private struct RespuestaVista: View {
     let respuesta: RespuestaAgente
     /// Escenario en que se hizo la pregunta: rotula el resultado.
     let escenario: EscenarioConsulta
+    /// «Volver a consultar», con el origen pendiente que reenvía si lo hay.
+    let etiquetaVolver: String
     var foco: AccessibilityFocusState<ZonaFocoConsulta?>.Binding
     let alReintentar: () -> Void
 
@@ -383,7 +396,7 @@ private struct RespuestaVista: View {
                 .font(.subheadline.bold())
             Text("El servidor respondió con datos de TransMilenio que no están actualizados: una copia guardada o una consulta vencida. Vuelve a consultar en unos minutos.")
                 .accessibilityIdentifier("aviso-catalogo-antiguo")
-            Button("Volver a consultar") { alReintentar() }
+            Button(etiquetaVolver) { alReintentar() }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
                 .frame(minHeight: 44)

@@ -85,9 +85,14 @@ final class SintetizadorSistema: NSObject, SalidaVoz, AVSpeechSynthesizerDelegat
         try sesion.setCategory(.playback, mode: .voicePrompt, options: [.duckOthers])
     }
 
+    /// Hay una captura del dictado usando la sesión (`abrirCaptura`…`cerrarCaptura`). Mientras la hay, el aviso tardío de
+    /// una locución anterior (`didFinish`/`didCancel` llegan después de cortarla) no libera la sesión: cerraría el micrófono.
+    private static var capturaAbierta = false
+
     /// Sin reintentos: si el sistema no deja liberar (todavía hay audio en curso), la sesión sigue
-    /// activa hasta la próxima locución o hasta que el sistema la libere.
-    nonisolated private static func liberar() {
+    /// activa hasta la próxima locución o hasta que el sistema la libere. Con una captura abierta no hace nada.
+    private static func liberar() {
+        guard !capturaAbierta else { return }
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
@@ -119,18 +124,20 @@ final class SintetizadorSistema: NSObject, SalidaVoz, AVSpeechSynthesizerDelegat
 extension SintetizadorSistema {
     /// Sesión de audio del dictado. Sigue siendo esta clase la dueña de `AVAudioSession`: el reconocedor no la toca.
     /// `.playAndRecord` y no `.record`: con `.record` la sesión no tiene salidas, `rutaActual` daría «desconocida» y
-    /// `ControlVoz` callaría los avisos del accesorio mientras se dicta. Quien llama detiene antes la voz
-    /// (`ControlVoz.descartarTodo`): la captura no se abre con una locución sonando. `.allowBluetooth` deja usar el
-    /// micrófono de unos auriculares Bluetooth (perfil de manos libres).
-    nonisolated static func abrirCaptura() throws {
+    /// `ControlVoz` callaría los avisos del accesorio mientras se dicta. Quien llama (`DictadoModelo.arrancar`) corta antes
+    /// la respuesta hablada de la pantalla y no abre si suena un aviso: la captura no se abre con una locución sonando.
+    /// `.allowBluetooth` deja usar el micrófono de unos auriculares Bluetooth (perfil de manos libres).
+    static func abrirCaptura() throws {
         let sesion = AVAudioSession.sharedInstance()
         try sesion.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .duckOthers])
         try sesion.setActive(true)
+        capturaAbierta = true
     }
 
     /// Suelta el micrófono y deja la sesión como la espera la voz (`.playback`, sin activar): la próxima locución y la
     /// consulta de la ruta no se encuentran con la categoría del dictado.
-    nonisolated static func cerrarCaptura() {
+    static func cerrarCaptura() {
+        capturaAbierta = false
         liberar()
         try? configurar(AVAudioSession.sharedInstance())
     }

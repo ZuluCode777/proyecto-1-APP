@@ -144,6 +144,10 @@ final class ControlVoz {
     @ObservationIgnored var alRecuperarse: (@MainActor () -> Void)?
     /// Se llama cuando se pierde una ruta que era privada (para el aviso accesible y la háptica).
     @ObservationIgnored var alPerderRuta: (@MainActor () -> Void)?
+    /// Hay una locución sonando o por sonar, de quien sea. Solo lectura: quien no es dueño de la que suena (la consulta ante
+    /// un aviso del accesorio) la compara con `locuciones` y no la corta. La prioridad de los avisos físicos sobre la lectura
+    /// de transporte está en arquitectura-y-experimentos.md, «Política de voz».
+    var hablando: Bool { salida.hablando }
     /// Si la voz propia está permitida (la sesión la fija: depende de VoiceOver y de la elección de la persona).
     @ObservationIgnored var permitida: @MainActor () -> Bool = { true }
 

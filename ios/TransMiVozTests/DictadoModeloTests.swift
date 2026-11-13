@@ -112,9 +112,21 @@ final class DictadoModeloTests: XCTestCase {
         let local = TextoDictado.capacidad(.local(idioma: "es-ES"))
         XCTAssertTrue(local.contains("español de España"), "debe decir el español que el sistema ofreció: \(local)")
         XCTAssertFalse(local.contains("Colombia"))
-        for texto in [remoto, local, TextoDictado.capacidad(.noDisponible)] {
+        let localColombia = TextoDictado.capacidad(.local(idioma: "es-CO"))
+        XCTAssertTrue(localColombia.hasPrefix("Según tu iPhone"), "lo local lo declara el sistema, no la app: \(localColombia)")
+        XCTAssertTrue(localColombia.contains("no saldría"), "es lo que el sistema declara, no una garantía: \(localColombia)")
+        for texto in [remoto, local, localColombia, TextoDictado.capacidad(.noDisponible)] {
             XCTAssertFalse(texto.lowercased().contains("sin conexión"), "no se promete funcionamiento sin red: \(texto)")
         }
+    }
+
+    func testLaPistaDelBotonLlevaAdondeVaElAudio() {
+        for capacidad in [CapacidadReconocimiento.local(idioma: "es-CO"), .remoto(idioma: "es-CO"), .noDisponible] {
+            XCTAssertTrue(
+                TextoDictado.pista(.inactivo, capacidad: capacidad).contains(TextoDictado.capacidad(capacidad)),
+                "VoiceOver llega al botón antes que a la línea de abajo")
+        }
+        XCTAssertFalse(TextoDictado.pista(.escuchando, capacidad: .remoto(idioma: "es-CO")).contains("Apple"), "escuchando solo dice cómo terminar")
     }
 
     // MARK: Dictado
@@ -208,17 +220,73 @@ final class DictadoModeloTests: XCTestCase {
 
     // MARK: Captura y voz no se realimentan
 
-    func testEmpezarACapturarCortaLaVozAntesDeAbrirElMicrofono() {
+    func testEmpezarACapturarCortaLaRespuestaPropiaAntesDeAbrirElMicrofono() {
         let salida = SalidaVozFalsa()
         let voz = ControlVoz(salida: salida, consultarRuta: { .privada })
         XCTAssertEqual(voz.anunciar("respuesta en curso"), .hablado)
         XCTAssertTrue(salida.hablando)
         let dictado = armar(voz: voz)
+        dictado.cortarVozPropia = { voz.descartarTodo() }  // la consulta la cortaría solo si la locución es suya
         var hablandoAlAbrirElMicrofono: Bool?
         reconocedor.alIniciar = { hablandoAlAbrirElMicrofono = salida.hablando }
         dictado.alternar()
         XCTAssertEqual(reconocedor.veces("iniciar"), 1)
         XCTAssertEqual(hablandoAlAbrirElMicrofono, false, "la captura no se abre con una locución sonando")
+    }
+
+    func testConUnAvisoSonandoElMicrofonoNoSeAbreNiSeCortaElAviso() {
+        let salida = SalidaVozFalsa()
+        let voz = ControlVoz(salida: salida, consultarRuta: { .privada })
+        XCTAssertEqual(voz.anunciar("aviso de proximidad"), .hablado)
+        let cortes = salida.cortes
+        let dictado = armar(voz: voz)  // sin `cortarVozPropia`: lo que suene es ajeno
+        dictado.alternar()
+        XCTAssertEqual(dictado.estado, .vozOcupada)
+        XCTAssertEqual(reconocedor.llamadas, [], "ni se abre el micrófono ni se pide nada")
+        XCTAssertTrue(salida.hablando, "el aviso sigue sonando")
+        XCTAssertEqual(salida.cortes, cortes, "y nadie lo cortó")
+        XCTAssertEqual(avisos.anuncios, [TextoDictado.descripcion(.vozOcupada, capacidad: .noDisponible)])
+        XCTAssertTrue(TextoDictado.descripcion(.vozOcupada, capacidad: .noDisponible).contains("aviso"))
+        XCTAssertEqual(avisos.prioridades, [.urgente])
+
+        salida.terminarSola()  // el aviso termina: la persona vuelve a tocar y ahora sí empieza
+        dictado.alternar()
+        XCTAssertEqual(dictado.estado, .iniciando)
+        XCTAssertEqual(reconocedor.veces("iniciar"), 1)
+    }
+
+    func testTrasLosAvisosDePermisoUnaLocucionPropiaSeCortaYUnAvisoImpideAbrirElMicrofono() {
+        let salida = SalidaVozFalsa()
+        let voz = ControlVoz(salida: salida, consultarRuta: { .privada })
+        let dictado = armar(permiso: .porPreguntar, voz: voz)
+        dictado.cortarVozPropia = { voz.descartarTodo() }
+        dictado.alternar()  // los avisos del sistema están en pantalla y, mientras, suena algo
+        XCTAssertEqual(voz.anunciar("respuesta propia"), .hablado)
+        var hablandoAlAbrirElMicrofono: Bool?
+        reconocedor.alIniciar = { hablandoAlAbrirElMicrofono = salida.hablando }
+        reconocedor.responderPermisos(.concedido)
+        XCTAssertEqual(dictado.estado, .iniciando)
+        XCTAssertEqual(hablandoAlAbrirElMicrofono, false, "también por este camino se corta lo propio antes del micrófono")
+
+        // Mismo camino con un aviso ajeno: la `ControlVoz` es de la prueba, no de la consulta.
+        let ajeno = armar(permiso: .porPreguntar, voz: voz)
+        ajeno.alternar()
+        XCTAssertEqual(voz.anunciar("aviso de proximidad"), .hablado)
+        let cortes = salida.cortes
+        reconocedor.responderPermisos(.concedido)
+        XCTAssertEqual(ajeno.estado, .vozOcupada)
+        XCTAssertEqual(reconocedor.veces("iniciar"), 0)
+        XCTAssertTrue(salida.hablando)
+        XCTAssertEqual(salida.cortes, cortes)
+    }
+
+    func testOtraCapturaBorraLoUltimoDictado() {
+        let dictado = armar()
+        empezarAEscuchar(dictado)
+        reconocedor.emitir(.terminado("hola"))
+        XCTAssertEqual(dictado.ultimoDictado, "hola")
+        dictado.alternar()
+        XCTAssertNil(dictado.ultimoDictado, "el texto parcial de la nueva captura no cuenta como «lo dictado»")
     }
 
     func testUnaLocucionConLaCapturaAbiertaLaCancelaYLaVozSuena() {

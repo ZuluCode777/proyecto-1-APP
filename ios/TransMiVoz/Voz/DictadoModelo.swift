@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// Estado del dictado que ve la persona.
-enum EstadoDictado: Equatable, CaseIterable {
+enum EstadoDictado: Equatable {
     case inactivo
     /// Los avisos de permiso del sistema están en pantalla.
     case pidiendoPermisos
@@ -19,6 +19,8 @@ enum EstadoDictado: Equatable, CaseIterable {
     case sinTexto
     /// El servicio o el audio fallaron.
     case fallo
+    /// Suena un aviso (el accesorio): el micrófono no se abre sobre él. Se vuelve a pedir cuando termine.
+    case vozOcupada
 
     /// Hay una captura pedida y no soltada.
     var capturando: Bool { self == .iniciando || self == .escuchando || self == .finalizando }
@@ -33,21 +35,27 @@ enum EstadoDictado: Equatable, CaseIterable {
 /// - Permisos: se piden al tocar «Dictar pregunta», no antes. Negados o restringidos, el dictado lo dice y no hace nada más.
 /// - Capacidad: se consulta al sistema al mostrar la pantalla y al empezar (`ReconocedorVoz.capacidad`); la pantalla dice
 ///   si el audio se reconoce en el iPhone o se envía a Apple, y en qué español.
-/// - Audio: antes de capturar se corta la voz (`ControlVoz.descartarTodo`), y si una locución va a empezar con la captura
-///   abierta, el dictado se cancela (`ControlVoz.alHablar`): nada suena sobre un micrófono abierto, y un aviso del accesorio
-///   no espera a que la persona termine de hablar. La sesión de audio es de `SintetizadorSistema`.
+/// - Audio: antes de capturar se corta SOLO la respuesta hablada de la pantalla (`cortarVozPropia`); si suena un aviso del
+///   accesorio no se corta y el micrófono no se abre (`.vozOcupada`): la lectura de transporte cede ante la proximidad, nunca
+///   al revés. Si una locución va a empezar con la captura abierta, el dictado se cancela (`ControlVoz.alHablar`): nada
+///   suena sobre un micrófono abierto, y un aviso no espera a que la persona termine de hablar. La sesión de audio es de
+///   `SintetizadorSistema`.
 /// - Cada captura lleva un token; lo que llegue de una captura cancelada se descarta.
 @MainActor
 @Observable
 final class DictadoModelo {
     private(set) var estado: EstadoDictado = .inactivo
     private(set) var capacidad: CapacidadReconocimiento
-    /// Último texto que el dictado entregó completo. La consulta lo compara con lo que se envía: solo una pregunta
-    /// dictada y sin cambios se contesta también en voz alta.
+    /// Último texto que el dictado entregó completo y que sigue en el campo tal cual. Se borra al empezar otra captura y
+    /// cuando la persona edita el campo o envía (`olvidarUltimoDictado`): solo una pregunta dictada y sin cambios se
+    /// contesta también en voz alta.
     private(set) var ultimoDictado: String?
 
     /// Texto reconocido (parcial o final) para el campo de la consulta.
     @ObservationIgnored var alTexto: (@MainActor (String) -> Void)?
+    /// Corta la respuesta hablada de la pantalla si suena. Solo la suya: un aviso de otro dueño no se toca. Sin esta función
+    /// (el dictado solo), todo lo que suene se trata como ajeno.
+    @ObservationIgnored var cortarVozPropia: (@MainActor () -> Void)?
 
     @ObservationIgnored private let reconocedor: ReconocedorVoz
     @ObservationIgnored private let voz: ControlVoz?
@@ -93,12 +101,15 @@ final class DictadoModelo {
         cambiar(a: .inactivo)
     }
 
+    /// El campo cambió a mano o la pregunta se envió: lo dictado ya no es lo que dice el campo.
+    func olvidarUltimoDictado() {
+        ultimoDictado = nil
+    }
+
     // MARK: Internos
 
     private func empezar() {
         ultimoEstado = .inactivo  // cada intento vuelve a anunciar su resultado, también un permiso que sigue negado
-        // Antes de abrir el micrófono se corta lo que suene (una respuesta hablada, un aviso): no se realimentan.
-        voz?.descartarTodo()
         switch reconocedor.permiso {
         case .denegado: cambiar(a: .permisoDenegado)
         case .restringido: cambiar(a: .permisoRestringido)
@@ -109,9 +120,15 @@ final class DictadoModelo {
         }
     }
 
+    /// Único camino que abre el micrófono (con el permiso ya concedido o tras los avisos del sistema). Mientras esos avisos
+    /// estaban en pantalla pudo empezar a sonar algo: se comprueba aquí, no solo al tocar el botón.
     private func arrancar() {
+        // Nada suena sobre un micrófono abierto: la respuesta hablada de la pantalla se corta; un aviso no, y entonces no se abre.
+        cortarVozPropia?()
+        guard voz?.hablando != true else { cambiar(a: .vozOcupada); return }
         capacidad = reconocedor.capacidad
         guard capacidad != .noDisponible else { cambiar(a: .noDisponible); return }
+        ultimoDictado = nil
         token += 1
         cambiar(a: .iniciando)
         reconocedor.iniciar(token: token)
@@ -176,7 +193,7 @@ extension EstadoDictado {
     /// El dictado no pudo seguir: se avisa con prioridad y el foco va al mensaje.
     var esProblema: Bool {
         switch self {
-        case .permisoDenegado, .permisoRestringido, .noDisponible, .sinTexto, .fallo: return true
+        case .permisoDenegado, .permisoRestringido, .noDisponible, .sinTexto, .fallo, .vozOcupada: return true
         default: return false
         }
     }

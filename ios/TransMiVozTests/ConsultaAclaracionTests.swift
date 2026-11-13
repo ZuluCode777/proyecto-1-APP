@@ -113,6 +113,18 @@ final class ConsultaAclaracionTests: XCTestCase {
         cliente.responder(.success(viaje), indice: 2)
     }
 
+    func testReintentarDiceConQueOrigenSeReenvia() async {
+        let cliente = ClienteControlable()
+        let modelo = await conOrigenPendiente(cliente)
+        XCTAssertEqual(modelo.etiquetaDeRepetir("Reintentar"), "Reintentar", "el primer turno salió sin origen")
+        await enviarCalle72(modelo, cliente, consulta: 2)
+        XCTAssertEqual(modelo.etiquetaDeRepetir("Reintentar"), "Reintentar con origen Ricaurte")
+        XCTAssertEqual(modelo.etiquetaDeRepetir("Volver a consultar"), "Volver a consultar con origen Ricaurte")
+        modelo.cancelar()
+        XCTAssertNil(modelo.origenPendiente)
+        XCTAssertEqual(modelo.etiquetaDeRepetir("Reintentar"), "Reintentar con origen Ricaurte", "repite lo que salió, con su origen")
+    }
+
     func testUnaRespuestaNuevaSustituyeLaAclaracion() async {
         let cliente = ClienteControlable()
         let modelo = await conOrigenPendiente(cliente)

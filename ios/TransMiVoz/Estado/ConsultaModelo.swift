@@ -21,7 +21,9 @@ enum EstadoConsulta: Equatable, Sendable {
 /// estación quieres ir?»), el origen queda en `origenPendiente` y viaja con la pregunta siguiente. Vive solo en este
 /// iPhone y en memoria: el servidor no guarda historial. Cancelar la consulta en curso lo borra; una respuesta que no
 /// pide nada más lo sustituye. La pregunta se puede dictar (`dictado`): el texto va al campo, la persona revisa y
-/// envía, y una pregunta dictada se contesta también en voz alta, por la misma vía que los avisos del accesorio.
+/// envía, y una pregunta dictada y sin editar se contesta también en voz alta, por la misma vía que los avisos del
+/// accesorio. Esa lectura nunca corta un aviso que ya suena (la lectura de transporte cede ante la proximidad): en ese
+/// caso la respuesta solo se muestra. Enviar con el micrófono abierto termina la captura; el texto parcial se queda.
 @MainActor
 @Observable
 final class ConsultaModelo {
@@ -43,7 +45,8 @@ final class ConsultaModelo {
     @ObservationIgnored private var tarea: Task<Void, Never>?
     @ObservationIgnored private var generacion = 0
     /// Origen pendiente con que salió la última consulta: «Reintentar» repite lo enviado, también si entre tanto se canceló.
-    @ObservationIgnored private var origenEnviado: String?
+    /// Es observable: el rótulo del botón dice qué origen se reenvía.
+    private(set) var origenEnviado: String?
     /// `ControlVoz.locuciones` al empezar la última respuesta hablada de esta pantalla; `nil` si no hay ninguna que cortar.
     @ObservationIgnored private var locucionPropia: Int?
 
@@ -52,11 +55,28 @@ final class ConsultaModelo {
         self.dictado = dictado
         self.voz = voz
         dictado?.alTexto = { [weak self] texto in self?.texto = texto }
+        dictado?.cortarVozPropia = { [weak self] in self?.detenerHabla() }
     }
 
     var estaEnviando: Bool { estado == .enviando }
 
+    /// La persona cambió el campo (teclado o corrección de lo dictado): ya no es «lo dictado», así que no se lee en voz alta.
+    /// El dictado escribe por `alTexto`, no por aquí.
+    func editarTexto(_ nuevo: String) {
+        guard nuevo != texto else { return }
+        texto = nuevo
+        dictado?.olvidarUltimoDictado()
+    }
+
+    /// Rótulo de un botón que repite la última consulta: dice el origen pendiente que va a reenviar.
+    func etiquetaDeRepetir(_ accion: String) -> String {
+        origenEnviado.map { "\(accion) con origen \($0)" } ?? accion
+    }
+
     func enviar() {
+        // «Enviar» con el micrófono abierto (o esperando los permisos): la captura termina aquí. El texto parcial se queda en
+        // el campo como texto escrito y nada que llegue después lo pisa.
+        if dictado?.estado.enCurso == true { dictado?.cancelar() }
         switch EntradaConsulta.validar(texto, maximo: escenario.maximoCaracteres) {
         case .failure(let error):
             // Una entrada inválida invalida también la consulta anterior: si no,
@@ -71,6 +91,7 @@ final class ConsultaModelo {
 
     func reintentar() {
         guard let anterior = ultimoTextoEnviado else { return }
+        dictado?.olvidarUltimoDictado()  // repite lo enviado, no una dictada nueva que esté en el campo
         texto = anterior
         escenario = escenarioEnviado
         origenPendiente = origenEnviado
@@ -115,9 +136,16 @@ final class ConsultaModelo {
         if voz.locuciones == propia { voz.descartarTodo() }
     }
 
-    /// Lee la respuesta por la voz de la app. Con la captura abierta no se habla (la voz sonaría sobre el micrófono).
+    /// Suena una locución que no es la respuesta de esta pantalla (un aviso del accesorio): no se corta ni se tapa.
+    private var suenaAlgoAjeno: Bool {
+        guard let voz, voz.hablando else { return false }
+        return locucionPropia != voz.locuciones
+    }
+
+    /// Lee la respuesta por la voz de la app. Con la captura abierta no se habla (la voz sonaría sobre el micrófono), y con un
+    /// aviso sonando tampoco (`ControlVoz.anunciar` lo cortaría): la pantalla ya muestra la respuesta.
     private func hablar(_ respuesta: RespuestaAgente, escenario: EscenarioConsulta) {
-        guard let voz, dictado?.capturando != true else { return }
+        guard let voz, dictado?.capturando != true, !suenaAlgoAjeno else { return }
         let partes = [escenario.anuncioResultado, respuesta.textoHablado].compactMap { $0 }
         if voz.anunciar(partes.joined(separator: " ")) == .hablado { locucionPropia = voz.locuciones }
     }
@@ -133,7 +161,9 @@ final class ConsultaModelo {
         // La aclaración solo completa un viaje de transporte: en el escenario Metro no viaja.
         let pendiente = enviado == .transporte ? origenPendiente : nil
         origenEnviado = pendiente
-        let dictada = dictado?.ultimoDictado == limpio
+        // Solo una pregunta dictada y sin editar se lee en voz alta; lo enviado ya no es «lo dictado» para la siguiente.
+        let dictada = dictado?.ultimoDictado != nil
+        dictado?.olvidarUltimoDictado()
         estado = .enviando
         tarea = Task { [cliente] in
             let resultado: EstadoConsulta

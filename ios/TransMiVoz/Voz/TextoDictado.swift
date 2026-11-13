@@ -26,14 +26,16 @@ enum TextoDictado {
         case .permisoDenegado: return "sin permiso"
         case .permisoRestringido: return "restringido"
         case .noDisponible: return "no disponible"
+        case .vozOcupada: return "esperando el aviso"
         }
     }
 
-    static func pista(_ estado: EstadoDictado) -> String {
+    /// Pista del botón. En reposo lleva también adónde va el audio: VoiceOver llega al botón antes que a la línea de abajo.
+    static func pista(_ estado: EstadoDictado, capacidad: CapacidadReconocimiento) -> String {
         switch estado {
         case .escuchando: return "Termina el dictado y deja el texto en el campo de la pregunta."
         case .pidiendoPermisos, .iniciando, .finalizando: return "Cancela el dictado."
-        default: return "Dicta la pregunta en lugar de escribirla. También puedes escribirla."
+        default: return "Dicta la pregunta en lugar de escribirla. También puedes escribirla. \(self.capacidad(capacidad))"
         }
     }
 
@@ -50,7 +52,8 @@ enum TextoDictado {
     static func capacidad(_ capacidad: CapacidadReconocimiento) -> String {
         switch capacidad {
         case .local(let idioma):
-            return "Dictado en este iPhone, en \(nombreIdioma(idioma)): el audio no sale de él."
+            // Lo declara el sistema, no la app: no se promete como garantía.
+            return "Según tu iPhone, el dictado se hace en este equipo, en \(nombreIdioma(idioma)): el audio no saldría de él."
         case .remoto(let idioma):
             return "Dictado con el servicio de Apple, en \(nombreIdioma(idioma)): el audio se envía a Apple."
         case .noDisponible:
@@ -70,6 +73,7 @@ enum TextoDictado {
         case .noDisponible: return "El dictado no está disponible ahora. Escribe tu pregunta."
         case .sinTexto: return "No se entendió nada. Prueba otra vez o escribe tu pregunta."
         case .fallo: return "El dictado falló. Prueba otra vez o escribe tu pregunta."
+        case .vozOcupada: return "Está sonando un aviso. Vuelve a tocar «\(dictar)» cuando termine."
         }
     }
 
@@ -77,7 +81,7 @@ enum TextoDictado {
     /// «escuchando»: VoiceOver sonaría sobre el micrófono recién abierto y el reconocedor lo tomaría por voz de la persona.
     static func anuncio(_ estado: EstadoDictado) -> String? {
         switch estado {
-        case .permisoDenegado, .permisoRestringido, .noDisponible, .sinTexto, .fallo:
+        case .permisoDenegado, .permisoRestringido, .noDisponible, .sinTexto, .fallo, .vozOcupada:
             return descripcion(estado, capacidad: .noDisponible)
         case .inactivo, .pidiendoPermisos, .iniciando, .escuchando, .finalizando: return nil
         }
